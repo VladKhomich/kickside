@@ -124,11 +124,12 @@ async function mount() {
     // ownership; visibility never participates in the mount watcher below.
     setWippyVisibility(next, props.visible)
     next.setAttribute('route', subPath())
-    next.addEventListener('load', () => {
-      if (generation === mountGeneration && el === next) emit('ready')
+    next.addEventListener('load', (event) => {
+      if (event.composedPath()[0] === next && generation === mountGeneration && el === next) emit('ready')
     })
     next.addEventListener('error', (event) => {
-      if (generation !== mountGeneration || el !== next) return
+      // Shadow DOM retargets a nested control's event to the surface.
+      if (event.composedPath()[0] !== next || generation !== mountGeneration || el !== next) return
       const error = new Error(`Component <${tag}> failed to load.`)
       mountHost.replaceChildren()
       el = null

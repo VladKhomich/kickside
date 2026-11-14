@@ -9,11 +9,10 @@ import {
   eventArtifactId,
   eventSessionId,
   layoutSnapshot,
-  mainAppRoute,
-  parseRoute,
   sessionIdFromPath,
 } from './hostRoute.ts'
 import type { ArtifactIntent, LayoutEvent } from './hostRoute.ts'
+import { useHostRoute } from './useHostRoute'
 import { useSessionsApi } from './useSessionsApi.ts'
 
 const MODAL_ID = 'artifact-modal'
@@ -29,33 +28,10 @@ const api = useSessionsApi()
 const manager = host ? getLayoutManager(host) : null
 const stops: Array<() => void> = []
 
-/**
- * The host path from the address bar and `@history`. It is the only route
- * known while the main panel shows another page (Keeper, Git); while it shows
- * the app page, that page's own full route is read from the layout snapshot.
- */
-let hostPath = window.location.pathname
+const route = useHostRoute(host, path => setActiveSession(sessionIdFromPath(path)))
+const activeSessionId = ref(sessionIdFromPath(route.initialPath))
 
-function currentPath(): string {
-  return parseRoute(mainAppRoute(layoutSnapshot(host)) ?? hostPath).path
-}
-
-let lastPath = currentPath()
-
-/**
- * The session the artifact panel is scoped to, i.e. the one in the URL.
- *
- * Seeded from the host route because a click can land before any broadcast,
- * then kept current by route changes and, ahead of a navigation, by
- * `kickside:artifact-session`.
- */
-const activeSessionId = ref(sessionIdFromPath(lastPath))
-
-/**
- * Guards the async gap in `openModal`. Without it a slow title lookup can
- * reopen a modal the user has already navigated away from, or let an older
- * artifact overwrite a newer one, because `MODAL_ID` is a singleton.
- */
+/** Invalidate title lookups when the modal closes or changes ownership. */
 let modalSequence = 0
 
 function reveal() {
@@ -155,8 +131,8 @@ function showArtifact(id: string, intent?: ArtifactIntent, sourcePanelId?: strin
  * page.
  *
  * The panel only closes when the session actually changes, because whatever it
- * holds then belongs to the previous session. ArtifactPanel clears its own
- * contents off the shell's broadcast; this closes the chrome around them.
+ * holds then belongs to the previous session. ArtifactPanel follows the same
+ * route to clear its contents; this closes the chrome around them.
  */
 function setActiveSession(sessionId: string) {
   closeModal()
@@ -165,22 +141,11 @@ function setActiveSession(sessionId: string) {
   hide()
 }
 
-/**
- * Follow the host route. Only a changed path counts: the modal belongs to the
- * page it was opened over, and a query change leaves that page in place.
- */
-function followRoute() {
-  const path = currentPath()
-  if (path === lastPath) return
-  lastPath = path
-  setActiveSession(sessionIdFromPath(path))
-}
-
 function onLayoutEvent(event: LayoutEvent) {
   if (event.channel === 'kickside:artifact-session') {
     // This announces the session a navigation is about to reach. The same rule
     // decides it in the panel (hostRoute.acceptsArtifactSession).
-    if (!acceptsArtifactSession(event.sourcePanelId, layoutSnapshot(host), hostPath)) return
+    if (!acceptsArtifactSession(event.sourcePanelId, layoutSnapshot(host), route.hostPath())) return
     setActiveSession(eventSessionId(event.payload))
     return
   }
@@ -227,11 +192,6 @@ onMounted(() => {
   // Two segments: the proxy matches the full websocket topic (`action:sidebar`)
   // segment by segment, so a one-segment `action` pattern never matches.
   stops.push(on('action:*', onAction))
-  stops.push(on('@history', ({ path }) => {
-    hostPath = path
-    followRoute()
-  }))
-  if (manager) stops.push(manager.on('change', followRoute))
 })
 
 onBeforeUnmount(() => stops.forEach(stop => stop()))

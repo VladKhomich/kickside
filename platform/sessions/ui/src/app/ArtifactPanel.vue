@@ -16,6 +16,7 @@ import {
   sessionIdFromPath,
 } from './hostRoute.ts'
 import type { LayoutEvent } from './hostRoute.ts'
+import { useHostRoute } from './useHostRoute'
 import { useSessionsApi } from './useSessionsApi.ts'
 
 const api = useSessionsApi()
@@ -23,7 +24,8 @@ const bus = useLayoutBus()
 const host = useHost<typeof proxyHost>()
 const artifacts = ref<ArtifactSummary[]>([])
 const selectedId = ref('')
-const activeSessionId = ref(sessionIdFromPath(window.location.pathname))
+const route = useHostRoute(host, path => setActiveSession(sessionIdFromPath(path)))
+const activeSessionId = ref(sessionIdFromPath(route.initialPath))
 const loading = ref(!!activeSessionId.value)
 const action = ref<'copy' | 'save' | ''>('')
 const error = ref('')
@@ -72,6 +74,7 @@ async function loadCatalog() {
 }
 
 function queueRefresh() {
+  if (!activeSessionId.value) return
   if (refreshTimer) clearTimeout(refreshTimer)
   refreshTimer = setTimeout(() => { void loadCatalog() }, 150)
 }
@@ -145,12 +148,7 @@ function setActiveSession(sessionId: string) {
 
 function onLayoutEvent(event: LayoutEvent) {
   if (event.channel === 'kickside:artifact-session') {
-    // The coordinator applies the same rule to its own state, but not from the
-    // same inputs: it follows route changes and `@history`, this panel reads
-    // `window.location.pathname`. Both accept the same announcements while the
-    // app page reports its route; before that, the host path stands in and the
-    // two read it from different places.
-    if (!acceptsArtifactSession(event.sourcePanelId, layoutSnapshot(host), window.location.pathname)) return
+    if (!acceptsArtifactSession(event.sourcePanelId, layoutSnapshot(host), route.hostPath())) return
     setActiveSession(eventSessionId(event.payload))
     return
   }
