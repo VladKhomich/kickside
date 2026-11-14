@@ -264,6 +264,23 @@ return {run = test.run_cases(function()
                 for _, row in ipairs(bodies) do test.eq(assert(json.decode(row.body)).ran_as, expected) end
             end)
         end
+        test.it("preserves maintenance updates after creation event retention", function()
+            local id, cursor, job = create()
+            local folded, fold_err = invoke.run({job = job, payload = {cursor_id = cursor.id}})
+            test.is_nil(fold_err); test.eq(tonumber(folded.last_seq), 1)
+            local svc = service("system:lifecycle")
+            local before, before_err = svc:update({component_id = id,
+                commands = {{type = "PATCH_CONTEXT", payload = {patch = {before_retention = true}}}}})
+            test.is_nil(before_err); test.is_true(before.success, tostring(before.error))
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1 AND external_id=$2",
+                {lifecycle.thread_id(id), "created:" .. id}))
+            local owner = assert(db:query("SELECT value FROM kickside_component_meta WHERE component_id=$1 AND key='owner'", {id}))[1]
+            db:release(); test.eq(owner.value, "system:lifecycle")
+            local after, after_err = svc:update({component_id = id,
+                commands = {{type = "PATCH_CONTEXT", payload = {patch = {after_retention = true}}}}})
+            test.is_nil(after_err); test.is_true(after.success, tostring(after.error))
+        end)
         test.it("parks ambiguous legacy ownership at the head through normal convergence", function()
             local id, cursor, job = create("app:projection_owner_proc_kind")
             test.not_nil(assert(invoke.run({job = job, payload = {cursor_id = cursor.id}})))
