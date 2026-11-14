@@ -138,10 +138,51 @@ return {run = test.run_cases(function()
                 test.eq(summary.checked, 0)
                 test.eq(summary.healed, 0)
                 test.eq(fixture.calls, 0)
-                test.eq(fixture.queries, 3)
-                test.eq(fixture.max_page, math.min(count, 256))
+                test.eq(fixture.queries, 3, "one boundary, one bulk existence query and one mismatch query")
+                test.eq(fixture.max_page, 0, "healthy rows never enter the mismatch window")
             end)
         end
+        test.it("examines a larger finite window without spending the repair budget", function()
+            fixture.reset("", nil)
+            fixture.unchanged_count = 10000
+            local continuation, turns = nil, 0
+            repeat
+                local page, err = provision.converge({}, {}, continuation)
+                test.is_nil(err)
+                test.eq(page.checked, 0)
+                continuation, turns = page.continuation, turns + 1
+            until not continuation
+            test.eq(turns, 1)
+            test.eq(fixture.queries, 3, "query count is independent of the healthy population")
+        end)
+        test.it("resumes after the last repair when a sparse window fills its repair budget", function()
+            fixture.reset("", nil)
+            fixture.changed_count, fixture.changed_stride = 10000, 2
+            local continuation = nil
+            repeat
+                local before = fixture.calls
+                local page, err = provision.converge({}, {}, continuation)
+                test.is_nil(err)
+                test.is_true(fixture.calls - before <= 256)
+                continuation = page.continuation
+            until not continuation
+            test.eq(#fixture.repair_ids, 5000)
+            for index, id in ipairs(fixture.repair_ids) do
+                test.eq(id, string.format("%06d", index * 2), "no divergent key is skipped or repeated")
+            end
+        end)
+        test.it("prepares declaration definitions once per finite run", function()
+            fixture.reset("", nil)
+            fixture.unchanged_count = 10000
+            local continuation = nil
+            repeat
+                local page = assert(provision.converge({}, {}, continuation))
+                test.eq(fixture.kind_loads, 1, "windows reuse the run's prepared declarations")
+                continuation = page.continuation
+            until not continuation
+            assert(provision.converge({}, {}))
+            test.eq(fixture.kind_loads, 2, "a new run reloads current declarations")
+        end)
         test.it("continues ten thousand changed declarations in bounded turns", function()
             fixture.reset("", nil)
             fixture.changed_count = 10000
@@ -159,8 +200,8 @@ return {run = test.run_cases(function()
             until not continuation
             test.eq(total, 10000)
             test.eq(turns, 40)
-            test.eq(fixture.queries, 81)
-            test.eq(fixture.max_page, 256)
+            test.eq(fixture.queries, 42)
+            test.eq(fixture.max_page, 4096)
         end)
         for _, changed in ipairs({false, true}) do
             test.it("bounds ten thousand lifecycle digest checks/" .. tostring(changed), function()
@@ -173,15 +214,15 @@ return {run = test.run_cases(function()
                     local summary, err = provision.converge({}, {}, continuation)
                     test.is_nil(err)
                     test.is_true(fixture.calls - before <= 256)
-                    test.eq(fixture.queries - queries, turns == 0 and 3 or 2)
+                    test.eq(fixture.queries - queries, turns == 0 and 3 or 1)
                     test.eq(fixture.wakes - wakes, changed and 1 or 0, "committed repairs notify before the page returns")
                     total = total + summary.healed
                     turns = turns + 1
                     continuation = summary.continuation
                 until not continuation
                 test.eq(total, changed and 10000 or 0)
-                test.eq(turns, 40)
-                test.eq(fixture.max_page, 256)
+                test.eq(turns, changed and 40 or 1)
+                test.eq(fixture.max_page, changed and 4096 or 0)
             end)
         end
         test.it("limits every divergence source before union and sorting", function()

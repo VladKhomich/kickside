@@ -152,8 +152,10 @@ function writer.declaration_matches(stored: table, declared: table): boolean
     return same_declaration(apply_declaration_fields({}, stored), apply_declaration_fields({}, declared))
 end
 
-function writer.declaration_digest(body: table): (string?, error?)
-    return canonical_json.hash(apply_declaration_fields({}, body))
+function writer.declaration_digest(body: table, routing: string?): (string?, error?)
+    local declaration = apply_declaration_fields({}, body)
+    if routing then return canonical_json.hash({declaration = declaration, routing = routing .. ":1"}) end
+    return canonical_json.hash(declaration)
 end
 
 local function bounded(value: any, name: string, min_value: integer,

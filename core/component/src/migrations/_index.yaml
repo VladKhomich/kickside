@@ -142,15 +142,3 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
-
-  - name: 16_kind_windows
-    kind: function.lua
-    meta:
-      type: migration
-      target_db: ""
-      depends_on: [ns:wippy.migration]
-      timestamp: "2026-11-14T00:00:16Z"
-    source: file://16_kind_windows.lua
-    imports:
-      migration: wippy.migration:migration
-    method: migrate

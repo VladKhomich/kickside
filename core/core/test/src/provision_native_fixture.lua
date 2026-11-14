@@ -6,8 +6,9 @@ end}
 function M.reset(stage: string, source: any)
     M.stage, M.source, M.release_source, M.grant_result = stage, source, nil, nil
     M.scope_decision, M.unchanged_count, M.changed_count, M.max_page = nil, nil, nil, 0
-    M.lifecycle, M.wakes = false, 0
+    M.lifecycle, M.wakes, M.kind_loads = false, 0, 0
     M.require_window, M.two_kinds = false, false
+    M.changed_stride, M.repair_ids = nil, {}
     M.gets, M.queries, M.releases, M.upserts = 0, 0, 0, 0
     M.retentions, M.grants, M.calls, M.contract_gets, M.opens = 0, 0, 0, 0, 0, 0
 end
@@ -74,6 +75,7 @@ function M.declarations(): {any}
     return {{scope = "user", class = "class", impl_id = "impl", retention = {event_days = 7}, grants = {{subject_id = "reader", access_mask = 1}}}}
 end
 function M.declared_kinds(): {any}
+    M.kind_loads = M.kind_loads + 1
     local result = {{class = not M.lifecycle and "class" or nil, impl_id = "impl", projections = {{kind = "projection",
         on = M.lifecycle and "lifecycle" or nil, worker_ref = "func://app:test_count_worker"}}}}
     if M.two_kinds then result[2] = {impl_id = "later", class = "class", projections = result[1].projections} end
@@ -82,46 +84,46 @@ end
 M.builder = {}
 function M.builder.select(columns: string, ...: any): any
     local chain = {}
-    local after, limit, upper = 0, nil, nil
-    local boundary = columns == "component_id AS boundary"
-    local digest_scan, later, source = false, false, ""
-    function chain:from(value: string): any
-        source = value
-        digest_scan = value:find("declaration_digest", 1, true) ~= nil
-        if digest_scan and M.require_window then
-            assert(value:find("LIMIT 256", 1, true), "divergence starts from an indexed bounded component window")
-        end
-        limit = tonumber((value:match("LIMIT (%d+)"))) or limit
-        after = tonumber((value:match("component_id>'(%d+)'"))) or after
-        upper = tonumber((value:match("component_id<='(%d+)'")))
-        later = value:find("impl_id='later'", 1, true) ~= nil
-        return self
-    end
-    function chain:where(value: string, argument: any?): any
-        if value == "c.component_id > ?" then after = tonumber(argument) end
-        if value:find("declaration_digest", 1, true) then
-            digest_scan = true
-            if M.require_window then assert(source:find("LIMIT 256", 1, true), "divergence starts from an indexed bounded component window") end
-        end
-        return self
-    end
+    local source = ""
+    local boundary = columns:find("AS upper", 1, true) ~= nil
+    function chain:from(value: string): any source = value; return self end
+    function chain:where(value: string, argument: any?): any return self end
     function chain:order_by(value: string): any return self end
-    function chain:limit(value: number): any limit = value; return self end
+    function chain:limit(value: number): any return self end
     function chain:run_with(handle: any): any return self end
     function chain:query(): (any, error?)
         M.queries = M.queries + 1
+        local digest_scan = source:find("declaration_digest", 1, true) ~= nil
         if ((M.stage == "thread_scan" or M.stage == "thread_scan_release") and M.queries == 1)
-            or (M.stage == "projection_scan" and digest_scan) then return nil, M.source end
+            or (M.stage == "projection_scan" and source:find("kickside_projection", 1, true) ~= nil) then return nil, M.source end
         local count = M.changed_count or M.unchanged_count
-        if boundary then return {{boundary = count and string.format("%06d", count) or "component"}}, nil end
-        if not count then return {{component_id = "component"}}, nil end
-        assert(limit and limit <= 256, "all component candidates stay bounded before divergence checks")
-        if digest_scan and M.unchanged_count then return {}, nil end
-        local rows = {}
-        for index = after + 1, math.min(after + limit, upper or count, later and 1 or count) do
-            rows[#rows + 1] = {component_id = string.format("%06d", index)}
+        if boundary then
+            local upper = count and string.format("%06d", count) or "component"
+            return {{upper = upper, projection_upper = upper}}, nil
         end
-        if not digest_scan then M.max_page = math.max(M.max_page, #rows) end
+        if M.require_window then
+            assert(source:find("LIMIT ", 1, true), "each divergence source is limited before union and sorting")
+            if digest_scan then
+                assert(not source:find("SELECT component_id FROM kickside_components", 1, true),
+                    "digest queries never visit unchanged component windows")
+            end
+        end
+        if not digest_scan then return count and {} or {{component_id = "component"}}, nil end
+        if not count or M.unchanged_count then return {}, nil end
+        local after = tonumber((source:match("declaration_digest,id%)>%('[^']*','(%d+)'%)"))) or 0
+        local upper = tonumber((source:match("id<='(%d+)'"))) or count
+        local page_size = assert(tonumber((source:match("LIMIT (%d+)"))))
+        assert(page_size <= 4096, "mismatch examination is bounded independently of repairs")
+        local later = source:find("c.impl_id='later'", 1, true) ~= nil
+        local rows = {}
+        for index = after + 1, math.min(upper, later and 1 or count) do
+            if not M.changed_stride or index % M.changed_stride == 0 then
+                local id = string.format("%06d", index)
+                rows[#rows + 1] = {id = id, declaration_digest = "old", range_id = 1, component_id = id}
+                if #rows == page_size then break end
+            end
+        end
+        M.max_page = math.max(M.max_page, #rows)
         return rows, nil
     end
     return chain
@@ -144,6 +146,7 @@ function executor:with_scope(scope: any): (any, error?)
     return self, nil
 end
 function executor:call(target: string, input: table): (any, error?)
+    M.repair_ids[#M.repair_ids + 1] = input.component_id
     M.calls = M.calls + 1
     if M.stage == "call" then return nil, M.source end
     return {}, nil

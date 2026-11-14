@@ -174,8 +174,6 @@ entries:
         path: .meta.target_db
       - entry: kickside.component.migrations:15_delete_intent
         path: .meta.target_db
-      - entry: kickside.component.migrations:16_kind_windows
-        path: .meta.target_db
       - entry: kickside.component:db_config
         path: .meta.db_id
       - entry: kickside.component.system:read_db

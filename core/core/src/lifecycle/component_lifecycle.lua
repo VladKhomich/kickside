@@ -68,7 +68,7 @@ local function projections_for_impl(impl_id: string): (table[]?, error?)
             local body, body_err = writer.declaration_body({worker_ref = p.worker_ref,
                 worker_input_mode = p.input_mode, worker_config = p.worker_config, events = p.events})
             if body_err then return nil, body_err end
-            local digest, digest_err = writer.declaration_digest(body)
+            local digest, digest_err = writer.declaration_digest(body, "lifecycle")
             if digest_err then return nil, digest_err end
             p.declaration = {body = body, digest = digest}
         end

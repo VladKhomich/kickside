@@ -159,8 +159,9 @@ return {run = test.run_cases(function()
             local ids = {}
             for _ = 1, 260 do ids[#ids + 1] = create() end
             local db = assert(sql.get("app:db"))
-            for _, id in ipairs(ids) do
-                assert(db:execute("UPDATE kickside_projection SET declaration_digest=NULL WHERE thread_id=$1", {lifecycle.thread_id(id)}))
+            for index, id in ipairs(ids) do
+                local digest = ({"", "zzzz"})[index % 3]
+                assert(db:execute("UPDATE kickside_projection SET declaration_digest=$1 WHERE thread_id=$2", {digest,lifecycle.thread_id(id)}))
             end
             assert(db:release())
             local continuation, total, turns = nil, 0, 0

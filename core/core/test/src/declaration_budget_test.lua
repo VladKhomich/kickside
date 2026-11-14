@@ -53,7 +53,7 @@ return {run = test.run_cases(function()
             test.eq(counter.calls, before, "an unchanged event performs no canonicalization or hashing")
             assert(db:release())
         end)
-        test.it("bounds all declaration joins by the component window", function()
+        test.it("seeks only divergent declaration rows in a healthy population", function()
             local db = assert(sql.get("app:db"))
             local seed = uuid.v4()
             assert(db:execute("INSERT INTO kickside_thread(id,component_id,thread_class) VALUES($1,$2,'plan')", {seed,seed}))
@@ -83,34 +83,26 @@ return {run = test.run_cases(function()
             assert(db:release())
             local page = assert(provision.converge({}, {}))
             test.eq(page.checked, 0)
-            test.not_nil(page.continuation)
+            test.is_nil(page.continuation, "unchanged population completes without visiting component windows")
             test.eq(plan.plans, 1)
         end)
-        test.it("seeks lifecycle windows through the implementation and component index", function()
+        test.it("replaces the projection kind index with bounded digest range seeks", function()
             local db = assert(sql.get("app:db"))
             local dialect = assert(db:type())
-            local impl = "test.window.plan"
-            for batch = 1, 40 do
-                local values = {}
-                for index = 1, 250 do
-                    values[#values + 1] = "('" .. uuid.v4() .. "','" .. impl .. "')"
-                end
-                assert(db:execute("INSERT INTO kickside_components(component_id,impl_id) VALUES " .. table.concat(values, ",")))
-            end
-            assert(db:execute("ANALYZE kickside_components"))
             local prefix = dialect == "sqlite" and "EXPLAIN QUERY PLAN " or "EXPLAIN "
-            local plan = assert(db:query(prefix .. [[SELECT component_id FROM kickside_components
-                WHERE impl_id='test.window.plan' AND component_id > '00000000-0000-0000-0000-000000000000'
-                ORDER BY component_id LIMIT 256]]))
-            local encoded = assert(json.encode(plan))
-            test.is_true(encoded:find("idx_components_impl_component", 1, true) ~= nil, encoded)
-            test.is_nil(encoded:find("Sort", 1, true), encoded)
-            test.is_nil(encoded:find("TEMP B-TREE", 1, true), encoded)
+            for _, predicate in ipairs({"declaration_digest < 'middle'", "declaration_digest > 'middle'", "declaration_digest IS NULL"}) do
+                local order = "declaration_digest,id"
+                local plan = assert(db:query(prefix .. "SELECT id,thread_id,declaration_digest FROM kickside_projection "
+                    .. "WHERE kind='plan' AND projection_key='default' AND " .. predicate .. " ORDER BY " .. order .. " LIMIT 256"))
+                local encoded = assert(json.encode(plan))
+                test.is_true(encoded:find("idx_projection_declaration_digest", 1, true) ~= nil, encoded)
+                test.is_nil(encoded:find("Sort", 1, true), encoded)
+                test.is_nil(encoded:find("TEMP B-TREE", 1, true), encoded)
+            end
             local superseded = assert(db:query(dialect == "sqlite"
-                and "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_kickside_components_impl_id'"
-                or "SELECT indexname AS name FROM pg_indexes WHERE schemaname=current_schema() AND indexname='idx_kickside_components_impl_id'"))
-            test.eq(#superseded, 0, "the composite index replaces its redundant single-column prefix")
-            assert(db:execute("DELETE FROM kickside_components WHERE impl_id=$1", {impl}))
+                and "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_kickside_projection_kind'"
+                or "SELECT indexname AS name FROM pg_indexes WHERE schemaname=current_schema() AND indexname='idx_kickside_projection_kind'"))
+            test.eq(#superseded, 0, "the declaration index replaces its single-column kind prefix")
             assert(db:release())
         end)
     end)
