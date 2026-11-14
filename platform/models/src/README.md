@@ -81,7 +81,7 @@ cards hold call defaults such as `reasoning_model_request`,
 `thinking_effort`, or `temperature` in provider options. For
 OpenAI-compatible profiles, `test_model` is non-secret profile config used only
 by the connection-test probe; API keys remain in encrypted profile secrets or
-`*_env` references.
+`*_env` references. Card scrubbing matches declared credentials and credential aliases exactly, case-insensitively, preserving ordinary metadata such as `max_tokens`, `output_tokens`, and `token_budget`.
 
 Retry is provider-level transport policy: `retry.attempts` is the number of
 transient failures to retry after the initial request, and optional
