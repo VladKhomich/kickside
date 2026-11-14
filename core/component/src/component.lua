@@ -19,6 +19,7 @@ local context_policy = require("context_policy")
 
 local ACCESS = component_types.ACCESS
 local identity_access = require("identity_access")
+local delete_children = require("delete_children")
 local validate_identity_authorizer_admin = identity_access.validate_identity_authorizer_admin
 local validate_principal_access = identity_access.validate_principal_access
 local get_identity_receipt = identity_access.get_identity_receipt
@@ -288,7 +289,7 @@ end
 
 -- List a component's stored grants at system level (no access gate), for trusted
 -- callers that resolve ownership outside a request actor -- e.g. a teardown handler
--- deciding whether a deleted user was a component's sole owner. Excludes system:*
+-- deciding whether a deleted user was a component's sole owner. Excludes declared framework
 -- infrastructure grants. Returns the grant rows { subject_id, subject_type, access_mask }.
 local function list_grants_system(component_id: string): ({ any }?, error?)
     local grants, err = ops.list_access(component_id)
@@ -494,6 +495,7 @@ return {
     set_execution_identity = component_command.set_execution_identity,
     apply_declaration = component_command.apply_declaration,
     system_delete = system_delete,
+    delete_children = delete_children.run,
     -- fence(tx, component_id, db_id) -> err?. The existence fence for a consumer's
     -- write to the backing data it keeps for a component. Call it first inside the
     -- transaction that writes: it answers nil while the component exists and no

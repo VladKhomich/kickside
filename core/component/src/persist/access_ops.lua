@@ -111,7 +111,10 @@ end
 -- Check whether the actor's effective access on a component carries the required
 -- bits. Answers (allowed, err): false with no error is an access refusal; an
 -- error is a failed read of the grants or placement, never a refusal.
-local function check_user_access(tx: Executor, user_id: string?, component_id: string?, required_mask: integer?, supplied_subjects: { Subject }?, supplied_prefixes: { string }?, snapshot_given: boolean?): (boolean, error?)
+-- snapshot_given selects supplied subjects/prefixes only. Caller implementation
+-- visibility is required even with a snapshot, unless principal_authority_only
+-- is set by the two exported supplied-principal authority validators.
+local function check_user_access(tx: Executor, user_id: string?, component_id: string?, required_mask: integer?, supplied_subjects: { Subject }?, supplied_prefixes: { string }?, snapshot_given: boolean?, principal_authority_only: boolean?): (boolean, error?)
     if not user_id or not component_id or not required_mask then
         return false, nil
     end
@@ -128,9 +131,11 @@ local function check_user_access(tx: Executor, user_id: string?, component_id: s
         return false, nil
     end
 
-    local permitted, implementation_err = implementation_access.check(tx, component_id)
-    if implementation_err then return false, implementation_err end
-    if not permitted then return false, nil end
+    if not principal_authority_only then
+        local permitted, implementation_err = implementation_access.check(tx, component_id)
+        if implementation_err then return false, implementation_err end
+        if not permitted then return false, nil end
+    end
 
     -- Optional injected narrowing: an acting identity confined to whitelisted subtrees
     -- only passes for components inside them. Mirrors the read path; AND-ed onto the
@@ -179,7 +184,7 @@ local function check_last_admin(tx: Executor, component_id: string, subject: Sub
     local admin_count, target_is_admin = 0, false
     for _, g in ipairs((rows or {}) :: { any }) do
         local sid = (g :: any).subject_id
-        if type(sid) == "string" and string.sub(sid, 1, 7) ~= "system:" then
+        if type(sid) == "string" and not execution_identity.is_maintenance_key(sid) then
             admin_count = admin_count + 1
             if sid == subject.subject_id and (g :: any).subject_type == subject.subject_type then
                 target_is_admin = true
@@ -235,10 +240,10 @@ end
 local function grant_rows(rows: { any }?): ({ any }?, error?)
     local out = {}
     for _, r in ipairs(rows or {}) do
-        -- System actors (system:*) are infrastructure grants, never user/group
-        -- shares; they are left out of every enumerated grant set.
+        -- Declared framework actors are infrastructure grants; they are left out
+        -- of enumerated shares using the same classification as authorization.
         local sid = r.subject_id
-        if type(sid) ~= "string" or string.sub(sid, 1, 7) ~= "system:" then
+        if not execution_identity.is_maintenance_key(sid) then
             -- subject_type is NOT NULL in DDL: a row without one is corrupt,
             -- and inventing "user" for it would fabricate a grant subject.
             if type(r.subject_type) ~= "string" or r.subject_type == "" then

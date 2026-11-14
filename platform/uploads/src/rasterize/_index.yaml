@@ -12,6 +12,8 @@ entries:
       comment: Discovery for convert.rasterizer plugins; resolves the best rasterizer for a source mime.
     source: file://rasterizer.lua
     modules: [registry]
+    imports:
+      types: kickside.uploads:types
 
   - name: page_images
     kind: library.lua
@@ -21,12 +23,13 @@ entries:
     imports:
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       text_trim: kickside.uploads:text_trim
+      doc2md: kickside.convert.doc2md:doc2md
 
   - name: stage
     kind: function.lua
     meta:
       type: processor
-      comment: Universal upload stage; renders empty/low-text documents to rendered-page image artifacts.
+      comment: Universal upload stage; renders the pages selected for OCR (empty/low-text pages by default) to rendered-page image artifacts.
     source: file://stage.lua
     method: process
     modules: [funcs, contract, logger]
@@ -67,6 +70,26 @@ entries:
     editable: true
     visible: true
 
+  - name: setting.rasterize_page_selection
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Which pages of a document are rendered for OCR - sparse-text pages, or every page.
+    namespace: kickside.uploads.rasterize
+    key: rasterize_page_selection
+    value_type: string
+    default: "sparse"
+    title: Pages to OCR
+    category: Rasterization
+    order: 15
+    description: Applies to every upload on this installation. sparse renders pages with little or no extractable text; all OCRs pages that already have text, with more model calls and slower processing. Failed or blank OCR keeps the page's existing text.
+    scope: global
+    editable: true
+    visible: true
+    schema:
+      type: string
+      enum: [sparse, all]
+
   - name: setting.rasterize_max_text_bytes
     kind: registry.entry
     meta:
@@ -88,7 +111,7 @@ entries:
     kind: registry.entry
     meta:
       type: kickside.settings:definition
-      comment: Minimum original file size before rasterization is attempted.
+      comment: Minimum original file size for rasterization without page markers.
     namespace: kickside.uploads.rasterize
     key: rasterize_min_source_bytes
     value_type: int
@@ -96,7 +119,7 @@ entries:
     title: Minimum source size (bytes)
     category: Thresholds
     order: 20
-    description: Skip rasterization for source files smaller than this many bytes (genuinely empty documents).
+    description: Skip smaller sources without page markers. Marked pages use their text content to select pages for rasterization.
     scope: global
     editable: true
     visible: true

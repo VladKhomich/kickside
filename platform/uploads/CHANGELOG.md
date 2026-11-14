@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.3.19](https://github.com/kicksideai/kickside/compare/uploads-v0.3.18...uploads-v0.3.19) (2026-11-13)
+
+
+### Bug Fixes
+
+* **uploads:** keep the converter's retry classification on conversion failures ([#468](https://github.com/kicksideai/kickside/issues/468)) ([aef74a1](https://github.com/kicksideai/kickside/commit/aef74a1039e6d3808bb5ee6384f6d51b46b6b85a))
+
+## [0.3.18](https://github.com/kicksideai/kickside/compare/uploads-v0.3.17...uploads-v0.3.18) (2026-11-13)
+
+
+### Bug Fixes
+
+* **execution:** declare maintenance actors exactly and authorize thread completion ([#459](https://github.com/kicksideai/kickside/issues/459)) ([c86999c](https://github.com/kicksideai/kickside/commit/c86999c76f99724bd7eab62924dcb3d931f3bee8))
+
+## [0.3.17](https://github.com/kicksideai/kickside/compare/uploads-v0.3.16...uploads-v0.3.17) (2026-11-13)
+
+
+### Features
+
+* **uploads:** add an opt-in setting to OCR every document page ([#452](https://github.com/kicksideai/kickside/issues/452)) ([b778945](https://github.com/kicksideai/kickside/commit/b77894576ddeb3bd8b6cf23496a42d978f50f9e6))
+
+## [0.3.16](https://github.com/kicksideai/kickside/compare/uploads-v0.3.15...uploads-v0.3.16) (2026-11-11)
+
+
+### Features
+
+* **uploads:** publish authorized revision-bound page images ([#429](https://github.com/kicksideai/kickside/issues/429)) ([ebec6f7](https://github.com/kicksideai/kickside/commit/ebec6f77eb79325dca349f2a1c9d44b2786c02cc))
+
+## [0.3.15](https://github.com/kicksideai/kickside/compare/uploads-v0.3.14...uploads-v0.3.15) (2026-11-11)
+
+
+### Bug Fixes
+
+* **uploads:** expose and test HTTP deduplication responses ([#423](https://github.com/kicksideai/kickside/issues/423)) ([1812bc8](https://github.com/kicksideai/kickside/commit/1812bc86714bd3596e7fa8415eee8da5089b775f))
+
+## [0.3.14](https://github.com/kicksideai/kickside/compare/uploads-v0.3.13...uploads-v0.3.14) (2026-11-10)
+
+
+### Bug Fixes
+
+* **uploads:** authorize component reference assignments ([#418](https://github.com/kicksideai/kickside/issues/418)) ([08e59ef](https://github.com/kicksideai/kickside/commit/08e59ef254be2cbf91114dba3d2072ac1920aeea))
+* **uploads:** render sparse marked pages below the source-size threshold ([#409](https://github.com/kicksideai/kickside/issues/409)) ([ab9c255](https://github.com/kicksideai/kickside/commit/ab9c255dd42c54fadcdff41823d6670e6d51794e))
+* **uploads:** report pages the rasterizer could not render ([#411](https://github.com/kicksideai/kickside/issues/411)) ([aca0978](https://github.com/kicksideai/kickside/commit/aca0978c97bd88ea56e449e59f331899e0d64118))
+* **uploads:** resume completed stages across processing attempts ([#417](https://github.com/kicksideai/kickside/issues/417)) ([bff7b59](https://github.com/kicksideai/kickside/commit/bff7b59d42a00923081733f239d41df2c9680c27))
+
+## [0.3.13](https://github.com/kicksideai/kickside/compare/uploads-v0.3.12...uploads-v0.3.13) (2026-11-10)
+
+
+### Bug Fixes
+
+* **uploads:** preserve sparse PDF pages through OCR ([#402](https://github.com/kicksideai/kickside/issues/402)) ([8c98fbe](https://github.com/kicksideai/kickside/commit/8c98fbe1482be90ad7303cf7edc78336975a2e7a))
+
 ## [0.3.12](https://github.com/kicksideai/kickside/compare/uploads-v0.3.11...uploads-v0.3.12) (2026-11-09)
 
 

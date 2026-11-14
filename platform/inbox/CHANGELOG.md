@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.1.78](https://github.com/kicksideai/kickside/compare/inbox-v0.1.77...inbox-v0.1.78) (2026-11-13)
+
+
+### Bug Fixes
+
+* align System settings navigation and administration panes ([#449](https://github.com/kicksideai/kickside/issues/449)) ([f113972](https://github.com/kicksideai/kickside/commit/f113972709e065c17ecc112b61cc4bd141b75a87))
+
+## [0.1.77](https://github.com/kicksideai/kickside/compare/inbox-v0.1.76...inbox-v0.1.77) (2026-11-12)
+
+
+### Bug Fixes
+
+* **inbox:** enforce addressed access and committed notifications ([#444](https://github.com/kicksideai/kickside/issues/444)) ([c4d3ba9](https://github.com/kicksideai/kickside/commit/c4d3ba96c758fb8b60304898cdfec4018e37fc12))
+* **inbox:** restore personal inbox items ([#447](https://github.com/kicksideai/kickside/issues/447)) ([3b3d732](https://github.com/kicksideai/kickside/commit/3b3d7322a3d05f84798526598517a2557489065c))
+
+## [0.1.76](https://github.com/kicksideai/kickside/compare/inbox-v0.1.75...inbox-v0.1.76) (2026-11-12)
+
+
+### Features
+
+* **inbox:** support private principal-addressed items ([#438](https://github.com/kicksideai/kickside/issues/438)) ([141ec96](https://github.com/kicksideai/kickside/commit/141ec9604b6361502646dda8dec05a0ed0f4e262))
+
+## [0.1.75](https://github.com/kicksideai/kickside/compare/inbox-v0.1.74...inbox-v0.1.75) (2026-11-12)
+
+
+### Bug Fixes
+
+* resolve assignment defaults and imported dependency APIs ([#437](https://github.com/kicksideai/kickside/issues/437)) ([89d16c3](https://github.com/kicksideai/kickside/commit/89d16c3b391318d79e5e194fc4b1062d0149a60c))
+
+## [0.1.74](https://github.com/kicksideai/kickside/compare/inbox-v0.1.73...inbox-v0.1.74) (2026-11-09)
+
+
+### Bug Fixes
+
+* rebuild six packages without baked default bindings ([#403](https://github.com/kicksideai/kickside/issues/403)) ([28bdfe1](https://github.com/kicksideai/kickside/commit/28bdfe1020d7c0ef35bc6b383f324a7c86d9042e))
+
 ## [0.1.73](https://github.com/kicksideai/kickside/compare/inbox-v0.1.72...inbox-v0.1.73) (2026-11-08)
 
 

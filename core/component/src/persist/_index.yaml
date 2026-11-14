@@ -163,6 +163,7 @@ entries:
     source: file://context_ops.lua
     modules: [sql, time, json, security]
     imports:
+      kind_authority: kickside.component:kind_authority
       meta_ops: kickside.component.persist:meta_ops
       component_types: kickside.component:types
       context_policy: kickside.component:context_policy
@@ -258,8 +259,10 @@ entries:
   - name: meta_ops
     kind: library.lua
     source: file://meta_ops.lua
-    modules: [sql, time, uuid, json, registry]
+    modules: [sql, time, uuid, json, registry, funcs, security]
     imports:
+      kind_authority: kickside.component:kind_authority
+      execution_identity: kickside.execution:execution_identity
       component_types: kickside.component:types
       error_envelope: kickside.contract:error_envelope
 
@@ -276,6 +279,7 @@ entries:
     source: file://placement_ops.lua
     modules: [sql, time, uuid, json, security]
     imports:
+      kind_authority: kickside.component:kind_authority
       placement_rules: kickside.component:placement_rules
       component_types: kickside.component:types
       placement: kickside.component.persist:placement

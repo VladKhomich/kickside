@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.1.80](https://github.com/kicksideai/kickside/compare/jobs-v0.1.79...jobs-v0.1.80) (2026-11-14)
+
+
+### Bug Fixes
+
+* **jobs:** allow owners to purge enumerated slots ([#490](https://github.com/kicksideai/kickside/issues/490)) ([4b4a250](https://github.com/kicksideai/kickside/commit/4b4a2509784a14d951f8fd599813744b940d1020))
+
+## [0.1.79](https://github.com/kicksideai/kickside/compare/jobs-v0.1.78...jobs-v0.1.79) (2026-11-14)
+
+
+### Features
+
+* owner job listing and atomic automation reconfiguration ([#486](https://github.com/kicksideai/kickside/issues/486)) ([351f914](https://github.com/kicksideai/kickside/commit/351f914b54886ea28cbf24a1de7d6473e5385d2d))
+
+## [0.1.78](https://github.com/kicksideai/kickside/compare/jobs-v0.1.77...jobs-v0.1.78) (2026-11-13)
+
+
+### Bug Fixes
+
+* **execution:** declare maintenance actors exactly and authorize thread completion ([#459](https://github.com/kicksideai/kickside/issues/459)) ([c86999c](https://github.com/kicksideai/kickside/commit/c86999c76f99724bd7eab62924dcb3d931f3bee8))
+
+## [0.1.77](https://github.com/kicksideai/kickside/compare/jobs-v0.1.76...jobs-v0.1.77) (2026-11-13)
+
+
+### Bug Fixes
+
+* **jobs:** distinguish idle slots from due work on reads ([#454](https://github.com/kicksideai/kickside/issues/454)) ([26a3b89](https://github.com/kicksideai/kickside/commit/26a3b89cf66a721607ae29c30068f4ef626b27a1))
+
+## [0.1.76](https://github.com/kicksideai/kickside/compare/jobs-v0.1.75...jobs-v0.1.76) (2026-11-10)
+
+
+### Bug Fixes
+
+* reserve round capacity without starving general jobs ([#401](https://github.com/kicksideai/kickside/issues/401)) ([b44ba27](https://github.com/kicksideai/kickside/commit/b44ba272f604a7d33685f7addc28351392a4ea15))
+
 ## [0.1.75](https://github.com/kicksideai/kickside/compare/jobs-v0.1.74...jobs-v0.1.75) (2026-11-09)
 
 

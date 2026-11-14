@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.27](https://github.com/kicksideai/kickside/compare/automation-v0.2.26...automation-v0.2.27) (2026-11-14)
+
+
+### Features
+
+* owner job listing and atomic automation reconfiguration ([#486](https://github.com/kicksideai/kickside/issues/486)) ([351f914](https://github.com/kicksideai/kickside/commit/351f914b54886ea28cbf24a1de7d6473e5385d2d))
+
+## [0.2.26](https://github.com/kicksideai/kickside/compare/automation-v0.2.25...automation-v0.2.26) (2026-11-13)
+
+
+### Bug Fixes
+
+* **execution:** declare maintenance actors exactly and authorize thread completion ([#459](https://github.com/kicksideai/kickside/issues/459)) ([c86999c](https://github.com/kicksideai/kickside/commit/c86999c76f99724bd7eab62924dcb3d931f3bee8))
+
+## [0.2.25](https://github.com/kicksideai/kickside/compare/automation-v0.2.24...automation-v0.2.25) (2026-11-12)
+
+
+### Bug Fixes
+
+* resolve assignment defaults and imported dependency APIs ([#437](https://github.com/kicksideai/kickside/issues/437)) ([89d16c3](https://github.com/kicksideai/kickside/commit/89d16c3b391318d79e5e194fc4b1062d0149a60c))
+
+## [0.2.24](https://github.com/kicksideai/kickside/compare/automation-v0.2.23...automation-v0.2.24) (2026-11-10)
+
+
+### Bug Fixes
+
+* reserve round capacity without starving general jobs ([#401](https://github.com/kicksideai/kickside/issues/401)) ([b44ba27](https://github.com/kicksideai/kickside/commit/b44ba272f604a7d33685f7addc28351392a4ea15))
+
 ## [0.2.23](https://github.com/kicksideai/kickside/compare/automation-v0.2.22...automation-v0.2.23) (2026-11-09)
 
 

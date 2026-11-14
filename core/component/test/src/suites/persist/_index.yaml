@@ -108,7 +108,7 @@ entries:
     source: file://ops_test.lua
     method: run
     security:
-      actor: { id: "system:automation" }
+      actor: { id: "system:kickside.automation.declaration" }
       policies: [app:test_scope_policy]
     modules: [sql, json, uuid, time, contract, process, channel]
     imports:
@@ -130,7 +130,7 @@ entries:
     source: file://owner_id_format_test.lua
     method: run
     security:
-      actor: { id: "system:automation" }
+      actor: { id: "system:kickside.automation.declaration" }
       policies: [app:test_scope_policy]
     modules: [sql, uuid, funcs, security]
     imports:
@@ -189,7 +189,7 @@ entries:
     source: file://owner_gc_test.lua
     method: run
     security:
-      actor: { id: "system:automation" }
+      actor: { id: "system:kickside.automation.declaration" }
       policies: [app:test_scope_policy]
     modules: [sql, uuid, time, process, channel]
     imports:
@@ -207,7 +207,7 @@ entries:
     method: run
     modules: [sql]
     security:
-      actor: { id: "system:automation" }
+      actor: { id: "system:kickside.automation.declaration" }
       policies: [app:test_scope_policy]
       groups: [wippy.security:process]
 
@@ -220,7 +220,7 @@ entries:
     source: file://declaration_state_test.lua
     method: run
     security:
-      actor: { id: "system:automation" }
+      actor: { id: "system:kickside.automation.declaration" }
       policies: [app:test_scope_policy]
     modules: [sql, json, uuid, time, funcs, security]
     imports:
@@ -237,7 +237,7 @@ entries:
     source: file://access_test.lua
     method: run
     security:
-      actor: { id: "system:automation" }
+      actor: { id: "system:kickside.automation.declaration" }
       policies: [app:test_scope_policy]
     modules: [sql, uuid, time, json, contract, security]
     imports:
@@ -274,3 +274,25 @@ entries:
     imports:
       test: wippy.test:test
       ops: kickside.component.persist:component_ops
+
+  - name: owned_meta_validator
+    kind: function.lua
+    source: file://owned_meta_validator.lua
+    method: validate
+    imports: {execution_identity: 'kickside.execution:execution_identity'}
+
+  - name: owned_meta_validated_key
+    kind: registry.entry
+    meta: {type: kickside.component.owned_meta_key, key: test.validated}
+    validator: app.component_suites.persist:owned_meta_validator
+
+  - name: owned_meta_validator_test
+    kind: function.lua
+    source: file://owned_meta_validator_test.lua
+    method: run
+    meta: {type: test, suite: component_owned_meta_validator}
+    security:
+      actor: {id: '11111111-1111-4111-8111-111111111111'}
+    modules: [sql, uuid, funcs]
+    imports:
+      test: wippy.test:test

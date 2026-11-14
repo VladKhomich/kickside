@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.3.20](https://github.com/kicksideai/kickside/compare/component-v0.3.19...component-v0.3.20) (2026-11-14)
+
+
+### Features
+
+* owner job listing and atomic automation reconfiguration ([#486](https://github.com/kicksideai/kickside/issues/486)) ([351f914](https://github.com/kicksideai/kickside/commit/351f914b54886ea28cbf24a1de7d6473e5385d2d))
+
+
+### Bug Fixes
+
+* **component:** separate kind mutation admission from placement ([#487](https://github.com/kicksideai/kickside/issues/487)) ([67f6d7c](https://github.com/kicksideai/kickside/commit/67f6d7cc041510677129434e5a81a73878c4271d))
+
+## [0.3.19](https://github.com/kicksideai/kickside/compare/component-v0.3.18...component-v0.3.19) (2026-11-14)
+
+
+### Bug Fixes
+
+* **component:** preserve undeclared kinds and deduplicate tree admission ([#463](https://github.com/kicksideai/kickside/issues/463)) ([d3b83b8](https://github.com/kicksideai/kickside/commit/d3b83b82445464c5da3777522ea5a340622367a5))
+
+## [0.3.18](https://github.com/kicksideai/kickside/compare/component-v0.3.17...component-v0.3.18) (2026-11-13)
+
+
+### Bug Fixes
+
+* **component:** read kind declarations under component authority ([#467](https://github.com/kicksideai/kickside/issues/467)) ([33afe0b](https://github.com/kicksideai/kickside/commit/33afe0baeb4be79b7a7956f7130ac75b262c8b79))
+
+## [0.3.17](https://github.com/kicksideai/kickside/compare/component-v0.3.16...component-v0.3.17) (2026-11-13)
+
+
+### Bug Fixes
+
+* **component:** enforce kind-scoped mutation admission ([#458](https://github.com/kicksideai/kickside/issues/458)) ([601bda5](https://github.com/kicksideai/kickside/commit/601bda5224dbc9f1553fbfe07cca05b80ccb7995))
+* **execution:** declare maintenance actors exactly and authorize thread completion ([#459](https://github.com/kicksideai/kickside/issues/459)) ([c86999c](https://github.com/kicksideai/kickside/commit/c86999c76f99724bd7eab62924dcb3d931f3bee8))
+
+## [0.3.16](https://github.com/kicksideai/kickside/compare/component-v0.3.15...component-v0.3.16) (2026-11-12)
+
+
+### Bug Fixes
+
+* resolve assignment defaults and imported dependency APIs ([#437](https://github.com/kicksideai/kickside/issues/437)) ([89d16c3](https://github.com/kicksideai/kickside/commit/89d16c3b391318d79e5e194fc4b1062d0149a60c))
+
+## [0.3.15](https://github.com/kicksideai/kickside/compare/component-v0.3.14...component-v0.3.15) (2026-11-11)
+
+
+### Bug Fixes
+
+* **component:** separate principal authority from caller visibility ([#432](https://github.com/kicksideai/kickside/issues/432)) ([3eaf008](https://github.com/kicksideai/kickside/commit/3eaf00814af66fd56114f1d495ba5af60b9a9c81))
+
+## [0.3.14](https://github.com/kicksideai/kickside/compare/component-v0.3.13...component-v0.3.14) (2026-11-11)
+
+
+### Bug Fixes
+
+* tear down knowledge base dependents before deletion ([#425](https://github.com/kicksideai/kickside/issues/425)) ([4e260f0](https://github.com/kicksideai/kickside/commit/4e260f0ce160f34ef099a79f511a4d025fd73c00))
+
+## [0.3.13](https://github.com/kicksideai/kickside/compare/component-v0.3.12...component-v0.3.13) (2026-11-10)
+
+
+### Bug Fixes
+
+* **uploads:** authorize component reference assignments ([#418](https://github.com/kicksideai/kickside/issues/418)) ([08e59ef](https://github.com/kicksideai/kickside/commit/08e59ef254be2cbf91114dba3d2072ac1920aeea))
+
 ## [0.3.12](https://github.com/kicksideai/kickside/compare/component-v0.3.11...component-v0.3.12) (2026-11-09)
 
 

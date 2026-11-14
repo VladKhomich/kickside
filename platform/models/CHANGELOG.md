@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.77](https://github.com/kicksideai/kickside/compare/models-v0.1.76...models-v0.1.77) (2026-11-13)
+
+
+### Bug Fixes
+
+* align System settings navigation and administration panes ([#449](https://github.com/kicksideai/kickside/issues/449)) ([f113972](https://github.com/kicksideai/kickside/commit/f113972709e065c17ecc112b61cc4bd141b75a87))
+
+## [0.1.76](https://github.com/kicksideai/kickside/compare/models-v0.1.75...models-v0.1.76) (2026-11-12)
+
+
+### Bug Fixes
+
+* **models:** serialize cache reloads through publication ([#440](https://github.com/kicksideai/kickside/issues/440)) ([0ef3045](https://github.com/kicksideai/kickside/commit/0ef304577a2167c3ecaa9aea2f8f723095c0ca93))
+
+## [0.1.75](https://github.com/kicksideai/kickside/compare/models-v0.1.74...models-v0.1.75) (2026-11-09)
+
+
+### Bug Fixes
+
+* **models:** retain eligible ranked class candidates during resolution ([#399](https://github.com/kicksideai/kickside/issues/399)) ([cab10e7](https://github.com/kicksideai/kickside/commit/cab10e7533c0ff556255fcd7623b5845e2aee683))
+
 ## [0.1.74](https://github.com/kicksideai/kickside/compare/models-v0.1.73...models-v0.1.74) (2026-11-09)
 
 

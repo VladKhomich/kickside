@@ -6,6 +6,13 @@ namespace: kickside.inbox.security
 # user_security_scope requirement (the app wires app.security:user), keeping the
 # slice app-agnostic. Per-user ownership is enforced behind the endpoints.
 entries:
+  - name: assigner
+    kind: security.scope
+    meta:
+      title: Inbox assigners
+      comment: Assign Inbox reviews to another user.
+    policies: []
+
   - name: assignment_access
     kind: security.policy
     meta:

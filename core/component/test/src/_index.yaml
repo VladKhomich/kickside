@@ -1109,8 +1109,10 @@ entries:
   - name: meta_native_source
     kind: library.lua
     source: file://meta_native_source.lua
-    modules: [time, uuid]
+    modules: [time, uuid, funcs, security]
     imports:
+      kind_authority: kickside.component:kind_authority
+      execution_identity: kickside.execution:execution_identity
       sql: app:meta_native_sql_adapter
       registry: app:meta_native_registry_adapter
       json: app:meta_native_json_adapter
@@ -1182,6 +1184,7 @@ entries:
     - registry
     - time
     imports:
+      kind_authority: kickside.component:kind_authority
       jobs: kickside.core.jobs:jobs
       error_envelope: kickside.contract:error_envelope
       sql: app:teardown_cause_sql
@@ -1262,6 +1265,7 @@ entries:
     - sql
     - time
     imports:
+      kind_authority: kickside.component:kind_authority
       jobs: kickside.core.jobs:jobs
       error_envelope: kickside.contract:error_envelope
       security: app:cleanup_setup_security
@@ -1402,6 +1406,7 @@ entries:
       component_command: kickside.component:component_command
       context_policy: kickside.component:context_policy
       identity_access: kickside.component:identity_access
+      delete_children: kickside.component:delete_children
 
   - name: system_delete_native_test
     kind: function.lua
@@ -1451,6 +1456,7 @@ entries:
       component_command: kickside.component:component_command
       context_policy: app:singleton_emit_context
       identity_access: kickside.component:identity_access
+      delete_children: kickside.component:delete_children
       contract: app:singleton_emit_contract
 
   - name: singleton_emit_native_test
@@ -1604,6 +1610,7 @@ entries:
     - registry
     - time
     imports:
+      kind_authority: kickside.component:kind_authority
       meta_service: app:deletion_notify_fixture
       persisted_json: kickside.contract:persisted_json
       committed_error: kickside.contract:committed_error
@@ -2180,6 +2187,7 @@ entries:
     source: file://context_storage_native_source.lua
     modules: [time, security]
     imports:
+      kind_authority: kickside.component:kind_authority
       sql: app:context_storage_native_sql
       json: app:context_storage_native_json
       meta_ops: app:context_storage_native_fixture
@@ -2275,6 +2283,7 @@ entries:
     source: file://identity_prepare_native_source.lua
     modules: [sql, time, json]
     imports:
+      kind_authority: kickside.component:kind_authority
       security: app:identity_prepare_native_security
       execution_identity: app:identity_prepare_native_identity
       access_subjects: app:identity_prepare_native_subjects
@@ -2310,6 +2319,7 @@ entries:
     source: file://identity_replay_native_source.lua
     modules: [time]
     imports:
+      kind_authority: kickside.component:kind_authority
       sql: app:context_storage_native_sql
       json: app:context_storage_native_json
       security: app:identity_prepare_native_security
@@ -2847,6 +2857,7 @@ entries:
     source: file://placement_writer_source.lua
     modules: [time, uuid]
     imports:
+      kind_authority: kickside.component:kind_authority
       sql: app:placement_writer_sql
       json: app:placement_writer_json
       security: app:placement_writer_security
@@ -2932,3 +2943,48 @@ entries:
     kind: library.lua
     source: file://deletion_notify_fixture.lua
     imports: {fixture: app:teardown_tx_cleanup_fixture}
+
+  - name: delete_children_fixture
+    kind: library.lua
+    source: file://delete_children_fixture.lua
+
+  - name: delete_children_source
+    kind: library.lua
+    source: file://delete_children_source.lua
+    imports:
+      time: app:delete_children_time
+      component_reader: app:delete_children_component_reader
+      context_policy: app:delete_children_context_policy
+      jobs: app:delete_children_jobs
+      component_types: kickside.component:types
+      envelope: kickside.component:envelope
+
+  - name: delete_children_test
+    kind: function.lua
+    source: file://delete_children_test.lua
+    method: run
+    meta: {type: test, suite: component_delete_children}
+    imports:
+      test: wippy.test:test
+      subject: app:delete_children_source
+      fixture: app:delete_children_fixture
+
+  - name: delete_children_time
+    kind: library.lua
+    source: file://delete_children_dependency.lua
+    imports: {fixture: 'app:delete_children_fixture'}
+
+  - name: delete_children_component_reader
+    kind: library.lua
+    source: file://delete_children_dependency.lua
+    imports: {fixture: 'app:delete_children_fixture'}
+
+  - name: delete_children_context_policy
+    kind: library.lua
+    source: file://delete_children_dependency.lua
+    imports: {fixture: 'app:delete_children_fixture'}
+
+  - name: delete_children_jobs
+    kind: library.lua
+    source: file://delete_children_dependency.lua
+    imports: {fixture: 'app:delete_children_fixture'}

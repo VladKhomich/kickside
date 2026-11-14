@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.17](https://github.com/kicksideai/kickside/compare/core-v0.3.16...core-v0.3.17) (2026-11-14)
+
+
+### Features
+
+* **core:** add bounded owner subject retirement ([#488](https://github.com/kicksideai/kickside/issues/488)) ([480e2fd](https://github.com/kicksideai/kickside/commit/480e2fd192be0db6a65cbd79bb85f4cae806c4ed))
+
+## [0.3.16](https://github.com/kicksideai/kickside/compare/core-v0.3.15...core-v0.3.16) (2026-11-14)
+
+
+### Bug Fixes
+
+* **core:** inherit a 30-day event retention default ([#457](https://github.com/kicksideai/kickside/issues/457)) ([0c03339](https://github.com/kicksideai/kickside/commit/0c033390702d185680672f93c8a148a1886fb09d))
+
+## [0.3.15](https://github.com/kicksideai/kickside/compare/core-v0.3.14...core-v0.3.15) (2026-11-13)
+
+
+### Bug Fixes
+
+* **execution:** declare maintenance actors exactly and authorize thread completion ([#459](https://github.com/kicksideai/kickside/issues/459)) ([c86999c](https://github.com/kicksideai/kickside/commit/c86999c76f99724bd7eab62924dcb3d931f3bee8))
+
 ## [0.3.14](https://github.com/kicksideai/kickside/compare/core-v0.3.13...core-v0.3.14) (2026-11-09)
 
 

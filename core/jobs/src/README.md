@@ -43,6 +43,30 @@ all resolve that config, so runtime SQL always follows the host's database mappi
 
 `jobs.get_job(id)` reads the exact job returned by enqueue and returns `(row, nil)`, `(nil, nil)` when absent, or `(nil, err)` on failure. The owning caller authorizes its resource before reading the job. Thread listings remain scoped to canonical thread owners.
 
+`jobs.list_owner_jobs({kind = "component", id = owner_id}, filters?, limit?, after?)`
+returns `(rows, nil, has_more)` for exactly that native owner locator. As with
+thread listings, the caller must authorize the owner before calling Jobs; Jobs
+never resolves consumer permissions. Other owner kinds and IDs are excluded.
+The default limit is 100; a supplied limit must be a positive integer. Filters
+are `status`, `job_type`, `queue_tier`, and the legacy `thread_id` owner-ID filter.
+Pages order by `created_at DESC, id DESC` through the owner chronology index.
+Continue with `{id = last_row.id, owner_id = last_row.owner_id}` until `has_more`
+is false. A missing, foreign, or filter-mismatched anchor returns INVALID.
+Rows expose `owner_kind`, `owner_id`, `slot`, the encoded canonical `job_identity`,
+and the same fields as `list_jobs`. Pass the returned identity unchanged to
+`jobs.purge_slot({job_identity = row.job_identity, owner_locator = owner})` to
+retire an orphaned slot even when the owner's own key/state is gone.
+Keep the anchor until the next page is read; deleting it invalidates continuation.
+
+Job listings and exact job reads include boolean `slot` and derived `due` fields.
+`due` means the stored status is `pending` and `scheduled_at` is at or before the
+database's current time. Pending-work counts use `due`, rather than status alone.
+A pending slot without a schedule is idle; a future schedule waits until its due
+time. An erroneous pending one-shot without a schedule is stranded. Existing
+status values and status filters remain unchanged. Health uses the same schedule
+eligibility rule and additionally excludes work blocked by dispatch capacity or
+concurrency keys from its claimable backlog.
+
 `jobs.get_job_statuses(ids)` reads an exact set of job IDs in one query and returns an ID-to-status map; absent or malformed UUIDs are omitted. `jobs.get_job_statuses_tx(tx, ids)` reads through the caller's transaction on the configured Jobs database, including its uncommitted writes. It neither commits nor rolls back that transaction. Both are internal-owner APIs: callers authorize their resource before reading job state.
 
 `jobs.wake_job(id, { control = true, ensure_due = true })` ensures dispatch without rescheduling an already due pending job or requesting another execution of a running job. It retains their retry, lease, schedule and demand state and still notifies the worker pool. Parked, disabled and future pending jobs receive the ordinary control wake. A ready job returns `already_due = true` alongside the existing result fields. Omitting `ensure_due` retains the existing control and demand wake behavior.
@@ -79,9 +103,15 @@ access. Jobs owns its transport permission and sends under its own identity;
 callers need no persistence call grant or process-send authority.
 
 `jobs.purge_slot(params: table): (integer?, error?)` removes a retired owner's
-exact slot, selected by the required nonempty strings `namespace`, `scope`, and
-`key`, with its settled run history. The owning caller authorizes retirement
-before invoking this operation. Each call deletes at most 100 settled runs;
+exact slot with its settled run history. Select it with either the nonempty
+strings `namespace`, `scope`, and `key`, or the encoded `job_identity` returned
+by owner listing plus `owner_locator = {kind = ..., id = ...}`. The two identity
+forms cannot be mixed. Jobs checks both locator fields against the stored slot
+and returns PERMISSION_DENIED for a foreign owner before deleting anything.
+The known-key form also checks `owner_locator` when supplied; existing calls
+without it retain their caller-authorized contract. The caller must authorize
+the owner and retirement before invoking either form; a locator is not a
+consumer permission grant. Each call deletes at most 100 settled runs;
 it returns `1` when the slot is removed or `0` when absent. A retryable conflict
 with `details.cleanup_pending` preserves the existing continuation contract:
 `needs_continue = true` requests another page, while `wait_for = "lease_release"`
