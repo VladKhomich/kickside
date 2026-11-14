@@ -17,11 +17,9 @@ local function key(): (string?, error?)
     if initialized then return cached_key, cached_error end
     initialized = true
     local variable, read_err = env.get("kickside.component.env:encryption_key")
-    local hex: string? = nil
     if not read_err and type(variable) == "string" and variable ~= "" then
-        hex, read_err = env.get(variable)
+        cached_key, read_err = cipher.load_key(variable)
     end
-    if not read_err and type(hex) == "string" then cached_key, read_err = cipher.decode_key(hex) end
     if read_err or not cached_key then
         cached_error = errors.new({kind = errors.UNAVAILABLE, retryable = false,
             message = "component secrets encryption key is missing or malformed",

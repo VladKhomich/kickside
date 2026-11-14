@@ -63,11 +63,6 @@ end
 -- Get a component's private context by ID without actor validation. Reads
 -- directly from the database, suitable for system-level / background workers.
 local function get_private_context(component_id: string): (component_types.JsonMap?, error?)
-    local allowed, permission_err = security.can("funcs.call", "kickside.component.system:read_private_context")
-    if permission_err then return nil, permission_err end
-    if allowed == true then
-        return funcs.call("kickside.component.system:read_private_context", {component_id = component_id})
-    end
     if not component_id or component_id == "" then
         return nil, (errors.new({ message = "component ID is required", kind = errors.INVALID }) :: error)
     end
@@ -96,16 +91,8 @@ local function open_private(component_id: string, target_contract_id: string?): 
         return nil, (errors.new({ message = "component ID is required", kind = errors.INVALID }) :: error)
     end
 
-    local allowed, permission_err = security.can("funcs.call", "kickside.component.system:list_runtime_context")
-    if permission_err then return nil, permission_err end
-    local results, read_err
-    if allowed == true then
-        results, read_err = funcs.call("kickside.component.system:list_runtime_context", {
-            component_ids = {component_id}, include = {private_context = true, meta = false}, limit = 1})
-    else
-        results, read_err = system_query.masked({component_ids = {component_id},
-            include = {private_context = true, meta = false}, limit = 1})
-    end
+    local results, read_err = system_query.masked({component_ids = {component_id},
+        include = {private_context = true, meta = false}, limit = 1})
     local result = results and results[1]
     if read_err then
         return nil, read_err
@@ -169,11 +156,6 @@ end
 -- accepts impl_ids, component_ids, meta, parent_id, path_prefix, include
 -- (meta / private_context), limit, offset, and order_by ({field,direction}).
 local function list_system(filter: component_types.QueryFilter?): (component_types.ComponentRow[]?, error?)
-    if filter and filter.include and filter.include.private_context == true then
-        local allowed, permission_err = security.can("funcs.call", "kickside.component.system:list_runtime_context")
-        if permission_err then return nil, permission_err end
-        if allowed == true then return funcs.call("kickside.component.system:list_runtime_context", filter) end
-    end
     return system_query.masked(filter)
 end
 
@@ -446,6 +428,16 @@ local function update(component_id: string, commands: { any }, opts: component_t
     return result :: component_types.UpdateResult, nil
 end
 
+local function runtime_context(request: component_types.RuntimeContextRequest): (component_types.JsonMap?, error?)
+    local result, call_err = funcs.call("kickside.component.system:read_runtime_context", request)
+    if call_err then return nil, call_err end
+    local result_err = envelope.error_of(result, "read_runtime_context")
+    if result_err then return nil, result_err end
+    local context = context_policy.redact_for_actor(result.context, result.access_level or 0)
+    context.component_id = result.id
+    return context, nil
+end
+
 return {
     ACCESS = ACCESS,
     open = open,
@@ -462,6 +454,20 @@ return {
     get_context = get_context,
     get_context_by_meta = get_context_by_meta,
     get_private_context = get_private_context,
+    -- Explicit trusted reads cross the owning service boundary. Plain library
+    -- reads above retain their direct query and require no dispatch authority.
+    get_private_runtime_context = function(component_id: string): (component_types.JsonMap?, error?)
+        return funcs.call("kickside.component.system:read_private_context", {component_id = component_id})
+    end,
+    get_runtime_context = function(component_id: string, access_mask: integer): (component_types.JsonMap?, error?)
+        return runtime_context({component_id = component_id, access_mask = access_mask})
+    end,
+    get_runtime_context_by_meta = function(meta: component_types.MetadataMap, access_mask: integer): (component_types.JsonMap?, error?)
+        return runtime_context({meta = meta, access_mask = access_mask})
+    end,
+    list_runtime_context = function(filter: component_types.QueryFilter?): (component_types.ComponentRow[]?, error?)
+        return funcs.call("kickside.component.system:list_runtime_context", filter)
+    end,
     get_identity_receipt = get_identity_receipt,
     query = query,
     count = count,

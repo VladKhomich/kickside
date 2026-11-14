@@ -159,6 +159,7 @@ type SecretDeclarations = {kinds: {SecretKind}, version: string}
 type SecretChange = {path: {string}, value: string?, clear: boolean?}
 type SecretPresence = {set: boolean}
 type SecretWrite = {encrypted: string?, generation: integer, incarnation: string}
+type RuntimeContextRequest = {component_id: string?, meta: MetadataMap?, access_mask: integer?}
 type SecretsRequest = {component_id: string, access_mask: integer?}
 type SecretsResult = {success: boolean?, component_id: string?, secrets: JsonMap?, context_revision: integer?,
     error: string?, kind: string?, retryable: boolean?, details: JsonMap?}

@@ -342,27 +342,6 @@ local function resolve_access_context(component_id: string, required_access: int
         return nil, access_mask_err
     end
 
-    local runtime_read, permission_err = false, nil
-    if include_context == true then
-        runtime_read, permission_err = security.can("funcs.call", "kickside.component.system:read_runtime_context")
-    end
-    if permission_err then return nil, permission_err end
-    if include_context == true and runtime_read == true then
-        local admitted, admission_err = security.can("contract.call", "get_access_context")
-        if admission_err then return nil, admission_err end
-        if admitted ~= true then
-            return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "component context read denied",
-                details = {error_kind = "access"}})
-        end
-        local result, runtime_err = funcs.call("kickside.component.system:read_runtime_context", {
-            component_id = component_id, access_mask = access_mask})
-        if runtime_err then return nil, runtime_err end
-        local result_err = envelope.error_of(result, "read_runtime_context")
-        if result_err then return nil, result_err end
-        result.context = M.redact_for_actor(result.context, result.access_level or 0)
-        return result, nil
-    end
-
     local access_result, access_err = service:get_access_context({
         component_id = component_id,
         access_mask = access_mask,
@@ -463,27 +442,6 @@ local function resolve_access_context_by_meta(meta_filters: component_types.Meta
     local service, service_err = get_component_service()
     if service_err or not service then
         return nil, service_err
-    end
-
-    local runtime_read, permission_err = false, nil
-    if include_context == true then
-        runtime_read, permission_err = security.can("funcs.call", "kickside.component.system:read_runtime_context")
-    end
-    if permission_err then return nil, permission_err end
-    if include_context == true and runtime_read == true then
-        local admitted, admission_err = security.can("contract.call", "get_access_context_by_meta")
-        if admission_err then return nil, admission_err end
-        if admitted ~= true then
-            return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "component context read denied",
-                details = {error_kind = "access"}})
-        end
-        local result, runtime_err = funcs.call("kickside.component.system:read_runtime_context", {
-            meta = meta_filters, access_mask = access_mask})
-        if runtime_err then return nil, runtime_err end
-        local result_err = envelope.error_of(result, "read_runtime_context")
-        if result_err then return nil, result_err end
-        result.context = M.redact_for_actor(result.context, result.access_level or 0)
-        return result, nil
     end
 
     local access_result, access_err = service:get_access_context_by_meta({

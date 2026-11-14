@@ -84,22 +84,22 @@ end
 
 -- Called only by component-owned runtime entry points, after the existing read.
 function M.finish_runtime_read(row: types.ComponentRow): error?
+    if #(row.secret_fields or {}) > 0 then return nil end
+    local declarations, declaration_err = fields.for_impl(row.impl_id)
+    if declaration_err then return declaration_err end
+    if #declarations == 0 then return nil end
     local allowed, permission_err = security.can("component.secrets.read", row.impl_id)
     if permission_err then return permission_err end
     if allowed ~= true then
         local masked, paths, mask_err = fields.external(row.impl_id, row.private_context or {}, row.secret_fields)
         if mask_err then return mask_err end
         row.private_context, row.secret_fields = masked, paths
-    elseif #(row.secret_fields or {}) == 0 then
-        local declarations, declaration_err = fields.for_impl(row.impl_id)
-        if declaration_err then return declaration_err end
-        if #declarations > 0 then
-            local _, _, validation_err = fields.partition(declarations, row.private_context or {})
-            if validation_err then return validation_err end
-            local _, key_err = M.decode(row.component_id, nil)
-            if key_err then return key_err end
-            row.secret_fields = declarations
-        end
+    else
+        local _, _, validation_err = fields.partition(declarations, row.private_context or {})
+        if validation_err then return validation_err end
+        local _, key_err = M.decode(row.component_id, nil)
+        if key_err then return key_err end
+        row.secret_fields = declarations
     end
     return nil
 end

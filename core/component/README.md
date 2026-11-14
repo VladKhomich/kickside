@@ -162,3 +162,11 @@ Backups containing encrypted credentials require the original installation key.
 Changing a key does not rotate existing ciphertext. Older backups can still contain
 plaintext credentials. Older module versions cannot use the credential presence
 objects as credentials; downgrade requires a matching earlier backup and key.
+
+Server-side consumers that require credential plaintext use `component.get_private_runtime_context(id)` or
+`component.list_runtime_context(filter)`. Access-checked consumers use `component.get_runtime_context(id, component.ACCESS.READ)`
+or `component.get_runtime_context_by_meta(meta, component.ACCESS.READ)`. These explicit reads call the existing Component service
+entries and require their exact dispatch authority plus owning-kind secret authority. Ordinary
+`get_private_context`, `list_system` and `open_private` reads stay in the caller's frame, return
+masked migrated fields, and perform no credential-dispatch permission check. Non-secret rows
+retain the existing JSON decode path without declaration lookup, environment access or decryption.

@@ -304,25 +304,27 @@ function methods._finalize_row(self: Reader, component: ComponentResult): error?
     if self._include_private_context then
         local context, context_err = persisted_json.decode_table(component.private_context, "component.private_context", true)
         if context_err then return context_err end
-        local declarations, declaration_err = secrets_document.paths(component.encrypted_secrets, component.secrets_generation, component.secrets_incarnation)
-        if declaration_err then return declaration_err end
-        declarations = declarations :: {component_types.SecretField}
-        component.secret_fields = declarations
-        local include_secrets = false
-        if #declarations > 0 and self._include_secrets then
-            local allowed, permission_err = security.can("component.secrets.read", component.impl_id)
-            if permission_err then return permission_err end
-            include_secrets = allowed == true
+        if component.encrypted_secrets ~= nil then
+            local declarations, declaration_err = secrets_document.paths(component.encrypted_secrets, component.secrets_generation, component.secrets_incarnation)
+            if declaration_err then return declaration_err end
+            declarations = declarations :: {component_types.SecretField}
+            component.secret_fields = declarations
+            local include_secrets = false
+            if #declarations > 0 and self._include_secrets then
+                local allowed, permission_err = security.can("component.secrets.read", component.impl_id)
+                if permission_err then return permission_err end
+                include_secrets = allowed == true
+            end
+            if #declarations > 0 and include_secrets then
+                local secrets, decrypt_err = secrets_document.decode(component.component_id, component.encrypted_secrets, component.secrets_generation, component.secrets_incarnation)
+                if decrypt_err then return decrypt_err end
+                context, context_err = secret_fields.merge(declarations, context or {}, secrets :: component_types.JsonMap)
+            elseif #declarations > 0 then
+                context, context_err = secret_fields.mask(declarations, context or {})
+            end
+            if context_err then return context_err end
+            component.encrypted_secrets = nil
         end
-        if #declarations > 0 and include_secrets then
-            local secrets, decrypt_err = secrets_document.decode(component.component_id, component.encrypted_secrets, component.secrets_generation, component.secrets_incarnation)
-            if decrypt_err then return decrypt_err end
-            context, context_err = secret_fields.merge(declarations, context or {}, secrets :: component_types.JsonMap)
-        elseif #declarations > 0 then
-            context, context_err = secret_fields.mask(declarations, context or {})
-        end
-        if context_err then return context_err end
-        component.encrypted_secrets = nil
         component.secrets_generation = nil
         component.secrets_incarnation = nil
         component.private_context = context :: { [string]: any }?
