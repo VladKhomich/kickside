@@ -44,33 +44,44 @@ local secret_keys = {
     "user_token", "web_socket_token", "webhook_secret", "websockettoken", "x-access-token",
     "x-api-key", "x-apikey", "x-auth-token", "x-authorization", "x_access_token",
     "x_api_key", "x_auth_token", "xai_api_key",
-    "azure_api_key", "cohere_api_key", "private_key", "bearer", "cookie", "signature",
-    "passwd", "passphrase", "auth", "vendor_credentials", "request_authorization", "request_cookie",
-    "signing_signature", "database_passwd", "database_passphrase",
-    "api_key_id", "access_key_id", "secret_key_encoding", "custom_key",
-    "secret_count", "credential_type",
+    "azure_api_key", "cohere_api_key", "vendor_credentials", "request_authorization",
+    "api_key_id", "secret_key_encoding",
+    "secret_count", "credential_type", "authorization_mode",
 }
 
 local mixed_case_credentials = {
     "apiKey", "oauthClientSecret", "vendorAPIKey", "oauth2ClientSecret", "service2Token",
-    "customBearer", "customCookie", "customSignature", "customCredentials", "customKey",
-    "customAPIKeyLabel", "customAccessKeyId", "customSecretKeyEncoding",
-    "tokenValue", "passwordHash", "secret-value", "authToken", "sessionCookie", "hmacSignature",
-    "credentialType", "secret-count", "privateKeyEncoding", "vendorTokenValue",
+    "customCredentials",
+    "customAPIKeyLabel", "customSecretKeyEncoding",
+    "tokenValue", "passwordHash", "secret-value", "authToken",
+    "credentialType", "secret-count", "vendorTokenValue",
     "authorizationCode", "credentialContextWith", "tokenResponse", "tokenVALUE",
-    "valueToken", "tokenBudgetToken", "tokenBudgetSecret",
-    "vendorPasswordHash", "bearerValue", "cookieValue", "signatureAlgorithm",
+    "valueToken", "tokenBudgetSecret",
+    "vendorPasswordHash",
+    "client_secrets", "clientSecrets", "client-secrets", "csrftoken",
+    "authorization_header", "authorizationHeader", "authorization-header",
+    "dbpassword", "databasePasswords", "awscredentials",
+    "token_budget_secret", "tokens_password", "tokens_authorization", "tokens_credential",
+    "tokens_api_key", "tokens-api-key", "tokensAPIKey", "tokens.api.key",
 }
 
 local ordinary_metadata = {
     max_tokens = 8192, output_tokens = 1024, token_budget = 4096,
     token_limit = 2048, tokens_per_minute = 60000, max_output_tokens = 2048, key_count = 3,
-    authorization_mode = "header", context_window = 32768,
+    context_window = 32768,
     token_count = 4, token_usage = 5, token_cost = 6, token_rate = 7, token_length = 8,
     token_window = 9, token_quota = 10, token_size = 11,
     tokenBudgetValue = 4096, vendorTokenLimit = 2048, tokenCount = 4,
     tokenUsage = 5, tokenCost = 6, tokenRate = 7, tokenLength = 8, tokenWindow = 9,
     tokenQuota = 10, tokenSize = 11, private = false, customPrivate = false,
+    bearer = "ordinary", cookie = "ordinary", signature = "ordinary", auth = "ordinary",
+    passwd = "ordinary", passphrase = "ordinary", private_key = "ordinary", custom_key = "ordinary",
+    request_cookie = "ordinary", signing_signature = "ordinary", database_passwd = "ordinary",
+    database_passphrase = "ordinary", access_key_id = "ordinary", customAccessKeyId = "ordinary",
+    customBearer = "ordinary", customCookie = "ordinary", customSignature = "ordinary", customKey = "ordinary",
+    sessionCookie = "ordinary", hmacSignature = "ordinary", privateKeyEncoding = "ordinary",
+    bearerValue = "ordinary", cookieValue = "ordinary", signatureAlgorithm = "ordinary",
+    tokenBudgetToken = 12, token2Budget = 13, tokens_value = 14, token_budget_env = "TOKEN_BUDGET",
     maxTokens = 8192, outputTokens = 1024, tokenBudget = 4096, tokenLimit = 2048,
     tokensPerMinute = 60000, maxOutputTokens = 2048, keyCount = 3,
 }
@@ -106,8 +117,8 @@ local function assert_card(card)
 end
 
 local function define_tests()
-    test.describe("credential word boundaries", function()
-        test.it("scrubs declared credentials and credential words while retaining ordinary metadata", function()
+    test.describe("credential filtering and token quantities", function()
+        test.it("preserves declared and substring credential protection while retaining ordinary metadata", function()
             local result = policy.scrub_sensitive({ nested = payload(), items = { payload() } })
             assert_scrubbed(result.nested)
             assert_scrubbed(result.items[1])
@@ -147,8 +158,8 @@ local function define_tests()
             end
         end)
 
-        test.it("keeps credential words out of saved and public profile config", function()
-            local profile, profile_err = repo.create_profile({ name = "Credential word profile",
+        test.it("keeps credentials out of saved and public profile config", function()
+            local profile, profile_err = repo.create_profile({ name = "Credential policy profile",
                 provider_id = "wippy.llm.openai_compat:provider", config = payload() })
             test.is_nil(profile_err)
             local ok, err = pcall(function()

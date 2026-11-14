@@ -72,63 +72,6 @@ local SECRET_KEYS = {
     access_token = true,
 }
 
--- Legacy credential declarations also use the normalized word form.
-local PRIVATE_KEYS = {
-    headers = true,
-    passwords = true,
-    secrets = true,
-    credential_blob = true,
-    accesstoken = true,
-    apitoken = true,
-    authorization_code = true,
-    authtoken = true,
-    bearertoken = true,
-    clientsecret = true,
-    clientsecretkey = true,
-    consumersecret = true,
-    credential_context = true,
-    credential_context_with = true,
-    credential_header = true,
-    credential_json = true,
-    credentialjson = true,
-    credentials_json = true,
-    credentialsjson = true,
-    googlecredentials = true,
-    httpcredentials = true,
-    idtoken = true,
-    password_hash = true,
-    privatetoken = true,
-    refreshtoken = true,
-    secret_config = true,
-    secret_json = true,
-    secret_value = true,
-    secretaccesskey = true,
-    secretkey = true,
-    secretvalue = true,
-    securitytoken = true,
-    serviceaccountcredentials = true,
-    sessiontoken = true,
-    setuptoken = true,
-    token_data = true,
-    token_response = true,
-    token_value = true,
-    tokensecret = true,
-    websockettoken = true,
-}
-
-local CREDENTIAL_WORDS = {
-    secret = true,
-    password = true,
-    passwd = true,
-    passphrase = true,
-    credential = true,
-    credentials = true,
-    apikey = true,
-    bearer = true,
-    cookie = true,
-    signature = true,
-}
-
 local TOKEN_QUANTITIES = {
     budget = true,
     limit = true,
@@ -142,8 +85,6 @@ local TOKEN_QUANTITIES = {
     size = true,
 }
 
-local KEY_PREFIXES = { api = true, access = true, private = true, secret = true }
-
 local function key_words(key: any): string
     -- Preserve acronym and camel-case boundaries before folding case.
     return tostring(key or ""):gsub("(%u)(%u%l)", "%1_%2"):gsub("(%l)(%u)", "%1_%2")
@@ -152,7 +93,6 @@ end
 
 local DECLARED_CREDENTIALS = {}
 for key in pairs(SECRET_KEYS) do DECLARED_CREDENTIALS[key_words(key)] = true end
-for key in pairs(PRIVATE_KEYS) do DECLARED_CREDENTIALS[key_words(key)] = true end
 
 local function env_ref_key(key: any): boolean
     return tostring(key or ""):lower():match("_env$") ~= nil
@@ -161,19 +101,30 @@ end
 local function sensitive_key(key: any): boolean
     local name = tostring(key or "")
     if env_ref_key(name) then name = name:sub(1, -5) end
+    local k = name:lower()
     local words = key_words(name)
     if DECLARED_CREDENTIALS[words] then return true end
-
+    if k == "headers"
+        or k:find("secret", 1, true) ~= nil
+        or k:find("api_key", 1, true) ~= nil
+        or k:find("api-key", 1, true) ~= nil
+        or k:find("apikey", 1, true) ~= nil
+        or k:find("authorization", 1, true) ~= nil
+        or k:find("password", 1, true) ~= nil
+        or k:find("credential", 1, true) ~= nil then
+        return true
+    end
+    if not k:find("token", 1, true) then return false end
+    -- Token quantities are public only when no other credential marker exists.
+    if ("_" .. words .. "_"):find("_api_key_", 1, true) then return true end
     local previous = ""
     for word in words:gmatch("%a+") do
-        if CREDENTIAL_WORDS[word]
-            or (previous == "token" and not TOKEN_QUANTITIES[word])
-            or (word == "key" and KEY_PREFIXES[previous]) then
-            return true
+        if word == "tokens" or (previous == "token" and TOKEN_QUANTITIES[word]) then
+            return false
         end
         previous = word
     end
-    return previous == "token" or previous == "key" or previous == "auth" or previous == "authorization"
+    return true
 end
 
 local function sensitive_config_key(key: any): boolean
