@@ -1,14 +1,13 @@
-import { W as e, u as o } from "./wc-runtime-KO3cNuNo.js";
-import { P as r } from "./primevue-plugin-CaP7wV_M.js";
+import { W as t, P as o, u as r } from "./wc-runtime-Tr5oXE7R.js";
 import { l as s } from "./lazy-Cfv2E3SG.js";
 import { p as n, w as i } from "./wc-mount-N7h56Ydz.js";
 import { s as p } from "./workflow-embed-BX8EY-U_.js";
 import "@iconify/vue";
 import { define as a } from "@wippy-fe/proxy";
 const m = s(
-  () => import("./WorkflowPicker-BkUxrKTV.js"),
+  () => import("./WorkflowPicker-DZKCKv2U.js"),
   { loading: "Loading the Workflow picker…", failed: "Could not load the Workflow picker. Reload the page to try again." },
-  o
+  r
 ), l = {
   type: "object",
   properties: {
@@ -19,7 +18,7 @@ const m = s(
     "return-route": { type: "string" }
   }
 };
-class t extends e {
+class e extends t {
   static get wippyConfig() {
     return {
       propsSchema: l,
@@ -29,13 +28,13 @@ class t extends e {
     };
   }
   static get vueConfig() {
-    return { rootComponent: m, plugins: [r] };
+    return { rootComponent: m, plugins: [o] };
   }
 }
-async function k() {
-  return t;
+async function h() {
+  return e;
 }
-a(import.meta.url, t);
+a(import.meta.url, e);
 export {
-  k as webComponent
+  h as webComponent
 };

@@ -1,4 +1,4 @@
-import { W as a, u as e } from "./wc-runtime-KO3cNuNo.js";
+import { W as a, u as e } from "./wc-runtime-Crg81w4N.js";
 import { l as p } from "./lazy-ZWC1tvFC.js";
 import "@iconify/vue";
 import { define as i } from "@wippy-fe/proxy";
@@ -16,7 +16,7 @@ class r extends a {
   static get vueConfig() {
     return {
       lazyConfig: p(
-        () => import("./lazy-mount-CYUiIJUc.js").then((o) => o.mountConfig),
+        () => import("./lazy-mount-9F1hrWqJ.js").then((o) => o.mountConfig),
         "Could not load Uploads. Reload the page to try again.",
         e
       )

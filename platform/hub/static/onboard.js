@@ -1,30 +1,29 @@
-import { W as o, u as t } from "./wc-runtime-BMe_f3Uc.js";
-import { P as n } from "./primevue-plugin-CaP7wV_M.js";
-import { a as r, s } from "./styles-DWmFMkWO.js";
+import { W as o, P as t, u as n } from "./wc-runtime-Bo_8bBDp.js";
+import { a as s, s as i } from "./styles-DWmFMkWO.js";
 import "@iconify/vue";
-import { define as i } from "@wippy-fe/proxy";
-const m = r(
-  () => import("./OnboardRecommendations-CrTbH_xQ.js"),
+import { define as r } from "@wippy-fe/proxy";
+const a = s(
+  () => import("./OnboardRecommendations-Co8qwPPd.js"),
   { loading: "Loading module recommendations…", failed: "Could not load module recommendations. Reload the page to try again." },
-  t
+  n
 );
 class e extends o {
   static get wippyConfig() {
     return {
       propsSchema: { type: "object", properties: {} },
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: s
+      inlineCss: i
     };
   }
   static get vueConfig() {
-    return { rootComponent: m, plugins: [n] };
+    return { rootComponent: a, plugins: [t] };
   }
 }
-async function g() {
+async function c() {
   return e;
 }
-i(import.meta.url, e);
+r(import.meta.url, e);
 export {
-  g as webComponent
+  c as webComponent
 };
 //# sourceMappingURL=onboard.js.map

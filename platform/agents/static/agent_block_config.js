@@ -1,5 +1,4 @@
-import { W as a, u as o } from "./wc-runtime-KO3cNuNo.js";
-import { P as e } from "./primevue-plugin-CaP7wV_M.js";
+import { W as a, P as o, u as e } from "./wc-runtime-C2f1ro5W.js";
 import { l as p } from "./lazy-Cfv2E3SG.js";
 import "@iconify/vue";
 import { define as c } from "@wippy-fe/proxy";
@@ -7,9 +6,9 @@ const i = ':root{--p-form-field-padding-x: .75rem;--p-form-field-padding-y: .5re
   type: "object",
   properties: { config: { type: "object", description: "Canonical Agent Block instance configuration." } }
 }, n = p(
-  () => import("./AgentBlockConfig-CzYQdYHR.js"),
+  () => import("./AgentBlockConfig-Dw912A1j.js"),
   { loading: "Loading agent block settings…", failed: "Could not load the agent block settings. Reload the page to try again." },
-  o
+  e
 );
 class r extends a {
   static get wippyConfig() {
@@ -20,14 +19,14 @@ class r extends a {
     };
   }
   static get vueConfig() {
-    return { rootComponent: n, plugins: [e] };
+    return { rootComponent: n, plugins: [o] };
   }
 }
-async function f() {
+async function d() {
   return r;
 }
 c(import.meta.url, r);
 export {
-  f as webComponent
+  d as webComponent
 };
 //# sourceMappingURL=agent_block_config.js.map

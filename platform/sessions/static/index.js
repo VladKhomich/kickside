@@ -1,4 +1,4 @@
-import { W as s, c as o } from "./wc-runtime-BJD-5iaH.js";
+import { W as s, m as o } from "./wc-runtime-DRNaOAbU.js";
 import { l as i } from "./lazy-DX8B4FNv.js";
 import { s as r } from "./styles-B4tHWzmY.js";
 import "@iconify/vue";
@@ -17,7 +17,7 @@ class e extends s {
   static get vueConfig() {
     return {
       lazyConfig: i(
-        () => import("./index-mount-BSKOGeEl.js").then((t) => t.mountConfig),
+        () => import("./index-mount-Y6kHbyB8.js").then((t) => t.mountConfig),
         "Could not load the sessions list. Reload the page to try again.",
         o
       )

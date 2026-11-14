@@ -1,13 +1,12 @@
-import { W as t, u as o } from "./wc-runtime-ClNbKZcC.js";
-import { P as n } from "./primevue-plugin-CaP7wV_M.js";
+import { W as t, P as o, u as n } from "./wc-runtime-Bmxpx-Ro.js";
 import { a as i } from "./lazy-ZWC1tvFC.js";
-import { s as r } from "./styles-BDRVQk7J.js";
+import { s } from "./styles-BDRVQk7J.js";
 import "@iconify/vue";
-import { define as s } from "@wippy-fe/proxy";
+import { define as r } from "@wippy-fe/proxy";
 const a = i(
-  () => import("./KbCreate-CK3HEYIr.js"),
+  () => import("./KbCreate-CwMcgYZF.js"),
   { loading: "Loading the new knowledge base dialog…", failed: "Could not load the new knowledge base dialog. Reload the page to try again." },
-  o
+  n
 ), p = {
   type: "object",
   properties: {
@@ -19,17 +18,17 @@ class e extends t {
     return {
       propsSchema: p,
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: r
+      inlineCss: s
     };
   }
   static get vueConfig() {
-    return { rootComponent: a, plugins: [n] };
+    return { rootComponent: a, plugins: [o] };
   }
 }
 async function c() {
   return e;
 }
-s(import.meta.url, e);
+r(import.meta.url, e);
 export {
   c as webComponent
 };

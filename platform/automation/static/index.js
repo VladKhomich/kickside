@@ -1,4 +1,4 @@
-import { W as e, u as a } from "./wc-runtime-KO3cNuNo.js";
+import { W as e, u as a } from "./wc-runtime-DSY_UkLU.js";
 import { a as t } from "./lazy-Cfv2E3SG.js";
 import "@iconify/vue";
 import { define as i } from "@wippy-fe/proxy";
@@ -16,7 +16,7 @@ class r extends e {
   static get vueConfig() {
     return {
       lazyConfig: t(
-        () => import("./lazy-mount-BiiKlWJU.js").then((o) => o.mountConfig),
+        () => import("./lazy-mount-C4h7wnTi.js").then((o) => o.mountConfig),
         "Could not load Automations. Reload the page to try again.",
         a
       )

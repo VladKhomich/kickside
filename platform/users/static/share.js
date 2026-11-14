@@ -1,9 +1,8 @@
-import { a as nr, u as sr, W as lr } from "./wc-runtime-KO3cNuNo.js";
-import { P as dr } from "./primevue-plugin-CaP7wV_M.js";
+import { a as nr, u as sr, W as lr, P as dr } from "./wc-runtime-BQFBheae.js";
 import { defineComponent as ur, computed as T, ref as s, onMounted as vr, onUnmounted as gr, watch as mr, openBlock as t, createBlock as W, unref as u, withCtx as q, createElementVNode as n, withModifiers as F, createVNode as g, normalizeClass as M, createTextVNode as z, createElementBlock as p, Fragment as V, renderList as L, toDisplayString as m, createCommentVNode as C } from "vue";
 import { Icon as f } from "@iconify/vue";
 import { api as B, host as Y, define as fr } from "@wippy-fe/proxy";
-import hr from "primevue/dialog";
+import { s as hr } from "./index-DKW1CPnS.js";
 import { e as xr } from "./errMsg-CxKGcp1F.js";
 import { _ as br, r as wr } from "./PrincipalPicker.vue_vue_type_script_setup_true_lang-CoSxbp_M.js";
 const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 0 }, zr = { class: "kxs" }, Cr = ["disabled"], jr = ["title", "onClick"], Er = {
@@ -30,11 +29,11 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
 }, Br = {
   key: 0,
   class: "kxs-row-sub"
-}, $r = { class: "kxs-caps" }, Dr = ["disabled", "title", "onClick"], Ir = ["aria-label", "onClick"], Or = {
+}, $r = { class: "kxs-caps" }, Ir = ["disabled", "title", "onClick"], Or = ["aria-label", "onClick"], Rr = {
   key: 1,
   class: "kxs-icon-btn kxs-icon-locked",
   title: "The owner can't be removed"
-}, Rr = /* @__PURE__ */ ur({
+}, Dr = /* @__PURE__ */ ur({
   __name: "share",
   setup(H) {
     const J = nr(), $ = sr();
@@ -45,7 +44,7 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
     function y(r, o) {
       return (r & o) === o;
     }
-    function D(r, o) {
+    function I(r, o) {
       return r ^ o;
     }
     function X(r) {
@@ -75,7 +74,7 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
         w.value = [], j.value = A(r, "could not load permissions");
       }
     }
-    async function I() {
+    async function O() {
       const r = b.value.access_url;
       if (!r) {
         k.value = [];
@@ -113,20 +112,20 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
     function ar(r) {
       r || or();
     }
-    function O(r) {
+    function R(r) {
       r.key === "Escape" && (U.value = !1);
     }
     vr(() => {
-      rr(), window.addEventListener("keydown", O);
+      rr(), window.addEventListener("keydown", R);
     }), gr(() => {
-      window.removeEventListener("keydown", O);
-    }), mr(() => b.value.access_url, () => I(), { immediate: !0 });
-    const x = s(null), v = s(1), E = s(!1), R = s(0);
+      window.removeEventListener("keydown", R);
+    }), mr(() => b.value.access_url, () => O(), { immediate: !0 });
+    const x = s(null), v = s(1), E = s(!1), D = s(0);
     function er(r) {
       x.value = { ...r };
     }
     function tr(r) {
-      v.value = D(v.value, r);
+      v.value = I(v.value, r);
     }
     async function S(r, o, a, i) {
       const l = b.value.share_url;
@@ -135,7 +134,7 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
       try {
         const _ = i ? { subject_id: r, subject_type: o, action: "revoke" } : { subject_id: r, subject_type: o, access_mask: a }, { data: e } = await B.post(l, _);
         if (!e?.success) throw new Error(e?.error || "failed");
-        return await I(), $("changed", { resource_id: b.value.resource_id }), !0;
+        return await O(), $("changed", { resource_id: b.value.resource_id }), !0;
       } catch (_) {
         return h.value = A(_, "change failed"), !1;
       }
@@ -144,7 +143,7 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
       if (!x.value || v.value === 0) return;
       E.value = !0;
       const r = x.value.label;
-      await S(x.value.id, x.value.type, v.value) && (Y.toast?.({ severity: "success", summary: "Shared", detail: r }), x.value = null, R.value += 1, v.value = 1), E.value = !1;
+      await S(x.value.id, x.value.type, v.value) && (Y.toast?.({ severity: "success", summary: "Shared", detail: r }), x.value = null, D.value += 1, v.value = 1), E.value = !1;
     }
     async function ir(r, o) {
       if (r.owner) return;
@@ -152,7 +151,7 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
         h.value = "At least one admin is required.";
         return;
       }
-      const i = D(r.access_mask, o);
+      const i = I(r.access_mask, o);
       if (i === 0) {
         await S(r.id, r.type, 0, !0);
         return;
@@ -197,7 +196,7 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
             }, ["stop"]))
           }, [
             (t(), W(br, {
-              key: R.value,
+              key: D.value,
               class: "kxs-pick",
               kinds: "user,group",
               onChange: er
@@ -273,9 +272,9 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
                   disabled: a.owner,
                   title: a.owner ? "The owner has full access" : i.description,
                   onClick: (l) => ir(a, i.bit)
-                }, m(i.label), 11, Dr))), 128))
+                }, m(i.label), 11, Ir))), 128))
               ]),
-              a.owner ? (t(), p("span", Or, [
+              a.owner ? (t(), p("span", Rr, [
                 g(u(f), {
                   icon: "tabler:lock",
                   "aria-hidden": "true"
@@ -291,7 +290,7 @@ const yr = { class: "kxs-head-text" }, kr = { class: "kxs-title" }, _r = { key: 
                   icon: "tabler:x",
                   "aria-hidden": "true"
                 })
-              ], 8, Ir))
+              ], 8, Or))
             ]))), 128))
           ])) : (t(), p("div", Nr, [
             g(u(f), {
@@ -323,14 +322,14 @@ class G extends lr {
     };
   }
   static get vueConfig() {
-    return { rootComponent: Rr, plugins: [dr] };
+    return { rootComponent: Dr, plugins: [dr] };
   }
 }
-async function Xr() {
+async function Qr() {
   return G;
 }
 fr(import.meta.url, G);
 export {
-  Xr as webComponent
+  Qr as webComponent
 };
 //# sourceMappingURL=share.js.map

@@ -1,8 +1,8 @@
-import { u as P, a as I, W as A } from "./wc-runtime-h8e5VJvv.js";
-import { s as M, P as N } from "./styles-Ce32aXEC.js";
-import { computed as v, watch as h, defineComponent as T, ref as c, onMounted as x, openBlock as m, createElementBlock as f, withModifiers as O, toDisplayString as V, createCommentVNode as R, createVNode as j, unref as B } from "vue";
-import { loadByTagName as _, api as F, define as L } from "@wippy-fe/proxy";
-import { u as U, e as k, _ as z } from "./SyncPipeline.vue_vue_type_script_setup_true_lang-wUVvfzFm.js";
+import { u as P, a as I, W as A, P as M } from "./wc-runtime-AHFoIAXw.js";
+import { computed as v, watch as h, defineComponent as N, ref as c, onMounted as T, openBlock as m, createElementBlock as f, withModifiers as x, toDisplayString as O, createCommentVNode as V, createVNode as R, unref as j } from "vue";
+import { loadByTagName as _, api as B, define as F } from "@wippy-fe/proxy";
+import { u as L, e as k, _ as U } from "./SyncPipeline.vue_vue_type_script_setup_true_lang-wUVvfzFm.js";
+import { s as z } from "./styles-CAHyBPNr.js";
 import "@iconify/vue";
 function d(r) {
   if (r == null || r === "") return {};
@@ -31,10 +31,10 @@ const K = {
   key: 0,
   class: "kx-alert",
   role: "alert"
-}, D = "kickside.sync:sync", J = "wc-schema-form", Y = "kickside-transform-assist", $ = /* @__PURE__ */ T({
+}, D = "kickside.sync:sync", J = "wc-schema-form", Y = "kickside-transform-assist", $ = /* @__PURE__ */ N({
   __name: "SyncCreate",
   setup(r) {
-    const t = P(), s = I(), n = U({ managed: !1 }), l = c(!0), u = c(!1);
+    const t = P(), s = I(), n = L({ managed: !1 }), l = c(!0), u = c(!1);
     h(u, (o) => s("submit-state", { saving: o }));
     const a = c(""), p = c(""), g = c(!1);
     H(t, y, u);
@@ -52,7 +52,7 @@ const K = {
       }
       u.value = !0, a.value = "";
       try {
-        const { data: e } = await F.post(
+        const { data: e } = await B.post(
           "/api/v1/automations",
           { type: E.value, parent_id: S.value || void 0, input: n.currentInput() }
         );
@@ -68,7 +68,7 @@ const K = {
         u.value = !1;
       }
     }
-    return x(async () => {
+    return T(async () => {
       try {
         await Promise.all([
           _(J, { timeoutMs: 8e3 }),
@@ -96,11 +96,11 @@ const K = {
     }), (o, e) => l.value ? (m(), f("div", K, "Loading catalog…")) : (m(), f("form", {
       key: 1,
       class: "kx-flow",
-      onSubmit: O(y, ["prevent"])
+      onSubmit: x(y, ["prevent"])
     }, [
-      a.value ? (m(), f("p", W, V(a.value), 1)) : R("", !0),
-      j(z, {
-        form: B(n),
+      a.value ? (m(), f("p", W, O(a.value), 1)) : V("", !0),
+      R(U, {
+        form: j(n),
         "generation-policy": b.value,
         "destination-locked": g.value
       }, null, 8, ["form", "generation-policy", "destination-locked"])
@@ -122,17 +122,17 @@ class C extends A {
     return {
       propsSchema: q,
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: M
+      inlineCss: z
     };
   }
   static get vueConfig() {
-    return { rootComponent: $, plugins: [N] };
+    return { rootComponent: $, plugins: [M] };
   }
 }
 async function re() {
   return C;
 }
-L(import.meta.url, C);
+F(import.meta.url, C);
 export {
   re as webComponent
 };

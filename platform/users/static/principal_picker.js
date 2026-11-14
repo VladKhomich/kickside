@@ -1,4 +1,4 @@
-import { W as a, u as o } from "./wc-runtime-KO3cNuNo.js";
+import { W as a, u as o } from "./wc-runtime-BQFBheae.js";
 import { a as p } from "./lazy-ZWC1tvFC.js";
 import "@iconify/vue";
 import { define as e } from "@wippy-fe/proxy";
@@ -9,7 +9,7 @@ const c = ':root{--p-form-field-padding-x: .75rem;--p-form-field-padding-y: .5re
   placeholder: { type: "string", default: "Select a person or group…" },
   kinds: { type: "string", default: "user,group" }
 } }, t = p(
-  () => import("./PrincipalPickerElement-BrmqRyx_.js"),
+  () => import("./PrincipalPickerElement-CNJ2tNgG.js"),
   { loading: "Loading person picker…", failed: "Could not load the person picker. Reload the page to try again." },
   o
 );

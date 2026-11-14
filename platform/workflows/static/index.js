@@ -1,4 +1,4 @@
-import { W as o, u as t } from "./wc-runtime-KO3cNuNo.js";
+import { W as o, u as t } from "./wc-runtime-Tr5oXE7R.js";
 import { a } from "./lazy-Cfv2E3SG.js";
 import { p as i, w as n } from "./wc-mount-N7h56Ydz.js";
 import "@iconify/vue";
@@ -24,7 +24,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: a(
-        () => import("./lazy-mount-Zu7Ii9uL.js").then((r) => r.mountConfig),
+        () => import("./lazy-mount-COLvfsdQ.js").then((r) => r.mountConfig),
         "Could not load the Workflow builder. Reload the page to try again.",
         t
       )

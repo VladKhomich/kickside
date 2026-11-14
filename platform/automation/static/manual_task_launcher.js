@@ -1,4 +1,4 @@
-import { W as a, u as o } from "./wc-runtime-KO3cNuNo.js";
+import { W as a, u as o } from "./wc-runtime-DSY_UkLU.js";
 import { l as p } from "./lazy-Cfv2E3SG.js";
 import "@iconify/vue";
 import { define as e } from "@wippy-fe/proxy";
@@ -7,7 +7,7 @@ const c = ':root{--p-form-field-padding-x: .75rem;--p-form-field-padding-y: .5re
   parent: { type: "string", default: "" },
   title: { type: "string", default: "Manual task" }
 } }, t = p(
-  () => import("./ManualTaskLauncherElement-DUr8n_mk.js"),
+  () => import("./ManualTaskLauncherElement-CSHkiUQw.js"),
   { loading: "Loading manual task launcher…", failed: "Could not load the manual task launcher. Reload the page to try again." },
   o
 );

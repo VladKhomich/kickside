@@ -1,9 +1,8 @@
-import { a as H, u as $, W as G } from "./wc-runtime-KO3cNuNo.js";
-import { P as J } from "./primevue-plugin-CaP7wV_M.js";
+import { a as H, u as $, W as G, P as J } from "./wc-runtime-BQFBheae.js";
 import { defineComponent as Q, computed as m, ref as d, onMounted as X, onUnmounted as Z, openBlock as s, createBlock as ee, unref as x, withCtx as te, createElementBlock as l, createVNode as g, createTextVNode as v, toDisplayString as n, createElementVNode as t, normalizeClass as A, Fragment as L, createCommentVNode as w, withDirectives as _, vModelText as z } from "vue";
 import { Icon as k } from "@iconify/vue";
 import { api as N, host as D, define as oe } from "@wippy-fe/proxy";
-import ae from "primevue/dialog";
+import { s as ae } from "./index-DKW1CPnS.js";
 import { e as re } from "./errMsg-CxKGcp1F.js";
 import { f as ie } from "./datetime--PfqsqnZ.js";
 const ne = {
@@ -290,11 +289,11 @@ class I extends G {
     return { rootComponent: Ve, plugins: [J] };
   }
 }
-async function Ke() {
+async function Oe() {
   return I;
 }
 oe(import.meta.url, I);
 export {
-  Ke as webComponent
+  Oe as webComponent
 };
 //# sourceMappingURL=profile.js.map

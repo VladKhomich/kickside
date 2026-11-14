@@ -1,5 +1,4 @@
-import { W as t, u as i } from "./wc-runtime-KO3cNuNo.js";
-import { P as o } from "./primevue-plugin-CaP7wV_M.js";
+import { W as t, P as i, u as o } from "./wc-runtime-C2f1ro5W.js";
 import { l as a } from "./lazy-Cfv2E3SG.js";
 import { s } from "./styles-C5MTfWEG.js";
 import "@iconify/vue";
@@ -17,9 +16,9 @@ const n = {
     }
   }
 }, p = a(
-  () => import("./MasterNamespacePicker-CbuPfeY2.js"),
+  () => import("./MasterNamespacePicker-BobihwZE.js"),
   { loading: "Loading capability scope picker…", failed: "Could not load the capability scope picker. Reload the page to try again." },
-  i
+  o
 );
 class e extends t {
   static get wippyConfig() {
@@ -30,7 +29,7 @@ class e extends t {
     };
   }
   static get vueConfig() {
-    return { rootComponent: p, plugins: [o] };
+    return { rootComponent: p, plugins: [i] };
   }
 }
 async function d() {
