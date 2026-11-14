@@ -5,6 +5,8 @@ local sql = require("sql")
 local policy = require("catalog_policy")
 local repo = require("models_repo")
 local card_policy = require("card_policy")
+local fake_http = require("fake_http")
+local admin_handler = require("admin_handler")
 
 local secret_keys = {
     "api_key", "access_key", "secret_key", "session_token", "google_credentials", "access_token",
@@ -42,11 +44,30 @@ local secret_keys = {
     "user_token", "web_socket_token", "webhook_secret", "websockettoken", "x-access-token",
     "x-api-key", "x-apikey", "x-auth-token", "x-authorization", "x_access_token",
     "x_api_key", "x_auth_token", "xai_api_key",
+    "azure_api_key", "cohere_api_key", "private_key", "private", "bearer", "cookie", "signature",
+    "passwd", "passphrase", "auth", "vendor_credentials", "request_authorization", "request_cookie",
+    "signing_signature", "database_passwd", "database_passphrase",
+    "api_key_id", "access_key_id", "secret_key_encoding", "custom_key",
+}
+
+local mixed_case_credentials = {
+    "apiKey", "oauthClientSecret", "vendorAPIKey", "oauth2ClientSecret", "service2Token",
+    "customBearer", "customCookie", "customSignature", "customPrivate", "customCredentials", "customKey",
+    "customAPIKeyLabel", "customAccessKeyId", "customSecretKeyEncoding",
+}
+
+local ordinary_metadata = {
+    max_tokens = 8192, output_tokens = 1024, token_budget = 4096,
+    token_limit = 2048, tokens_per_minute = 60000, max_output_tokens = 2048, key_count = 3,
+    secret_count = 2, credential_type = "reference", authorization_mode = "header",
+    maxTokens = 8192, outputTokens = 1024, tokenBudget = 4096, tokenLimit = 2048,
+    tokensPerMinute = 60000, maxOutputTokens = 2048, keyCount = 3,
 }
 
 local function payload()
-    local fields = { max_tokens = 8192, output_tokens = 1024, token_budget = 4096,
-        secret_count = 2, credential_type = "reference", authorization_mode = "header" }
+    local fields = {}
+    for key, value in pairs(ordinary_metadata) do fields[key] = value end
+    for _, key in ipairs(mixed_case_credentials) do fields[key] = "credential-sentinel" end
     for _, key in ipairs(secret_keys) do
         fields[key] = "credential-sentinel"
         fields[key:upper()] = "credential-sentinel"
@@ -55,6 +76,7 @@ local function payload()
 end
 
 local function assert_scrubbed(fields)
+    for _, key in ipairs(mixed_case_credentials) do test.is_nil(fields[key], key) end
     for _, key in ipairs(secret_keys) do
         test.is_nil(fields[key], key)
         test.is_nil(fields[key:upper()], key:upper())
@@ -62,17 +84,19 @@ local function assert_scrubbed(fields)
 end
 
 local function assert_metadata(fields)
-    test.eq(fields.max_tokens, 8192)
-    test.eq(fields.output_tokens, 1024)
-    test.eq(fields.token_budget, 4096)
-    test.eq(fields.secret_count, 2)
-    test.eq(fields.credential_type, "reference")
-    test.eq(fields.authorization_mode, "header")
+    for key, value in pairs(ordinary_metadata) do test.eq(fields[key], value, key) end
+end
+
+local function assert_card(card)
+    assert_scrubbed(card.options.nested)
+    assert_scrubbed(card.metadata.nested)
+    assert_metadata(card.options.nested)
+    assert_metadata(card.metadata.nested)
 end
 
 local function define_tests()
-    test.describe("declared credential keys", function()
-        test.it("scrubs exact credential fields recursively while retaining ordinary metadata", function()
+    test.describe("credential word boundaries", function()
+        test.it("scrubs declared credentials and credential words while retaining ordinary metadata", function()
             local result = policy.scrub_sensitive({ nested = payload(), items = { payload() } })
             assert_scrubbed(result.nested)
             assert_scrubbed(result.items[1])
@@ -94,14 +118,58 @@ local function define_tests()
             for _, key in ipairs(secret_keys) do
                 config[key .. "_env"] = "CREDENTIAL_REFERENCE"
             end
+            for _, key in ipairs(mixed_case_credentials) do
+                config[key .. "_env"] = "CREDENTIAL_REFERENCE"
+            end
+            local scrubbed = policy.scrub_sensitive(config)
             local public = policy.public_profile({ id = "profile-policy", config = config, secret_config = payload() })
             assert_scrubbed(public.config)
             assert_metadata(public.config)
             for _, key in ipairs(secret_keys) do
                 test.eq(public.config[key .. "_env"], "CREDENTIAL_REFERENCE")
-                test.is_nil(policy.scrub_sensitive(config)[key .. "_env"])
+                test.is_nil(scrubbed[key .. "_env"])
                 test.is_nil(policy.scrub_sensitive({ [key:upper() .. "_ENV"] = "CREDENTIAL_REFERENCE" })[key:upper() .. "_ENV"])
             end
+            for _, key in ipairs(mixed_case_credentials) do
+                test.eq(public.config[key .. "_env"], "CREDENTIAL_REFERENCE")
+                test.is_nil(scrubbed[key .. "_env"])
+            end
+        end)
+
+        test.it("keeps credential words out of saved and public profile config", function()
+            local profile, profile_err = repo.create_profile({ name = "Credential word profile",
+                provider_id = "wippy.llm.openai_compat:provider", config = payload() })
+            test.is_nil(profile_err)
+            local ok, err = pcall(function()
+                assert_scrubbed(profile.config)
+                assert_metadata(profile.config)
+                local db, db_err = sql.get("app:db")
+                test.is_nil(db_err)
+                local rows, read_err = db:query("SELECT config_json FROM kickside_model_provider_profiles WHERE id = $1", { profile.id })
+                local _, inject_err = db:execute("UPDATE kickside_model_provider_profiles SET config_json = $1 WHERE id = $2",
+                    { json.encode(payload()), profile.id })
+                db:release()
+                test.is_nil(read_err)
+                test.is_nil(inject_err)
+                local config = json.decode(rows[1].config_json)
+                assert_scrubbed(config)
+                assert_metadata(config)
+                fake_http.prepare(nil)
+                local _, admin_err = admin_handler.handler()
+                test.is_nil(admin_err)
+                local found = false
+                for _, row in ipairs(fake_http.payload().profiles) do
+                    if row.id == profile.id then
+                        found = true
+                        assert_scrubbed(row.config)
+                        assert_metadata(row.config)
+                    end
+                end
+                test.is_true(found)
+            end)
+            local _, delete_err = repo.delete_profile(profile.id)
+            test.is_nil(delete_err)
+            if not ok then error(err, 0) end
         end)
 
         test.it("persists token metadata and never stores credential fields in card options or metadata", function()
@@ -136,6 +204,16 @@ local function define_tests()
                     end
                 end
                 test.is_true(found)
+                fake_http.prepare(nil)
+                local _, admin_err = admin_handler.handler()
+                test.is_nil(admin_err)
+                test.eq(fake_http.status(), 200)
+                local admin_card = nil
+                for _, row in ipairs(fake_http.payload().models) do
+                    if row.name == card.name then admin_card = row end
+                end
+                test.not_nil(admin_card)
+                assert_card(admin_card)
                 local resaved, resave_err = repo.upsert_card({ name = card.name, title = "Updated title" })
                 test.is_nil(resave_err)
                 assert_scrubbed(resaved.options.nested)
@@ -147,6 +225,8 @@ local function define_tests()
                 db:release()
                 test.is_nil(read_err)
                 test.is_nil((json.encode(rows):find("credential-sentinel", 1, true)))
+                assert_metadata(json.decode(rows[1].options_json).nested)
+                assert_metadata(json.decode(rows[1].metadata_json).nested)
             end)
             local _, delete_err = repo.delete_card("metadata-policy-card")
             test.is_nil(delete_err)
