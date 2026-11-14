@@ -210,7 +210,7 @@ end
 -- the caller begins and commits; on error the caller rolls back. Declaration
 -- convergence passes ensure=true. Changed declarations preserve the fold and
 -- advance to the refresh head, fencing previously loaded workers.
-function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table): (RegisterResult?, error?)
+function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table, declaration: table?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -229,7 +229,9 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         return nil, (errors.new({ message = "kind is too long (max " .. tostring(types.KIND_MAX_LEN) .. ")", kind = errors.INVALID }) :: error)
     end
 
-    local body, declaration_err = writer.declaration_body(params)
+    local body, declaration_err
+    if declaration then body = declaration.body
+    else body, declaration_err = writer.declaration_body(params) end
     if declaration_err then return nil, declaration_err end
     local worker_ref = body.meta.worker_ref
     local worker_runtime = body.meta.worker_runtime
@@ -318,8 +320,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         actor_context_col = (id_row :: any).actor_context :: string?
     end
 
-    local digest, digest_err = writer.declaration_digest(body)
-    if digest_err then return nil, digest_err end
+    local digest = declaration and declaration.digest or nil
     local body_json, body_encode_err = json.encode(body)
     if body_encode_err then return nil, errors.wrap(body_encode_err, "failed to encode projection body") end
     if not body_json then
@@ -351,7 +352,11 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         if not reset then
             local merged, decode_err = persisted_json.decode_table(projection_rows[1].body, "kickside_projection.body")
             if decode_err then return nil, errors.wrap(decode_err, "failed to decode existing projection body") end
-            declaration_changed = not writer.declaration_matches(merged :: table, body :: table)
+            if digest and projection_rows[1].declaration_digest then
+                declaration_changed = digest ~= projection_rows[1].declaration_digest
+            else
+                declaration_changed = not writer.declaration_matches(merged :: table, body :: table)
+            end
             if declaration_changed then
                 refresh_from = event_count
             end
@@ -360,6 +365,14 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             if merged_err then return nil, errors.wrap(merged_err, "failed to encode merged projection body") end
             if not merged_json then return nil, response_error("merged_body") end
             body_to_write = merged_json
+        end
+        if not digest then
+            if not declaration_changed and not reset then digest = projection_rows[1].declaration_digest end
+            if not digest then
+                local digest_err: error?
+                digest, digest_err = writer.declaration_digest(body)
+                if digest_err then return nil, digest_err end
+            end
         end
         if params.ensure ~= true or declaration_changed then
             local projection_update = sql.builder.update("kickside_projection")
@@ -396,6 +409,11 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             if proof_err then return nil, proof_err end
         end
     else
+        if not digest then
+            local digest_err: error?
+            digest, digest_err = writer.declaration_digest(body)
+            if digest_err then return nil, digest_err end
+        end
         projection_id = uuid.v7()
         created_projection = true
         local inserted, insert_err = sql.builder.insert("kickside_projection")

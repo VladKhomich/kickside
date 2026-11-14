@@ -4,6 +4,7 @@
 -- thread-backed component's primary thread row commit with the component mutation.
 
 local uuid = require("uuid")
+local registry = require("registry")
 local autoinit = require("autoinit")
 local lifecycle_log = require("component_lifecycle_log")
 local writer = require("proj_writer")
@@ -47,6 +48,35 @@ local function merged_worker_config(p: table, parent_id: string, parent_impl_id:
     return cfg
 end
 
+local declaration_version: string? = nil
+local declarations: {[string]: table[]} = {}
+
+-- Registry revisions are immutable. Preparing a binding replaces repeated kind
+-- lookups and canonicalization on the lifecycle mutation path.
+local function projections_for_impl(impl_id: string): (table[]?, error?)
+    local version, version_err = registry.current_version()
+    if version_err then return nil, version_err end
+    if not version then return nil, fail("lifecycle declaration registry version missing") end
+    local revision = tostring(version:id())
+    if declaration_version ~= revision then
+        declarations, declaration_version = {}, revision
+    end
+    if declarations[impl_id] then return declarations[impl_id], nil end
+    local projections = autoinit.projections_for_impl(impl_id)
+    for _, p in ipairs(projections) do
+        if p.on == autoinit.PROJECTION_ON.LIFECYCLE then
+            local body, body_err = writer.declaration_body({worker_ref = p.worker_ref,
+                worker_input_mode = p.input_mode, worker_config = p.worker_config, events = p.events})
+            if body_err then return nil, body_err end
+            local digest, digest_err = writer.declaration_digest(body)
+            if digest_err then return nil, digest_err end
+            p.declaration = {body = body, digest = digest}
+        end
+    end
+    declarations[impl_id] = projections
+    return projections, nil
+end
+
 local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, attach_parent: boolean): error?
     local parent_id = trim(args.parent_id)
     local parent_impl_id = trim(args.parent_impl_id)
@@ -59,7 +89,9 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
     end
 
     local function attach(impl_id: string, on: string): error?
-        for _, p in ipairs(autoinit.projections_for_impl(impl_id)) do
+        local projections, declaration_err = projections_for_impl(impl_id)
+        if declaration_err then return declaration_err end
+        for _, p in ipairs(projections) do
             if p.on == on then
                 local own = on == autoinit.PROJECTION_ON.LIFECYCLE
                 local key = p.projection_key
@@ -81,7 +113,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
                     system_identity = true,
                     ensure = own,
                 }
-                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params)
+                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params, own and p.declaration or nil)
                 if reg_err then return reg_err end
             end
         end

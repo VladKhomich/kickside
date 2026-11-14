@@ -138,8 +138,8 @@ return {run = test.run_cases(function()
                 test.eq(summary.checked, 0)
                 test.eq(summary.healed, 0)
                 test.eq(fixture.calls, 0)
-                test.eq(fixture.queries, 2)
-                test.eq(fixture.max_page, 0)
+                test.eq(fixture.queries, 3)
+                test.eq(fixture.max_page, math.min(count, 256))
             end)
         end
         test.it("continues ten thousand changed declarations in bounded turns", function()
@@ -154,11 +154,12 @@ return {run = test.run_cases(function()
                 test.eq(summary.healed, fixture.calls - before)
                 total = total + summary.healed
                 turns = turns + 1
+                test.is_true(turns <= 40, "a finite changed population finishes in bounded turns")
                 continuation = summary.continuation
             until not continuation
             test.eq(total, 10000)
             test.eq(turns, 40)
-            test.eq(fixture.queries, 80)
+            test.eq(fixture.queries, 81)
             test.eq(fixture.max_page, 256)
         end)
         for _, changed in ipairs({false, true}) do
@@ -172,7 +173,7 @@ return {run = test.run_cases(function()
                     local summary, err = provision.converge({}, {}, continuation)
                     test.is_nil(err)
                     test.is_true(fixture.calls - before <= 256)
-                    test.eq(fixture.queries - queries, 3)
+                    test.eq(fixture.queries - queries, turns == 0 and 3 or 2)
                     test.eq(fixture.wakes - wakes, changed and 1 or 0, "committed repairs notify before the page returns")
                     total = total + summary.healed
                     turns = turns + 1
@@ -183,6 +184,33 @@ return {run = test.run_cases(function()
                 test.eq(fixture.max_page, 256)
             end)
         end
+        test.it("limits every divergence source before union and sorting", function()
+            fixture.reset("", nil)
+            fixture.require_window = true
+            local _, err = provision.converge({}, {})
+            test.is_nil(err)
+        end)
+        test.it("captures a finite boundary and rotates to another pending kind", function()
+            fixture.reset("", nil)
+            fixture.changed_count = 10000
+            fixture.two_kinds = true
+            local result, err = provision.converge({}, {})
+            test.is_nil(err)
+            test.not_nil(result.continuation)
+            test.eq(result.continuation.kind_index, 2)
+            test.eq(result.continuation.boundaries.upper, "010000")
+            local continuation, total, turns = result.continuation, result.healed, 1
+            -- New components beyond the captured boundary cannot extend this run.
+            fixture.changed_count = 20000
+            repeat
+                local page = assert(provision.converge({}, {}, continuation))
+                total = total + page.healed
+                continuation = page.continuation
+                turns = turns + 1
+                test.is_true(turns < 43, "the initial finite traversal completes despite ongoing creation")
+            until not continuation
+            test.eq(total, 10001)
+        end)
         test.it("valid convergence de-duplicates the divergence set", function()
             fixture.reset("", nil)
             local summary, err = provision.converge({}, {})

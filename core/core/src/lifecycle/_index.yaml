@@ -97,12 +97,12 @@ entries:
     meta:
       comment: In-process implementation for component CRUD lifecycle; appends canonical events and attaches declared lifecycle projections in the caller's transaction.
     source: file://component_lifecycle.lua
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, registry]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
@@ -115,12 +115,12 @@ entries:
       comment: Binding for kickside.component:lifecycle; appends canonical component lifecycle events and attaches declared lifecycle projections.
     source: file://component_lifecycle.lua
     method: created
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, registry]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
@@ -133,12 +133,12 @@ entries:
       comment: kickside.component:lifecycle updated method.
     source: file://component_lifecycle.lua
     method: updated
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, registry]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
@@ -151,12 +151,12 @@ entries:
       comment: kickside.component:lifecycle deleted method.
     source: file://component_lifecycle.lua
     method: deleted
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, registry]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
