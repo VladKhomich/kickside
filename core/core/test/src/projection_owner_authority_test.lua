@@ -25,6 +25,13 @@ local function service(actor_id: string)
         :with_actor(assert(security.new_actor(actor_id, {security_groups = {}})))
         :with_scope(assert(security.named_scope("wippy.security:process"))):open()
 end
+local function claim_fixture_job(db, job_id)
+    assert(db:execute([[UPDATE kickside_job SET priority=(SELECT COALESCE(MAX(priority),0)+1 FROM kickside_job)
+        WHERE id=$1]], {job_id}))
+    local job, err = claim.claim_job(db, tostring(db:type()))
+    test.is_nil(err); test.not_nil(job); test.eq(job.id, job_id)
+    return job
+end
 local function create(impl_id: string?, actor_id: string?)
     local id = uuid.v4()
     local svc = service(actor_id or "system:lifecycle")
@@ -35,12 +42,7 @@ local function create(impl_id: string?, actor_id: string?)
         JOIN kickside_projection p ON p.id=c.projection_id WHERE p.thread_id=$1 AND p.kind='test.owner_seed']], {lifecycle.thread_id(id)}))
     assert(db:execute("INSERT INTO kickside_component_meta (meta_id,component_id,key,value) VALUES ($1,$2,'owner_test.invoked','0')", {uuid.v4(), id}))
     local cursor = rows[1]
-    assert(db:execute([[UPDATE kickside_job SET priority=(SELECT COALESCE(MAX(priority),0)+1 FROM kickside_job)
-        WHERE id IN (SELECT job_id FROM kickside_projection_cursor WHERE thread_id IN ($1,$2))]], {id,lifecycle.thread_id(id)}))
-    local jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
-    local job: table? = nil
-    for _, value in ipairs(jobs) do if value.id == cursor.job_id then job = value end end
-    test.not_nil(job)
+    local job = claim_fixture_job(db, cursor.job_id)
     db:release()
     return id, cursor, job
 end
@@ -240,10 +242,7 @@ return {run = test.run_cases(function()
                 test.is_true(assert(svc:revoke_subtree({root_component_id = child.component_id, subject = subject})).success)
                 local db = assert(sql.get("app:db"))
                 local cursor = assert(db:query("SELECT id,job_id FROM kickside_projection_cursor WHERE thread_id=$1 AND projection_id IN (SELECT id FROM kickside_projection WHERE kind='test.owner_seed')", {lifecycle.thread_id(child.component_id)}))[1]
-                local jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
-                local job: table? = nil
-                for _, value in ipairs(jobs) do if value.id == cursor.job_id then job = value end end
-                test.not_nil(job)
+                local job = claim_fixture_job(db, cursor.job_id)
                 local snapshot = assert(invoke.snapshot(db, cursor.id, cursor.job_id)); db:release()
                 local changed: any = nil
                 if change == "revoke" then changed = assert(svc:revoke_subtree({root_component_id = parent.component_id, subject = subject}))
@@ -364,13 +363,11 @@ return {run = test.run_cases(function()
                 assert(threads_writer.append_system(db, id, {{type = "app:threads_cv_trigger", body_json = "{}"}}))
                 assert(require("jobs_wake").wake_job(db, ignored_job.id, {control = true}, tostring(db:type())))
                 -- The already-claimed lifecycle slot keeps its lease during convergence.
-                local jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
                 local rows = assert(db:query("SELECT c.id,c.job_id,c.thread_id FROM kickside_projection_cursor c WHERE c.thread_id IN ($1,$2)", {id,lifecycle.thread_id(id)}))
                 test.eq(#rows, 2)
                 local work: {table} = {}
                 for _, cursor in ipairs(rows) do
-                    local selected = cursor.id == ignored_cursor.id and ignored_job or nil
-                    for _, job in ipairs(jobs) do if job.id == cursor.job_id then selected = job end end
+                    local selected = cursor.id == ignored_cursor.id and ignored_job or claim_fixture_job(db, cursor.job_id)
                     test.not_nil(selected)
                     local snapshot = assert(invoke.snapshot(db, cursor.id, cursor.job_id))
                     test.is_nil(snapshot.authority_error)
@@ -447,10 +444,8 @@ return {run = test.run_cases(function()
             for _, skipped in ipairs(summary.skipped) do if skipped.component_id == id then reported = true end end
             test.is_true(reported)
             db = assert(sql.get("app:db"))
-            local jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
-            local selected: table? = nil
-            for _, value in ipairs(jobs) do if value.id == cursor.job_id then selected = value end end
-            db:release(); test.not_nil(selected)
+            local selected = claim_fixture_job(db, cursor.job_id)
+            db:release()
             local result, err = invoke.run({job = selected, payload = {cursor_id = cursor.id}})
             test.is_nil(err); test.is_true(result.invalid)
             db = assert(sql.get("app:db"))
@@ -466,16 +461,8 @@ return {run = test.run_cases(function()
             assert(db:execute("INSERT INTO kickside_thread (id,thread_class,event_count) VALUES ($1,'test',0)", {source}))
             local registered = assert(writer.register_projection(db, source,
                 {kind = "framework", worker_ref = "func://app:test_count_worker", system_identity = true}))
-            local jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
-            local job: table? = nil
-            for _, value in ipairs(jobs) do if value.id == registered.job_id then job = value end end
-            -- At-head registrations park until demand exists.
-            if not job then
-                assert(require("jobs_wake").wake_job(db, registered.job_id, {control = true}, tostring(db:type())))
-                jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
-                for _, value in ipairs(jobs) do if value.id == registered.job_id then job = value end end
-            end
-            test.not_nil(job)
+            assert(require("jobs_wake").wake_job(db, registered.job_id, {control = true}, tostring(db:type())))
+            local job = claim_fixture_job(db, registered.job_id)
             local snapshot = assert(invoke.snapshot(db, registered.cursor_id, registered.job_id))
             db:release()
             local result, err = apply.advance("app:db", job, snapshot, 0,
@@ -532,11 +519,9 @@ return {run = test.run_cases(function()
             assert(tx:commit())
             local after = assert(db:query("SELECT actor_id,execution_identity_json,generation FROM kickside_projection_cursor WHERE id=$1", {before.cursor_id}))[1]
             for key, value in pairs(after) do test.eq(value, before[key]) end
-            local jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
             local cursor = assert(db:query("SELECT id,job_id FROM kickside_projection_cursor WHERE id=$1", {before.cursor_id}))[1]
-            local selected: table? = nil
-            for _, value in ipairs(jobs) do if value.id == cursor.job_id then selected = value end end
-            test.not_nil(selected); db:release()
+            local selected = claim_fixture_job(db, cursor.job_id)
+            db:release()
             local result, err = invoke.run({job = selected, payload = {cursor_id = cursor.id}})
             test.is_nil(err); test.eq(tonumber(result.last_seq), 1)
         end)
@@ -561,11 +546,8 @@ return {run = test.run_cases(function()
             test.is_true(failed.invalid)
             db = assert(sql.get("app:db"))
             assert(require("jobs_wake").wake_job(db, cursor.job_id, {control = true}, tostring(db:type())))
-            local claimed = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
+            local selected = claim_fixture_job(db, cursor.job_id)
             db:release()
-            local selected: table? = nil
-            for _, value in ipairs(claimed) do if value.id == cursor.job_id then selected = value end end
-            test.not_nil(selected)
             local result, err = invoke.run({job = selected, payload = {cursor_id = cursor.id}})
             test.is_nil(err); test.not_nil(result); test.is_true(result.self_completed); test.is_true(result.stale)
         end)
@@ -585,10 +567,7 @@ return {run = test.run_cases(function()
             local summary, converge_err = provision.converge(actor, scope)
             test.is_nil(converge_err)
             db = assert(sql.get("app:db"))
-            local claimed = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
-            local selected: table? = nil
-            for _, value in ipairs(claimed) do if value.id == cursor.job_id then selected = value end end
-            test.not_nil(selected)
+            local selected = claim_fixture_job(db, cursor.job_id)
             snapshot = assert(invoke.snapshot(db, cursor.id, cursor.job_id))
             test.eq(snapshot.component_authority.identity.principal.id, operator)
             local generation = tonumber(adopted.identity_generation)
