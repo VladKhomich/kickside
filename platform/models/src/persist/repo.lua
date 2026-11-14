@@ -316,9 +316,9 @@ function M.list_cards_public(): ({ any }?, any?)
 end
 
 function M.upsert_card(input: any, base: any?, inferred_capabilities: any?): (any?, any?)
-    -- Edit the saved copy when there is one so omitted fields (options and
-    -- capability ownership included) keep their saved values.
-    if type(input) == "table" then
+    -- Without a caller-supplied base, edit the saved copy so omitted fields
+    -- (options and capability ownership included) keep their saved values.
+    if base == nil and type(input) == "table" then
         local overlays, read_err = M.list_card_overlays()
         if read_err then return nil, read_err end
         for _, item in ipairs(overlays) do

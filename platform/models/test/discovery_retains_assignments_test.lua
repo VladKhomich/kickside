@@ -216,6 +216,46 @@ local function define_tests()
             end)
         end)
 
+        test.it("reuses the resolved ownership without copying the catalog before a save", function()
+            capability_case(function(discover)
+                local card = discover({ "generate", "vision" })
+                save({ name = card.name, capabilities = { "generate", "structured_output" } })
+                local original_save, original_list, original_reload = repo.upsert_card, repo.list_card_overlays, repo.reload
+                local lookup_calls, copied_cards = 0, 0
+                local saving, reloading = false, false
+                repo.upsert_card = function(input, base, inferred)
+                    test.not_nil(base.capability_ownership)
+                    test.eq(base.capability_ownership.overrides.vision, false)
+                    test.eq(base.capability_ownership.overrides.structured_output, true)
+                    saving = true
+                    return original_save(input, base, inferred)
+                end
+                repo.list_card_overlays = function()
+                    local cards, err = original_list()
+                    if saving and not reloading then
+                        lookup_calls = lookup_calls + 1
+                        copied_cards = copied_cards + #(cards or {})
+                    end
+                    return cards, err
+                end
+                repo.reload = function()
+                    reloading = true
+                    return original_reload()
+                end
+                local ok, err = pcall(function()
+                    local saved = save({ name = card.name, title = "Edited title" })
+                    test.eq(lookup_calls, 0, "resolved saves perform no additional catalog lookup")
+                    test.eq(copied_cards, 0, "resolved saves copy no catalog entries")
+                    test.eq(saved.capability_ownership.overrides.vision, false)
+                    test.eq(saved.capability_ownership.overrides.structured_output, true)
+                end)
+                repo.upsert_card, repo.list_card_overlays, repo.reload = original_save, original_list, original_reload
+                if not ok then error(err, 0) end
+                card = discover({ "generate", "vision", "tool_use" })
+                test.eq(table.concat(card.capabilities, ","), "generate,tool_use,structured_output")
+            end)
+        end)
+
         test.it("preserves legacy choices across populated upgrades and complete rediscovery", function()
             local db, db_err = sql.get("app:ownership_upgrade_db")
             test.is_nil(db_err)
