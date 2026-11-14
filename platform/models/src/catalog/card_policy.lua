@@ -133,12 +133,6 @@ local function build_card(row: any, profile: any?): (any?, any?)
     }
 end
 
--- A card serves requests when it is enabled and its provider profile is
--- readable and enabled. `enabled` itself is the card's own stored setting.
-local function available(card: any): boolean
-    return card.enabled ~= false and card.error == nil and card.profile_enabled ~= false
-end
-
 local function public_card(card: any): any
     local provider = card.providers and card.providers[1] or {}
     return {
@@ -231,7 +225,6 @@ local function clean_card_input(input: any, base: any?, inferred: any?): (any?, 
 end
 
 M.build_card = build_card
-M.available = available
 M.public_card = public_card
 M.clean_card_input = clean_card_input
 
