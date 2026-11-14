@@ -63,6 +63,15 @@ local function explicit_list(value: any, fallback: { string }): { string }
     return out
 end
 
+local SECRET_KEYS = {
+    api_key = true,
+    access_key = true,
+    secret_key = true,
+    session_token = true,
+    google_credentials = true,
+    access_token = true,
+}
+
 local TOKEN_QUANTITIES = {
     budget = true,
     limit = true,
@@ -112,7 +121,7 @@ local function env_ref_key(key: any): boolean
 end
 
 local function sensitive_config_key(key: any): boolean
-    return sensitive_key(key) and not env_ref_key(key)
+    return (SECRET_KEYS[key] == true or sensitive_key(key)) and not env_ref_key(key)
 end
 
 local function scrub_sensitive(value: any): any
@@ -302,15 +311,6 @@ local function normalize_retry_config(raw: any): any?
     return retry
 end
 
-local SECRET_KEYS = {
-    api_key = true,
-    access_key = true,
-    secret_key = true,
-    session_token = true,
-    google_credentials = true,
-    access_token = true,
-}
-
 local function secret_value(value: any): any
     if type(value) == "string" then
         if value ~= "" then return value end
@@ -332,14 +332,14 @@ local function copy_config(input: any, existing_config: any?): any
     if type(input.config) == "table" then
         for k, v in pairs(input.config) do
             local key = tostring(k)
-            if not SECRET_KEYS[key] and not sensitive_config_key(key) then
+            if not sensitive_config_key(key) then
                 config[key] = type(v) == "table" and public_config(v) or v
             end
         end
     end
     for _, key in ipairs(CONFIG_KEYS) do
         local v = input[key]
-        if v ~= nil and not SECRET_KEYS[key] and not sensitive_config_key(key) then
+        if v ~= nil and not sensitive_config_key(key) then
             config[key] = type(v) == "table" and public_config(v) or v
         end
     end

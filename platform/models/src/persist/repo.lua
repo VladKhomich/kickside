@@ -177,12 +177,15 @@ local function insert_profile(exec: Executor, id: string, cleaned: any, secret_j
     return nil
 end
 
-local function update_profile_row(exec: Executor, id: string, cleaned: any, secret_json: string, ts: integer): any?
+local function update_profile_row(exec: Executor, id: string, cleaned: any, secret_json: string?, ts: integer): any?
+    local secret_assignment = secret_json ~= nil and ", secret_json = $6" or ""
+    local args = { cleaned.name, cleaned.provider_id, policy.encode_json(cleaned.config), policy.bool_int(cleaned.enabled), ts }
+    if secret_json ~= nil then table.insert(args, secret_json) end
+    table.insert(args, id)
     local _, err = exec:execute([[
         UPDATE kickside_model_provider_profiles
-        SET name = $1, provider_id = $2, config_json = $3, secret_json = $4, enabled = $5, updated_at = $6
-        WHERE id = $7
-    ]], { cleaned.name, cleaned.provider_id, policy.encode_json(cleaned.config), secret_json, policy.bool_int(cleaned.enabled), ts, id })
+        SET name = $1, provider_id = $2, config_json = $3, enabled = $4, updated_at = $5
+    ]] .. secret_assignment .. " WHERE id = $" .. tostring(#args), args)
     if err then return "profile update failed: " .. tostring(err) end
     return nil
 end
@@ -339,7 +342,7 @@ function M.list_cards(): ({ any }?, any?)
     if err then return nil, err end
     local out = {}
     for _, card in ipairs(snap.cards or {}) do
-        if card_policy.available(card) then table.insert(out, card) end
+        if card.available ~= false then table.insert(out, card) end
     end
     return out
 end
@@ -482,10 +485,8 @@ function M.import(doc: any): (any?, any?)
             { existing.name, existing.provider_id, existing.config, existing.enabled }) then
             table.insert(report.profiles.unchanged, id)
         else
-            local secret_json, secret_err = policy.encrypt_secret(cleaned.secret_config)
-            if secret_json == nil then return nil, "profile " .. id .. ": " .. tostring(secret_err) end
             table.insert(existing and report.profiles.updated or report.profiles.created, id)
-            table.insert(profile_writes, { id = id, cleaned = cleaned, secret_json = secret_json, existing = existing })
+            table.insert(profile_writes, { id = id, cleaned = cleaned, existing = existing })
         end
     end
 
@@ -531,9 +532,9 @@ function M.import(doc: any): (any?, any?)
     local write_err: any = nil
     for _, write in ipairs(profile_writes) do
         if write.existing then
-            write_err = update_profile_row(tx, write.id, write.cleaned, write.secret_json, ts)
+            write_err = update_profile_row(tx, write.id, write.cleaned, nil, ts)
         else
-            write_err = insert_profile(tx, write.id, write.cleaned, write.secret_json, ts)
+            write_err = insert_profile(tx, write.id, write.cleaned, "", ts)
         end
         if write_err then break end
     end

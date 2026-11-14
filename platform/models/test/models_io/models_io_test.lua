@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- Contract: GET /models/export and POST /models/import.
 --
 -- The export document carries provider profiles (env pointers, never secret
@@ -13,6 +14,8 @@ local export_handler = require("export_handler")
 local import_handler = require("import_handler")
 local models_repo = require("models_repo")
 local model_catalog = require("model_catalog")
+local card_policy = require("card_policy")
+local policy = require("catalog_policy")
 
 local COMPAT = "wippy.llm.openai_compat:provider"
 local SECRET_VALUE = "synthetic-secret-value-0001"
@@ -227,6 +230,53 @@ local function define_tests()
             end)
         end)
 
+        test.it("scrubs nested configuration stored by earlier releases using the shared credential rules", function()
+            scenario(function()
+                local nested = { label = "edge", token_budget = 4096, maxTokens = 8192,
+                    password = NESTED_SECRET, vendorAPIKey = NESTED_SECRET, access_key = NESTED_SECRET,
+                    token_budget_secret = NESTED_SECRET, api_key_env = "NESTED_API_KEY",
+                    items = { { access_token = NESTED_SECRET, access_token_env = "NESTED_TOKEN", token_count = 7 } } }
+                local db = assert(sql.get("app:db"))
+                local _, err = db:execute("UPDATE kickside_model_provider_profiles SET config_json = $1 WHERE id = $2",
+                    { encoded({ extra = nested }), "io-env-gateway" })
+                db:release()
+                test.is_nil(err)
+                local doc, raw = export_document()
+                test.is_nil(raw:find(NESTED_SECRET, 1, true), "stored nested credential exported")
+                local config = find(doc.profiles, "id", "io-env-gateway").config.extra
+                test.eq(config.label, "edge")
+                test.eq(config.token_budget, 4096)
+                test.eq(config.maxTokens, 8192)
+                test.eq(config.api_key_env, "NESTED_API_KEY")
+                test.eq(config.items[1].access_token_env, "NESTED_TOKEN")
+                test.eq(config.items[1].token_count, 7)
+            end)
+        end)
+
+        test.it("uses reload availability without evaluating profile state during resolution", function()
+            scenario(function()
+                local snap = assert(models_repo.reload())
+                test.eq(find(snap.cards, "name", "io-env-gateway/synthetic-chat").available, true)
+                test.eq(find(snap.cards, "name", "io-keyed-gateway/synthetic-off").available, false)
+                test.eq(find(snap.cards, "name", "io-paused-gateway/synthetic-held").available, false)
+                local original = card_policy.available
+                local calls = 0
+                card_policy.available = function(card)
+                    calls = calls + 1
+                    return original(card)
+                end
+                local ok, err = pcall(function()
+                    for _ = 1, 1000 do
+                        test.not_nil(model_catalog.resolve("io-env-gateway/synthetic-chat"))
+                        test.not_nil(model_catalog.resolve("class:balanced"))
+                    end
+                    test.eq(calls, 0, "resolution repeats effective availability checks")
+                end)
+                card_policy.available = original
+                if not ok then error(err, 0) end
+            end)
+        end)
+
         test.it("never exports a stored secret and names what it omitted", function()
             scenario(function()
                 local doc, raw = export_document()
@@ -308,6 +358,44 @@ local function define_tests()
                 local keyed = models_repo.get_profile("io-keyed-gateway")
                 test.eq(keyed.secret_config.api_key, SECRET_VALUE)
                 test.eq(keyed.config.timeout, 45)
+            end)
+        end)
+
+        test.it("preserves exact ciphertext when importing profile configuration after a credential rotation", function()
+            scenario(function()
+                local doc = export_document()
+                find(doc.profiles, "id", "io-keyed-gateway").config.timeout = 46
+                local rotated = assert(policy.encrypt_secret({ api_key = "synthetic-rotated-secret-0003" }))
+                local reload = models_repo.reload
+                local injected = false
+                models_repo.reload = function()
+                    local snapshot, err = reload()
+                    if not injected and not err then
+                        injected = true
+                        local db = assert(sql.get("app:db"))
+                        local _, write_err = db:execute("UPDATE kickside_model_provider_profiles SET secret_json = $1 WHERE id = $2",
+                            { rotated, "io-keyed-gateway" })
+                        db:release()
+                        test.is_nil(write_err)
+                    end
+                    return snapshot, err
+                end
+                local ok, err = pcall(function()
+                    local status, result = post_import(doc)
+                    test.eq(status, 200, tostring(result and result.error))
+                    test.is_true(injected, "rotation must occur after import reads the snapshot")
+                    local db = assert(sql.get("app:db"))
+                    local rows, read_err = db:query("SELECT secret_json FROM kickside_model_provider_profiles WHERE id = $1",
+                        { "io-keyed-gateway" })
+                    db:release()
+                    test.is_nil(read_err)
+                    test.eq(rows[1].secret_json, rotated, "config import rewrites rotated ciphertext")
+                    local profile = models_repo.get_profile("io-keyed-gateway")
+                    test.eq(profile.secret_config.api_key, "synthetic-rotated-secret-0003")
+                    test.eq(profile.config.timeout, 46)
+                end)
+                models_repo.reload = reload
+                if not ok then error(err, 0) end
             end)
         end)
 
