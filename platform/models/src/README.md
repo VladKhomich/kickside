@@ -101,6 +101,15 @@ Discovery updates cards by the same names: it keeps an imported card's
 classes and enabled state, keeps its token limits where the provider reports
 none, and rewrites the other discovered fields.
 
+A card's `capability_ownership` (its inferred capabilities and administrator
+overrides) is imported as the card's saved ownership, and the card's
+`capabilities` are recorded against it as an admin save records them, so an
+unedited document reproduces the source's overrides, removals included.
+
+Discovery updates cards by the same names: it keeps an imported card's
+classes, enabled state, and capability overrides, keeps its token limits where
+the provider reports none, and rewrites the other discovered fields.
+
 ## Runtime resolution
 
 `kickside.models:model_resolver` binds `wippy.llm:model_resolver`, so

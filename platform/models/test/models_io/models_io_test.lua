@@ -13,6 +13,7 @@ local fake_http = require("fake_http")
 local export_handler = require("export_handler")
 local import_handler = require("import_handler")
 local models_repo = require("models_repo")
+local discovery = require("discovery")
 local model_catalog = require("model_catalog")
 local card_policy = require("card_policy")
 local policy = require("catalog_policy")
@@ -399,6 +400,45 @@ local function define_tests()
             end)
         end)
 
+        test.it("keeps capability overrides through export, import and rediscovery", function()
+            scenario(function()
+                local original_adapter = discovery.adapter_for
+                local inferred = { "generate", "vision" }
+                discovery.adapter_for = function() return {
+                    fetch = function() return { { id = "synthetic-owned", context_length = 8192,
+                        max_output_tokens = 1024, pricing = { prompt = "0" } } }, nil end,
+                    capabilities = function() return inferred end,
+                } end
+                local ok, err = pcall(function()
+                    local function discover(capabilities: { string }): any
+                        inferred = capabilities
+                        local result, discovery_err = discovery.discover("io-env-gateway")
+                        test.is_nil(discovery_err, "discover")
+                        return find(result.models, "provider_model", "synthetic-owned")
+                    end
+                    local card = discover({ "generate", "vision" })
+                    local _, save_err = models_repo.upsert_card({ name = card.name,
+                        capabilities = { "generate", "structured_output" } })
+                    test.is_nil(save_err, "override capabilities")
+
+                    local doc = export_document()
+                    remove_fixtures()
+                    local status, result = post_import(doc)
+                    test.eq(status, 200, "import failed: " .. tostring(result and result.error))
+                    test.is_true(has(result.cards.created, card.name))
+
+                    card = discover({ "generate", "vision", "tool_use" })
+                    test.eq(table.concat(card.capabilities, ","), "generate,tool_use,structured_output",
+                        "the removal of vision and the addition of structured_output survive the round trip")
+                    local saved = models_repo.upsert_card({ name = card.name, reset_capabilities = { "vision" } })
+                    test.eq(table.concat(saved.capabilities, ","), "generate,vision,tool_use,structured_output",
+                        "an imported override resets to discovery")
+                end)
+                discovery.adapter_for = original_adapter
+                if not ok then error(err, 0) end
+            end)
+        end)
+
         test.it("refuses an invalid document without writing any of it", function()
             scenario(function()
                 local before_profiles, before_cards = count_rows()
@@ -444,6 +484,11 @@ local function define_tests()
                     card_without_limits = { version = 1, profiles = { changed_existing, valid_profile }, cards = { valid_card, {
                         name = "io-fresh-gateway/limitless", provider_id = COMPAT, provider_profile_id = "io-fresh-gateway",
                         provider_model = "limitless", capabilities = { "generate" }, enabled = true,
+                    } } },
+                    malformed_ownership = { version = 1, profiles = { valid_profile }, cards = { {
+                        name = "io-fresh-gateway/owned", provider_id = COMPAT, provider_profile_id = "io-fresh-gateway",
+                        provider_model = "owned", capabilities = { "generate" }, max_tokens = 100, output_tokens = 10, enabled = true,
+                        capability_ownership = { inferred = { "generate" }, overrides = { vision = "yes" } },
                     } } },
                     card_without_profile = { version = 1, profiles = { valid_profile }, cards = { valid_card, {
                         name = "io-ghost/model", provider_id = COMPAT, provider_profile_id = "io-ghost-gateway",

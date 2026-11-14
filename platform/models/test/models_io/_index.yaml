@@ -40,5 +40,6 @@ entries:
       import_handler: app:models_io_import
       models_repo: kickside.models.persist:repo
       model_catalog: kickside.models.catalog:model_catalog
+      discovery: kickside.models.discovery:model_discovery
       card_policy: kickside.models.catalog:card_policy
       catalog_policy: kickside.models.catalog:policy
