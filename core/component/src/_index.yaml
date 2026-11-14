@@ -319,7 +319,7 @@ entries:
   - name: context_policy
     kind: library.lua
     source: file://context.lua
-    modules: [security, contract, sql, funcs]
+    modules: [security, contract, sql]
     imports:
       secret_fields: kickside.component:secret_fields
       error_envelope: kickside.contract:error_envelope
