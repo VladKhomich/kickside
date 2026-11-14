@@ -26,7 +26,10 @@ function M.encode(_body: any): (any, error?)
 end
 function M.from_row(...: any): (any, error?) return M.outcome("identity", {component_id = "component"}) end
 function M.run_as(...: any): (any, error?)
-    return M.outcome("admission", {writes = {{thread_id = "other", events = {{type = "example", body_json = "{}"}}}}})
+    return M.outcome("admission", {checks = {}, writes = {{thread_id = "other", events = {{type = "example", body_json = "{}"}}}}})
+end
+function M.call(_target: string, args: table): (any, error?)
+    return M.outcome("admission", {writes = args.writes, checks = {}})
 end
 function M.append_system_tx(_tx: any, _dbtype: any, thread_id: any, _events: any, _completion_id: any, opts: any): (any, error?)
     M.appends = M.appends + 1

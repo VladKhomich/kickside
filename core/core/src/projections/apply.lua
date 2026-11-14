@@ -197,7 +197,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     for index, check in ipairs(checks) do
         local statement, args = component_access.effective_mask_query(check.subjects, check.component_id)
         local offset = #fence_args
-        statement = statement:gsub("%$(%d+)", function(raw) return "$" .. tostring(tonumber(raw) + offset) end)
+        statement = statement:gsub("%$(%d+)", function(raw) return "$" .. tostring((tonumber(raw) :: number) + offset) end)
         columns[#columns + 1] = "(" .. statement .. ") AS access_" .. tostring(index)
         for _, arg in ipairs(args) do fence_args[#fence_args + 1] = arg end
     end
@@ -402,7 +402,7 @@ function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: 
             if not authorization_error then
                 local required_checks, check_err = owner_identity.access_checks(snapshot.component_authority, subjects, prefixes)
                 authorization_error = check_err
-                if not authorization_error then checks = required_checks end
+                if not authorization_error then checks = required_checks :: table[] end
             end
         elseif not authorization_error then
             local executor, builder_err = funcs.new()

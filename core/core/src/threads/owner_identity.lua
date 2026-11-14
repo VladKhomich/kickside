@@ -128,7 +128,7 @@ function M.from_snapshot(row: table): (table?, error?)
     local expected, expected_err = M.of_owner(stored, row.owner_key, row.owner_key)
     if expected_err then return nil, expected_err end
     local actor_id = expected.row and expected.row.actor_id or expected.owner
-    local actor_context = expected.row and expected.row.actor_context or nil
+    local actor_context = expected.row and (expected.row :: any).actor_context or nil
     if not execution_identity.rows_equal(row.actor_id, row.execution_identity_json, actor_id, actor_context)
         or not execution_identity.rows_equal(row.projection_actor_id, row.projection_actor_context, actor_id, actor_context) then
         return nil, denied("projection_owner_binding_changed", "component projection binding differs from its current owner")

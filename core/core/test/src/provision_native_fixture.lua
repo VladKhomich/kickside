@@ -11,6 +11,7 @@ function M.reset(stage: string, source: any)
     M.retentions, M.grants, M.calls, M.contract_gets, M.opens = 0, 0, 0, 0, 0, 0
 end
 local db = {}
+function db:query(statement: string, args: table): (table?, error?) return {}, nil end
 function db:type(): string return "sqlite" end
 function db:begin(): any return {commit = function(): boolean return true end} end
 function M.converge_own(tx: any, dialect: string, id: string, impl: string): (string?, error?)
@@ -104,7 +105,7 @@ function M.builder.select(columns: string, ...: any): any
         if (M.changed_count or M.unchanged_count) and limit == 1 and not digest_scan then
             return {{component_id = "component"}}, nil
         end
-        if M.lifecycle and not digest_scan then
+        if (M.changed_count or M.unchanged_count) and not digest_scan then
             assert(limit and limit <= 256, "lifecycle candidates stay bounded")
             local rows = {}
             for index = after + 1, math.min(after + limit, M.changed_count or M.unchanged_count) do
@@ -122,18 +123,7 @@ function M.builder.select(columns: string, ...: any): any
             M.max_page = math.max(M.max_page, #rows)
             return rows, nil
         end
-        if M.unchanged_count then
-            if digest_scan then return {}, nil end
-            if not projection then return {}, nil end
-            assert(limit and limit <= 256, "projection scan must have a bounded page")
-            local rows = {}
-            for index = after + 1, math.min(after + limit, M.unchanged_count) do
-                rows[#rows + 1] = {component_id = string.format("%06d", index), cursor_id = "cursor", job_id = "job",
-                    body = '{"meta":{"worker_ref":"func://app:test_count_worker","worker_runtime":"func","worker_input_mode":"cursor_only"},"stats":{"count":9}}'}
-            end
-            M.max_page = math.max(M.max_page, #rows)
-            return rows, nil
-        end
+        if M.unchanged_count then return {}, nil end
         return {{component_id = "component"}}, nil
     end
     return chain

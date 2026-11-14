@@ -98,7 +98,7 @@ return {run = test.run_cases(function()
             test.eq(#after, 2)
             for index, value in ipairs(after) do
                 test.eq(value.actor_id, "system:lifecycle"); test.is_nil(value.execution_identity_json)
-                test.eq(tonumber(value.generation), tonumber(before[index].generation) + 1)
+                test.eq(tonumber(value.generation), (tonumber(before[index].generation) :: number) + 1)
                 test.eq(value.last_seq, before[index].last_seq)
                 test.eq(value.status, value.id == secondary.cursor_id and "paused" or "active")
             end

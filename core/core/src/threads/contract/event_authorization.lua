@@ -347,8 +347,9 @@ function M.authorize_writes(args: any): (table?, error?)
     if subjects_err then return nil, subjects_err end
     if owner then
         local check_err: error?
-        checks, check_err = owner_identity.access_checks(owner, subjects, prefixes)
+        local required_checks, check_err = owner_identity.access_checks(owner, subjects, prefixes)
         if check_err then return nil, check_err end
+        checks = required_checks :: table[]
     end
     if #writes > 0 then
         local db, db_err = common.open_db()

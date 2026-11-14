@@ -971,6 +971,9 @@ entries:
     source: file://src_link/threads/provision.lua
     modules: [funcs, sql]
     imports:
+      job_types: kickside.core.jobs:types
+      jobs_wake: kickside.core.jobs.persist:wake
+      owner_identity: kickside.core.threads:owner_identity
       component_envelope: kickside.component:envelope
       error_envelope: kickside.contract:error_envelope
       contract: app:provision_error_contract
@@ -2678,7 +2681,7 @@ entries:
   - name: audit_publication_native_source
     kind: library.lua
     source: file://audit_publication_native_source.lua
-    modules: [uuid, process]
+    modules: [security, uuid, process]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       sql: app:audit_publication_native_sql_adapter
@@ -2808,6 +2811,9 @@ entries:
     kind: library.lua
     source: file://provision_native_source.lua
     imports:
+      job_types: kickside.core.jobs:types
+      jobs_wake: kickside.core.jobs.persist:wake
+      owner_identity: kickside.core.threads:owner_identity
       contract: app:provision_native_contract_adapter
       funcs: app:provision_native_funcs_adapter
       sql: app:provision_native_sql_adapter
@@ -2970,6 +2976,10 @@ entries:
     source: file://projection_worker_native_source.lua
     modules: [process, time, security]
     imports:
+      core_types: kickside.core:types
+      access_subjects: kickside.component.persist:access_subjects
+      core_db: kickside.core:db
+      component_access: kickside.component.persist:access_ops
       sql: app:projection_worker_native_sql_adapter
       json: app:projection_worker_native_json_adapter
       funcs: app:projection_worker_native_funcs_adapter
@@ -3173,6 +3183,7 @@ entries:
     kind: library.lua
     source: file://projection_invoke_native_source.lua
     imports:
+      owner_identity: kickside.core.threads:owner_identity
       time: app:projection_invoke_native_time_adapter
       sql: app:projection_invoke_native_sql_adapter
       error_envelope: kickside.contract:error_envelope
@@ -3470,10 +3481,23 @@ entries:
     imports:
       fixture: app:projection_apply_native_fixture
 
+  - name: projection_apply_native_funcs_adapter
+    kind: library.lua
+    source: file://projection_apply_native_dependency_adapter.lua
+    imports:
+      fixture: app:projection_apply_native_fixture
+
   - name: projection_apply_native_source
     kind: library.lua
     source: file://projection_apply_native_source.lua
     imports:
+      funcs: app:projection_apply_native_funcs_adapter
+      owner_identity: kickside.core.threads:owner_identity
+      access_subjects: kickside.component.persist:access_subjects
+      component_placement: kickside.component.persist:placement
+      component_access_policy: kickside.component:access_policy
+      worker: kickside.core.projections.persist:worker
+      component_access: kickside.component.persist:access_ops
       error_envelope: kickside.contract:error_envelope
       sql: app:projection_apply_native_sql_adapter
       json: app:projection_apply_native_json_adapter

@@ -82,6 +82,11 @@ M.ALLOW = {
         },
     },
     ["core/core/src/threads/component_identity.lua"] = {
+        component_owner_record = {
+            count = 1,
+            why = "declared projection authority reads the reserved owner record through the trusted component boundary",
+            entry = "kickside.core.threads:component_identity",
+        },
         get_private_context = {
             count = 1,
             why = "owner loader for a component's stored execution identity: declared thread projections and converge run under it",

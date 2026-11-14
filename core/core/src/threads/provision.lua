@@ -237,7 +237,7 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
         end
         if #filters == 0 then return nil end
         local cursors, read_err = db:query([[SELECT c.job_id FROM kickside_projection p
-            JOIN kickside_projection_cursor c ON c.projection_id=p.id WHERE c.status='active' AND (]]
+            JOIN kickside_projection_cursor c ON c.projection_id=p.id WHERE c.status='active' AND c.job_id IS NOT NULL AND (]]
             .. table.concat(filters, " OR ") .. ")", args)
         if read_err then return read_err end
         if type(cursors) ~= "table" then return missing_result("owner_failure_cursors") end
