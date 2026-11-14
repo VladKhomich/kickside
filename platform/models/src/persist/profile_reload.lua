@@ -62,7 +62,7 @@ local function reload(): (any?, any?)
 
     local card_rows, cerr = tx:query([[
         SELECT name, title, description, provider_id, provider_profile_id, provider_model,
-               capabilities_json, classes_json, priority, max_tokens, output_tokens,
+               capabilities_json, classes_json, priority, max_tokens, output_tokens, capability_ownership_json,
                dimensions, pricing_json, options_json, source, enabled, metadata_json,
                created_at, updated_at
         FROM kickside_model_cards
