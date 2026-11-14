@@ -9,7 +9,7 @@ local fake_http = require("fake_http")
 local admin_handler = require("admin_handler")
 
 local secret_keys = {
-    "api_key", "access_key", "secret_key", "session_token", "google_credentials", "access_token",
+    "api_key", "secret_key", "session_token", "google_credentials", "access_token",
     "headers", "authorization", "password", "api_token", "auth_token", "credential_blob",
     "api-key", "apikey", "secret", "token", "credential", "credentials",
     "access-token", "accesstoken", "anthropic_api_key", "api-token", "apitoken",
@@ -62,10 +62,12 @@ local mixed_case_credentials = {
     "authorization_header", "authorizationHeader", "authorization-header",
     "dbpassword", "databasePasswords", "awscredentials",
     "token_budget_secret", "tokens_password", "tokens_authorization", "tokens_credential",
-    "tokens_api_key", "tokens-api-key", "tokensAPIKey", "tokens.api.key",
+    "tokens_api_key", "tokens-api-key", "tokensAPIKey",
 }
 
 local ordinary_metadata = {
+    headers_env = "CREDENTIAL_REFERENCE", accessKey = "ordinary", ["access-key"] = "ordinary",
+    ["api.key"] = "ordinary", ["tokens.api.key"] = "ordinary", ACCESS_KEY = "ordinary",
     max_tokens = 8192, output_tokens = 1024, token_budget = 4096,
     token_limit = 2048, tokens_per_minute = 60000, max_output_tokens = 2048, key_count = 3,
     context_window = 32768,
@@ -116,8 +118,93 @@ local function assert_card(card)
     assert_metadata(card.metadata.nested)
 end
 
+-- Reference copy of the published classifier; quantities are its only exemption.
+local function main_filter(key)
+    local k = tostring(key or ""):lower()
+    return k == "headers"
+        or k:find("secret", 1, true) ~= nil
+        or k:find("token", 1, true) ~= nil
+        or k:find("api_key", 1, true) ~= nil
+        or k:find("api-key", 1, true) ~= nil
+        or k:find("apikey", 1, true) ~= nil
+        or k:find("authorization", 1, true) ~= nil
+        or k:find("password", 1, true) ~= nil
+        or k:find("credential", 1, true) ~= nil
+end
+
+local function token_quantity(key)
+    local name = key:lower()
+    for _, marker in ipairs({ "secret", "password", "authorization", "credential", "api_key", "api-key", "apikey" }) do
+        if name:find(marker, 1, true) then return false end
+    end
+    local normalized = key:gsub("(%u)(%u%l)", "%1 %2"):gsub("(%l)(%u)", "%1 %2"):lower()
+    local words = {}
+    for word in normalized:gmatch("%a+") do table.insert(words, word) end
+    local quantities = { budget = true, limit = true, count = true, usage = true, cost = true,
+        rate = true, length = true, window = true, quota = true, size = true }
+    for i, word in ipairs(words) do
+        if word == "tokens" or (word == "token" and quantities[words[i + 1]]) then return true end
+    end
+    return false
+end
+
+local declared_secret_keys = { api_key = true, access_key = true, secret_key = true,
+    session_token = true, google_credentials = true, access_token = true }
+
+local function generated_corpus()
+    local words = { "api", "key", "access", "secret", "token", "tokens", "authorization", "password",
+        "credential", "headers", "client", "value", "budget", "limit", "count", "usage", "cost", "rate",
+        "length", "window", "quota", "size", "max", "output", "per", "minute", "context", "env", "private", "data" }
+    local fields = {}
+    for _, left in ipairs(words) do
+        fields[left] = "value"
+        for _, right in ipairs(words) do
+            local camel = left .. right:sub(1, 1):upper() .. right:sub(2)
+            local forms = { left .. "_" .. right, left .. "-" .. right, left .. "." .. right,
+                camel, left .. right, left .. "2" .. right }
+            for _, name in ipairs(forms) do
+                for _, variant in ipairs({ name, name:upper(), name .. "_env" }) do fields[variant] = "value" end
+            end
+        end
+    end
+    for name in pairs(declared_secret_keys) do
+        fields[name] = "value"
+        fields[name:upper()] = "value"
+        fields[name .. "_env"] = "value"
+    end
+    fields.headers_env = "value"
+    fields["tokens.api.key"] = "value"
+    return fields
+end
+
 local function define_tests()
     test.describe("credential filtering and token quantities", function()
+        test.it("matches the published filter except token quantities across generated key forms", function()
+            local fields = generated_corpus()
+            local scrubbed = policy.scrub_sensitive(fields)
+            local card = card_policy.public_card({ providers = { { options = fields } }, metadata = fields })
+            local profile = policy.public_profile({ config = fields })
+            local clean, err = policy.clean_profile_input({ name = "Generated policy",
+                provider_id = "wippy.llm.openai_compat:provider", config = fields })
+            test.is_nil(err)
+            local count = 0
+            for name, value in pairs(fields) do
+                count = count + 1
+                local protected = main_filter(name) and not token_quantity(name)
+                local expected = not protected and value or nil
+                test.eq(scrubbed[name], expected, "scrub " .. name)
+                test.eq(card.options[name], expected, "card options " .. name)
+                test.eq(card.metadata[name], expected, "card metadata " .. name)
+                local config_expected = (not protected or name:lower():match("_env$")) and value or nil
+                test.eq(profile.config[name], config_expected, "public config " .. name)
+                -- Main separates declared provider secrets by their exact spelling.
+                if declared_secret_keys[name] then config_expected = nil end
+                test.eq(clean.config[name], config_expected, "saved config " .. name)
+            end
+            test.is_true(count >= 15000, "generated corpus size: " .. tostring(count))
+            test.eq(clean.secret_config.access_key, "value")
+        end)
+
         test.it("preserves declared and substring credential protection while retaining ordinary metadata", function()
             local result = policy.scrub_sensitive({ nested = payload(), items = { payload() } })
             assert_scrubbed(result.nested)
@@ -149,8 +236,9 @@ local function define_tests()
             assert_metadata(public.config)
             for _, key in ipairs(secret_keys) do
                 test.eq(public.config[key .. "_env"], "CREDENTIAL_REFERENCE")
-                test.is_nil(scrubbed[key .. "_env"])
-                test.is_nil(policy.scrub_sensitive({ [key:upper() .. "_ENV"] = "CREDENTIAL_REFERENCE" })[key:upper() .. "_ENV"])
+                local expected = key == "headers" and "CREDENTIAL_REFERENCE" or nil
+                test.eq(scrubbed[key .. "_env"], expected, key .. "_env")
+                test.eq(policy.scrub_sensitive({ [key:upper() .. "_ENV"] = "CREDENTIAL_REFERENCE" })[key:upper() .. "_ENV"], expected)
             end
             for _, key in ipairs(mixed_case_credentials) do
                 test.eq(public.config[key .. "_env"], "CREDENTIAL_REFERENCE")

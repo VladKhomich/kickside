@@ -63,15 +63,6 @@ local function explicit_list(value: any, fallback: { string }): { string }
     return out
 end
 
-local SECRET_KEYS = {
-    api_key = true,
-    access_key = true,
-    secret_key = true,
-    session_token = true,
-    google_credentials = true,
-    access_token = true,
-}
-
 local TOKEN_QUANTITIES = {
     budget = true,
     limit = true,
@@ -91,19 +82,8 @@ local function key_words(key: any): string
         :lower():gsub("[^%a]+", "_"):gsub("^_", ""):gsub("_$", "")
 end
 
-local DECLARED_CREDENTIALS = {}
-for key in pairs(SECRET_KEYS) do DECLARED_CREDENTIALS[key_words(key)] = true end
-
-local function env_ref_key(key: any): boolean
-    return tostring(key or ""):lower():match("_env$") ~= nil
-end
-
 local function sensitive_key(key: any): boolean
-    local name = tostring(key or "")
-    if env_ref_key(name) then name = name:sub(1, -5) end
-    local k = name:lower()
-    local words = key_words(name)
-    if DECLARED_CREDENTIALS[words] then return true end
+    local k = tostring(key or ""):lower()
     if k == "headers"
         or k:find("secret", 1, true) ~= nil
         or k:find("api_key", 1, true) ~= nil
@@ -116,7 +96,7 @@ local function sensitive_key(key: any): boolean
     end
     if not k:find("token", 1, true) then return false end
     -- Token quantities are public only when no other credential marker exists.
-    if ("_" .. words .. "_"):find("_api_key_", 1, true) then return true end
+    local words = key_words(key)
     local previous = ""
     for word in words:gmatch("%a+") do
         if word == "tokens" or (previous == "token" and TOKEN_QUANTITIES[word]) then
@@ -125,6 +105,10 @@ local function sensitive_key(key: any): boolean
         previous = word
     end
     return true
+end
+
+local function env_ref_key(key: any): boolean
+    return tostring(key or ""):lower():match("_env$") ~= nil
 end
 
 local function sensitive_config_key(key: any): boolean
@@ -253,6 +237,15 @@ local function normalize_retry_config(raw: any): any?
 
     return retry
 end
+
+local SECRET_KEYS = {
+    api_key = true,
+    access_key = true,
+    secret_key = true,
+    session_token = true,
+    google_credentials = true,
+    access_token = true,
+}
 
 local function secret_value(value: any): any
     if type(value) == "string" then
