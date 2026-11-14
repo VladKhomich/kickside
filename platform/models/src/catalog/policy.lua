@@ -103,15 +103,28 @@ local function has_fields(value: any): boolean
     return false
 end
 
+-- Sensitive keys are dropped at every depth; `*_env` pointers name a variable,
+-- not its value, and stay.
 local function public_config(config: any): any
     if type(config) ~= "table" then return {} end
     local out = {}
     for k, v in pairs(config) do
-        if tostring(k) ~= "headers" and not sensitive_config_key(k) then
-            out[k] = v
+        if not sensitive_config_key(k) then
+            out[k] = type(v) == "table" and public_config(v) or v
         end
     end
     return out
+end
+
+local function same_value(a: any, b: any): boolean
+    if type(a) ~= "table" or type(b) ~= "table" then return a == b end
+    for k, v in pairs(a) do
+        if not same_value(v, b[k]) then return false end
+    end
+    for k, _ in pairs(b) do
+        if a[k] == nil then return false end
+    end
+    return true
 end
 
 local function public_profile(profile: any): any
@@ -143,6 +156,20 @@ local function public_profile(profile: any): any
         has_api_key = type(profile.secret_config) == "table" and type(profile.secret_config.api_key) == "string" and profile.secret_config.api_key ~= "",
         has_api_key_env = type(config.api_key_env) == "string" and config.api_key_env ~= "",
         secret_fields = secret_fields,
+    }
+end
+
+-- A profile in the export document: its public settings and the names of the
+-- stored secrets the document leaves out.
+local function export_profile(profile: any): any
+    local public = public_profile(profile)
+    return {
+        id = public.id,
+        name = public.name,
+        provider_id = public.provider_id,
+        enabled = public.enabled,
+        config = public.config,
+        secret_fields = #public.secret_fields > 0 and public.secret_fields or nil,
     }
 end
 
@@ -238,13 +265,14 @@ local function copy_config(input: any, existing_config: any?): any
         for k, v in pairs(input.config) do
             local key = tostring(k)
             if not SECRET_KEYS[key] and not sensitive_config_key(key) then
-                config[key] = v
+                config[key] = type(v) == "table" and public_config(v) or v
             end
         end
     end
     for _, key in ipairs(CONFIG_KEYS) do
-        if input[key] ~= nil and not SECRET_KEYS[key] and not sensitive_config_key(key) then
-            config[key] = input[key]
+        local v = input[key]
+        if v ~= nil and not SECRET_KEYS[key] and not sensitive_config_key(key) then
+            config[key] = type(v) == "table" and public_config(v) or v
         end
     end
     for k, v in pairs(config) do
@@ -408,6 +436,8 @@ M.encrypt_secret = encrypt_secret
 M.decrypt_secret = decrypt_secret
 M.provider_context = provider_context
 M.public_profile = public_profile
+M.export_profile = export_profile
+M.same_value = same_value
 M.clean_profile_input = clean_profile_input
 
 return M
