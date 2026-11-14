@@ -167,44 +167,16 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     end
     if authority then include_component(authority.component_id) end
     for _, check in ipairs(checks) do include_component(check.component_id) end
-    local component_rows: {[string]: table} = {}
-    if #component_ids > 0 then
-        local marks: {string} = {}
-        for i in ipairs(component_ids) do marks[#marks + 1] = "$" .. tostring(i) end
-        local marked = table.concat(marks, ",")
-        local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-        local owners, owner_err = tx:query([[SELECT component_id,identity_generation,path FROM kickside_components
-            WHERE component_id IN (SELECT ancestor_id FROM kickside_component_ancestor WHERE component_id IN (]] .. marked .. [[)
-            UNION SELECT component_id FROM kickside_components WHERE component_id IN (]] .. marked .. [[))
-            ORDER BY component_id]] .. suffix, component_ids)
-        if owner_err then return abort(errors.wrap(owner_err, "lock projection component authority")) end
-        if type(owners) ~= "table" then return abort(response_error("owner.rows")) end
-        for _, owner in ipairs(owners) do component_rows[owner.component_id] = owner end
-        if authority then
-            local owner = component_rows[authority.component_id]
-            owner_stale = owner == nil or tonumber(owner.identity_generation) ~= authority.generation
-        end
-    end
-    local locked_threads, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, ids)
+    local locked_threads, lock_err, component_rows, rows = threads_writer.lock_thread_rows_tx(tx, dbtype, ids, component_ids, snapshot.id)
     if lock_err then return abort(lock_err) end
+    if authority then
+        local owner = component_rows and component_rows[authority.component_id]
+        owner_stale = owner == nil or tonumber(owner.identity_generation) ~= authority.generation
+    end
     if type(locked_threads) ~= "table" then return abort(response_error("locked_threads")) end
     local source_thread = locked_threads[tostring(snapshot.thread_id)]
     local current_head = tonumber(source_thread and source_thread.event_count)
     if current_head == nil then return abort(response_error("thread.head")) end
-    local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local columns = {"current_cursor.*"}
-    local fence_args: {any} = {snapshot.id}
-    for index, check in ipairs(checks) do
-        local statement, args = component_access.effective_mask_query(check.subjects, check.component_id)
-        local offset = #fence_args
-        statement = statement:gsub("%$(%d+)", function(raw) return "$" .. tostring((tonumber(raw) :: number) + offset) end)
-        columns[#columns + 1] = "(" .. statement .. ") AS access_" .. tostring(index)
-        for _, arg in ipairs(args) do fence_args[#fence_args + 1] = arg end
-    end
-    local rows, cursor_err = tx:query("WITH current_cursor AS (SELECT generation,last_seq,status,job_id"
-        .. " FROM kickside_projection_cursor WHERE id=$1" .. suffix .. ") SELECT "
-        .. table.concat(columns, ",") .. " FROM current_cursor", fence_args)
-    if cursor_err then return abort(errors.wrap(cursor_err, "projection fence read failed")) end
     if type(rows) ~= "table" then return abort(response_error("cursor.rows")) end
     local cursor = rows[1]
     if not cursor then return abort(errors.new({message = "projection cursor removed", kind = errors.NOT_FOUND, retryable = false})) end
@@ -225,8 +197,26 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     end
 
     if authorization_error then return abort(authorization_error) end
+    local access: table = {}
+    if #checks > 0 then
+        local columns: {string} = {}
+        local fence_args: {any} = {}
+        for index, check in ipairs(checks) do
+            local statement, args = component_access.effective_mask_query(check.subjects, check.component_id)
+            local offset = #fence_args
+            statement = statement:gsub("%$(%d+)", function(raw) return "$" .. tostring((tonumber(raw) :: number) + offset) end)
+            columns[#columns + 1] = "(" .. statement .. ") AS access_" .. tostring(index)
+            for _, arg in ipairs(args) do fence_args[#fence_args + 1] = arg end
+        end
+        -- A fresh statement snapshot follows the component locks. PostgreSQL
+        -- must see a grant revocation that commits while those locks wait.
+        local masks, mask_err = tx:query("SELECT " .. table.concat(columns, ","), fence_args)
+        if mask_err then return abort(errors.wrap(mask_err, "projection access fence read failed")) end
+        if type(masks) ~= "table" or type(masks[1]) ~= "table" then return abort(response_error("access.rows")) end
+        access = masks[1]
+    end
     for index, check in ipairs(checks) do
-        local mask = math.tointeger(tonumber(cursor["access_" .. tostring(index)]))
+        local mask = math.tointeger(tonumber(access["access_" .. tostring(index)]))
         local component = component_rows[check.component_id]
         if not component or not mask or not component_access_policy.has_all(mask, check.required_mask)
             or (check.prefixes and not component_placement.path_under_any(component.path, check.prefixes)) then
@@ -397,7 +387,12 @@ function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: 
         end
         authorization_error = resolve_err
         if not authorization_error and #writes == 0 then
-            local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
+            local subjects, prefixes, subjects_err: any = nil, nil, nil
+            if frame and snapshot.component_authority.maintenance_owner and frame.access then
+                subjects, prefixes = frame.access.subjects, frame.access.prefixes
+            else
+                subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
+            end
             authorization_error = subjects_err
             if not authorization_error then
                 local required_checks, check_err = owner_identity.access_checks(snapshot.component_authority, subjects, prefixes)

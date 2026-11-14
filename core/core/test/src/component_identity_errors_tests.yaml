@@ -54,6 +54,7 @@ entries:
     canonical_json: kickside.contract:canonical_json
     execution: kickside.execution:execution_identity
     owner_identity: kickside.core.threads:owner_identity
+    counted_owner_identity: app:component_identity_errors_owner_identity
 - name: component_identity_errors_component
   kind: library.lua
   source: file://component_identity_errors_component.lua

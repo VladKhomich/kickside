@@ -315,13 +315,15 @@ local function resolve_binding_identity(binding: table): (any, any, error?)
 end
 worker.resolve_binding_identity = resolve_binding_identity
 
-local function admit_binding_identity(binding: table): (any, any, error?)
+local function admit_binding_identity(binding: table): (any, any, error?, table?)
     local actor, scope, err = resolve_binding_identity(binding)
     if err then return nil, nil, err end
     local authority = binding.component_authority
+    local access: table? = nil
     if authority then
         local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
         if subjects_err then return nil, nil, subjects_err end
+        access = {subjects = subjects, prefixes = prefixes}
         local db, db_err = sql.get(core_db.id())
         if db_err then return nil, nil, db_err end
         if not db then return nil, nil, errors.new({kind = errors.UNAVAILABLE, message = "component authority database unavailable"}) end
@@ -336,7 +338,7 @@ local function admit_binding_identity(binding: table): (any, any, error?)
                 details = {code = "projection_component_access_denied", error_kind = "access"}})
         end
     end
-    return actor, scope, nil
+    return actor, scope, nil, access
 end
 
 local function executor_response(field: string, value: any, cause: error?): (any, error?)
@@ -369,7 +371,7 @@ function worker.run(binding: table, worker_input: table): (table?, error?, table
     local validated, validate_err = worker.validate(binding, binding.system_identity == true)
     if validate_err or not validated then return nil, validate_err end
 
-    local actor, scope, ident_err = admit_binding_identity(binding)
+    local actor, scope, ident_err, access = admit_binding_identity(binding)
     if ident_err then
         return nil, ident_err
     end
@@ -392,7 +394,7 @@ function worker.run(binding: table, worker_input: table): (table?, error?, table
     end
     local output, normalize_err = normalize_result(result)
     if normalize_err then return nil, normalize_err end
-    return output, nil, actor and {actor = actor, scope = scope} or nil
+    return output, nil, actor and {actor = actor, scope = scope, access = access} or nil
 end
 
 local function interpret_proc_exit(result: any): (table?, error?)
@@ -470,7 +472,7 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if host == "" then
         return nil, (errors.new({ message = "proc:// projection worker requires a process host", kind = errors.INVALID }) :: error)
     end
-    local actor, scope, ident_err = admit_binding_identity(binding)
+    local actor, scope, ident_err, access = admit_binding_identity(binding)
     if ident_err then
         return nil, ident_err
     end
@@ -522,7 +524,7 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if run_err then
         return nil, run_err
     end
-    return output, nil, actor and {actor = actor, scope = scope} or nil
+    return output, nil, actor and {actor = actor, scope = scope, access = access} or nil
 end
 
 return worker

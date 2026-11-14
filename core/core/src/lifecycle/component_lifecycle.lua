@@ -15,7 +15,6 @@ local component_context = require("component_context")
 local component_types = require("component_types")
 local execution_identity = require("execution_identity")
 local owner_identity = require("owner_identity")
-local security = require("security")
 
 local M = {}
 
@@ -54,7 +53,7 @@ end
 -- The identity the component's own lifecycle projections run under, derived from
 -- its owner record like a thread's declared projections. The record is read in
 -- the component transaction: a component being created is not committed yet.
-local function owner_identity_tx(tx: sql.Transaction, component_id: string, creator: any): ({ [string]: any }?, error?)
+local function owner_identity_tx(tx: sql.Transaction, component_id: string): ({ [string]: any }?, error?)
     local context, context_err = component_context.lock_and_read_tx(tx, component_id)
     if context_err then return nil, context_err end
     if type(context) ~= "table" then return nil, fail("component owner record is unreadable") end
@@ -66,12 +65,7 @@ local function owner_identity_tx(tx: sql.Transaction, component_id: string, crea
         if type(meta) ~= "table" then return nil, fail("component owner record is unreadable") end
         owner = (meta :: { [string]: any })[component_types.OWNER_META_KEY]
     end
-    if stored == nil and creator == nil then
-        local creation_err: error?
-        creator, creation_err = owner_identity.created_owner_tx(tx, component_id)
-        if creation_err then return nil, creation_err end
-    end
-    return owner_identity.of_owner(stored, owner, creator)
+    return owner_identity.of_owner(stored, owner)
 end
 
 -- Attaches the component's own lifecycle projections (`on: lifecycle`), which run
@@ -79,7 +73,7 @@ end
 -- projections, which run under the framework system identity. Both attach while
 -- the component exists: a deleted component's events reach the projections
 -- registered before.
-local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, creator: any?): error?
+local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string): error?
     local parent_id = trim(args.parent_id)
     local parent_impl_id = trim(args.parent_impl_id)
     local child_id = trim(args.component_id)
@@ -97,7 +91,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
         if own then
             for _, p in ipairs(declared) do
                 if p.on == on then
-                    local owner, owner_err = owner_identity_tx(tx, child_id, creator)
+                    local owner, owner_err = owner_identity_tx(tx, child_id)
                     if owner_err then return owner_err end
                     identity = owner :: { [string]: any }
                     break
@@ -182,13 +176,7 @@ local function handle(kind: string, args: any): (any?, error?)
     if ensure_err or not lifecycle_thread_id then return nil, ensure_err end
 
     if kind ~= lifecycle_log.KIND.DELETED then
-        local creator: any = nil
-        if kind == lifecycle_log.KIND.CREATED then
-            local actor, actor_err = security.actor()
-            if actor_err then return nil, actor_err end
-            if actor then creator = actor:id() end
-        end
-        local attach_err = attach_lifecycle_projections(req, lifecycle_thread_id :: string, creator)
+        local attach_err = attach_lifecycle_projections(req, lifecycle_thread_id :: string)
         if attach_err then return nil, attach_err end
     end
 

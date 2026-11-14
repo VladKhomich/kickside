@@ -8,6 +8,9 @@ entries:
   method: run
   modules: [sql, uuid, security, contract, json, funcs]
   imports:
+    execution_identity: kickside.execution:execution_identity
+    identity_ops: kickside.component.persist:identity_ops
+    worker: kickside.core.projections.persist:worker
     provision: kickside.core.threads:provision
     threads_writer: kickside.core.threads.persist:writer
     jobs_wake: kickside.core.jobs.persist:wake
@@ -139,7 +142,7 @@ entries:
   kind: function.lua
   source: file://scope_resolver_stub.lua
   method: groups
-  modules: [security, sql]
+  modules: [security, sql, json]
   imports:
     execution_identity: kickside.execution:execution_identity
 - name: projection_owner_directory

@@ -166,7 +166,9 @@ local function define_tests()
 
             -- A component owner writes its private state (the poller's install/patch
             -- seam). This blob must be inert to any projection re-registration.
-            set_private_context_raw(thread_id, "{\"cursor\":\"abc\",\"frozen\":1}")
+            local owned_context = assert(json.decode(private_context_raw(thread_id)))
+            owned_context.cursor, owned_context.frozen = "abc", 1
+            set_private_context_raw(thread_id, assert(json.encode(owned_context)))
             local before = private_context_raw(thread_id)
 
             folded.events = {input = {{type = "older.event"}}}

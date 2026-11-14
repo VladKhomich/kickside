@@ -604,7 +604,7 @@ entries:
     meta:
       comment: Test-only kickside.contract:scope_resolver implementation for core actors.
     source: file://scope_resolver_stub.lua
-    modules: [security, sql]
+    modules: [security, sql, json]
     method: resolve
     imports:
       execution_identity: kickside.execution:execution_identity

@@ -191,6 +191,7 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
     if db_err then return summary, errors.wrap(db_err, "converge: db unavailable") end
     if not db then return summary, missing_result("get") end
     local lifecycle_healed = false
+    local maintenance_owners: {[string]: boolean} = {}
     local function finish(cause: error?): ({ [string]: any }, error?)
         if lifecycle_healed then
             local _, wake_err = component_lifecycle.committed()
@@ -301,6 +302,7 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
             local owner = "c.impl_id=" .. quoted(tostring(kind.component_impl_id or kind.impl_id))
             local queries: {string} = {}
             local identity_queries: {string} = {}
+            local declaration_failure: error? = nil
             local dbtype, dbtype_err = db:type()
             if dbtype_err then return finish(dbtype_err) end
             if type(kind.class) == "string" and kind.class ~= "" then
@@ -317,7 +319,11 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                     local cursor_key = type(decl.cursor_key) == "string" and decl.cursor_key ~= "" and decl.cursor_key or proj_types.KEY_DEFAULT
                     local expected, declaration_err = proj_register.declaration_body({worker_ref = decl.worker_ref,
                         worker_input_mode = decl.input_mode, worker_config = decl.worker_config, events = decl.events, drop_notify = decl.drop_notify})
-                    if declaration_err then return finish(declaration_err) end
+                    if declaration_err then
+                        if not job_types.is_deterministic_kind(declaration_err:kind()) then return finish(declaration_err) end
+                        declaration_failure = declaration_err
+                        break
+                    end
                     local digest, digest_err = proj_register.declaration_digest(expected)
                     if digest_err then return finish(digest_err) end
                     local p, pc, j = "p" .. tostring(pindex), "pc" .. tostring(pindex), "j" .. tostring(pindex)
@@ -355,40 +361,44 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                     end
                 end
             end
-            if #queries > 0 then
-                local scan = sql.builder.select("DISTINCT c.component_id AS component_id")
-                    :from("(" .. table.concat(queries, " UNION ALL ") .. ") c")
-                if candidates then
-                    if #candidates > 0 then scan = scan:where("c.component_id <= ?", tostring(candidates[#candidates].component_id))
-                    else scan = scan:where("1=0") end
-                end
-                if after then scan = scan:where("c.component_id > ?", after) end
-                local rows, scan_err = scan:order_by("c.component_id ASC"):limit(remaining):run_with(db):query()
-                if scan_err then return finish(errors.wrap(scan_err, "converge: declaration scan failed")) end
-                if type(rows) ~= "table" then return finish(missing_result("scan")) end
-                if #identity_queries > 0 then
-                    local bindings, binding_err = db:query(table.concat(identity_queries, " UNION ALL "), {})
-                    if binding_err then return finish(errors.wrap(binding_err, "converge: projection identity scan failed")) end
-                    if type(bindings) ~= "table" then return finish(missing_result("identity_scan")) end
-                    local divergent: {[string]: boolean} = {}
-                    for _, row in ipairs(rows) do divergent[tostring(row.component_id)] = true end
-                    for _, binding in ipairs(bindings) do
-                        if not owner_identity.binding_matches(binding.identity_hash, binding.owner_key, binding.legacy_identity,
-                            binding.projection_actor, binding.projection_context)
-                            or not owner_identity.binding_matches(binding.identity_hash, binding.owner_key, binding.legacy_identity,
-                                binding.cursor_actor, binding.cursor_context) then
-                            divergent[tostring(binding.component_id)] = true
-                        end
+            if #queries > 0 or declaration_failure then
+                local rows: {table} = candidates or {}
+                if not declaration_failure then
+                    local scan = sql.builder.select("DISTINCT c.component_id AS component_id")
+                        :from("(" .. table.concat(queries, " UNION ALL ") .. ") c")
+                    if candidates then
+                        if #candidates > 0 then scan = scan:where("c.component_id <= ?", tostring(candidates[#candidates].component_id))
+                        else scan = scan:where("1=0") end
                     end
-                    rows = {}
-                    for id in pairs(divergent) do rows[#rows + 1] = {component_id = id} end
-                    table.sort(rows, function(a, b) return a.component_id < b.component_id end)
+                    if after then scan = scan:where("c.component_id > ?", after) end
+                    local scan_err: error?
+                    rows, scan_err = scan:order_by("c.component_id ASC"):limit(remaining):run_with(db):query()
+                    if scan_err then return finish(errors.wrap(scan_err, "converge: declaration scan failed")) end
+                    if type(rows) ~= "table" then return finish(missing_result("scan")) end
+                    if #identity_queries > 0 then
+                        local bindings, binding_err = db:query(table.concat(identity_queries, " UNION ALL "), {})
+                        if binding_err then return finish(errors.wrap(binding_err, "converge: projection identity scan failed")) end
+                        if type(bindings) ~= "table" then return finish(missing_result("identity_scan")) end
+                        local divergent: {[string]: boolean} = {}
+                        for _, row in ipairs(rows) do divergent[tostring(row.component_id)] = true end
+                        for _, binding in ipairs(bindings) do
+                            if not owner_identity.binding_matches(binding.identity_hash, binding.owner_key, binding.legacy_identity,
+                                binding.projection_actor, binding.projection_context, maintenance_owners)
+                                or not owner_identity.binding_matches(binding.identity_hash, binding.owner_key, binding.legacy_identity,
+                                    binding.cursor_actor, binding.cursor_context, maintenance_owners) then
+                                divergent[tostring(binding.component_id)] = true
+                            end
+                        end
+                        rows = {}
+                        for id in pairs(divergent) do rows[#rows + 1] = {component_id = id} end
+                        table.sort(rows, function(a, b) return a.component_id < b.component_id end)
+                    end
                 end
                 for _, row in ipairs(rows) do
                     local component_id = tostring(row.component_id)
                     summary.checked = summary.checked + 1
-                    local cause: error? = nil
-                    if on_thread then
+                    local cause: error? = declaration_failure
+                    if not cause and on_thread then
                         local executor, exec_err = converge_executor(component_id, opener_actor, opener_scope)
                         if exec_err or not executor then
                             cause = errors.wrap(exec_err or missing_result("executor"), "converge identity unavailable")

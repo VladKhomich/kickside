@@ -1,6 +1,6 @@
 local M = {}
 local stored = {marker = "kept"}
-function M.reset(stage: string, source: error?) M.stage, M.source, M.validations, M.rows = stage, source, 0, 0 end
+function M.reset(stage: string, source: error?) M.maintenance_checks = 0; M.stage, M.source, M.validations, M.rows = stage, source, 0, 0 end
 function M.context(...)
     if M.stage == "read" then return nil, M.source end
     if M.stage == "missing_context" then return nil, nil end

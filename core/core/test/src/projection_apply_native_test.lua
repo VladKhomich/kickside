@@ -54,6 +54,14 @@ local function native(first: integer, last: integer)
     end
 end
 local function outcomes()
+    test.it("reads returned-write authority after a revocation releases the component lock", function()
+        fixture.reset("", nil, "advance")
+        fixture.checks = {{component_id = "other", subjects = {}, required_mask = 2}}
+        local result, err = call("advance")
+        test.is_nil(result); test.is_true(errors.is(err, errors.PERMISSION_DENIED), tostring(err))
+        test.is_true(fixture.thread_locked); test.eq(fixture.mask_queries, 1)
+        test.eq(fixture.executions, 0); test.eq(fixture.appends, 0); test.eq(fixture.rollbacks, 1)
+    end)
     test.it("defers output demand until all appends and prelocks the completing job", function()
         fixture.reset("", nil, "advance")
         local value, err = apply.advance("app:db", {id = "job", lease_token = "token", execution_seq = 1},

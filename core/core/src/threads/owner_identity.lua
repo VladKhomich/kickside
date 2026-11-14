@@ -21,7 +21,7 @@ local M = {}
 -- the component's stored execution identity (nil when it carries none) and
 -- owner_key the actor recorded as its owner. A stored identity that is not
 -- valid v2 refuses.
-function M.of_owner(stored: any, owner_key: any, created_by: any?): ({ [string]: any }?, error?)
+function M.of_owner(stored: any, owner_key: any): ({ [string]: any }?, error?)
     if stored ~= nil then
         local row, row_err = execution_identity.to_row(stored)
         row, row_err = error_envelope.binding(row, row_err, nil,
@@ -29,34 +29,12 @@ function M.of_owner(stored: any, owner_key: any, created_by: any?): ({ [string]:
         if row_err then return nil, row_err end
         return { row = row }, nil
     end
-    if execution_identity.is_maintenance_key(owner_key) and owner_key == created_by then
+    if execution_identity.is_maintenance_key(owner_key) then
         return { system = true, owner = owner_key }, nil
     end
     return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
         message = "component has no trusted execution owner",
         details = {code = "component_execution_owner_missing", error_kind = "subject"}})
-end
-
--- Creation events are framework-authored; writable legacy metadata alone is
--- insufficient proof of a maintenance creator.
-function M.created_owner_tx(tx: any, component_id: string): (string?, error?)
-    local rows, err = tx:query([[SELECT body FROM kickside_event
-        WHERE thread_id=$1 AND external_source='component.lifecycle'
-        AND external_id=$2 AND external_version='1']],
-        {lifecycle_log.thread_id(component_id), "created:" .. component_id})
-    if err then return nil, errors.wrap(err, "read component creation authority") end
-    if type(rows) ~= "table" then
-        return nil, errors.new({kind = errors.INTERNAL, retryable = false,
-            message = "component creation authority is unreadable", details = {code = "component_creation_authority_response"}})
-    end
-    if #rows == 0 then return nil, nil end
-    local record, decode_err = json.decode(rows[1].body)
-    if decode_err then return nil, errors.wrap(decode_err, "decode component creation authority") end
-    if type(record) ~= "table" or record.component_id ~= component_id then
-        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
-            message = "component creation authority is invalid", details = {code = "component_creation_authority_invalid"}})
-    end
-    return record.actor_id, nil
 end
 
 local function denied(code: string, message: string): error
@@ -125,7 +103,7 @@ function M.from_snapshot(row: table): (table?, error?)
     end
     -- The reserved owner record is the authority. A materialized binding must
     -- match it; the binding itself never proves ownership.
-    local expected, expected_err = M.of_owner(stored, row.owner_key, row.owner_key)
+    local expected, expected_err = M.of_owner(stored, row.owner_key)
     if expected_err then return nil, expected_err end
     local actor_id = expected.row and expected.row.actor_id or expected.owner
     local actor_context = expected.row and (expected.row :: any).actor_context or nil
@@ -148,7 +126,7 @@ end
 
 -- The component hash is maintained with its private v2 record. Legacy records
 -- without that fence are compared with the private record itself.
-function M.binding_matches(owner_hash: any, owner_key: any, legacy_identity: any, actor_id: any, context: any): boolean
+function M.binding_matches(owner_hash: any, owner_key: any, legacy_identity: any, actor_id: any, context: any, maintenance_owners: {[string]: boolean}?): boolean
     local expected = owner_hash
     if expected == nil and legacy_identity ~= nil then
         local id, decode_err = json.decode(legacy_identity)
@@ -158,7 +136,16 @@ function M.binding_matches(owner_hash: any, owner_key: any, legacy_identity: any
         expected = identity_hash(id)
     end
     if expected == nil then
-        return context == nil and actor_id == owner_key and execution_identity.is_maintenance_key(owner_key)
+        if context ~= nil or actor_id ~= owner_key then return false end
+        if not maintenance_owners or type(owner_key) ~= "string" then
+            return execution_identity.is_maintenance_key(owner_key)
+        end
+        local recognized = maintenance_owners[owner_key]
+        if recognized == nil then
+            recognized = execution_identity.is_maintenance_key(owner_key)
+            maintenance_owners[owner_key] = recognized
+        end
+        return recognized
     end
     local id, err = execution_identity.from_row(actor_id, context)
     return err == nil and id ~= nil and identity_hash(id) == expected

@@ -5,6 +5,7 @@ local common = require("common")
 local canonical_json = require("canonical_json")
 local execution = require("execution")
 local owner_identity = require("owner_identity")
+local counted_owner_identity = require("counted_owner_identity")
 local function encoded(value: any): string
     local result, err = canonical_json.encode(value)
     if err then error(err) end
@@ -57,6 +58,17 @@ return {run = test.run_cases(function()
                 test.is_true(errors.is(err, errors.PERMISSION_DENIED)); test.is_false(err:retryable())
             end)
         end
+        test.it("resolves each maintenance owner once within a bounded reconciliation window", function()
+            fixture.reset("", nil)
+            local owners = {}
+            for index = 1, 4 do
+                test.is_true(counted_owner_identity.binding_matches(nil, "system:lifecycle", nil, "system:lifecycle", nil, owners))
+                test.is_false(counted_owner_identity.binding_matches(nil, "system:missing-owner-declaration", nil, "system:missing-owner-declaration", nil, owners))
+            end
+            test.eq(fixture.maintenance_checks, 2)
+            test.is_true(counted_owner_identity.binding_matches(nil, "system:lifecycle", nil, "system:lifecycle", nil, {}))
+            test.eq(fixture.maintenance_checks, 3, "the next window validates the registry again")
+        end)
         test.it("real identity validator returns native declaration errors", function()
             local ok, err = execution.validate({version = 1})
             test.is_false(ok); test.not_nil(err); test.is_true(errors.is(err, errors.INVALID)); test.is_false(err:retryable())

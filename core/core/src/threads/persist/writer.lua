@@ -47,7 +47,8 @@ local function thread_key(dbtype: string, id: string): string
     return dbtype == sql.type.POSTGRES and string.lower(id) or id
 end
 
-function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_ids: { string }): ({ [string]: table }?, error?)
+function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_ids: { string }, component_ids: {string}?,
+    cursor_id: string?): ({ [string]: table }?, error?, {[string]: table}?, table[]?)
     local seen: { [string]: boolean } = {}
     local ordered: { string } = {}
     for _, raw in ipairs(thread_ids) do
@@ -57,18 +58,72 @@ function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_
     table.sort(ordered)
     local snapshots: { [string]: table } = {}
     if #ordered == 0 then return snapshots, nil end
-    local marks: { string } = {}
-    for index in ipairs(ordered) do marks[#marks + 1] = "$" .. tostring(index) end
-    local lock = lock_suffix(dbtype)
-    local rows, err = tx:query("SELECT id,event_count,max_pruned_seq,deleting_at FROM kickside_thread WHERE id IN ("
-        .. table.concat(marks, ",") .. ") ORDER BY id ASC " .. lock, ordered)
+    local args: {any} = {}
+    local ctes: {string} = {}
+    local components_given = component_ids ~= nil and #component_ids > 0
+    if components_given then
+        local marks: {string} = {}
+        for _, id in ipairs(component_ids :: {string}) do
+            args[#args + 1] = id
+            marks[#marks + 1] = "$" .. tostring(#args)
+        end
+        local selected = table.concat(marks, ",")
+        local owners = "component_id IN (" .. selected .. ")"
+        if dbtype == sql.type.POSTGRES then
+            owners = [[component_id IN (SELECT ancestor_id FROM kickside_component_ancestor WHERE component_id IN (]]
+                .. selected .. [[) UNION SELECT component_id FROM kickside_components WHERE component_id IN (]] .. selected .. "))"
+        end
+        ctes[#ctes + 1] = [[locked_components AS MATERIALIZED (
+            SELECT component_id,identity_generation,path FROM kickside_components WHERE ]] .. owners
+            .. " ORDER BY component_id " .. lock_suffix(dbtype) .. ")"
+    end
+    local marks: {string} = {}
+    for _, id in ipairs(ordered) do
+        args[#args + 1] = id
+        marks[#marks + 1] = "$" .. tostring(#args)
+    end
+    local dependency = components_given and " CROSS JOIN (SELECT COUNT(*) AS locked_count FROM locked_components) fence" or ""
+    local threads = "SELECT t.id,t.event_count,t.max_pruned_seq,t.deleting_at FROM kickside_thread t" .. dependency
+        .. " WHERE t.id IN (" .. table.concat(marks, ",") .. ")"
+        .. (components_given and " AND fence.locked_count>=0" or "") .. " ORDER BY t.id ASC "
+        .. (dbtype == sql.type.POSTGRES and "FOR UPDATE OF t" or "")
+    local statement = threads
+    if components_given or cursor_id then
+        ctes[#ctes + 1] = "locked_threads AS MATERIALIZED (" .. threads .. ")"
+        local rows = "SELECT id,event_count,max_pruned_seq,deleting_at,NULL AS component_id,NULL AS identity_generation,NULL AS path FROM locked_threads"
+        if components_given then
+            rows = rows .. " UNION ALL SELECT component_id,NULL,NULL,NULL,component_id,identity_generation,path FROM locked_components"
+        end
+        if cursor_id then
+            args[#args + 1] = cursor_id
+            local cursor_index = #args
+            ctes[#ctes + 1] = [[current_cursor AS MATERIALIZED (
+                SELECT c.id,c.generation,c.last_seq,c.status,c.job_id FROM kickside_projection_cursor c
+                CROSS JOIN (SELECT COUNT(*) AS locked_count FROM locked_threads) fence
+                WHERE c.id=$]] .. tostring(cursor_index) .. " AND fence.locked_count>=0 "
+                .. (dbtype == sql.type.POSTGRES and "FOR UPDATE OF c" or "") .. ")"
+            rows = "SELECT locked_rows.*,current_cursor.id AS cursor_id,current_cursor.generation AS cursor_generation,"
+                .. "current_cursor.last_seq AS cursor_last_seq,current_cursor.status AS cursor_status,"
+                .. "current_cursor.job_id AS cursor_job_id FROM (" .. rows .. ") locked_rows LEFT JOIN current_cursor ON TRUE"
+        end
+        statement = "WITH " .. table.concat(ctes, ",") .. " " .. rows
+    end
+    local rows, err = tx:query(statement, args)
     rows, err = sql_boundary.rows(rows, err, "failed to lock thread", "lock.rows", response_error)
     if err then return nil, err end
-    for _, row in ipairs(rows :: table[]) do
+    local components: {[string]: table} = {}
+    local cursors: table[] = {}
+    for index, row in ipairs(rows :: table[]) do
         if type(row.id) ~= "string" or row.id == "" then return nil, response_error("lock.row.id") end
-        snapshots[thread_key(dbtype, row.id)] = row
+        if components_given and row.component_id then components[row.component_id] = row
+        else snapshots[thread_key(dbtype, row.id)] = row end
+        if cursor_id and index == 1 and row.cursor_id ~= nil then
+            local current: table = {generation = row.cursor_generation, last_seq = row.cursor_last_seq,
+                status = row.cursor_status, job_id = row.cursor_job_id}
+            cursors[1] = current
+        end
     end
-    return snapshots, nil
+    return snapshots, nil, components, cursors
 end
 
 function writer.lock_threads_tx(tx: sql.Transaction, dbtype: string, thread_ids: { string }): error?

@@ -1,4 +1,7 @@
 local test = require("test")
+local execution_identity = require("execution_identity")
+local identity_ops = require("identity_ops")
+local worker = require("worker")
 local sql = require("sql")
 local uuid = require("uuid")
 local security = require("security")
@@ -32,6 +35,8 @@ local function create(impl_id: string?, actor_id: string?)
         JOIN kickside_projection p ON p.id=c.projection_id WHERE p.thread_id=$1 AND p.kind='test.owner_seed']], {lifecycle.thread_id(id)}))
     assert(db:execute("INSERT INTO kickside_component_meta (meta_id,component_id,key,value) VALUES ($1,$2,'owner_test.invoked','0')", {uuid.v4(), id}))
     local cursor = rows[1]
+    assert(db:execute([[UPDATE kickside_job SET priority=(SELECT COALESCE(MAX(priority),0)+1 FROM kickside_job)
+        WHERE id IN (SELECT job_id FROM kickside_projection_cursor WHERE thread_id IN ($1,$2))]], {id,lifecycle.thread_id(id)}))
     local jobs = assert(claim.claim_batch(db, tostring(db:type()), 16, nil, nil))
     local job: table? = nil
     for _, value in ipairs(jobs) do if value.id == cursor.job_id then job = value end end
@@ -102,6 +107,67 @@ return {run = test.run_cases(function()
                 test.eq(value.last_seq, before[index].last_seq)
                 test.eq(value.status, value.id == secondary.cursor_id and "paused" or "active")
             end
+        end)
+        test.it("reports an invalid declaration while repairing unrelated projection owners", function()
+            local id, cursor, job = create()
+            local f = fixture.new()
+            local broken = uuid.v4()
+            local _, initialization_err = f.as_owner("upsert", {thread_id = broken,
+                impl_id = "app:threads_empty_invalid_projection_kind", thread_class = "test.empty.invalid.projection"})
+            test.not_nil(initialization_err)
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_projection SET actor_id=NULL,actor_context=NULL WHERE thread_id=$1", {lifecycle.thread_id(id)}))
+            assert(db:execute("UPDATE kickside_projection_cursor SET actor_id=NULL,execution_identity_json=NULL WHERE id=$1", {cursor.id}))
+            db:release()
+            local summary, err = provision.converge(assert(security.new_actor("system:lifecycle", {})),
+                assert(security.named_scope("wippy.security:process")))
+            local removed, remove_err = service(f.owner):delete({component_id = broken})
+            test.is_nil(remove_err); test.is_true(removed.success, tostring(removed.error))
+            test.is_nil(err)
+            local reported = false
+            for _, skipped in ipairs(summary.skipped) do
+                if skipped.component_id == broken then
+                    reported = true; test.eq(skipped.error.kind, errors.INVALID)
+                end
+            end
+            test.is_true(reported)
+            db = assert(sql.get("app:db"))
+            local after = assert(db:query("SELECT actor_id FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
+            db:release(); test.eq(after.actor_id, "system:lifecycle")
+        end)
+        test.it("keeps thread heads and component generations in the batched lock snapshot", function()
+            local id, cursor, job = create()
+            local db = assert(sql.get("app:db"))
+            local tx = assert(db:begin())
+            local queries = 0
+            local executor: any = {query = function(_, statement, args)
+                queries = queries + 1
+                return tx:query(statement, args)
+            end}
+            local threads, err, components, cursors = threads_writer.lock_thread_rows_tx(executor, tostring(db:type()),
+                {lifecycle.thread_id(id)}, {id}, cursor.id)
+            test.is_nil(err)
+            test.eq(queries, 1); test.eq(#cursors, 1); test.eq(cursors[1].job_id, cursor.job_id)
+            test.eq(tonumber(cursors[1].last_seq), 0)
+            assert(tx:commit()); assert(db:release())
+            test.is_true(tonumber(threads[lifecycle.thread_id(id)].event_count) == 1, assert(json.encode(threads)))
+            test.eq(tonumber(components[id].identity_generation), 0)
+        end)
+        test.it("runs retained lifecycle work after repairing legacy identity copies", function()
+            local id, cursor, job = create()
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_projection SET actor_id=NULL,actor_context=NULL WHERE thread_id=$1", {lifecycle.thread_id(id)}))
+            assert(db:execute("UPDATE kickside_projection_cursor SET actor_id=NULL,execution_identity_json=NULL WHERE id=$1", {cursor.id}))
+            local tx = assert(db:begin())
+            local _, repair_err = component_lifecycle.converge_own(tx, tostring(db:type()), id, "app:provision_owner_seeded_system_decl")
+            if repair_err then assert(tx:rollback()) else assert(tx:commit()) end
+            db:release(); test.is_nil(repair_err)
+            local result, err = invoke.run({job = job, payload = {cursor_id = cursor.id}})
+            test.is_nil(err); test.eq(tonumber(result.last_seq), 1)
+            db = assert(sql.get("app:db"))
+            local context = assert(json.decode(assert(db:query("SELECT private_context FROM kickside_components WHERE component_id=$1", {id}))[1].private_context))
+            local body = assert(json.decode(assert(db:query("SELECT body FROM kickside_projection WHERE thread_id=$1", {lifecycle.thread_id(id)}))[1].body))
+            db:release(); test.is_true(context.seeded); test.eq(body.seeded_by, "system:lifecycle")
         end)
         test.it("denies a returned cross-component write atomically under the maintenance owner", function()
             local id, cursor, job = create()
@@ -210,6 +276,74 @@ return {run = test.run_cases(function()
                 end)
             end
         end
+        for _, phase in ipairs({"admission", "apply"}) do
+            for _, revoked in ipairs({"authorizer", "membership", "credential", "delegation"}) do
+                test.it("revalidates v2 authority/" .. revoked .. "/" .. phase, function()
+                    local operator = "transition-" .. uuid.v4()
+                    local id, cursor, job = create(nil, operator)
+                    local svc = service(operator)
+                    if revoked == "membership" then
+                        test.is_true(assert(svc:grant_subtree({root_component_id = id,
+                            subject = {subject_type = "group", subject_id = "core_test"}, access_mask = 15})).success)
+                        test.is_true(assert(svc:revoke_subtree({root_component_id = id,
+                            subject = {subject_type = "user", subject_id = operator}})).success)
+                    end
+                    local db = assert(sql.get("app:db"))
+                    if revoked == "credential" or revoked == "delegation" then
+                        local context = assert(json.decode(assert(db:query("SELECT private_context FROM kickside_components WHERE component_id=$1", {id}))[1].private_context))
+                        local identity = context._execution_identity
+                        identity.credential_id = id
+                        local row = assert(execution_identity.to_row(identity))
+                        local hash = identity_ops.canonical_identity(identity.principal, identity.authorized_by, identity.component_id,
+                            identity.captured_at, identity.credential_id, identity.link_id)
+                        assert(db:execute("UPDATE kickside_components SET private_context=$1,identity_hash=$2 WHERE component_id=$3", {assert(json.encode(context)),hash,id}))
+                        assert(db:execute("UPDATE kickside_projection SET actor_id=$1,actor_context=$2 WHERE id=(SELECT projection_id FROM kickside_projection_cursor WHERE id=$3)", {row.actor_id,row.actor_context,cursor.id}))
+                        assert(db:execute("UPDATE kickside_projection_cursor SET actor_id=$1,execution_identity_json=$2 WHERE id=$3", {row.actor_id,row.actor_context,cursor.id}))
+                    end
+                    local snapshot = assert(invoke.snapshot(db, cursor.id, job.id)); test.is_nil(snapshot.authority_error)
+                    db:release()
+                    local actor, _, resolve_err = worker.resolve_binding_identity({actor_id = snapshot.actor_id,
+                        actor_context = snapshot.execution_identity_json, component_authority = snapshot.component_authority})
+                    test.is_nil(resolve_err); test.not_nil(actor)
+                    if revoked == "authorizer" then
+                        test.is_true(assert(svc:grant_subtree({root_component_id = id,
+                            subject = {subject_type = "user", subject_id = "projection-administrator-" .. uuid.v4()}, access_mask = 15})).success)
+                        local changed = assert(svc:grant_subtree({root_component_id = id,
+                            subject = {subject_type = "user", subject_id = operator}, access_mask = 3}))
+                        test.is_true(changed.success, tostring(changed.error))
+                    end
+                    db = assert(sql.get("app:db"))
+                    assert(db:execute("INSERT INTO kickside_component_meta (meta_id,component_id,key,value) VALUES ($1,$2,$3,'revoked')",
+                        {uuid.v4(),id,"core_test." .. revoked .. "_state"}))
+                    db:release()
+                    if phase == "apply" then
+                        local applied, apply_err = apply.advance("app:db", job, snapshot, 1, {body = {revoked_fold = true}})
+                        test.is_nil(applied); test.is_true(errors.is(apply_err, errors.PERMISSION_DENIED), tostring(apply_err))
+                    end
+                    local result, err = invoke.run({job = job, payload = {cursor_id = cursor.id}})
+                    test.is_nil(err); test.is_true(result.invalid)
+                    db = assert(sql.get("app:db"))
+                    local after = assert(db:query("SELECT last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
+                    local invoked = assert(db:query("SELECT value FROM kickside_component_meta WHERE component_id=$1 AND key='owner_test.invoked'", {id}))[1]
+                    db:release(); test.eq(tonumber(after.last_seq), 0); test.eq(after.status, "invalid")
+                    test.not_nil(after.last_error); test.eq(invoked.value, "0")
+                end)
+            end
+        end
+        test.it("reuses the maintenance frame while checking current access at apply", function()
+            local id, cursor, job = create()
+            local db = assert(sql.get("app:db"))
+            local snapshot = assert(invoke.snapshot(db, cursor.id, job.id)); db:release()
+            local _, run_err, frame = worker.run({actor_id = snapshot.actor_id, actor_context = snapshot.execution_identity_json,
+                component_authority = snapshot.component_authority, worker_ref = "func://app:projection_owner_probe_worker",
+                worker_runtime = "func", target_id = "app:projection_owner_probe_worker", system_identity = true}, {projection = {body = {}}, range = {to_seq = 1}})
+            test.is_nil(run_err); test.not_nil(frame); test.not_nil(frame.access)
+            snapshot.execution_frame = frame
+            test.is_true(assert(service("system:lifecycle"):revoke_subtree({root_component_id = id,
+                subject = {subject_type = "user", subject_id = "system:lifecycle"}})).success)
+            local result, err = apply.advance("app:db", job, snapshot, 1, {body = {revoked_frame = true}})
+            test.is_nil(result); test.is_true(errors.is(err, errors.PERMISSION_DENIED), tostring(err))
+        end)
         for _, principal_kind in ipairs({"user", "group"}) do
             test.it("runs both component projection categories under exact v2/" .. principal_kind, function()
                 local operator = "projection-v2-" .. uuid.v4()
@@ -276,12 +410,26 @@ return {run = test.run_cases(function()
             assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1 AND external_id=$2",
                 {lifecycle.thread_id(id), "created:" .. id}))
             local owner = assert(db:query("SELECT value FROM kickside_component_meta WHERE component_id=$1 AND key='owner'", {id}))[1]
+            local prior = assert(db:query("SELECT last_seq,generation FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
+            assert(db:execute("UPDATE kickside_projection SET actor_id=NULL,actor_context=NULL WHERE thread_id=$1", {lifecycle.thread_id(id)}))
+            assert(db:execute("UPDATE kickside_projection_cursor SET actor_id=NULL,execution_identity_json=NULL WHERE id=$1", {cursor.id}))
             db:release(); test.eq(owner.value, "system:lifecycle")
+            local summary, converge_err = provision.converge(assert(security.new_actor("system:lifecycle", {})),
+                assert(security.named_scope("wippy.security:process")))
+            test.is_nil(converge_err)
+            for _, skipped in ipairs(summary.skipped) do test.is_false(skipped.component_id == id, tostring(skipped.reason)) end
+            db = assert(sql.get("app:db"))
+            local repaired = assert(db:query([[SELECT c.actor_id,c.execution_identity_json,c.last_seq,c.generation,p.actor_id AS projection_owner
+                FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id WHERE c.id=$1]], {cursor.id}))[1]
+            db:release()
+            test.eq(repaired.actor_id, "system:lifecycle"); test.eq(repaired.projection_owner, "system:lifecycle")
+            test.is_nil(repaired.execution_identity_json); test.eq(repaired.last_seq, prior.last_seq)
+            test.eq(tonumber(repaired.generation), (tonumber(prior.generation) :: number) + 1)
             local after, after_err = svc:update({component_id = id,
                 commands = {{type = "PATCH_CONTEXT", payload = {patch = {after_retention = true}}}}})
             test.is_nil(after_err); test.is_true(after.success, tostring(after.error))
         end)
-        test.it("parks ambiguous legacy ownership at the head through normal convergence", function()
+        test.it("parks missing reserved ownership at the head through normal convergence", function()
             local id, cursor, job = create("app:projection_owner_proc_kind")
             test.not_nil(assert(invoke.run({job = job, payload = {cursor_id = cursor.id}})))
             local db = assert(sql.get("app:db"))
@@ -289,6 +437,7 @@ return {run = test.run_cases(function()
             assert(db:execute("UPDATE kickside_projection SET actor_id=NULL,actor_context=NULL WHERE thread_id=$1", {lifecycle.thread_id(id)}))
             assert(db:execute("UPDATE kickside_projection_cursor SET actor_id=NULL,execution_identity_json=NULL WHERE id=$1", {cursor.id}))
             assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1 AND external_id=$2", {lifecycle.thread_id(id), "created:" .. id}))
+            assert(db:execute("DELETE FROM kickside_component_meta WHERE component_id=$1 AND key='owner'", {id}))
             db:release()
             local actor = assert(security.new_actor("system:lifecycle", {security_groups = {}}))
             local scope = assert(security.named_scope("wippy.security:process"))
