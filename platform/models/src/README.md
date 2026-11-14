@@ -13,7 +13,7 @@ and safe presets. User-added endpoints, credentials, discovered models, and
 class/capability edits are stored in the database and served through the same
 model APIs. Discovery refreshes inferred capabilities with administrator
 additions and removals applied; `PUT /models/cards` accepts
-`reset_capabilities: ["vision"]` to return capabilities to discovery.
+`reset_capabilities: ["vision"]` to return capabilities to discovery; legacy cards retain every stored capability as a positive override and establish negative overrides for omissions from the first complete discovery, after which overrides can be reset.
 
 The shipped class vocabulary is intentionally small: `fast`, `nano`,
 `balanced`, `premium`, and `embed`. Discovered provider models do not

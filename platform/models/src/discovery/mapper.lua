@@ -21,6 +21,7 @@ local DISCOVERED_METADATA_FIELDS = {
     "outputTokenLimit",
     "max_output_tokens",
     "capabilities",
+    "capability",
     "supported_parameters",
     "supportedParameters",
     "supports_reasoning",

@@ -17,7 +17,7 @@ end
 
 local function effective_capabilities(inferred: any, overrides: any): { string }
     local out: { string } = {}
-    for _, capability in ipairs(inferred) do
+    for _, capability in ipairs(inferred or {}) do
         if overrides[capability] ~= false then table.insert(out, capability) end
     end
     local additions: { string } = {}
@@ -36,6 +36,11 @@ local function capability_ownership(input: any, base: any?, inferred: any?): (an
     local saved = base and base.capability_ownership or { inferred = {}, overrides = {} }
     local ownership = { inferred = inferred or saved.inferred, overrides = {} }
     for capability, enabled in pairs(saved.overrides) do ownership.overrides[capability] = enabled end
+    if inferred ~= nil and saved.inferred == nil then
+        for _, capability in ipairs(inferred) do
+            if ownership.overrides[capability] == nil then ownership.overrides[capability] = false end
+        end
+    end
     if inferred == nil then
         local current = effective_capabilities(saved.inferred, saved.overrides)
         local target = policy.explicit_list(input.capabilities, base and base.capabilities or { "generate" })
@@ -48,6 +53,7 @@ local function capability_ownership(input: any, base: any?, inferred: any?): (an
     end
     if input.reset_capabilities ~= nil then
         if type(input.reset_capabilities) ~= "table" then return nil, nil, "reset_capabilities must be a list" end
+        if ownership.inferred == nil then return nil, nil, "discover capabilities before resetting overrides" end
         for _, capability in ipairs(input.reset_capabilities) do ownership.overrides[capability] = nil end
     end
     return effective_capabilities(ownership.inferred, ownership.overrides), ownership

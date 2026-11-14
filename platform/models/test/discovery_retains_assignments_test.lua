@@ -15,6 +15,7 @@ local repo = require("models_repo")
 local discovery = require("model_discovery")
 local reference_registry = require("reference_registry")
 local card_policy = require("card_policy")
+local mapper = require("discovery_mapper")
 
 local function define_tests()
     test.describe("provider rediscovery", function()
@@ -215,12 +216,12 @@ local function define_tests()
             end)
         end)
 
-        test.it("converts every stored card to ownership that resolves to its stored capabilities", function()
+        test.it("preserves legacy choices across populated upgrades and complete rediscovery", function()
             local db, db_err = sql.get("app:ownership_upgrade_db")
             test.is_nil(db_err)
-            local function migrate(entry)
+            local function migrate(entry, suffix)
                 local result, err = funcs.call("kickside.models.migrations:" .. entry, {
-                    database_id = "app:ownership_upgrade_db", id = entry, direction = "up", force = true,
+                    database_id = "app:ownership_upgrade_db", id = entry .. (suffix or ""), direction = "up", force = true,
                 })
                 test.is_nil(err)
                 test.eq(result.failed, 0, json.encode(result))
@@ -228,31 +229,77 @@ local function define_tests()
             local ok, err = pcall(function()
                 migrate("01_models_schema")
                 migrate("02_discovered_capabilities")
-                local _, insert_err = db:execute([[INSERT INTO kickside_model_cards
-                    (name, title, provider_id, provider_model, capabilities_json, source, metadata_json, created_at, updated_at)
-                    VALUES ('upgrade/discovered', 'Discovered', 'wippy.llm.openai_compat:provider', 'vision-model',
-                            '["generate","structured_output"]', 'discovered',
-                            '{"discovered":{"id":"vision-model","capabilities":["generate","vision"]}}', 1, 2),
-                           ('upgrade/manual', 'Manual', 'wippy.llm.openai_compat:provider', 'embed-model',
-                            '["embed"]', 'manual', '{}', 1, 2)]])
-                test.is_nil(insert_err)
+                local fixtures = {}
+                for _, form in ipairs({ "capability", "capabilities", "missing" }) do
+                    local item = { id = "legacy-model" }
+                    if form ~= "missing" then item[form] = { "generate", "vision" } end
+                    fixtures[#fixtures + 1] = { name = "upgrade/" .. form,
+                        metadata = { discovered = mapper.discovered_metadata(item) } }
+                end
+                -- More rows than an upgrade batch.
+                for i = 0, 450 do
+                    fixtures[#fixtures + 1] = { name = string.format("upgrade/row-%04d", i), metadata = {} }
+                end
+                for _, fixture in ipairs(fixtures) do
+                    local _, insert_err = db:execute([[INSERT INTO kickside_model_cards
+                        (name, title, provider_id, provider_model, capabilities_json, source, metadata_json, max_tokens, output_tokens, created_at, updated_at)
+                        VALUES ($1, 'Saved title', 'wippy.llm.openai_compat:provider', 'legacy-model',
+                                '["generate","structured_output"]', 'discovered', $2, 8192, 1024, 1, 2)]],
+                        { fixture.name, json.encode(fixture.metadata) })
+                    test.is_nil(insert_err)
+                end
+                local before, before_err = db:query("SELECT * FROM kickside_model_cards ORDER BY name")
+                test.is_nil(before_err)
                 migrate("03_capability_ownership")
                 local rows, read_err = db:query("SELECT * FROM kickside_model_cards ORDER BY name")
                 test.is_nil(read_err)
-
-                local discovered = card_policy.build_card(rows[1])
-                test.eq(table.concat(discovered.capabilities, ","), "generate,structured_output")
-                test.eq(table.concat(discovered.capability_ownership.inferred, ","), "generate,vision")
-                local rediscovered = card_policy.clean_card_input({ name = discovered.name }, discovered, { "generate", "vision" })
-                test.eq(table.concat(rediscovered.capabilities, ","), "generate,structured_output")
-                local reset = card_policy.clean_card_input({ name = discovered.name, reset_capabilities = { "vision" } }, discovered)
-                test.eq(table.concat(reset.capabilities, ","), "generate,vision,structured_output")
-
-                local manual = card_policy.build_card(rows[2])
-                test.eq(table.concat(manual.capabilities, ","), "embed")
-                test.eq(#manual.capability_ownership.inferred, 0)
-                local edited = card_policy.clean_card_input({ name = manual.name, title = "Edited" }, manual)
-                test.eq(table.concat(edited.capabilities, ","), "embed")
+                test.eq(#rows, #fixtures)
+                for i, row in ipairs(rows) do
+                    for key, value in pairs(before[i]) do test.eq(row[key], value, row.name .. ":" .. key) end
+                    local card = card_policy.build_card(row)
+                    test.eq(card.capability_ownership.overrides.generate, true)
+                    test.eq(card.capability_ownership.overrides.structured_output, true)
+                    -- Neither a title edit nor a full inference may restore a legacy exclusion.
+                    local pending_reset, reset_err = card_policy.clean_card_input({ name = card.name,
+                        reset_capabilities = { "structured_output" } }, card)
+                    test.is_nil(pending_reset)
+                    test.eq(reset_err, "discover capabilities before resetting overrides")
+                    local preedited = card_policy.clean_card_input({ name = card.name,
+                        capabilities = { "structured_output", "tool_use" } }, card)
+                    local prerefreshed = card_policy.clean_card_input({ name = card.name }, preedited, { "generate", "vision" })
+                    test.eq(table.concat(prerefreshed.capabilities, ","), "structured_output,tool_use")
+                    local edited = card_policy.clean_card_input({ name = card.name, title = "Edited" }, card)
+                    test.eq(table.concat(edited.capabilities, ","), "generate,structured_output")
+                    local rediscovered = card_policy.clean_card_input({ name = card.name }, edited, { "generate", "vision" })
+                    test.eq(table.concat(rediscovered.capabilities, ","), "generate,structured_output", row.name)
+                    test.eq(rediscovered.capability_ownership.overrides.vision, false)
+                    local later = card_policy.clean_card_input({ name = card.name }, rediscovered, { "vision", "tool_use" })
+                    test.eq(table.concat(later.capabilities, ","), "tool_use,generate,structured_output")
+                    local reset = card_policy.clean_card_input({ name = card.name,
+                        reset_capabilities = { "generate", "structured_output", "vision" } }, later)
+                    test.eq(table.concat(reset.capabilities, ","), "vision,tool_use")
+                end
+                -- Resume a partial backfill without replacing existing ownership.
+                local _, partial_err = db:execute([[INSERT INTO kickside_model_cards
+                    (name, title, provider_id, provider_model, capabilities_json, created_at, updated_at)
+                    VALUES ('upgrade/zz-pending', 'Pending', 'wippy.llm.openai_compat:provider',
+                            'pending-model', '["embed"]', 1, 2)]])
+                test.is_nil(partial_err)
+                migrate("03_capability_ownership", "-resume")
+                local resumed, resumed_err = db:query("SELECT * FROM kickside_model_cards ORDER BY name")
+                test.is_nil(resumed_err)
+                test.eq(#resumed, #rows + 1)
+                for i, row in ipairs(rows) do
+                    for key, value in pairs(row) do test.eq(resumed[i][key], value, row.name .. ":" .. key) end
+                end
+                test.eq(json.decode(resumed[#resumed].capability_ownership_json).overrides.embed, true)
+                migrate("03_capability_ownership", "-replay")
+                local replay, replay_err = db:query("SELECT * FROM kickside_model_cards ORDER BY name")
+                test.is_nil(replay_err)
+                test.eq(#replay, #resumed)
+                for i, row in ipairs(replay) do
+                    for key, value in pairs(resumed[i]) do test.eq(row[key], value, row.name .. ":" .. key) end
+                end
             end)
             db:release()
             if not ok then error(err, 0) end

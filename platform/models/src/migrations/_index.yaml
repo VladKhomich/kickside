@@ -43,6 +43,4 @@ entries:
     modules: [json]
     imports:
       migration: wippy.migration:migration
-      discovery_mapper: kickside.models.discovery:mapper
-      provider_registry: kickside.models.discovery:provider_registry
     method: migrate

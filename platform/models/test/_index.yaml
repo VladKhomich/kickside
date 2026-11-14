@@ -39,6 +39,7 @@ entries:
       fake_http: app:card_save_fake_http
       save_handler: app:card_save_upsert
       card_policy: kickside.models.catalog:card_policy
+      discovery_mapper: kickside.models.discovery:mapper
       model_discovery: kickside.models.discovery:model_discovery
       reference_registry: kickside.models.discovery:reference_registry
 
