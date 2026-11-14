@@ -1,3 +1,4 @@
+local env = require("env")
 local crypto = require("crypto")
 local secret_cipher = require("secret_cipher")
 local base64 = require("base64")
@@ -9,7 +10,9 @@ local MAX_READ_TTL_SECONDS = 3600
 
 -- Get encryption key from environment
 local function get_encryption_key()
-    local key, err = secret_cipher.load_key("kickside.uploads.env:encryption_key")
+    local variable, variable_err = env.get("kickside.uploads.env:encryption_key")
+    if variable_err then error(variable_err, 0) end
+    local key, err = secret_cipher.load_key(variable)
     if err then error(err, 0) end
     return key
 end

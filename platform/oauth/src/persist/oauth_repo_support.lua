@@ -1,3 +1,4 @@
+local env = require("env")
 -- Shared OAuth persistence, encryption, and timestamp support.
 local sql = require("sql")
 local json = require("json")
@@ -32,7 +33,9 @@ local function get_db(): (sql.DB?, string?)
 end
 
 local function get_encryption_key(): (string?, string?)
-    local key, err = secret_cipher.load_key("kickside.oauth.env:encryption_key")
+    local variable, variable_err = env.get("kickside.oauth.env:encryption_key")
+    if variable_err then return nil, tostring(variable_err) end
+    local key, err = secret_cipher.load_key(variable)
     if err then return nil, tostring(err) end
     return key
 end

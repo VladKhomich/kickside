@@ -1,3 +1,4 @@
+local env = require("env")
 -- Secret settings retain the shared AES/base64 storage format.
 local secret_cipher = require("secret_cipher")
 
@@ -6,7 +7,9 @@ local M = {}
 M.KEY_MISSING = "ENCRYPTION_KEY environment variable not set"
 
 local function key(): (string?, string?)
-    local key, err = secret_cipher.load_key("kickside.settings.env:encryption_key")
+    local variable, variable_err = env.get("kickside.settings.env:encryption_key")
+    if variable_err then return nil, tostring(variable_err) end
+    local key, err = secret_cipher.load_key(variable)
     if err then return nil, tostring(err) end
     return key
 end

@@ -346,7 +346,8 @@ entries:
     kind: ns.requirement
     default: ENCRYPTION_KEY
     targets:
-      - {entry: kickside.models.env:encryption_key, path: .variable}
+      - {entry: kickside.models.env:encryption_key, path: .default}
+      - {entry: kickside.models:secret_key_access, path: '.policy.resources +='}
 
   - name: secret_key_access
     kind: security.policy

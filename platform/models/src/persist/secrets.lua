@@ -1,9 +1,12 @@
+local env = require("env")
 local secret_cipher = require("secret_cipher")
 
 local M = {}
 
 local function key(): (string?, string?)
-    local key, err = secret_cipher.load_key("kickside.models.env:encryption_key")
+    local variable, variable_err = env.get("kickside.models.env:encryption_key")
+    if variable_err then return nil, tostring(variable_err) end
+    local key, err = secret_cipher.load_key(variable)
     if err then return nil, tostring(err) end
     return key
 end
