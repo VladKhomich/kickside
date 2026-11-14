@@ -29,11 +29,38 @@ local function effective_capabilities(inferred: any, overrides: any): { string }
     return out
 end
 
+-- Ownership in the stored shape, as an export document carries it.
+local function supplied_ownership(value: any): (any?, string?)
+    if type(value) ~= "table" then return nil, "capability_ownership must be an object" end
+    local inferred = value.inferred
+    if inferred ~= nil then
+        if type(inferred) ~= "table" then return nil, "capability_ownership.inferred must be a list" end
+        inferred = policy.explicit_list(inferred, {})
+    end
+    if type(value.overrides) ~= "table" then return nil, "capability_ownership.overrides must be an object" end
+    local overrides = {}
+    for capability, enabled in pairs(value.overrides) do
+        if type(capability) ~= "string" or type(enabled) ~= "boolean" then
+            return nil, "capability_ownership.overrides must map capabilities to true or false"
+        end
+        overrides[capability] = enabled
+    end
+    return { inferred = inferred, overrides = overrides }
+end
+
 -- A card's capabilities are its last inferred set with administrator overrides
 -- applied. Discovery replaces the inferred set; a save records the membership
 -- change it makes as overrides; a reset returns capabilities to discovery.
+-- Supplied ownership takes the place of the saved ownership the save is
+-- recorded against.
 local function capability_ownership(input: any, base: any?, inferred: any?): (any?, any?, string?)
     local saved = base and base.capability_ownership or { inferred = {}, overrides = {} }
+    local supplied = input.capability_ownership ~= nil
+    if supplied then
+        local ownership, ownership_err = supplied_ownership(input.capability_ownership)
+        if not ownership then return nil, nil, ownership_err end
+        saved = ownership
+    end
     local ownership = { inferred = inferred or saved.inferred, overrides = {} }
     for capability, enabled in pairs(saved.overrides) do ownership.overrides[capability] = enabled end
     if inferred ~= nil and saved.inferred == nil then
@@ -43,7 +70,8 @@ local function capability_ownership(input: any, base: any?, inferred: any?): (an
     end
     if inferred == nil then
         local current = effective_capabilities(saved.inferred, saved.overrides)
-        local target = policy.explicit_list(input.capabilities, base and base.capabilities or { "generate" })
+        local target = policy.explicit_list(input.capabilities,
+            supplied and current or (base and base.capabilities or { "generate" }))
         for _, capability in ipairs(current) do
             if not policy.table_has(target, capability) then ownership.overrides[capability] = false end
         end
@@ -98,10 +126,17 @@ local function build_card(row: any, profile: any?): (any?, any?)
         dimensions = tonumber(row.dimensions),
         source = row.source or models_types.SOURCE_MANUAL,
         provider_profile_id = row.provider_profile_id,
-        enabled = tonumber(row.enabled) ~= 0 and not (profile and (profile.error or profile.enabled == false)),
+        enabled = tonumber(row.enabled) ~= 0,
+        profile_enabled = not (profile and profile.enabled == false),
         error = profile and profile.error or nil,
         metadata = metadata,
     }
+end
+
+-- A card serves requests when it is enabled and its provider profile is
+-- readable and enabled. `enabled` itself is the card's own stored setting.
+local function available(card: any): boolean
+    return card.enabled ~= false and card.error == nil and card.profile_enabled ~= false
 end
 
 local function public_card(card: any): any
@@ -196,6 +231,7 @@ local function clean_card_input(input: any, base: any?, inferred: any?): (any?, 
 end
 
 M.build_card = build_card
+M.available = available
 M.public_card = public_card
 M.clean_card_input = clean_card_input
 
