@@ -57,6 +57,19 @@ local function create_component(tx: Executor, db: Executor, command: component_t
                 details = { error_kind = "subject" },
             }) :: error)
         end
+        local actor, actor_err = security.actor()
+        if actor_err then return nil, actor_err end
+        local creator: any = nil
+        if actor then
+            local id_err: error?
+            creator, id_err = actor:id()
+            if id_err then return nil, id_err end
+        end
+        if creator ~= payload.actor_id then
+            return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "maintenance ownership requires the authenticated creator",
+                details = {code = "component_maintenance_creator_mismatch", error_kind = "subject"}})
+        end
     end
 
     local kind_err = kind_authority.check(payload.impl_id :: string, "create")

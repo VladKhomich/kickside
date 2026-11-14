@@ -97,7 +97,7 @@ entries:
     meta:
       comment: In-process implementation for component CRUD lifecycle; appends canonical events and attaches declared lifecycle projections in the caller's transaction.
     source: file://component_lifecycle.lua
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, security]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
@@ -118,7 +118,7 @@ entries:
       comment: Binding for kickside.component:lifecycle; appends canonical component lifecycle events and attaches declared lifecycle projections.
     source: file://component_lifecycle.lua
     method: created
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, security]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
@@ -139,7 +139,7 @@ entries:
       comment: kickside.component:lifecycle updated method.
     source: file://component_lifecycle.lua
     method: updated
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, security]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
@@ -160,7 +160,7 @@ entries:
       comment: kickside.component:lifecycle deleted method.
     source: file://component_lifecycle.lua
     method: deleted
-    modules: [uuid, process, sql]
+    modules: [uuid, process, sql, security]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit

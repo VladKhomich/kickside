@@ -8,6 +8,11 @@
 
 local execution_identity = require("execution_identity")
 local error_envelope = require("error_envelope")
+local json = require("json")
+local lifecycle_log = require("lifecycle_log")
+local autoinit = require("autoinit")
+local access_subjects = require("access_subjects")
+local core_types = require("core_types")
 
 local M = {}
 
@@ -15,7 +20,7 @@ local M = {}
 -- the component's stored execution identity (nil when it carries none) and
 -- owner_key the actor recorded as its owner. A stored identity that is not
 -- valid v2 refuses.
-function M.of_owner(stored: any, owner_key: any): ({ [string]: any }?, error?)
+function M.of_owner(stored: any, owner_key: any, created_by: any?): ({ [string]: any }?, error?)
     if stored ~= nil then
         local row, row_err = execution_identity.to_row(stored)
         row, row_err = error_envelope.binding(row, row_err, nil,
@@ -23,10 +28,127 @@ function M.of_owner(stored: any, owner_key: any): ({ [string]: any }?, error?)
         if row_err then return nil, row_err end
         return { row = row }, nil
     end
-    if execution_identity.is_maintenance_key(owner_key) then
+    if execution_identity.is_maintenance_key(owner_key) and owner_key == created_by then
         return { system = true, owner = owner_key }, nil
     end
-    return { system = true }, nil
+    return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+        message = "component has no trusted execution owner",
+        details = {code = "component_execution_owner_missing", error_kind = "subject"}})
+end
+
+-- Creation events are framework-authored; writable legacy metadata alone is
+-- insufficient proof of a maintenance creator.
+function M.created_owner_tx(tx: any, component_id: string): (string?, error?)
+    local rows, err = tx:query([[SELECT body FROM kickside_event
+        WHERE thread_id=$1 AND external_source='component.lifecycle'
+        AND external_id=$2 AND external_version='1']],
+        {lifecycle_log.thread_id(component_id), "created:" .. component_id})
+    if err then return nil, errors.wrap(err, "read component creation authority") end
+    if type(rows) ~= "table" then
+        return nil, errors.new({kind = errors.INTERNAL, retryable = false,
+            message = "component creation authority is unreadable", details = {code = "component_creation_authority_response"}})
+    end
+    if #rows == 0 then return nil, nil end
+    local record, decode_err = json.decode(rows[1].body)
+    if decode_err then return nil, errors.wrap(decode_err, "decode component creation authority") end
+    if type(record) ~= "table" or record.component_id ~= component_id then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "component creation authority is invalid", details = {code = "component_creation_authority_invalid"}})
+    end
+    return record.actor_id, nil
+end
+
+local function denied(code: string, message: string): error
+    return errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+        message = message, details = {code = code, error_kind = "subject"}})
+end
+
+-- Component-derived registrations copy authority; neither copy is an authority
+-- source. Declaration keys and the framework thread relationship select the owner.
+function M.from_snapshot(row: table): (table?, error?)
+    local attrs: table = {}
+    if type(row.thread_attrs) == "string" then
+        local decoded, err = json.decode(row.thread_attrs)
+        if err then return nil, err end
+        if type(decoded) == "table" then attrs = decoded end
+    elseif type(row.thread_attrs) == "table" then attrs = row.thread_attrs end
+    local lifecycle = row.thread_component_id == nil or row.thread_component_id == ""
+    if lifecycle and (attrs.lifecycle ~= true or type(attrs.component_id) ~= "string"
+        or lifecycle_log.thread_id(attrs.component_id) ~= row.thread_id) then return nil, nil end
+    local impl_id = row.owner_impl_id or (lifecycle and attrs.class or nil)
+    if type(impl_id) ~= "string" then return nil, nil end
+    local own = false
+    for _, declaration in ipairs(autoinit.projections_for_impl(impl_id)) do
+        local on = declaration.on or autoinit.PROJECTION_ON.THREAD
+        local key = declaration.projection_key
+        if type(key) ~= "string" or key == "" then key = "default" end
+        if declaration.kind == row.kind and key == row.projection_key
+            and on == (lifecycle and autoinit.PROJECTION_ON.LIFECYCLE or autoinit.PROJECTION_ON.THREAD) then
+            own = true
+            local meta = type(row.body.meta) == "table" and row.body.meta or nil
+            if not meta or declaration.worker_ref ~= meta.worker_ref then
+                return nil, denied("projection_owner_declaration_changed", "component projection declaration changes before execution")
+            end
+            break
+        end
+    end
+    if not own then return nil, nil end
+    if row.owner_component_id == nil or (row.owner_context_readable ~= true and row.owner_context_readable ~= 1) then
+        return nil, denied("projection_owner_missing", "component projection owner record is missing or invalid")
+    end
+    local stored: any = nil
+    if row.owner_execution_identity ~= nil then
+        local err: error?
+        stored, err = json.decode(row.owner_execution_identity)
+        if err then return nil, err end
+        if stored == nil then return nil, denied("projection_owner_invalid", "component execution identity is invalid") end
+    end
+    -- A materialized maintenance binding is produced only by trusted creation
+    -- or provenance-checked reconciliation. Legacy null bindings cannot run.
+    local expected, expected_err = M.of_owner(stored, row.owner_key, row.actor_id)
+    if expected_err then return nil, expected_err end
+    local actor_id = expected.row and expected.row.actor_id or expected.owner
+    local actor_context = expected.row and expected.row.actor_context or nil
+    local function matches(actor: any, context: any): (boolean, error?)
+        if actor ~= actor_id then return false, nil end
+        if actor_context == nil then return context == nil, nil end
+        local identity, err = execution_identity.from_row(actor, context)
+        if err then return false, err end
+        local copy, copy_err = execution_identity.to_row(identity)
+        if copy_err then return false, copy_err end
+        return copy.actor_context == actor_context, nil
+    end
+    local cursor_matches, cursor_err = matches(row.actor_id, row.execution_identity_json)
+    if cursor_err then return nil, cursor_err end
+    local projection_matches, projection_err = matches(row.projection_actor_id, row.projection_actor_context)
+    if projection_err then return nil, projection_err end
+    if not cursor_matches or not projection_matches then
+        return nil, denied("projection_owner_binding_changed", "component projection binding differs from its current owner")
+    end
+    local generation = tonumber(row.owner_identity_generation)
+    if generation == nil or generation < 0 or generation ~= math.floor(generation) then
+        return nil, denied("projection_owner_generation_invalid", "component identity generation is invalid")
+    end
+    return {component_id = row.owner_component_id, impl_id = impl_id,
+        generation = generation, identity = stored, maintenance_owner = expected.owner}, nil
+end
+
+function M.access_checks(authority: table, subjects: table[], prefixes: {string}?): (table[]?, error?)
+    local check = {component_id = authority.component_id, subjects = subjects, prefixes = prefixes,
+        required_mask = core_types.ACCESS.READ | core_types.ACCESS.WRITE}
+    local checks: table[] = {check}
+    if authority.identity then
+        local id = authority.identity
+        if execution_identity.same_principal(id.authorized_by, id.principal) then
+            check.required_mask = check.required_mask | core_types.ACCESS.ADMIN
+        else
+            local authorizer_subjects, err = access_subjects.principal_subjects(id.authorized_by)
+            if err then return nil, err end
+            checks[#checks + 1] = {component_id = authority.component_id, subjects = authorizer_subjects,
+                required_mask = core_types.ACCESS.ADMIN}
+        end
+    end
+    return checks, nil
 end
 
 return M

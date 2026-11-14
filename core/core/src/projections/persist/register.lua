@@ -312,7 +312,8 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local projection_id: string
     local created_projection = false
     local declaration_changed = false
-    local projection_rows, projection_query_err = sql.builder.select("id", "body")
+    local identity_changed = false
+    local projection_rows, projection_query_err = sql.builder.select("id", "body", "actor_id", "actor_context")
         :from("kickside_projection")
         :where(sql.builder.eq({ thread_id = thread_id, kind = kind, projection_key = projection_key }))
         :limit(1)
@@ -324,6 +325,17 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     if #projection_rows > 0 then
         projection_id = tostring(projection_rows[1].id)
+        if params.component_id ~= nil then
+            local prior = projection_rows[1]
+            identity_changed = prior.actor_id ~= actor_id_col or prior.actor_context ~= actor_context_col
+            local copies, copies_err = sql.builder.select("actor_id", "execution_identity_json")
+                :from("kickside_projection_cursor"):where("projection_id = ?", projection_id):run_with(tx):query()
+            if copies_err then return nil, errors.wrap(copies_err, "read component projection identities") end
+            if type(copies) ~= "table" then return nil, response_error("identity.cursors") end
+            for _, copy in ipairs(copies) do
+                if copy.actor_id ~= actor_id_col or copy.execution_identity_json ~= actor_context_col then identity_changed = true end
+            end
+        end
         -- Preserve the fold read-model that lives alongside the declaration in the
         -- body. The worker folds its accumulated public state (counters, status)
         -- into top-level body keys; only meta / worker_config / events are declaration fields. A re-register (binding hot-reload,
@@ -345,18 +357,18 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             end
             body_to_write = merged_json :: string
         end
-        if params.ensure ~= true or declaration_changed then
+        if params.ensure ~= true or declaration_changed or identity_changed then
             local projection_update = sql.builder.update("kickside_projection")
                 :set("body", body_to_write)
                 :set("updated_at", now)
-            if params.ensure ~= true then
+            if params.ensure ~= true or identity_changed then
                 projection_update = projection_update:set("actor_id", actor_id_col):set("actor_context", actor_context_col)
             end
             if reset then
                 -- reset rewinds the projection to start_seq and marks it pending so
                 -- catch-up rebuilds it from scratch.
                 projection_update = projection_update:set("state", core_types.PROJECTION_STATE.PENDING):set("last_event_seq", start_seq)
-            elseif declaration_changed then
+            elseif declaration_changed or identity_changed then
                 -- INVALID records a fault in the PREVIOUS declaration (an unresolvable
                 -- worker_ref, an unsupported runtime). A new declaration retires that
                 -- verdict: the projection returns to pending and resumes from the seq it
@@ -399,9 +411,15 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     end
 
-    if declaration_changed then
-        local fenced, fence_err = sql.builder.update("kickside_projection_cursor")
+    if declaration_changed or identity_changed then
+        local fence = sql.builder.update("kickside_projection_cursor")
             :set("generation", sql.builder.expr("generation + 1")):set("updated_at", now)
+        if identity_changed then
+            fence = fence:set("actor_id", actor_id_col):set("execution_identity_json", actor_context_col)
+                :set("status", sql.builder.expr("CASE WHEN status='invalid' THEN 'active' ELSE status END"))
+                :set("last_error", sql.builder.expr("CASE WHEN status='invalid' THEN NULL ELSE last_error END"))
+        end
+        local fenced, fence_err = fence
             :where(sql.builder.eq({ projection_id = projection_id })):run_with(tx):exec()
         if fence_err then return nil, errors.wrap(fence_err, "failed to fence refreshed projection") end
         local _, proof_err = sql_boundary.number_value(type(fenced) == "table" and fenced.rows_affected or nil,
@@ -437,7 +455,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                     terminal_op_id = cursor_id .. ":correct:" .. tostring(prior_generation) })
                 if release_err then return nil, release_err end
             end
-            generation = prior_generation + (declaration_changed and 0 or 1)
+            generation = prior_generation + ((declaration_changed or identity_changed) and 0 or 1)
             local updated, update_err = sql.builder.update("kickside_projection_cursor")
                 :set("last_seq", cursor_head):set("status", "active")
                 :set("generation", generation):set("last_error", nil)
@@ -487,6 +505,18 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     if params.ensure ~= true and cursor_rows and cursor_rows[1] and (cursor_head < event_count or reset) then
         local _, wake_err = jobs_wake.wake_job(tx, job_id, { control = true }, dbtype)
         if wake_err then return nil, wake_err end
+    end
+    if identity_changed then
+        local slots, slots_err = sql.builder.select("job_id"):from("kickside_projection_cursor")
+            :where("projection_id = ?", projection_id):run_with(tx):query()
+        if slots_err then return nil, errors.wrap(slots_err, "read reconciled projection slots") end
+        if type(slots) ~= "table" then return nil, response_error("reconciled.slots") end
+        for _, slot in ipairs(slots) do
+            if slot.job_id ~= nil then
+                local _, wake_err = jobs_wake.wake_job(tx, slot.job_id, {control = true}, dbtype)
+                if wake_err then return nil, wake_err end
+            end
+        end
     end
     -- A cursor at the thread head has no event left to fold, so its slot parks
     -- and no advance runs: the projection is current at that head.

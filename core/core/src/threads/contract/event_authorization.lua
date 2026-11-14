@@ -10,6 +10,8 @@ local json = require("json")
 local writer = require("threads_writer")
 local component_client = require("component_client")
 local core_types = require("core_types")
+local access_subjects = require("access_subjects")
+local owner_identity = require("owner_identity")
 local common = require("contract_common")
 local is_str = common.is_str
 local trim = common.trim
@@ -275,12 +277,13 @@ function M.normalize_writes(writes: any): error?
 end
 
 -- Component owns the access decision; the stored kind owns event declarations.
-function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boolean?): (boolean, error?)
+function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boolean?): (boolean, error?, {[string]: boolean}?)
     local shape_err = M.normalize_writes(writes)
     if shape_err then return false, shape_err end
     local user_append, authority_err = authority()
     if authority_err then return false, authority_err end
     local output_only = true
+    local access_required: {[string]: boolean} = {}
     for _, write in ipairs(writes) do
         local rows, thread_err = db:query("SELECT id,component_id,thread_class FROM kickside_thread WHERE id=$1", { write.thread_id })
         if thread_err then return false, registry_failure("thread lookup failed", thread_err) end
@@ -318,28 +321,57 @@ function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boo
         if not producer_write then
             output_only = false
             if user_append then
+                access_required[write.thread_id] = true
                 local _, access_err = component_client.validate_access(component_id, (core_types.ACCESS.WRITE :: integer))
                 if access_err then return false, access_err end
             end
         end
     end
-    return user_append == false or output_only, nil
+    return user_append == false or output_only, nil, access_required
 end
 
 -- Internal actor-bound projection admission, using the same contract authorizer.
 function M.authorize_writes(args: any): (table?, error?)
     local writes = type(args) == "table" and args.writes or nil
-    local shape_err = M.normalize_writes(writes)
-    if shape_err then return nil, shape_err end
-    local _, authority_err = authority()
+    local owner = type(args) == "table" and args.component_authority or nil
+    if type(writes) ~= "table" or #writes > 0 or owner == nil then
+        local shape_err = M.normalize_writes(writes)
+        if shape_err then return nil, shape_err end
+    end
+    local user_append, authority_err = authority()
     if authority_err then return nil, authority_err end
-    local db, db_err = common.open_db()
-    if db_err then return nil, db_err end
-    local _, authorize_err = M.validate_event_types(db, writes)
-    local _, release_err = db:release()
-    if authorize_err then return nil, authorize_err end
-    if release_err then return nil, registry_failure("authorization database release failed", release_err) end
-    return { writes = writes }, nil
+    local checks: {table} = {}
+    local actor, actor_err = security.actor()
+    if actor_err then return nil, actor_err end
+    local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
+    if subjects_err then return nil, subjects_err end
+    if owner then
+        local check_err: error?
+        checks, check_err = owner_identity.access_checks(owner, subjects, prefixes)
+        if check_err then return nil, check_err end
+    end
+    if #writes > 0 then
+        local db, db_err = common.open_db()
+        if db_err then return nil, db_err end
+        local _, authorize_err, access_required = M.validate_event_types(db, writes)
+        local _, release_err = db:release()
+        if authorize_err then return nil, authorize_err end
+        if release_err then return nil, registry_failure("authorization database release failed", release_err) end
+        for _, write in ipairs(writes) do
+            -- Maintenance projections hold the same component WRITE boundary as
+            -- their direct component calls; producer capabilities retain their
+            -- existing user publication semantics.
+            local requires_access = owner ~= nil and not user_append
+            if user_append then requires_access = access_required[write.thread_id] == true end
+            if requires_access then
+                local _, access_err = component_client.validate_access(write.thread_id, core_types.ACCESS.WRITE)
+                if access_err then return nil, access_err end
+                checks[#checks + 1] = {component_id = write.thread_id, required_mask = core_types.ACCESS.WRITE,
+                    subjects = subjects, prefixes = prefixes}
+            end
+        end
+    end
+    return {writes = writes, checks = checks}, nil
 end
 
 -- Primary-thread emit must authorize a declared output before it lazily creates

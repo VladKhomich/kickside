@@ -101,12 +101,13 @@ function M.declared_identity(component_id: string): ({ [string]: any }?, error?)
     local stored, load_err = component_identity.execution_identity_of(component_id)
     if load_err then return nil, load_err end
     local owner: string? = nil
+    local creator: string? = nil
     if stored == nil then
         local owner_err: error?
-        owner, owner_err = component_identity.owner_of(component_id)
+        owner, owner_err, creator = component_identity.owner_of(component_id)
         if owner_err then return nil, owner_err end
     end
-    return owner_identity.of_owner(stored, owner)
+    return owner_identity.of_owner(stored, owner, creator)
 end
 
 -- open_db opens the slice's pooled connection.

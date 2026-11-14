@@ -29,8 +29,14 @@ entries:
     meta:
       comment: Generation and sequence fenced cursor apply with atomic jobs completion.
     source: file://apply.lua
-    modules: [sql, json, registry]
+    modules: [sql, json, registry, funcs]
     imports:
+      access_subjects: kickside.component.persist:access_subjects
+      owner_identity: kickside.core.threads:owner_identity
+      component_access: kickside.component.persist:access_ops
+      component_access_policy: kickside.component:access_policy
+      component_placement: kickside.component.persist:placement
+      worker: kickside.core.projections.persist:worker
       clock: kickside.core.jobs:clock
       threads_writer: kickside.core.threads.persist:writer
       jobs_wake: kickside.core.jobs.persist:wake
@@ -51,6 +57,7 @@ entries:
       clock: kickside.core.jobs:clock
       core_db: kickside.core:db
       worker: kickside.core.projections.persist:worker
+      owner_identity: kickside.core.threads:owner_identity
       projection_policy: kickside.core.projections:policy_config
       apply: kickside.core.projections:apply
       trace_context: kickside.execution:trace
@@ -73,6 +80,7 @@ entries:
       clock: kickside.core.jobs:clock
       core_db: kickside.core:db
       worker: kickside.core.projections.persist:worker
+      owner_identity: kickside.core.threads:owner_identity
       projection_policy: kickside.core.projections:policy_config
       apply: kickside.core.projections:apply
       trace_context: kickside.execution:trace

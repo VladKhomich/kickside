@@ -13,6 +13,13 @@ local retention_notifier = require("retention_notifier")
 local retention_pin = require("retention_pin")
 local execution_identity = require("execution_identity")
 local error_envelope = require("error_envelope")
+local component_access = require("component_access")
+local worker = require("worker")
+local funcs = require("funcs")
+local component_access_policy = require("component_access_policy")
+local component_placement = require("component_placement")
+local access_subjects = require("access_subjects")
+local owner_identity = require("owner_identity")
 
 local M = {}
 
@@ -137,7 +144,7 @@ local function completion(tx: sql.Transaction, job: table, opts: table): (table?
     return done, nil
 end
 
-local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table, writes: table[]): (table?, error?)
+local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table, writes: table[], checks: table[], authorization_error: error?): (table?, error?)
     local raw_type, type_err = db:type()
     if type_err then return nil, errors.wrap(type_err, "projection dialect unavailable") end
     if type(raw_type) ~= "string" or raw_type == "" then return nil, response_error("database.type") end
@@ -151,6 +158,33 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local function abort(err: error): (nil, error)
         return nil, rollback(tx, err)
     end
+    local authority = snapshot.component_authority
+    local owner_stale = false
+    local component_ids: {string} = {}
+    local seen_components: {[string]: boolean} = {}
+    local function include_component(id: string)
+        if not seen_components[id] then seen_components[id] = true; component_ids[#component_ids + 1] = id end
+    end
+    if authority then include_component(authority.component_id) end
+    for _, check in ipairs(checks) do include_component(check.component_id) end
+    local component_rows: {[string]: table} = {}
+    if #component_ids > 0 then
+        local marks: {string} = {}
+        for i in ipairs(component_ids) do marks[#marks + 1] = "$" .. tostring(i) end
+        local marked = table.concat(marks, ",")
+        local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
+        local owners, owner_err = tx:query([[SELECT component_id,identity_generation,path FROM kickside_components
+            WHERE component_id IN (SELECT ancestor_id FROM kickside_component_ancestor WHERE component_id IN (]] .. marked .. [[)
+            UNION SELECT component_id FROM kickside_components WHERE component_id IN (]] .. marked .. [[))
+            ORDER BY component_id]] .. suffix, component_ids)
+        if owner_err then return abort(errors.wrap(owner_err, "lock projection component authority")) end
+        if type(owners) ~= "table" then return abort(response_error("owner.rows")) end
+        for _, owner in ipairs(owners) do component_rows[owner.component_id] = owner end
+        if authority then
+            local owner = component_rows[authority.component_id]
+            owner_stale = owner == nil or tonumber(owner.identity_generation) ~= authority.generation
+        end
+    end
     local locked_threads, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, ids)
     if lock_err then return abort(lock_err) end
     if type(locked_threads) ~= "table" then return abort(response_error("locked_threads")) end
@@ -158,8 +192,18 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local current_head = tonumber(source_thread and source_thread.event_count)
     if current_head == nil then return abort(response_error("thread.head")) end
     local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local rows, cursor_err = tx:query([[SELECT generation,last_seq,status,job_id FROM kickside_projection_cursor
-        WHERE id=$1]] .. suffix, { snapshot.id })
+    local columns = {"current_cursor.*"}
+    local fence_args: {any} = {snapshot.id}
+    for index, check in ipairs(checks) do
+        local statement, args = component_access.effective_mask_query(check.subjects, check.component_id)
+        local offset = #fence_args
+        statement = statement:gsub("%$(%d+)", function(raw) return "$" .. tostring(tonumber(raw) + offset) end)
+        columns[#columns + 1] = "(" .. statement .. ") AS access_" .. tostring(index)
+        for _, arg in ipairs(args) do fence_args[#fence_args + 1] = arg end
+    end
+    local rows, cursor_err = tx:query("WITH current_cursor AS (SELECT generation,last_seq,status,job_id"
+        .. " FROM kickside_projection_cursor WHERE id=$1" .. suffix .. ") SELECT "
+        .. table.concat(columns, ",") .. " FROM current_cursor", fence_args)
     if cursor_err then return abort(errors.wrap(cursor_err, "projection fence read failed")) end
     if type(rows) ~= "table" then return abort(response_error("cursor.rows")) end
     local cursor = rows[1]
@@ -167,7 +211,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     if tostring(cursor.job_id or "") ~= tostring(job.id) then
         return abort(errors.new({message = "projection slot changed", kind = errors.CONFLICT, retryable = false}))
     end
-    if cursor.status ~= "active" or tonumber(cursor.generation) ~= tonumber(snapshot.generation)
+    if owner_stale or cursor.status ~= "active" or tonumber(cursor.generation) ~= tonumber(snapshot.generation)
         or tonumber(cursor.last_seq) ~= tonumber(snapshot.last_seq) then
         local options: table = { rearm = clock.now(dbtype) }
         if cursor.status ~= "active" then options = { record = { status = "parked" } } end
@@ -180,6 +224,17 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         return { self_completed = true, completion = done, stale = true }, nil
     end
 
+    if authorization_error then return abort(authorization_error) end
+    for index, check in ipairs(checks) do
+        local mask = math.tointeger(tonumber(cursor["access_" .. tostring(index)]))
+        local component = component_rows[check.component_id]
+        if not component or not mask or not component_access_policy.has_all(mask, check.required_mask)
+            or (check.prefixes and not component_placement.path_under_any(component.path, check.prefixes)) then
+            return abort(errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "projection component access changes before apply",
+                details = {code = "projection_component_access_denied", error_kind = "access"}}))
+        end
+    end
     local prior = tonumber(snapshot.last_seq)
     if prior == nil then return abort(response_error("cursor.last_seq")) end
     local last = prefetched_last
@@ -252,7 +307,7 @@ end
 -- corrected declaration re-registers it. An infrastructure failure keeps the
 -- cursor active with its last_error and returns to Jobs, which retries the
 -- slot. Returns the self-completion of a deterministic failure, else nil.
-function M.fail(db_id: string, job: table, snapshot: table, failure: error, deterministic: boolean): (table?, error?)
+function M.fail(db_id: string, job: table, snapshot: table, failure: error, deterministic: boolean, completed: table?): (table?, error?)
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection failure DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
@@ -261,6 +316,9 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
     if type(raw_type) ~= "string" or raw_type == "" then return nil, release(db, response_error("database.type")) end
     local dbtype = raw_type :: string
     local message = tostring(failure)
+    if completed and (completed.job_id ~= job.id or tonumber(completed.execution_seq) ~= tonumber(job.execution_seq)) then
+        return nil, release(db, invalid("post-commit failure requires its completed execution"))
+    end
     local tx, begin_err = db:begin()
     if begin_err then return nil, release(db, errors.wrap(begin_err, "projection failure begin failed")) end
     if type(tx) ~= "table" and type(tx) ~= "userdata" then return nil, release(db, response_error("transaction")) end
@@ -301,9 +359,15 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
             { now, snapshot.projection_id })
         local state_write_err = write_error(state, state_err, "projection invalidation failed", "projection.invalidate")
         if state_write_err then return abort(state_write_err) end
-        local done, done_err = completion(tx, job, { park = true, record = { status = "failed", error = message }, demand_satisfied = true })
-        if done_err then return abort(done_err) end
-        result = { self_completed = true, completion = done, invalid = true }
+        local done = completed
+        if not done then
+            local done_err: error?
+            done, done_err = completion(tx, job, {park = true, record = {status = "failed", error = message}, demand_satisfied = true})
+            if done_err then return abort(done_err) end
+        end
+        result = {self_completed = true, completion = done, invalid = true}
+    elseif completed then
+        result = {self_completed = true, completion = completed, stale = true}
     end
     local _, commit_err = tx:commit()
     local finish_err = release(db, commit_err and errors.wrap(commit_err, "projection failure commit failed") or nil)
@@ -320,24 +384,67 @@ end
 function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
-    if #writes > 0 and snapshot.execution_identity_json ~= nil then
+    local checks: table[] = {}
+    local authorization_error: error? = nil
+    if snapshot.component_authority then
+        local actor, scope, resolve_err: any = nil, nil, nil
+        local frame = snapshot.execution_frame
+        if frame and snapshot.component_authority.maintenance_owner then
+            actor, scope = frame.actor, frame.scope
+        else
+            actor, scope, resolve_err = worker.resolve_binding_identity({actor_id = snapshot.actor_id,
+                actor_context = snapshot.execution_identity_json, component_authority = snapshot.component_authority})
+        end
+        authorization_error = resolve_err
+        if not authorization_error and #writes == 0 then
+            local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
+            authorization_error = subjects_err
+            if not authorization_error then
+                local required_checks, check_err = owner_identity.access_checks(snapshot.component_authority, subjects, prefixes)
+                authorization_error = check_err
+                if not authorization_error then checks = required_checks end
+            end
+        elseif not authorization_error then
+            local executor, builder_err = funcs.new()
+            if builder_err then authorization_error = builder_err
+            elseif not executor then authorization_error = response_error("authorization.executor") end
+            if not authorization_error then
+                executor, authorization_error = executor:with_actor(actor)
+                if not authorization_error and not executor then authorization_error = response_error("authorization.actor") end
+            end
+            if not authorization_error then
+                executor, authorization_error = executor:with_scope(scope)
+                if not authorization_error and not executor then authorization_error = response_error("authorization.scope") end
+            end
+            if not authorization_error then
+                local admitted, admission_err = executor:call("kickside.core.threads:authorize_projection_writes",
+                    {writes = writes, component_authority = snapshot.component_authority})
+                authorization_error = admission_err
+                if not authorization_error then
+                    if type(admitted) ~= "table" or type(admitted.writes) ~= "table" or type(admitted.checks) ~= "table" then
+                        authorization_error = response_error("admitted.writes")
+                    else writes, checks = admitted.writes, admitted.checks end
+                end
+            end
+        end
+    elseif #writes > 0 and snapshot.execution_identity_json ~= nil then
         local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
         if identity_err then return nil, identity_err end
         if type(identity) ~= "table" then return nil, response_error("execution_identity") end
         local admitted, admission_err = execution_identity.run_as(identity,
-            "kickside.core.threads:authorize_projection_writes", { writes = writes }, {
+            "kickside.core.threads:authorize_projection_writes", {writes = writes}, {
                 deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
             })
         if admission_err then return nil, admission_err end
-        if type(admitted) ~= "table" or type(admitted.writes) ~= "table" then
+        if type(admitted) ~= "table" or type(admitted.writes) ~= "table" or type(admitted.checks) ~= "table" then
             return nil, response_error("admitted.writes")
         end
-        writes = admitted.writes
+        writes, checks = admitted.writes, admitted.checks
     end
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection apply DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
-    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes)
+    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checks, authorization_error)
     local finish_err = release(db, apply_err)
     if finish_err then return nil, finish_err end
     return result, nil

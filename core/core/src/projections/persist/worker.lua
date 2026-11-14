@@ -7,6 +7,10 @@
 -- errors are returned as values; nothing is raised.
 
 local sql = require("sql")
+local component_access = require("component_access")
+local core_db = require("core_db")
+local access_subjects = require("access_subjects")
+local core_types = require("core_types")
 local json = require("json")
 local persisted_json = require("persisted_json")
 local funcs = require("funcs")
@@ -204,6 +208,7 @@ function worker.post_commit_binding(binding: table): (table?, error?)
     admitted.actor_id = binding.actor_id
     admitted.actor_context = binding.actor_context
     admitted.system_identity = binding.system_identity
+    admitted.component_authority = binding.component_authority
     return admitted, nil
 end
 
@@ -291,18 +296,53 @@ local function resolve_binding_identity(binding: table): (any, any, error?)
     if binding.actor_context == nil then
         local frame, frame_err = execution_identity.maintenance_frame(binding.actor_id)
         if frame_err or not frame then return nil, nil, frame_err end
+        local authority = binding.component_authority
+        if type(authority) ~= "table" or authority.maintenance_owner ~= binding.actor_id then
+            return nil, nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "maintenance projection has no trusted component binding",
+                details = {code = "projection_maintenance_binding_missing", error_kind = "subject"}})
+        end
+        if frame.scope:evaluate(frame.actor, "component.own.maintenance", authority.impl_id) ~= "allow" then
+            return nil, nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "maintenance owner no longer has component ownership permission",
+                details = {code = "projection_maintenance_ownership_denied", error_kind = "access"}})
+        end
         return (frame :: any).actor, (frame :: any).scope, nil
     end
     local identity, row_err = execution_identity.from_row(binding.actor_id, binding.actor_context)
     if row_err or not identity then return nil, nil, row_err end
     local resolved, resolve_err = execution_identity.resolve(identity, {
         deferred_owner = worker.TICK_OWNER,
-        execution_root = (identity :: any).component_id,
+        execution_root = binding.component_authority and binding.component_authority.component_id or (identity :: any).component_id,
     })
     if resolve_err or not resolved then return nil, nil, resolve_err end
     return (resolved :: any).actor, (resolved :: any).scope, nil
 end
 worker.resolve_binding_identity = resolve_binding_identity
+
+local function admit_binding_identity(binding: table): (any, any, error?)
+    local actor, scope, err = resolve_binding_identity(binding)
+    if err then return nil, nil, err end
+    local authority = binding.component_authority
+    if authority then
+        local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
+        if subjects_err then return nil, nil, subjects_err end
+        local db, db_err = sql.get(core_db.id())
+        if db_err then return nil, nil, db_err end
+        if not db then return nil, nil, errors.new({kind = errors.UNAVAILABLE, message = "component authority database unavailable"}) end
+        local allowed, access_err = component_access.check_user_access(db, actor:id(), authority.component_id,
+            core_types.ACCESS.READ | core_types.ACCESS.WRITE, subjects, prefixes, true, true)
+        access_err = error_envelope.cleanup(function(): (any, error?) return db:release() end,
+            access_err, "release projection owner admission database")
+        if access_err then return nil, nil, access_err end
+        if not allowed then
+            return nil, nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "projection owner no longer has component access",
+                details = {code = "projection_component_access_denied", error_kind = "access"}})
+        end
+    end
+    return actor, scope, nil
+end
 
 local function executor_response(field: string, value: any, cause: error?): (any, error?)
     if cause then return nil, errors.wrap(cause, "projection worker executor " .. field .. " refused") end
@@ -319,7 +359,7 @@ end
 -- run_proc_supervised so their execution is bounded and terminable. A proc binding
 -- reaching this path is a wiring fault, surfaced as a hard error rather than run
 -- unsupervised.
-function worker.run(binding: table, worker_input: table): (table?, error?)
+function worker.run(binding: table, worker_input: table): (table?, error?, table?)
     local target_id = tostring(binding.target_id)
     local runtime = tostring(binding.worker_runtime)
     local worker_ref = tostring(binding.worker_ref)
@@ -334,7 +374,7 @@ function worker.run(binding: table, worker_input: table): (table?, error?)
     local validated, validate_err = worker.validate(binding, binding.system_identity == true)
     if validate_err or not validated then return nil, validate_err end
 
-    local actor, scope, ident_err = resolve_binding_identity(binding)
+    local actor, scope, ident_err = admit_binding_identity(binding)
     if ident_err then
         return nil, ident_err
     end
@@ -355,7 +395,9 @@ function worker.run(binding: table, worker_input: table): (table?, error?)
         return nil, error_envelope.wrap(run_err, "projection worker failed (" .. worker_ref .. ")",
             {reason = worker.WORKER_FAILED})
     end
-    return normalize_result(result)
+    local output, normalize_err = normalize_result(result)
+    if normalize_err then return nil, normalize_err end
+    return output, nil, actor and {actor = actor, scope = scope} or nil
 end
 
 local function interpret_proc_exit(result: any): (table?, error?)
@@ -420,7 +462,7 @@ type SupervisedOpts = {
 -- in-flight embed/LLM call — and dispatch records the failure for retry.
 -- max_execution_ms bounds the entire execution, including a progressing worker. On
 -- a clean exit the child's return value is normalized to the worker's table output.
-function worker.run_proc_supervised(binding: table, worker_input: table, opts: SupervisedOpts?): (table?, error?)
+function worker.run_proc_supervised(binding: table, worker_input: table, opts: SupervisedOpts?): (table?, error?, table?)
     local options = type(opts) == "table" and (opts :: SupervisedOpts) or ({} :: SupervisedOpts)
     local worker_ref = tostring(binding.worker_ref)
     if tostring(binding.worker_runtime) ~= types.WORKER_RUNTIME.PROC then
@@ -433,7 +475,7 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if host == "" then
         return nil, (errors.new({ message = "proc:// projection worker requires a process host", kind = errors.INVALID }) :: error)
     end
-    local actor, scope, ident_err = resolve_binding_identity(binding)
+    local actor, scope, ident_err = admit_binding_identity(binding)
     if ident_err then
         return nil, ident_err
     end
@@ -485,7 +527,7 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if run_err then
         return nil, run_err
     end
-    return output, nil
+    return output, nil, actor and {actor = actor, scope = scope} or nil
 end
 
 return worker

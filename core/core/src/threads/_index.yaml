@@ -151,7 +151,10 @@ entries:
     meta:
       comment: Owner loader for a component's stored execution identity (trusted component tier).
     source: file://component_identity.lua
+    modules: [sql]
     imports:
+      core_db: kickside.core:db
+      owner_identity: kickside.core.threads:owner_identity
       error_envelope: kickside.contract:error_envelope
       component_client: kickside.component:component
       execution_identity: kickside.execution:execution_identity
@@ -161,7 +164,12 @@ entries:
     meta:
       comment: Derives the execution identity a component's declared projections run under from its owner record.
     source: file://owner_identity.lua
+    modules: [json]
     imports:
+      access_subjects: kickside.component.persist:access_subjects
+      core_types: kickside.core:types
+      autoinit: kickside.component:autoinit
+      lifecycle_log: kickside.core.threads.persist:lifecycle
       error_envelope: kickside.contract:error_envelope
       execution_identity: kickside.execution:execution_identity
 
@@ -389,13 +397,15 @@ entries:
     source: file://contract/event_authorization.lua
     modules: [sql, security, registry, uuid, json]
     imports:
+      owner_identity: kickside.core.threads:owner_identity
+      access_subjects: kickside.component.persist:access_subjects
+      execution_identity: kickside.execution:execution_identity
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
       threads_writer: kickside.core.threads.persist:writer
       component_client: kickside.component:component
       core_types: kickside.core:types
       contract_common: kickside.core.threads:contract_common
-
   - name: contract_events
     kind: library.lua
     meta:
@@ -949,13 +959,15 @@ entries:
     method: authorize_writes
     modules: [sql, security, registry, uuid, json]
     imports:
+      owner_identity: kickside.core.threads:owner_identity
+      access_subjects: kickside.component.persist:access_subjects
+      execution_identity: kickside.execution:execution_identity
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
       threads_writer: kickside.core.threads.persist:writer
       component_client: kickside.component:component
       core_types: kickside.core:types
       contract_common: kickside.core.threads:contract_common
-
   - name: job_history
     kind: library.lua
     source: file://contract/job_history.lua

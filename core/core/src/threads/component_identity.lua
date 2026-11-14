@@ -6,6 +6,9 @@
 local component_client = require("component_client")
 local execution_identity = require("execution_identity")
 local error_envelope = require("error_envelope")
+local sql = require("sql")
+local core_db = require("core_db")
+local owner_identity = require("owner_identity")
 
 local M = {}
 
@@ -29,13 +32,22 @@ end
 
 -- Answers (owner_key?, err): the actor recorded as the component's owner, or nil
 -- when it records none.
-function M.owner_of(component_id: string): (string?, error?)
+function M.owner_of(component_id: string): (string?, error?, string?)
     local record, read_err = component_client.component_owner_record(component_id)
     if read_err then return nil, errors.wrap(read_err, "read component owner") end
     if type(record) ~= "table" or type(record.actor_id) ~= "string" or record.actor_id == "" then
         return nil, nil
     end
-    return record.actor_id :: string, nil
+    local db, open_err = sql.get(core_db.id())
+    if open_err then return nil, open_err end
+    if not db then
+        return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "component creation database unavailable"})
+    end
+    local creator, read_err = owner_identity.created_owner_tx(db, component_id)
+    read_err = error_envelope.cleanup(function(): (any, error?) return db:release() end,
+        read_err, "release component creation authority database")
+    if read_err then return nil, read_err end
+    return record.actor_id :: string, nil, creator
 end
 
 return M

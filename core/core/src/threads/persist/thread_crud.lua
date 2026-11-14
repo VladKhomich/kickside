@@ -79,6 +79,7 @@ local function register_declared_projection(db: DB, thread_id: string, p: table,
         system_identity = identity.system == true,
         maintenance_owner = identity.owner,
         ensure = true,
+        component_id = thread_id,
     }
     -- Validate existing cursor identities, then refresh through the registration
     -- transaction that serializes on the thread row.
