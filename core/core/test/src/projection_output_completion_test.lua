@@ -25,9 +25,11 @@ return test.run_cases(function()
             for i=1,4 do
                 local id=uuid.v7()
                 local head=i<3 and 1 or 0
-                checked(f.as_owner("create",{id=id,impl_id="kickside.test.threads:thread_kind"}))
+                local created,create_err=f.as_owner("create",{id=id,impl_id="kickside.test.threads:thread_kind"})
+                checked(created,create_err)
                 if head==1 then
-                    checked(f.as_owner("append_event",{thread_id=id,event={type="kickside.test.threads:trigger",body={}}}))
+                    local appended,append_err=f.as_owner("append_event",{thread_id=id,event={type="kickside.test.threads:trigger",body={}}})
+                    checked(appended,append_err)
                 else output_ids[#output_ids+1]=id end
                 local db=assert(sql.get("app:db"))
                 local row=checked(writer.register_projection(db,id,{kind="concurrent-output",worker_ref="func://app:test_count_worker",system_identity=true}))
