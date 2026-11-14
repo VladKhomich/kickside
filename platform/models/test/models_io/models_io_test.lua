@@ -347,6 +347,10 @@ local function define_tests()
                         name = "io-fresh-gateway/other", provider_id = "wippy.llm.openai:provider", provider_profile_id = "io-fresh-gateway",
                         provider_model = "other", capabilities = { "embed" }, max_tokens = 100, enabled = true,
                     } } },
+                    credential_url = { version = 1, profiles = { valid_profile, {
+                        id = "io-url-gateway", name = "IO URL Gateway", provider_id = COMPAT,
+                        config = { base_url = "https://synthetic-user:synthetic-pass@url.example.invalid/v1" },
+                    } }, cards = {} },
                     duplicate_profile = { version = 1, profiles = { valid_profile, valid_profile }, cards = {} },
                     duplicate_card = { version = 1, profiles = { valid_profile }, cards = { valid_card, valid_card } },
                     card_without_limits = { version = 1, profiles = { changed_existing, valid_profile }, cards = { valid_card, {
@@ -370,6 +374,75 @@ local function define_tests()
                 test.is_nil(models_repo.get_profile("io-fresh-gateway"))
                 test.eq(models_repo.get_profile("io-env-gateway").name, "IO Env Gateway")
             end)
+        end)
+    end)
+
+    test.describe("Credentials in profile URLs", function()
+        local URL_SECRET = "synthetic-url-secret-0003"
+
+        local function remove_url_profiles(): ()
+            models_repo.delete_profile("io-url-gateway")
+            models_repo.delete_profile("io-url-legacy")
+        end
+
+        test.it("refuses to store a URL that carries credentials, at any config depth", function()
+            remove_url_profiles()
+            for label, config in pairs({
+                userinfo = { base_url = "https://synthetic-user:" .. URL_SECRET .. "@url.example.invalid/v1" },
+                user_only = { base_url = "https://" .. URL_SECRET .. "@url.example.invalid/v1" },
+                api_key_query = { base_url = "https://url.example.invalid/v1?api_key=" .. URL_SECRET },
+                key_query = { base_url = "https://url.example.invalid/v1?alt=json&key=" .. URL_SECRET },
+                token_query = { model_list_url = "https://url.example.invalid/models?access_token=" .. URL_SECRET },
+                nested = { extra = { endpoint = "https://url.example.invalid/v1?sig=1&password=" .. URL_SECRET } },
+            }) do
+                local profile, err = models_repo.create_profile({
+                    id = "io-url-gateway", name = "IO URL Gateway", provider_id = COMPAT, config = config,
+                })
+                test.is_nil(profile, label .. ": stored")
+                test.not_nil(err, label)
+                test.not_nil(tostring(err):find("_env", 1, true), label .. ": error points to *_env: " .. tostring(err))
+                test.is_nil(tostring(err):find(URL_SECRET, 1, true), label .. ": error echoes the secret")
+            end
+            test.is_nil(models_repo.get_profile("io-url-gateway"))
+
+            local plain, plain_err = models_repo.create_profile({
+                id = "io-url-gateway", name = "IO URL Gateway", provider_id = COMPAT,
+                base_url = "https://url.example.invalid/v1?api-version=2024-01-01#top",
+            })
+            test.is_nil(plain_err, "a URL without credentials is stored")
+            test.not_nil(plain)
+            local updated, update_err = models_repo.update_profile("io-url-gateway", {
+                base_url = "https://synthetic-user:" .. URL_SECRET .. "@url.example.invalid/v1",
+            })
+            test.is_nil(updated)
+            test.not_nil(update_err)
+            test.eq(models_repo.get_profile("io-url-gateway").config.base_url, "https://url.example.invalid/v1?api-version=2024-01-01#top")
+            remove_url_profiles()
+        end)
+
+        test.it("refuses to export a stored profile whose URL carries credentials", function()
+            remove_url_profiles()
+            local db, db_err = sql.get("app:db")
+            test.is_nil(db_err)
+            db = assert(db)
+            local _, insert_err = db:execute([[
+                INSERT INTO kickside_model_provider_profiles
+                    (id, name, provider_id, config_json, secret_json, enabled, status, message, created_at, updated_at)
+                VALUES ('io-url-legacy', 'IO URL Legacy', $1, $2, '', 1, 'unknown', '', 1, 1)
+            ]], { COMPAT, encoded({ base_url = "https://synthetic-user:" .. URL_SECRET .. "@legacy.example.invalid/v1" }) })
+            db:release()
+            test.is_nil(insert_err)
+            local ok, err = pcall(function()
+                fake_http.prepare(nil)
+                export_handler.handler()
+                test.eq(fake_http.status(), 500)
+                local payload = fake_http.payload()
+                test.eq(payload.success, false)
+                test.not_nil(tostring(payload.error):find("io-url-legacy", 1, true), "error names the profile")
+                test.is_nil(encoded(payload):find(URL_SECRET, 1, true), "secret leaked into the refusal")
+            end)
+            remove_url_profiles()
+            if not ok then error(err, 0) end
         end)
     end)
 

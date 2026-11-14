@@ -405,6 +405,10 @@ function M.export(): (any?, any?)
         if profile.error then
             return nil, "profile " .. tostring(profile.id) .. " cannot be exported: " .. tostring(profile.error)
         end
+        local url_err = policy.config_credential_error(profile.config)
+        if url_err then
+            return nil, "profile " .. tostring(profile.id) .. " cannot be exported: " .. url_err
+        end
         table.insert(profiles, policy.export_profile(profile))
     end
     local cards: { any } = {}

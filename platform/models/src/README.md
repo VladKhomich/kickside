@@ -82,6 +82,12 @@ admin card shape. Secret values are never exported: a profile's
 them on the profile or points an `*_env` variable at them. Registry cards are
 not exported; they ship with code.
 
+Profile config is stored and exported in plain text, so a URL in it may not
+carry a credential: a profile save that puts userinfo (`https://user:pass@...`)
+or a secret-named query parameter (`key`, `api_key`, `token`, `password`, ...)
+in any config URL is refused. A stored profile that predates this rule fails
+the export with that reason until its URL is corrected.
+
 Import merges by profile `id` and card `name` through the same cleaning and
 validation as the admin endpoints, in one transaction. It never deletes a
 profile or card and keeps stored secrets; a document that carries or clears a
