@@ -4,6 +4,7 @@ local identity = require("identity")
 local common = require("common")
 local canonical_json = require("canonical_json")
 local execution = require("execution")
+local owner_identity = require("owner_identity")
 local function encoded(value: any): string
     local result, err = canonical_json.encode(value)
     if err then error(err) end
@@ -44,8 +45,16 @@ return {run = test.run_cases(function()
             end)
             test.it(route.name .. "/absent stored identity", function()
                 fixture.reset("absent", nil); local value, err = route.call("component")
-                test.is_nil(err); test.eq(fixture.validations, 0); test.eq(fixture.rows, 0)
-                if route.name == "stored" then test.is_nil(value) else test.is_true(value.system) end
+                if route.name == "stored" then test.is_nil(err) end
+                test.eq(fixture.validations, 0); test.eq(fixture.rows, 0)
+                if route.name == "stored" then test.is_nil(value) else test.not_nil(err); test.eq(err:kind(), errors.PERMISSION_DENIED) end
+            end)
+        end
+        for _, owner in ipairs({{}, {value = "unknown"}, {value = "principal:user:owner"}, {value = false}, {value = {}}}) do
+            test.it("refuses missing or unsupported owner/" .. tostring(owner.value), function()
+                local value, err = owner_identity.of_owner(nil, owner.value)
+                test.is_nil(value); test.not_nil(err)
+                test.is_true(errors.is(err, errors.PERMISSION_DENIED)); test.is_false(err:retryable())
             end)
         end
         test.it("real identity validator returns native declaration errors", function()

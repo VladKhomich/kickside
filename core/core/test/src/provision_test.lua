@@ -539,6 +539,42 @@ local function define_tests()
             repaired:release()
         end)
 
+        test.it("convergence repairs legacy owner copies while preserving progress and fencing every cursor", function()
+            local owner = security.new_actor("upgrade-owner-" .. uuid.v4(), {security_groups = {}})
+            local component_id = uuid.v4()
+            local svc = (contract.get("kickside.component:component_service") :: any):with_actor(owner):with_scope(scope()):open()
+            local registered = svc:register({component_id = component_id, impl_id = "app:converge_test_decl"})
+            test.is_true(registered.success)
+            local threads = (contract.get("kickside.core:threads") :: any):with_actor(owner):with_scope(scope()):open()
+            test.is_nil(select(2, threads:ensure_thread({component_id = component_id, impl_id = "app:converge_test_decl"})))
+            test.is_nil(select(2, threads:append_event({thread_id = component_id, event = {type = "app:threads_cv_trigger", body = {}}})))
+            local d = db()
+            local before = assert(d:query([[SELECT p.id,p.body,c.id AS cursor_id,c.generation,c.job_id FROM kickside_projection p
+                JOIN kickside_projection_cursor c ON c.projection_id=p.id WHERE p.thread_id=$1]], {component_id}))[1]
+            local body = assert(json.decode(before.body)); body.accumulated = 7
+            test.is_nil(select(2, d:execute("UPDATE kickside_projection SET actor_id=NULL,actor_context=NULL,body=$1 WHERE id=$2",
+                {assert(json.encode(body)), before.id})))
+            test.is_nil(select(2, d:execute("UPDATE kickside_projection_cursor SET actor_id=NULL,execution_identity_json=NULL,last_seq=1 WHERE id=$1", {before.cursor_id})))
+            d:release()
+            local _, err = provision.converge(security.new_actor("system:lifecycle", {system = true}), scope())
+            test.is_nil(err)
+            d = db()
+            local after = assert(d:query([[SELECT p.actor_id,p.actor_context,p.body,c.actor_id AS cursor_actor,
+                c.execution_identity_json,c.generation,c.last_seq,c.job_id FROM kickside_projection p
+                JOIN kickside_projection_cursor c ON c.projection_id=p.id WHERE c.id=$1]], {before.cursor_id}))[1]
+            d:release()
+            test.eq(after.actor_id, owner:id()); test.eq(after.cursor_actor, owner:id())
+            test.eq(after.actor_context, after.execution_identity_json)
+            test.eq(tonumber(after.generation), tonumber(before.generation) + 1)
+            test.eq(tonumber(after.last_seq), 1); test.eq(after.job_id, before.job_id)
+            test.eq(assert(json.decode(after.body)).accumulated, 7)
+            test.is_nil(select(2, provision.converge(security.new_actor("system:lifecycle", {system = true}), scope())))
+            d = db()
+            local repeated = assert(d:query("SELECT generation FROM kickside_projection_cursor WHERE id=$1", {before.cursor_id}))[1]
+            d:release()
+            test.eq(tonumber(repeated.generation), tonumber(after.generation))
+        end)
+
         test.it("converge registers a declared projection missing from a live thread", function()
             local owner_id = "cv-proj-" .. uuid.v4():sub(1, 8)
             local owner = security.new_actor(owner_id, { security_groups = {} })

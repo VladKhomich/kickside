@@ -4,6 +4,7 @@
 -- actor the worker ran as.
 
 local security = require("security")
+local sql = require("sql")
 local component = require("component")
 
 local CREATED = "kickside.component.events:created"
@@ -21,6 +22,13 @@ local function run(input: table): (table?, error?)
         local payload = type((event :: any).body) == "table" and (event :: any).body or {}
         local component_id = payload.component_id
         if (event :: any).type == CREATED and type(component_id) == "string" then
+            local db, db_err = sql.get("app:db")
+            if db_err then return nil, db_err end
+            if not db then return nil, errors.new({kind = errors.UNAVAILABLE, message = "seed probe database unavailable"}) end
+            local _, probe_err = db:execute("UPDATE kickside_component_meta SET value=value || 'x' WHERE component_id=$1 AND key='owner_test.invoked'", {component_id})
+            local _, release_err = db:release()
+            if probe_err then return nil, probe_err end
+            if release_err then return nil, release_err end
             local _, access_err = component.validate_access(component_id, component.ACCESS.ADMIN)
             if access_err then return nil, access_err end
             local _, update_err = component.update(component_id, {

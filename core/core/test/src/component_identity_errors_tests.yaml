@@ -7,14 +7,22 @@ entries:
 - name: component_identity_errors_source
   kind: library.lua
   source: file://component_identity_errors_source.lua
+  modules: [sql]
   imports:
+    core_db: kickside.core:db
+    owner_identity: app:component_identity_errors_owner_identity
     component_client: app:component_identity_errors_component
     execution_identity: app:component_identity_errors_execution
     error_envelope: kickside.contract:error_envelope
 - name: component_identity_errors_owner_identity
   kind: library.lua
   source: file://src_link/threads/owner_identity.lua
+  modules: [json]
   imports:
+    lifecycle_log: kickside.core.threads.persist:lifecycle
+    autoinit: kickside.component:autoinit
+    access_subjects: kickside.component.persist:access_subjects
+    core_types: kickside.core:types
     execution_identity: app:component_identity_errors_execution
     error_envelope: kickside.contract:error_envelope
 - name: component_identity_errors_common_source
@@ -44,6 +52,7 @@ entries:
     common: app:component_identity_errors_common_source
     canonical_json: kickside.contract:canonical_json
     execution: kickside.execution:execution_identity
+    owner_identity: kickside.core.threads:owner_identity
 - name: component_identity_errors_component
   kind: library.lua
   source: file://component_identity_errors_component.lua

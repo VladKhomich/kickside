@@ -805,6 +805,7 @@ entries:
     method: run
     modules:
       - security
+      - sql
     imports:
       component: kickside.component:component
 

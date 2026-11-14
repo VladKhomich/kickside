@@ -40,6 +40,26 @@ return {run = test.run_cases(function()
                 end
             end
         end
+        test.it("reads subjects and restrictions from an explicit resolved actor without ambient authority", function()
+            fixture.reset("", nil)
+            local actor = {id = function() return "resolved-owner", nil end,
+                meta = function() return {security_groups = {"resolved-group", "resolved-group"},
+                    access_filter = {prefixes = {"owned/path"}}}, nil end}
+            local own, prefixes, err = subjects.for_actor(actor)
+            test.is_nil(err); test.eq(#own, 2)
+            test.eq(own[1].subject_id, "resolved-owner"); test.eq(own[2].subject_id, "resolved-group")
+            test.eq(prefixes[1], "owned/path"); test.eq(#fixture.calls, 0)
+        end)
+        for _, stage in ipairs({"id", "meta"}) do
+            test.it("explicit actor retains typed dependency failure/" .. stage, function()
+                local source = errors.new({kind = errors.UNAVAILABLE, retryable = true,
+                    message = "resolved frame unavailable", details = {code = "access_subject_dependency", nested = {marker = "kept"}}})
+                fixture.reset(stage, source)
+                local actor = assert(fixture.actor())
+                local own, prefixes, err = subjects.for_actor(actor)
+                test.eq(#own, 0); test.is_nil(prefixes); native(err, source)
+            end)
+        end
         test.it("expands and deduplicates actor groups and directory groups", function()
             fixture.reset("", nil)
             local own, err = subjects.resolve("user-1"); test.is_nil(err); test.eq(#own, 2); test.eq(own[2].subject_id, "group-a")

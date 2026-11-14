@@ -1,0 +1,75 @@
+version: "1.0"
+namespace: app
+entries:
+- name: projection_owner_authority_test
+  kind: function.lua
+  meta: {type: test, suite: projection_owner_authority}
+  source: file://projection_owner_authority_test.lua
+  method: run
+  modules: [sql, uuid, security, contract, json]
+  imports:
+    fixture: kickside.core.threads:contract_fixture
+    writer: kickside.core.projections.persist:writer
+    component_lifecycle: kickside.core.lifecycle:component_lifecycle_impl
+    callback_invoke: app:projection_owner_callback_invoke
+    callback_fixture: app:projection_owner_callback_fixture
+    test: wippy.test:test
+    lifecycle: kickside.core.threads.persist:lifecycle
+    invoke: kickside.core.projections:invoke
+    claim: kickside.core.jobs.persist:claim
+    apply: kickside.core.projections:apply
+
+- name: projection_owner_callback_fixture
+  kind: library.lua
+  source: file://projection_owner_callback_fixture.lua
+- name: projection_owner_callback_apply
+  kind: library.lua
+  source: file://projection_owner_callback_apply.lua
+  modules: [sql]
+  imports:
+    apply: kickside.core.projections:apply
+    fixture: app:projection_owner_callback_fixture
+- name: projection_owner_callback_invoke
+  kind: library.lua
+  source: file://src_link/projections/invoke.lua
+  modules: [sql, json, time]
+  imports:
+    clock: kickside.core.jobs:clock
+    core_db: kickside.core:db
+    worker: kickside.core.projections.persist:worker
+    owner_identity: kickside.core.threads:owner_identity
+    projection_policy: kickside.core.projections:policy_config
+    apply: app:projection_owner_callback_apply
+    trace_context: kickside.execution:trace
+    jobs: kickside.core.jobs:jobs
+    execution_identity: kickside.execution:execution_identity
+    job_types: kickside.core.jobs:types
+    error_envelope: kickside.contract:error_envelope
+- name: projection_owner_callback_kind
+  kind: contract.binding
+  meta:
+    class: [owner_callback]
+    projections:
+    - kind: test.owner_seed
+      on: lifecycle
+      worker_ref: func://app:projection_owner_callback_worker
+      input_mode: prefetch_events
+      events:
+        input: [{type: kickside.component.events:created}]
+  contracts:
+  - contract: kickside.contract:component
+    methods: {get_status: kickside.core.threads:thread_status}
+- name: projection_owner_callback_worker
+  kind: function.lua
+  source: file://projection_owner_callback_worker.lua
+  method: run
+  modules: [sql, security]
+  meta:
+    type: projection.worker
+    post_commit_ref: func://app:projection_owner_callback_notify
+- name: projection_owner_callback_notify
+  kind: function.lua
+  source: file://projection_owner_callback_worker.lua
+  method: after_commit
+  modules: [sql, security]
+  meta: {type: projection.worker}
