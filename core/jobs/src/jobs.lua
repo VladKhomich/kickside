@@ -401,14 +401,16 @@ function jobs.health(): (table?, error?)
         -- A slot whose latest execution failed and that no schedule will run
         -- again waits on its owner: a parked deterministic failure.
         local failed_source = dbtype == sql.type.POSTGRES
-            and [[kickside_job_run r JOIN LATERAL (
-                SELECT 1 FROM kickside_job j WHERE j.id=r.job_id AND j.execution_seq=r.execution_seq
-                    AND j.status='pending' AND j.slot AND j.scheduled_at IS NULL LIMIT 1
-                ) current_slot ON TRUE WHERE r.status='failed']]
-            or [[kickside_job_run r INDEXED BY idx_kickside_job_run_status WHERE r.status='failed'
-                AND (SELECT j.id FROM kickside_job j WHERE j.id=r.job_id AND j.execution_seq=r.execution_seq
-                    AND j.status='pending' AND j.slot AND j.scheduled_at IS NULL LIMIT 1) IS NOT NULL]]
-        local failed_slot_count, failed_capped, failed_err = count_matches(failed_source, "r.started_at", "failed")
+            and [[kickside_job j JOIN LATERAL (
+                SELECT r.status FROM kickside_job_run r
+                WHERE r.job_id=j.id AND r.execution_seq=j.execution_seq LIMIT 1
+            ) current_run ON current_run.status='failed'
+                WHERE j.status='pending' AND j.slot AND j.scheduled_at IS NULL]]
+            or [[kickside_job j INDEXED BY idx_job_health_slots
+                WHERE j.status='pending' AND j.slot AND j.scheduled_at IS NULL
+                AND (SELECT r.status FROM kickside_job_run r
+                    WHERE r.job_id=j.id AND r.execution_seq=j.execution_seq)='failed']]
+        local failed_slot_count, failed_capped, failed_err = count_matches(failed_source, "j.priority DESC,j.id", "failed")
         if failed_err then return nil, failed_err end
         local degraded_count, degraded_capped, degraded_err = count_matches(
             error_source .. " WHERE status='pending' AND last_error IS NOT NULL", "slot,scheduled_at,id", "degraded")

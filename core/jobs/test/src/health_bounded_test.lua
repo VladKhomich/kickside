@@ -4,6 +4,18 @@ local sql = require("sql")
 local jobs = require("jobs")
 local fixture = require("fixture")
 local migration = require("health_migration")
+local eligibility = require("eligibility")
+local query_jobs = require("query_jobs")
+local query_fixture = require("query_fixture")
+
+local function plan(db: sql.DB, dbtype: string, statement: string, params: table?): string
+    local rows = assert(db:query((dbtype == sql.type.POSTGRES and "EXPLAIN (COSTS OFF) " or "EXPLAIN QUERY PLAN ") .. statement, params or {}))
+    local lines: {string} = {}
+    for _, row in ipairs(rows) do
+        for _, value in pairs(row) do if type(value) == "string" then lines[#lines+1] = value end end
+    end
+    return table.concat(lines, "\n")
+end
 
 local function queue(fn: (sql.DB, string) -> ())
     local db, dbtype, err = fixture.private_queue("app:private_queue_health_bounded")
@@ -33,6 +45,136 @@ end
 
 return {run = test.run_cases(function()
     test.describe("bounded Jobs diagnostics", function()
+        test.it("seeks legacy concurrency keys during capacity eligibility", function()
+            queue(function(db, dbtype)
+                seed(db, dbtype, 10000)
+                assert(db:execute("UPDATE kickside_job SET status='running',capacity_group='capacity',concurrency_key=job_identity"))
+                assert(db:execute("ANALYZE kickside_job"))
+                local statement = "SELECT 1 FROM (SELECT CAST('absent' AS TEXT) AS concurrency_key,CAST('capacity' AS TEXT) AS capacity_group) j WHERE "
+                    .. eligibility.available_key("'running'", "j")
+                test.eq(#assert(db:query(statement)),1)
+                local explain = plan(db, dbtype, statement)
+                if dbtype == sql.type.SQLITE then
+                    test.is_true(explain:find("uq_kickside_job_running_legacy_concurrency",1,true) ~= nil, explain)
+                else
+                    test.is_true(explain:find("Index Cond: (concurrency_key",1,true) ~= nil, explain)
+                end
+            end)
+        end)
+        test.it("seeks the due deadline when a registered worker has only future jobs", function()
+            queue(function(db, dbtype)
+                seed(db, dbtype, 100000)
+                assert(db:execute("UPDATE kickside_job SET job_type='app:capacity_worker_a',scheduled_at='2099-01-01 00:00:00',concurrency_key=job_identity,capacity_group='app.capacity'"))
+                assert(db:execute("ANALYZE kickside_job"))
+                local observed = ""
+                local observed_params: table = {}
+                local recording: any = {query = function(_, statement: string, params: table): (table?, error?)
+                    observed, observed_params = statement, params
+                    return db:query(statement, params)
+                end}
+                local pending, err = eligibility.pending(recording, dbtype, nil, {
+                    catalog = function(): (table, nil) return {["app:capacity_worker_a"]="app.capacity"}, nil end,
+                    group = function(): (nil, error) error("future jobs must not resolve capacity") end,
+                })
+                test.is_nil(err)
+                test.not_nil(pending)
+                local start = assert((observed:find(" SELECT c.worker_ref,",1,true)))
+                local existence = assert((observed:find("FROM capacity_workers c WHERE EXISTS",1,true)))
+                local statement = observed:sub(1,start-1) .. " SELECT c.worker_ref " .. observed:sub(existence)
+                test.eq(#assert(db:query(statement, observed_params)),0)
+                local explain = plan(db, dbtype, statement, observed_params)
+                if dbtype == sql.type.SQLITE then
+                    test.is_true(explain:find("scheduled_at<?",1,true) ~= nil, explain)
+                else
+                    test.is_true(explain:find("Index Cond:",1,true) ~= nil, explain)
+                    test.is_true(explain:find("scheduled_at <=",1,true) ~= nil, explain)
+                end
+                test.eq(assert(jobs.health()).due_unclaimed_count,0)
+            end)
+        end)
+        test.it("reads parked slots independently of unrelated pending jobs", function()
+            queue(function(db, dbtype)
+                seed(db, dbtype, 100000)
+                assert(db:execute("ANALYZE kickside_job"))
+                query_fixture.reset("",nil)
+                query_fixture.dbtype = dbtype
+                assert(query_jobs.health())
+                local failed_query = query_fixture.queries[5]
+                local slot_plan = plan(db, dbtype, failed_query.statement, failed_query.params)
+                if dbtype == sql.type.SQLITE then
+                    test.is_true(slot_plan:find("idx_job_health_slots",1,true) ~= nil, slot_plan)
+                else
+                    test.is_true(slot_plan:find("Seq Scan on kickside_job j",1,true) == nil, slot_plan)
+                    test.is_true(slot_plan:find("Index",1,true) ~= nil, slot_plan)
+                end
+                test.eq(assert(jobs.health()).failed_slots,0)
+            end)
+        end)
+        test.it("counts failed current slots through execution identity without scanning historical failures", function()
+            queue(function(db, dbtype)
+                seed(db, dbtype, 1)
+                assert(db:execute("UPDATE kickside_job SET slot=TRUE,execution_seq=100001"))
+                local run_id = dbtype == sql.type.POSTGRES and "md5(n::text)::uuid" or "printf('%032d',n)"
+                assert(db:execute([[INSERT INTO kickside_job_run(id,job_id,owner_kind,owner_id,job_type,attempt_no,execution_seq,status)
+                    SELECT ]] .. run_id .. ",j.id,j.owner_kind,j.owner_id,j.job_type,n,n,'failed' FROM ("
+                    .. numbers(dbtype,100000) .. ") numbered CROSS JOIN kickside_job j"))
+                assert(db:execute("ANALYZE kickside_job"))
+                assert(db:execute("ANALYZE kickside_job_run"))
+                query_fixture.reset("",nil)
+                query_fixture.dbtype = dbtype
+                assert(query_jobs.health())
+                local failed_query = query_fixture.queries[5]
+                test.eq(assert(db:query(failed_query.statement, failed_query.params))[1].n,0)
+                local explain = plan(db, dbtype, failed_query.statement, failed_query.params)
+                test.is_true(explain:find(dbtype == sql.type.SQLITE and "job_id=? AND execution_seq=?"
+                    or "(job_id = j.id) AND (execution_seq = j.execution_seq)",1,true) ~= nil, explain)
+                test.eq(assert(jobs.health()).failed_slots,0)
+                assert(db:execute("UPDATE kickside_job SET execution_seq=100000"))
+                test.eq(assert(jobs.health()).failed_slots,1)
+            end)
+        end)
+        test.it("keeps bounded health discovery ordered by worker without sorting the due queue", function()
+            queue(function(db, dbtype)
+                seed(db, dbtype, 100000)
+                assert(db:execute("UPDATE kickside_job SET job_type='app:capacity_worker_a',scheduled_at='2000-01-01 00:00:00',concurrency_key=job_identity,capacity_group='app.capacity',last_error=NULL"))
+                assert(db:execute("ANALYZE kickside_job"))
+                local recorded: {table} = {}
+                local recording: any = {query = function(_, statement: string, params: table): (table?, error?)
+                    recorded[#recorded+1] = {statement=statement,params=params}
+                    return db:query(statement,params)
+                end}
+                local backlog = assert(eligibility.due_backlog(recording,dbtype,1,nil,1000))
+                test.eq(backlog.count,1000)
+                test.is_true(backlog.capped)
+                if dbtype == sql.type.SQLITE then
+                    local explain = plan(db,dbtype,recorded[1].statement,recorded[1].params)
+                    test.is_true(explain:find("idx_job_capacity_due_time",1,true) ~= nil,explain)
+                    test.is_true(explain:find("USE TEMP B-TREE FOR ORDER BY",1,true) == nil,explain)
+                    explain = plan(db,dbtype,recorded[2].statement,recorded[2].params)
+                    test.is_true(explain:find("SCAN running",1,true) == nil,explain)
+                end
+            end)
+        end)
+        test.it("caps current failed slots through an ordered read without sorting their population", function()
+            queue(function(db, dbtype)
+                seed(db,dbtype,100000)
+                assert(db:execute("UPDATE kickside_job SET slot=TRUE,last_error=NULL"))
+                assert(db:execute([[INSERT INTO kickside_job_run(id,job_id,owner_kind,owner_id,job_type,attempt_no,execution_seq,status)
+                    SELECT id,id,owner_kind,owner_id,job_type,1,execution_seq,'failed' FROM kickside_job]]))
+                assert(db:execute("ANALYZE kickside_job"))
+                assert(db:execute("ANALYZE kickside_job_run"))
+                query_fixture.reset("",nil)
+                query_fixture.dbtype=dbtype
+                assert(query_jobs.health())
+                local query=query_fixture.queries[5]
+                local explain=plan(db,dbtype,query.statement,query.params)
+                test.is_true(explain:find("Sort",1,true) == nil,explain)
+                test.is_true(explain:find("USE TEMP B-TREE",1,true) == nil,explain)
+                local health=assert(jobs.health())
+                test.eq(health.failed_slots,1000)
+                test.is_true(health.failed_slots_capped)
+            end)
+        end)
         test.it("caps counts independently from the stranded sample at the boundary", function()
             queue(function(db, dbtype)
                 for _, total in ipairs({0, 16, 17, 1000, 1001}) do
@@ -149,12 +291,14 @@ return {run = test.run_cases(function()
                     if definition:find("last_errorisnotnull",1,true) or definition:find("capacity_group,scheduled_at",1,true)
                         or definition:find("btrim",1,true) or definition:find("wake_control_pending",1,true)
                         or definition:find("idx_job_capacity_invalid_key",1,true)
+                        or definition:find("idx_job_capacity_due_time",1,true)
+                        or definition:find("andslotand",1,true)
                         or definition:find("demand_generation>ack_generation",1,true) then
                         assert(db:execute("DROP INDEX " .. row.name))
                         removed = removed + 1
                     end
                 end
-                test.eq(removed,5)
+                test.eq(removed,7)
                 local up = migration[1].database_implementations[dbtype].up
                 up(db)
                 up(db)

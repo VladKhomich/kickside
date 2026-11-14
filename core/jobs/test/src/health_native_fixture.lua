@@ -4,6 +4,7 @@ local phases = {"workers", "fresh", "expired", "wake", "failed", "degraded", "st
 function M.reset(stage, source)
     M.stage, M.source = stage, source
     M.missing, M.value, M.reads, M.releases = false, nil, 0, 0
+    M.queries, M.dbtype = {}, nil
 end
 local function result(stage, value)
     if M.stage == stage then
@@ -18,9 +19,10 @@ function M.now(...) return "2026-10-10 00:00:00" end
 function M.due_backlog(...) return result("backlog", {count = 0, oldest_age_ms = 0, overdue = 0, capped = false, overdue_capped = false}) end
 function M.get(...): any
     local db: any = {}
-    function db:type() return sql.type.SQLITE, nil end
+    function db:type() return M.dbtype or sql.type.SQLITE, nil end
     function db:release() M.releases = M.releases + 1; return true, nil end
-    function db:query(...)
+    function db:query(statement, params)
+        M.queries[#M.queries + 1] = {statement = statement, params = params}
         M.reads = M.reads + 1
         local phase = phases[M.reads]
         local value: any = {{n = 0}}

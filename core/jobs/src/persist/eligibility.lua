@@ -23,18 +23,20 @@ function M.worker_target(row: string?, dbtype: string): string
         .. trim .. "(SUBSTR(" .. reference .. ",8)," .. whitespace .. ") ELSE " .. reference .. " END) AS TEXT)"
 end
 
-function M.legacy_key(running_status: string, row: string?, dbtype: string?): string
+function M.legacy_key(running_status: string, row: string?, running_source: string?): string
     local outer = row or "kickside_job"
-    return "(" .. outer .. ".concurrency_key IS NULL OR NOT EXISTS (SELECT 1 FROM kickside_job running" .. (dbtype == sql.type.SQLITE and " INDEXED BY idx_kickside_job_status" or "")
+    local running = running_source or "kickside_job running"
+    return "(" .. outer .. ".concurrency_key IS NULL OR NOT EXISTS (SELECT 1 FROM " .. running
         .. " WHERE running.status=" .. running_status .. " AND running.concurrency_key=" .. outer .. ".concurrency_key))"
 end
 
-function M.available_key(running_status: string, row: string?, dbtype: string?): string
+function M.available_key(running_status: string, row: string?, running_source: string?): string
     local outer = row or "kickside_job"
+    local running = running_source or "kickside_job running"
     return "(" .. outer .. ".concurrency_key IS NULL OR (" .. outer .. ".capacity_group IS NULL AND NOT EXISTS"
-        .. " (SELECT 1 FROM kickside_job running" .. (dbtype == sql.type.SQLITE and " INDEXED BY idx_kickside_job_status" or "") .. " WHERE running.status=" .. running_status
+        .. " (SELECT 1 FROM " .. running .. " WHERE running.status=" .. running_status
         .. " AND running.concurrency_key=" .. outer .. ".concurrency_key)) OR (" .. outer .. ".capacity_group IS NOT NULL"
-        .. " AND NOT EXISTS (SELECT 1 FROM kickside_job running" .. (dbtype == sql.type.SQLITE and " INDEXED BY idx_kickside_job_status" or "") .. " WHERE running.status=" .. running_status
+        .. " AND NOT EXISTS (SELECT 1 FROM " .. running .. " WHERE running.status=" .. running_status
         .. " AND running.capacity_group IS NULL AND running.concurrency_key=" .. outer .. ".concurrency_key)))"
 end
 
@@ -47,7 +49,7 @@ end
 -- The preliminary read is bounded by registered worker references. Settings are
 -- read only for their currently due groups; a group arriving later is observed
 -- on the next operation, just like a job arriving after the count statement.
-function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job_types: {string}?): (table?, error?)
+function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job_types: {string}?, sources: table?): (table?, error?)
     local catalog, catalog_err = snapshot.catalog()
     if catalog_err or not catalog then return nil, catalog_err end
     local params: { any } = {}
@@ -69,7 +71,7 @@ function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job
     for _, worker in ipairs(workers) do
         values[#values + 1] = "(CAST(" .. bind(worker) .. " AS TEXT), CAST(" .. bind(catalog[worker]) .. " AS TEXT))"
     end
-    local allowed = M.legacy_key("'running'", "j", dbtype)
+    local allowed = M.legacy_key("'running'", "j", sources and sources.running)
     if #workers > 0 then
         local target = M.worker_target(nil, dbtype)
         prefix = (prefix ~= "" and prefix .. ", " or "WITH ")
@@ -86,17 +88,16 @@ function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job
             scope = #marks > 0 and " AND job_type IN (" .. table.concat(marks, ",") .. ")" or " AND 1=0"
         end
         local candidate_due = M.due(now)
-        -- Keep SQLite on the worker prefix instead of a deadline skip-scan across workers.
-        if dbtype == sql.type.SQLITE then candidate_due = string.gsub(candidate_due, "scheduled_at", "+scheduled_at") end
         local candidate_where = " WHERE " .. candidate_due .. " AND " .. target .. "=(c.worker_ref || '')" .. scope
-        local source = " FROM kickside_job" .. (dbtype == sql.type.SQLITE and " INDEXED BY idx_job_capacity_due_group" or "") .. candidate_where
-        local invalid_source = " FROM kickside_job" .. (dbtype == sql.type.SQLITE and " INDEXED BY idx_job_capacity_invalid_key" or "") .. candidate_where
+        local source = " FROM " .. (sources and sources.groups or "kickside_job") .. candidate_where
+        local due_source = " FROM " .. (sources and sources.due or "kickside_job") .. candidate_where
+        local invalid_source = " FROM " .. (sources and sources.invalid or "kickside_job") .. candidate_where
         local rows, read_err = db:query(prefix .. [[ SELECT c.worker_ref,
-            (SELECT capacity_group]] .. source .. [[ AND capacity_group IS NOT NULL ORDER BY capacity_group ASC LIMIT 1) AS admitted_min,
-            (SELECT capacity_group]] .. source .. [[ AND capacity_group IS NOT NULL ORDER BY capacity_group DESC LIMIT 1) AS admitted_max,
+            (SELECT capacity_group]] .. source .. [[ AND capacity_group IS NOT NULL ORDER BY ]] .. target .. [[,capacity_group ASC LIMIT 1) AS admitted_min,
+            (SELECT capacity_group]] .. source .. [[ AND capacity_group IS NOT NULL ORDER BY ]] .. target .. [[ DESC,capacity_group DESC LIMIT 1) AS admitted_max,
             CASE WHEN EXISTS (SELECT 1]] .. invalid_source .. [[ AND (concurrency_key IS NULL OR concurrency_key='') LIMIT 1)
                 THEN 1 ELSE 0 END AS invalid_key
-            FROM capacity_workers c WHERE EXISTS (SELECT 1]] .. source .. " LIMIT 1)", read_params)
+            FROM capacity_workers c WHERE EXISTS (SELECT 1]] .. due_source .. " LIMIT 1)", read_params)
         rows, read_err = boundary.bounded_rows(rows, read_err, "backlog capacity lookup failed",
             "backlog.workers", 0, #workers, response_error)
         if read_err then return nil, read_err end
@@ -136,7 +137,7 @@ function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job
             prefix = prefix .. ", capacity_limits(capacity_group,global_limit,key_limit) AS (VALUES "
                 .. table.concat(limits_values, ",") .. [[), capacity_running AS (
                     SELECT COALESCE(r.capacity_group,w.capacity_group) AS capacity_group, r.concurrency_key
-                    FROM kickside_job r ]] .. (dbtype == sql.type.SQLITE and " INDEXED BY idx_kickside_job_status" or "") .. [[ LEFT JOIN capacity_workers w ON w.worker_ref=]] .. M.worker_target("r", dbtype) .. [[
+                    FROM ]] .. (sources and sources.totals or "kickside_job r") .. [[ LEFT JOIN capacity_workers w ON w.worker_ref=]] .. M.worker_target("r", dbtype) .. [[
                     WHERE r.status='running'
                 ), capacity_totals AS (
                     SELECT capacity_group,COUNT(*) AS n FROM capacity_running
@@ -150,7 +151,7 @@ function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job
                 LEFT JOIN capacity_totals g ON g.capacity_group=c.capacity_group
                 LEFT JOIN capacity_keys k ON k.capacity_group=c.capacity_group AND k.concurrency_key=j.concurrency_key
                 WHERE ]] .. worker_match .. " AND (j.capacity_group IS NULL OR j.capacity_group=c.capacity_group) AND "
-                .. M.available_key("'running'", "j", dbtype)
+                .. M.available_key("'running'", "j", sources and sources.running)
                 .. " AND COALESCE(g.n,0)<l.global_limit AND COALESCE(k.n,0)<l.key_limit))"
 
         end
@@ -160,7 +161,14 @@ function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job
 end
 
 function M.due_backlog(db: sql.DB, dbtype: string, grace_seconds: integer, at: string?, limit: integer?): (table?, error?)
-    local pending, pending_err = M.pending(db, dbtype, at, capacity.snapshot())
+    local sources = limit and dbtype == sql.type.SQLITE and {
+        running = "kickside_job running INDEXED BY idx_kickside_job_status",
+        totals = "kickside_job r INDEXED BY idx_kickside_job_status",
+        groups = "kickside_job INDEXED BY idx_job_capacity_due_group",
+        due = "kickside_job INDEXED BY idx_job_capacity_due_time",
+        invalid = "kickside_job INDEXED BY idx_job_capacity_invalid_key",
+    } or nil
+    local pending, pending_err = M.pending(db, dbtype, at, capacity.snapshot(), nil, sources)
     if pending_err or not pending then return nil, pending_err end
     local params, now = pending.params, pending.now
     params[#params + 1] = grace_seconds
@@ -172,7 +180,7 @@ function M.due_backlog(db: sql.DB, dbtype: string, grace_seconds: integer, at: s
     local overdue = dbtype == sql.type.POSTGRES
         and "j.scheduled_at <= " .. now .. " - (" .. grace .. " * INTERVAL '1 second')"
         or "j.scheduled_at <= datetime(" .. now .. ", '-' || " .. grace .. " || ' seconds') || substr(" .. now .. ", 20)"
-    local source = "kickside_job j" .. (dbtype == sql.type.SQLITE and " INDEXED BY idx_job_pending_deadline" or "") .. pending.joins .. " WHERE " .. M.due(now, "j") .. " AND " .. pending.allowed
+    local source = "kickside_job j" .. (limit and dbtype == sql.type.SQLITE and " INDEXED BY idx_job_pending_deadline" or "") .. pending.joins .. " WHERE " .. M.due(now, "j") .. " AND " .. pending.allowed
     if limit then
         source = "(SELECT j.scheduled_at FROM " .. source .. " ORDER BY j.scheduled_at ASC LIMIT "
             .. tostring(limit + 1) .. ") j"

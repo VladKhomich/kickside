@@ -7,6 +7,8 @@ return require("migration").define(function()
                 up(function(db)
                     local target = eligibility.worker_target(nil, dialect)
                     local statements = {
+                        [[CREATE INDEX IF NOT EXISTS idx_job_health_slots ON kickside_job(priority DESC,id,execution_seq)
+                            WHERE status='pending' AND slot AND scheduled_at IS NULL]],
                         [[CREATE INDEX IF NOT EXISTS idx_job_health_errors ON kickside_job(slot,scheduled_at,id)
                             WHERE status='pending' AND last_error IS NOT NULL]],
                         [[CREATE INDEX IF NOT EXISTS idx_job_health_control ON kickside_job(updated_at)
@@ -15,6 +17,8 @@ return require("migration").define(function()
                             WHERE demand_generation > ack_generation]],
                         "CREATE INDEX IF NOT EXISTS idx_job_capacity_due_group ON kickside_job("
                             .. target .. ",capacity_group,scheduled_at) WHERE status='pending' AND scheduled_at IS NOT NULL",
+                        "CREATE INDEX IF NOT EXISTS idx_job_capacity_due_time ON kickside_job("
+                            .. target .. ",scheduled_at) WHERE status='pending' AND scheduled_at IS NOT NULL",
                         "CREATE INDEX IF NOT EXISTS idx_job_capacity_invalid_key ON kickside_job("
                             .. target .. ",scheduled_at) WHERE status='pending' AND scheduled_at IS NOT NULL"
                             .. " AND (concurrency_key IS NULL OR concurrency_key='')",

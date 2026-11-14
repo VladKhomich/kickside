@@ -114,7 +114,18 @@ backlog API remains unchanged when no limit is supplied.
 
 Health performs no writes. Counts read at most 1,001 matching rows through their
 indexes, and capacity discovery uses indexed existence and first/last group
-reads. Filtering for dynamic eligibility can visit more candidate rows: a
+reads. Worker discovery seeks `(worker, scheduled_at <= now)` even when every
+queued job is in the future. Failed-slot diagnostics start from current parked
+slots and seek their current execution by `(job_id, execution_seq)`; retained
+failures from superseded executions do not drive that read. Its cost follows
+the parked-slot population when current executions have not failed.
+Bounded health reads supply their indexed SQL sources to the canonical
+eligibility builder; shared claims keep their ordinary sources and index
+selection. Worker/group reads follow the worker expression and group index
+order, without sorting the due queue. The failed-slot count reads the parked-slot
+index in priority/ID order and seeks the current execution before its cap.
+
+Filtering for dynamic eligibility can visit more candidate rows: a
 100,000-job backlog blocked behind one running concurrency key takes about
 22 ms on PostgreSQL and 62 ms on SQLite for the ordered matching read. This is
 a known cost profile of the operator diagnostic; the limit follows eligibility
