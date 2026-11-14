@@ -2,8 +2,10 @@ import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
+import { hostExternals, wcRuntimeChunk } from '../../widgets/ui/wc-build'
 
 export default defineConfig({
+  resolve: { alias: { '@widgets': resolve(__dirname, '../../widgets/ui/src') } },
   plugins: [
     vue({
       template: {
@@ -32,6 +34,8 @@ export default defineConfig({
         artifacts: resolve(__dirname, 'src/artifacts.ts'),
         artifact_panel: resolve(__dirname, 'src/artifact_panel.ts'),
         artifact_coordinator: resolve(__dirname, 'src/artifact_coordinator.ts'),
+        chat_coordinator: resolve(__dirname, 'src/chat_coordinator.ts'),
+        chat_empty_state: resolve(__dirname, 'src/chat_empty_state.ts'),
       },
       name: 'KicksideSessions',
       formats: ['es'],
@@ -43,9 +47,12 @@ export default defineConfig({
         artifacts: resolve(__dirname, 'src/artifacts.ts'),
         artifact_panel: resolve(__dirname, 'src/artifact_panel.ts'),
         artifact_coordinator: resolve(__dirname, 'src/artifact_coordinator.ts'),
+        chat_coordinator: resolve(__dirname, 'src/chat_coordinator.ts'),
+        chat_empty_state: resolve(__dirname, 'src/chat_empty_state.ts'),
       },
-      external: ['vue', '@iconify/vue', '@wippy-fe/proxy'],
+      external: hostExternals,
       output: {
+        manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',
         chunkFileNames: '[name]-[hash].js',
         assetFileNames: '[name]-[hash][extname]',
