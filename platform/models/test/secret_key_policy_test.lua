@@ -44,22 +44,33 @@ local secret_keys = {
     "user_token", "web_socket_token", "webhook_secret", "websockettoken", "x-access-token",
     "x-api-key", "x-apikey", "x-auth-token", "x-authorization", "x_access_token",
     "x_api_key", "x_auth_token", "xai_api_key",
-    "azure_api_key", "cohere_api_key", "private_key", "private", "bearer", "cookie", "signature",
+    "azure_api_key", "cohere_api_key", "private_key", "bearer", "cookie", "signature",
     "passwd", "passphrase", "auth", "vendor_credentials", "request_authorization", "request_cookie",
     "signing_signature", "database_passwd", "database_passphrase",
     "api_key_id", "access_key_id", "secret_key_encoding", "custom_key",
+    "secret_count", "credential_type",
 }
 
 local mixed_case_credentials = {
     "apiKey", "oauthClientSecret", "vendorAPIKey", "oauth2ClientSecret", "service2Token",
-    "customBearer", "customCookie", "customSignature", "customPrivate", "customCredentials", "customKey",
+    "customBearer", "customCookie", "customSignature", "customCredentials", "customKey",
     "customAPIKeyLabel", "customAccessKeyId", "customSecretKeyEncoding",
+    "tokenValue", "passwordHash", "secret-value", "authToken", "sessionCookie", "hmacSignature",
+    "credentialType", "secret-count", "privateKeyEncoding", "vendorTokenValue",
+    "authorizationCode", "credentialContextWith", "tokenResponse", "tokenVALUE",
+    "valueToken", "tokenBudgetToken", "tokenBudgetSecret",
+    "vendorPasswordHash", "bearerValue", "cookieValue", "signatureAlgorithm",
 }
 
 local ordinary_metadata = {
     max_tokens = 8192, output_tokens = 1024, token_budget = 4096,
     token_limit = 2048, tokens_per_minute = 60000, max_output_tokens = 2048, key_count = 3,
-    secret_count = 2, credential_type = "reference", authorization_mode = "header",
+    authorization_mode = "header", context_window = 32768,
+    token_count = 4, token_usage = 5, token_cost = 6, token_rate = 7, token_length = 8,
+    token_window = 9, token_quota = 10, token_size = 11,
+    tokenBudgetValue = 4096, vendorTokenLimit = 2048, tokenCount = 4,
+    tokenUsage = 5, tokenCost = 6, tokenRate = 7, tokenLength = 8, tokenWindow = 9,
+    tokenQuota = 10, tokenSize = 11, private = false, customPrivate = false,
     maxTokens = 8192, outputTokens = 1024, tokenBudget = 4096, tokenLimit = 2048,
     tokensPerMinute = 60000, maxOutputTokens = 2048, keyCount = 3,
 }

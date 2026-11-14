@@ -81,7 +81,7 @@ cards hold call defaults such as `reasoning_model_request`,
 `thinking_effort`, or `temperature` in provider options. For
 OpenAI-compatible profiles, `test_model` is non-secret profile config used only
 by the connection-test probe; API keys remain in encrypted profile secrets or
-`*_env` references. Card and profile filtering share one classifier for declared credential fields, terminal credential nouns and `api key`/`access key`/`secret key` word pairs across snake, kebab, camel case and digit boundaries; ordinary metadata such as `max_tokens`, `output_tokens`, and `token_budget` remains intact, and profile `*_env` references remain public.
+`*_env` references. Card and profile filtering normalize declared credentials and field names across snake, kebab, camel case and digit boundaries, protect credential words, credential key pairs and terminal `key`/`auth`/`authorization`, and treat singular `token` as private unless immediately followed by a quantity word; plural-token metadata, token budgets and limits remain intact, and profile `*_env` references remain public.
 
 Retry is provider-level transport policy: `retry.attempts` is the number of
 transient failures to retry after the initial request, and optional

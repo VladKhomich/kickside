@@ -72,9 +72,11 @@ local SECRET_KEYS = {
     access_token = true,
 }
 
--- Declared credential fields whose names do not end in a credential noun.
+-- Legacy credential declarations also use the normalized word form.
 local PRIVATE_KEYS = {
     headers = true,
+    passwords = true,
+    secrets = true,
     credential_blob = true,
     accesstoken = true,
     apitoken = true,
@@ -114,25 +116,43 @@ local PRIVATE_KEYS = {
     websockettoken = true,
 }
 
-local CREDENTIAL_NOUNS = {
-    key = true,
-    apikey = true,
+local CREDENTIAL_WORDS = {
     secret = true,
-    secrets = true,
     password = true,
-    passwords = true,
     passwd = true,
     passphrase = true,
-    token = true,
     credential = true,
     credentials = true,
-    auth = true,
-    authorization = true,
+    apikey = true,
     bearer = true,
     cookie = true,
     signature = true,
-    private = true,
 }
+
+local TOKEN_QUANTITIES = {
+    budget = true,
+    limit = true,
+    count = true,
+    usage = true,
+    cost = true,
+    rate = true,
+    length = true,
+    window = true,
+    quota = true,
+    size = true,
+}
+
+local KEY_PREFIXES = { api = true, access = true, private = true, secret = true }
+
+local function key_words(key: any): string
+    -- Preserve acronym and camel-case boundaries before folding case.
+    return tostring(key or ""):gsub("(%u)(%u%l)", "%1_%2"):gsub("(%l)(%u)", "%1_%2")
+        :lower():gsub("[^%a]+", "_"):gsub("^_", ""):gsub("_$", "")
+end
+
+local DECLARED_CREDENTIALS = {}
+for key in pairs(SECRET_KEYS) do DECLARED_CREDENTIALS[key_words(key)] = true end
+for key in pairs(PRIVATE_KEYS) do DECLARED_CREDENTIALS[key_words(key)] = true end
 
 local function env_ref_key(key: any): boolean
     return tostring(key or ""):lower():match("_env$") ~= nil
@@ -141,20 +161,19 @@ end
 local function sensitive_key(key: any): boolean
     local name = tostring(key or "")
     if env_ref_key(name) then name = name:sub(1, -5) end
-    local k = name:lower()
-    if SECRET_KEYS[k] or PRIVATE_KEYS[k] then return true end
+    local words = key_words(name)
+    if DECLARED_CREDENTIALS[words] then return true end
 
-    -- Keep acronym and camel-case boundaries before folding case; separators
-    -- and digits also delimit words (oauth2ClientSecret, vendorAPIKey).
-    local words = name:gsub("(%u)(%u%l)", "%1_%2"):gsub("(%l)(%u)", "%1_%2"):lower()
-    local last = ""
+    local previous = ""
     for word in words:gmatch("%a+") do
-        if word == "key" and (last == "api" or last == "access" or last == "secret") then
+        if CREDENTIAL_WORDS[word]
+            or (previous == "token" and not TOKEN_QUANTITIES[word])
+            or (word == "key" and KEY_PREFIXES[previous]) then
             return true
         end
-        last = word
+        previous = word
     end
-    return CREDENTIAL_NOUNS[last] == true
+    return previous == "token" or previous == "key" or previous == "auth" or previous == "authorization"
 end
 
 local function sensitive_config_key(key: any): boolean
