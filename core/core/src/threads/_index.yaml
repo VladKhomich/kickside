@@ -240,6 +240,9 @@ entries:
       proj_types: kickside.core.projections:types
       projections_writer: kickside.core.projections.persist:writer
       component_identity: kickside.core.threads:component_identity
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      component_lifecycle: kickside.core.lifecycle:component_lifecycle_impl
+      jobs_wake: kickside.core.jobs.persist:wake
 
   - name: provision_identity
     kind: security.policy
