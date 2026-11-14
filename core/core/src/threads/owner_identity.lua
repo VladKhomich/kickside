@@ -13,6 +13,7 @@ local lifecycle_log = require("lifecycle_log")
 local autoinit = require("autoinit")
 local access_subjects = require("access_subjects")
 local core_types = require("core_types")
+local component_identity_ops = require("component_identity_ops")
 
 local M = {}
 
@@ -92,7 +93,26 @@ function M.from_snapshot(row: table): (table?, error?)
             break
         end
     end
-    if not own then return nil, nil end
+    if not own then
+        if lifecycle and row.execution_identity_json == nil then
+            local config = type(row.body.worker_config) == "table" and row.body.worker_config or {}
+            if config.child_component_id == attrs.component_id and config.child_impl_id == attrs.class
+                and type(config.parent_component_id) == "string" and config.parent_component_id ~= attrs.component_id
+                and type(config.parent_impl_id) == "string" and row.actor_id == nil
+                and row.projection_actor_id == nil and row.projection_actor_context == nil then
+                for _, declaration in ipairs(autoinit.projections_for_impl(config.parent_impl_id)) do
+                    local base = declaration.projection_key
+                    local key = type(base) == "string" and base ~= "" and base .. ":parent:" .. config.parent_component_id
+                        or "parent:" .. config.parent_component_id
+                    if declaration.on == autoinit.PROJECTION_ON.CHILD_LIFECYCLE and declaration.kind == row.kind
+                        and key == row.projection_key and type(row.body.meta) == "table"
+                        and declaration.worker_ref == row.body.meta.worker_ref then return nil, nil end
+                end
+            end
+            return nil, denied("projection_framework_binding_missing", "lifecycle projection has no trusted framework registration")
+        end
+        return nil, nil
+    end
     if row.owner_component_id == nil or (row.owner_context_readable ~= true and row.owner_context_readable ~= 1) then
         return nil, denied("projection_owner_missing", "component projection owner record is missing or invalid")
     end
@@ -103,26 +123,14 @@ function M.from_snapshot(row: table): (table?, error?)
         if err then return nil, err end
         if stored == nil then return nil, denied("projection_owner_invalid", "component execution identity is invalid") end
     end
-    -- A materialized maintenance binding is produced only by trusted creation
-    -- or provenance-checked reconciliation. Legacy null bindings cannot run.
-    local expected, expected_err = M.of_owner(stored, row.owner_key, row.actor_id)
+    -- The reserved owner record is the authority. A materialized binding must
+    -- match it; the binding itself never proves ownership.
+    local expected, expected_err = M.of_owner(stored, row.owner_key, row.owner_key)
     if expected_err then return nil, expected_err end
     local actor_id = expected.row and expected.row.actor_id or expected.owner
     local actor_context = expected.row and expected.row.actor_context or nil
-    local function matches(actor: any, context: any): (boolean, error?)
-        if actor ~= actor_id then return false, nil end
-        if actor_context == nil then return context == nil, nil end
-        local identity, err = execution_identity.from_row(actor, context)
-        if err then return false, err end
-        local copy, copy_err = execution_identity.to_row(identity)
-        if copy_err then return false, copy_err end
-        return copy.actor_context == actor_context, nil
-    end
-    local cursor_matches, cursor_err = matches(row.actor_id, row.execution_identity_json)
-    if cursor_err then return nil, cursor_err end
-    local projection_matches, projection_err = matches(row.projection_actor_id, row.projection_actor_context)
-    if projection_err then return nil, projection_err end
-    if not cursor_matches or not projection_matches then
+    if not execution_identity.rows_equal(row.actor_id, row.execution_identity_json, actor_id, actor_context)
+        or not execution_identity.rows_equal(row.projection_actor_id, row.projection_actor_context, actor_id, actor_context) then
         return nil, denied("projection_owner_binding_changed", "component projection binding differs from its current owner")
     end
     local generation = tonumber(row.owner_identity_generation)
@@ -131,6 +139,29 @@ function M.from_snapshot(row: table): (table?, error?)
     end
     return {component_id = row.owner_component_id, impl_id = impl_id,
         generation = generation, identity = stored, maintenance_owner = expected.owner}, nil
+end
+
+local function identity_hash(id: table): string
+    return component_identity_ops.canonical_identity(id.principal, id.authorized_by, id.component_id,
+        id.captured_at, id.credential_id, id.link_id)
+end
+
+-- The component hash is maintained with its private v2 record. Legacy records
+-- without that fence are compared with the private record itself.
+function M.binding_matches(owner_hash: any, owner_key: any, legacy_identity: any, actor_id: any, context: any): boolean
+    local expected = owner_hash
+    if expected == nil and legacy_identity ~= nil then
+        local id, decode_err = json.decode(legacy_identity)
+        if decode_err then return false end
+        local valid = execution_identity.validate(id)
+        if valid ~= true then return false end
+        expected = identity_hash(id)
+    end
+    if expected == nil then
+        return context == nil and actor_id == owner_key and execution_identity.is_maintenance_key(owner_key)
+    end
+    local id, err = execution_identity.from_row(actor_id, context)
+    return err == nil and id ~= nil and identity_hash(id) == expected
 end
 
 function M.access_checks(authority: table, subjects: table[], prefixes: {string}?): (table[]?, error?)

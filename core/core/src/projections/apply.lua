@@ -427,14 +427,19 @@ function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: 
                 end
             end
         end
-    elseif #writes > 0 and snapshot.execution_identity_json ~= nil then
-        local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
-        if identity_err then return nil, identity_err end
-        if type(identity) ~= "table" then return nil, response_error("execution_identity") end
-        local admitted, admission_err = execution_identity.run_as(identity,
-            "kickside.core.threads:authorize_projection_writes", {writes = writes}, {
-                deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
-            })
+    elseif #writes > 0 then
+        local admitted, admission_err: any = nil, nil
+        if snapshot.execution_identity_json ~= nil then
+            local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
+            if identity_err then return nil, identity_err end
+            if type(identity) ~= "table" then return nil, response_error("execution_identity") end
+            admitted, admission_err = execution_identity.run_as(identity,
+                "kickside.core.threads:authorize_projection_writes", {writes = writes}, {
+                    deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
+                })
+        else
+            admitted, admission_err = funcs.call("kickside.core.threads:authorize_projection_writes", {writes = writes})
+        end
         if admission_err then return nil, admission_err end
         if type(admitted) ~= "table" or type(admitted.writes) ~= "table" or type(admitted.checks) ~= "table" then
             return nil, response_error("admitted.writes")

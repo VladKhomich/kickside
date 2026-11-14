@@ -302,11 +302,6 @@ local function resolve_binding_identity(binding: table): (any, any, error?)
                 message = "maintenance projection has no trusted component binding",
                 details = {code = "projection_maintenance_binding_missing", error_kind = "subject"}})
         end
-        if frame.scope:evaluate(frame.actor, "component.own.maintenance", authority.impl_id) ~= "allow" then
-            return nil, nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
-                message = "maintenance owner no longer has component ownership permission",
-                details = {code = "projection_maintenance_ownership_denied", error_kind = "access"}})
-        end
         return (frame :: any).actor, (frame :: any).scope, nil
     end
     local identity, row_err = execution_identity.from_row(binding.actor_id, binding.actor_context)

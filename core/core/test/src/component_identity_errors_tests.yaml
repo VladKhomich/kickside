@@ -23,6 +23,7 @@ entries:
     autoinit: kickside.component:autoinit
     access_subjects: kickside.component.persist:access_subjects
     core_types: kickside.core:types
+    component_identity_ops: kickside.component.persist:identity_ops
     execution_identity: app:component_identity_errors_execution
     error_envelope: kickside.contract:error_envelope
 - name: component_identity_errors_common_source

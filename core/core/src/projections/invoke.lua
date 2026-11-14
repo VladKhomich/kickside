@@ -202,10 +202,13 @@ function M.run(input: any): (table?, error?)
     local row, row_err = snapshot(db, cursor_id, job.id)
     if row_err then return nil, release(db, row_err) end
     local current = row :: table
-    if current.authority_error then
+    if current.authority_error and current.status == "active" then
         local release_err = release(db, nil)
         if release_err then return nil, release_err end
-        return apply.fail(db_id, job, current, current.authority_error, true)
+        local deterministic = job_types.is_deterministic_kind(current.authority_error:kind())
+        local result, fail_err = apply.fail(db_id, job, current, current.authority_error, deterministic)
+        if result or fail_err then return result, fail_err end
+        return nil, current.authority_error
     end
     local head = tonumber(current.event_count)
     local last = tonumber(current.last_seq)

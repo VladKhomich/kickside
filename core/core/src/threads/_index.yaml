@@ -166,6 +166,7 @@ entries:
     source: file://owner_identity.lua
     modules: [json]
     imports:
+      component_identity_ops: kickside.component.persist:identity_ops
       access_subjects: kickside.component.persist:access_subjects
       core_types: kickside.core:types
       autoinit: kickside.component:autoinit
@@ -246,6 +247,9 @@ entries:
       - funcs
       - sql
     imports:
+      owner_identity: kickside.core.threads:owner_identity
+      jobs_wake: kickside.core.jobs.persist:wake
+      job_types: kickside.core.jobs:types
       component_envelope: kickside.component:envelope
       error_envelope: kickside.contract:error_envelope
       autoinit: kickside.component:autoinit

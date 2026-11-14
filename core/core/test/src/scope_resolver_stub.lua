@@ -63,4 +63,8 @@ function M.resolve(args: any): (any?, error?)
     }, nil
 end
 
+function M.groups(_args: any): table
+    return {active = true, groups = {"core_test"}}
+end
+
 return M

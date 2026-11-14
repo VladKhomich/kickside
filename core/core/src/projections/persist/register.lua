@@ -361,14 +361,14 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         projection_id = tostring(projection_rows[1].id)
         if params.component_id ~= nil then
             local prior = projection_rows[1]
-            identity_changed = prior.actor_id ~= actor_id_col or prior.actor_context ~= actor_context_col
+            identity_changed = not execution_identity.rows_equal(prior.actor_id, prior.actor_context, actor_id_col, actor_context_col)
             local copies, copies_err = sql.builder.select("id", "generation", "job_id", "actor_id", "execution_identity_json")
                 :from("kickside_projection_cursor"):where("projection_id = ?", projection_id):run_with(tx):query()
             if copies_err then return nil, errors.wrap(copies_err, "read component projection identities") end
             if type(copies) ~= "table" then return nil, response_error("identity.cursors") end
             identity_cursors = copies
             for _, copy in ipairs(copies) do
-                if copy.actor_id ~= actor_id_col or copy.execution_identity_json ~= actor_context_col then identity_changed = true end
+                if not execution_identity.rows_equal(copy.actor_id, copy.execution_identity_json, actor_id_col, actor_context_col) then identity_changed = true end
             end
         end
         local prior_revision = projection_rows[1].declaration_revision
