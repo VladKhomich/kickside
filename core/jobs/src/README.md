@@ -88,10 +88,38 @@ makes the job claimable only after its registered execution child has ended.
 A gone child recovers in the same pass; a live child retains the termination fence.
 Heartbeats renew only matching, unexpired executions without a termination fence.
 
-`jobs.health()` reports `stranded_jobs` with `job_ids` for erroneous pending
-one-shot jobs without a schedule. This invariant is unhealthy immediately; the
+`jobs.health()` reports `stranded_jobs` with up to 16 sample `job_ids` for
+erroneous pending one-shot jobs without a schedule. This invariant is unhealthy immediately; the
 existing `health.overdue_grace` bounds due-work diagnostics only. Scheduled retry
 errors remain part of `degraded_jobs` without creating a stranded-job issue.
+
+Health is an instance-wide operator diagnostic. Each numeric count retains its
+existing field name and counts the same population. Counts are exact through
+1,000; above that they return the lower bound 1,000 and set the companion
+`<field>_capped` boolean to `true`. The counted fields are `failed_slots`,
+`healthy_worker_count`, `due_unclaimed_count`, `overdue_unclaimed_count`,
+`expired_leases`, `undelivered_wake_keys`, and `degraded_jobs`. Counted issues
+(`due_work_unclaimed`, `stranded_jobs`, `slots_failed`) use `{count, capped}`.
+A false `capped` means the count is exact, including exactly 1,000 matches.
+`stranded_jobs.job_ids` contains the first at most 16 matching IDs in ascending
+order; its `count` describes the population, independently of the sample.
+
+The existing `healthy`, issue codes, worker fields, and age fields keep their
+meaning. The worker list remains limited to 256. Ages describe the oldest
+matching work, with zero for an empty population, and remain independent of the
+count cap. Due and overdue counts apply the canonical dispatch eligibility
+predicate before their ordered 1,001-row limit; blocked concurrency keys and
+saturated capacity do not count as claimable work. The scheduler's uncapped
+backlog API remains unchanged when no limit is supplied.
+
+Health performs no writes. Counts read at most 1,001 matching rows through their
+indexes, and capacity discovery uses indexed existence and first/last group
+reads. Filtering for dynamic eligibility can visit more candidate rows: a
+100,000-job backlog blocked behind one running concurrency key takes about
+22 ms on PostgreSQL and 62 ms on SQLite for the ordered matching read. This is
+a known cost profile of the operator diagnostic; the limit follows eligibility
+so the result still includes eligible work beyond blocked candidates. Normal
+distributions use bounded indexed reads without retrieving the full job set.
 
 After committing a transaction containing `jobs.enqueue_tx(tx, dbtype, params)`,
 call `jobs.nudge_workers(): (integer, error?)`. Never nudge before commit or after

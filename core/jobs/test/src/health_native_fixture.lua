@@ -15,7 +15,7 @@ end
 function M.db_id() return "app:db" end
 function M.policy(...) return result("policy", {lease_timeout_seconds = 30, health_overdue_grace_ms = 1000}) end
 function M.now(...) return "2026-10-10 00:00:00" end
-function M.due_backlog(...) return result("backlog", {count = 0, oldest_age_ms = 0, overdue = 0}) end
+function M.due_backlog(...) return result("backlog", {count = 0, oldest_age_ms = 0, overdue = 0, capped = false, overdue_capped = false}) end
 function M.get(...): any
     local db: any = {}
     function db:type() return sql.type.SQLITE, nil end
@@ -24,7 +24,7 @@ function M.get(...): any
         M.reads = M.reads + 1
         local phase = phases[M.reads]
         local value: any = {{n = 0}}
-        if phase == "workers" then value = {{id = "worker"}} end
+        if phase == "workers" then value = {{id = "worker", healthy = true}} end
         if phase == "fresh" then value = {{worker_id = "worker"}} end
         if phase == "stranded" then value = {} end
         if phase == "control" then value = {{}} end
