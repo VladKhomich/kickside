@@ -125,9 +125,9 @@ end
 
 -- Stable boundary for scans ordered by component_id ASC.
 function methods.after_component(self: Reader, component_id: string): Reader
-    local copy = self:_copy()
-    copy._after_component_id = component_id
-    return copy
+    local new_instance = self:_copy()
+    new_instance._after_component_id = component_id
+    return setmetatable(new_instance, reader_mt) :: Reader
 end
 
 -- Filter by specific component IDs (varargs or a single array). Component ids
