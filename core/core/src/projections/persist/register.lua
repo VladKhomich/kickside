@@ -332,7 +332,6 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local projection_id: string
     local created_projection = false
     local declaration_changed = false
-    local revision = 1
     local projection_rows, projection_query_err = sql.builder.select("id", "body", "declaration_digest", "declaration_revision")
         :from("kickside_projection")
         :where(sql.builder.eq({ thread_id = thread_id, kind = kind, projection_key = projection_key }))
@@ -345,11 +344,6 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     if #projection_rows > 0 then
         projection_id = tostring(projection_rows[1].id)
-        local prior_revision = projection_rows[1].declaration_revision
-        if prior_revision ~= nil then revision = tonumber(prior_revision) end
-        if revision == nil or revision < 1 or revision ~= math.floor(revision) then
-            return fail("projection declaration revision is invalid", errors.INTERNAL)
-        end
         local body_to_write = body_json
         if not reset then
             local merged, decode_err = persisted_json.decode_table(projection_rows[1].body, "kickside_projection.body")
@@ -385,6 +379,12 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                 projection_update = projection_update:set("actor_id", actor_id_col):set("actor_context", actor_context_col)
             end
             if reset or declaration_changed then
+                local revision = 1
+                local prior_revision = projection_rows[1].declaration_revision
+                if prior_revision ~= nil then revision = tonumber(prior_revision) end
+                if revision == nil or revision < 1 or revision ~= math.floor(revision) then
+                    return fail("projection declaration revision is invalid", errors.INTERNAL)
+                end
                 projection_update = projection_update:set("declaration_revision", revision + 1)
                     :set("declaration_from_seq", (refresh_from or start_seq) + 1)
             end

@@ -24,7 +24,7 @@ return {run = test.run_cases(function()
                     ids[#ids + 1] = "'" .. require("lifecycle_log").thread_id(id) .. "'"
                 end
                 local threads = #ids > 0 and "id IN (" .. table.concat(ids, ",") .. ")" or "1=0"
-                if population then threads = "(" .. threads .. " OR id IN (SELECT component_id FROM kickside_components WHERE impl_id='test.window.plan'))" end
+                if population then threads = "(" .. threads .. " OR thread_class='plan.growth' OR id IN (SELECT component_id FROM kickside_components WHERE impl_id='test.window.plan'))" end
                 assert(tx:execute("DELETE FROM kickside_job WHERE id IN (SELECT job_id FROM kickside_projection_cursor WHERE thread_id IN (SELECT id FROM kickside_thread WHERE " .. threads .. "))"))
                 assert(tx:execute("DELETE FROM kickside_thread WHERE " .. threads))
                 local components = #owned > 0 and "component_id IN ('" .. table.concat(owned, "','") .. "')" or "1=0"
@@ -77,6 +77,14 @@ return {run = test.run_cases(function()
             local before = counter.calls
             assert(register.register_projection(db, id, params))
             test.eq(counter.calls, before, "an unchanged event performs no canonicalization or hashing")
+            assert(db:execute("UPDATE kickside_projection SET declaration_revision=0 WHERE thread_id=$1", {id}))
+            local unchanged, unchanged_err = register.register_projection(db, id, params)
+            test.is_nil(unchanged_err, "unchanged registration never validates a revision it does not change")
+            test.not_nil(unchanged)
+            params.worker_config = {changed = true}
+            local changed, changed_err = register.register_projection(db, id, params)
+            test.is_nil(changed)
+            test.not_nil(changed_err, "changed registration still validates the stored revision")
             assert(db:release())
         end)
         test.it("seeks only divergent declaration rows in a healthy population", function()
@@ -113,6 +121,15 @@ return {run = test.run_cases(function()
             test.eq(page.checked, 0)
             test.is_nil(page.continuation, "unchanged population completes without visiting component windows")
             test.eq(plan.plans, 1)
+            db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_projection SET declaration_digest='000' WHERE id=$1", {registered.projection_id}))
+            assert(db:release())
+            plan.growth = 100000
+            local grown = assert(provision.converge({}, {}))
+            test.eq(grown.checked, 0, "projections created after the captured boundary wait for the next run")
+            test.is_nil(grown.continuation, "post-boundary growth does not extend the captured digest ranges")
+            test.eq(plan.growth, -1)
+            plan.growth = 0
         end)
         test.it("replaces the projection kind index with bounded digest range seeks", function()
             local db = assert(sql.get("app:db"))

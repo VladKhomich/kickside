@@ -8,7 +8,7 @@ function M.reset(stage: string, source: any)
     M.scope_decision, M.unchanged_count, M.changed_count, M.max_page = nil, nil, nil, 0
     M.lifecycle, M.wakes, M.kind_loads = false, 0, 0
     M.lifecycle_missing, M.lifecycle_scans = nil, 0
-    M.require_window, M.two_kinds = false, false
+    M.require_window, M.two_kinds, M.invalid_declaration = false, false, false
     M.changed_stride, M.repair_ids = nil, {}
     M.gets, M.queries, M.releases, M.upserts = 0, 0, 0, 0
     M.retentions, M.grants, M.calls, M.contract_gets, M.opens = 0, 0, 0, 0, 0, 0
@@ -78,7 +78,7 @@ end
 function M.declared_kinds(): {any}
     M.kind_loads = M.kind_loads + 1
     local result = {{class = not M.lifecycle and "class" or nil, impl_id = "impl", projections = {{kind = "projection",
-        on = M.lifecycle and "lifecycle" or nil, worker_ref = "func://app:test_count_worker"}}}}
+        on = M.lifecycle and "lifecycle" or nil, worker_ref = M.invalid_declaration and "invalid" or "func://app:test_count_worker"}}}}
     if M.two_kinds then result[2] = {impl_id = "later", class = "class", projections = result[1].projections} end
     return result
 end
@@ -96,11 +96,17 @@ function M.builder.select(columns: string, ...: any): any
         M.queries = M.queries + 1
         local digest_scan = source:find("declaration_digest", 1, true) ~= nil
         if ((M.stage == "thread_scan" or M.stage == "thread_scan_release") and M.queries == 1)
-            or (M.stage == "projection_scan" and source:find("kickside_projection", 1, true) ~= nil) then return nil, M.source end
+            or (M.stage == "projection_scan" and (source .. columns):find("kickside_projection", 1, true) ~= nil) then return nil, M.source end
         local count = M.changed_count or M.unchanged_count
         if boundary then
             local upper = count and string.format("%06d", count) or "component"
-            return {{upper = upper, projection_upper = upper}}, nil
+            local row = {upper = upper, projection_upper = upper}
+            if M.changed_count then
+                for prefix in columns:gmatch("AS (p%d+_%d+_%d+)_id") do
+                    row[prefix .. "_id"], row[prefix .. "_digest"] = upper, "old"
+                end
+            end
+            return {row}, nil
         end
         if M.require_window and digest_scan then
             assert(source:find("LIMIT ", 1, true), "each divergence source is limited before union and sorting")
@@ -124,7 +130,7 @@ function M.builder.select(columns: string, ...: any): any
         end
         if not count or M.unchanged_count then return {}, nil end
         local after = tonumber((source:match("declaration_digest,id%)>%('[^']*','(%d+)'%)"))) or 0
-        local upper = tonumber((source:match("id<='(%d+)'"))) or count
+        local upper = tonumber((source:match("declaration_digest,id%)<=%('[^']*','(%d+)'%)"))) or count
         local page_size = assert(tonumber((source:match("LIMIT (%d+)"))))
         assert(page_size <= 4096, "mismatch examination is bounded independently of repairs")
         local later = source:find("c.impl_id='later'", 1, true) ~= nil

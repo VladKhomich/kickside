@@ -138,7 +138,7 @@ return {run = test.run_cases(function()
                 test.eq(summary.checked, 0)
                 test.eq(summary.healed, 0)
                 test.eq(fixture.calls, 0)
-                test.eq(fixture.queries, 3, "one boundary, one bulk existence query and one mismatch query")
+                test.eq(fixture.queries, 2, "one indexed boundary query and one bulk existence query; empty mismatch ranges do not scan")
                 test.eq(fixture.max_page, 0, "healthy rows never enter the mismatch window")
             end)
         end
@@ -153,7 +153,7 @@ return {run = test.run_cases(function()
                 continuation, turns = page.continuation, turns + 1
             until not continuation
             test.eq(turns, 1)
-            test.eq(fixture.queries, 3, "query count is independent of the healthy population")
+            test.eq(fixture.queries, 2, "query count is independent of the healthy population")
         end)
         test.it("resumes after the last repair when a sparse window fills its repair budget", function()
             fixture.reset("", nil)
@@ -170,6 +170,14 @@ return {run = test.run_cases(function()
             for index, id in ipairs(fixture.repair_ids) do
                 test.eq(id, string.format("%06d", index * 2), "no divergent key is skipped or repeated")
             end
+        end)
+        test.it("rejects a changed invalid declaration through its owning repair", function()
+            fixture.reset("", nil)
+            fixture.changed_count, fixture.invalid_declaration = 1, true
+            local page, err = provision.converge({}, {})
+            test.is_true(errors.is(err, errors.INVALID))
+            test.eq(page.checked, 0)
+            test.eq(fixture.calls, 0)
         end)
         test.it("prepares declaration definitions once per finite run", function()
             fixture.reset("", nil)
@@ -230,7 +238,7 @@ return {run = test.run_cases(function()
                     local summary, err = provision.converge({}, {}, continuation)
                     test.is_nil(err)
                     test.is_true(fixture.calls - before <= 256)
-                    test.eq(fixture.queries - queries, turns == 0 and 3 or 1)
+                    test.eq(fixture.queries - queries, turns == 0 and (changed and 3 or 2) or 1)
                     test.eq(fixture.wakes - wakes, changed and 1 or 0, "committed repairs notify before the page returns")
                     total = total + summary.healed
                     turns = turns + 1

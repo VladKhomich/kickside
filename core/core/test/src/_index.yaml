@@ -4562,6 +4562,7 @@ entries:
     modules:
     - sql
     - json
+    - fs
 
   - name: declaration_window_autoinit
     kind: library.lua

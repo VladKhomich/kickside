@@ -248,8 +248,27 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
     end
     local boundaries = continuation and continuation.boundaries or nil
     if not boundaries then
-        local rows, scan_err = sql.builder.select("(SELECT component_id FROM kickside_components ORDER BY component_id DESC LIMIT 1) AS upper",
-            "(SELECT id FROM kickside_projection ORDER BY id DESC LIMIT 1) AS projection_upper")
+        local columns = {"(SELECT component_id FROM kickside_components ORDER BY component_id DESC LIMIT 1) AS upper",
+            "(SELECT id FROM kickside_projection ORDER BY id DESC LIMIT 1) AS projection_upper"}
+        for kindex, kind in ipairs(kinds) do
+            for dindex, decl in ipairs(kind.projections or {}) do
+                if decl.converge then
+                    local key = type(decl.projection_key) == "string" and decl.projection_key ~= "" and decl.projection_key or proj_types.KEY_DEFAULT
+                    decl.range_source = " FROM kickside_projection WHERE kind=" .. quoted(decl.kind) .. " AND projection_key=" .. quoted(key)
+                    local digest = decl.declaration_digest or ""
+                    decl.range_predicates = {"declaration_digest<" .. quoted(digest),
+                        "declaration_digest>" .. quoted(digest), "declaration_digest IS NULL"}
+                    decl.boundary_key = "p" .. tostring(kindex) .. "_" .. tostring(dindex) .. "_"
+                    for rindex, predicate in ipairs(decl.range_predicates) do
+                        local prefix = decl.boundary_key .. tostring(rindex)
+                        local tail = decl.range_source .. " AND " .. predicate .. " ORDER BY declaration_digest DESC,id DESC LIMIT 1) AS "
+                        columns[#columns + 1] = "(SELECT id" .. tail .. prefix .. "_id"
+                        if rindex ~= 3 then columns[#columns + 1] = "(SELECT declaration_digest" .. tail .. prefix .. "_digest" end
+                    end
+                end
+            end
+        end
+        local rows, scan_err = sql.builder.select(table.concat(columns, ","))
             :from("(SELECT 1) boundary"):run_with(db):query()
         if scan_err then return finish(errors.wrap(scan_err, "converge: boundary scan failed")) end
         if type(rows) ~= "table" or #rows ~= 1 then return finish(missing_result("boundary")) end
@@ -367,43 +386,51 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
             for dindex = position.declaration, #(kind.projections or {}) do
                 local decl = kind.projections[dindex]
                 if decl.converge and boundaries.projection_upper ~= nil then
-                    local key = type(decl.projection_key) == "string" and decl.projection_key ~= "" and decl.projection_key or proj_types.KEY_DEFAULT
-                    local digest = decl.declaration_digest or ""
-                    local predicates = {"declaration_digest<" .. quoted(digest), "declaration_digest>" .. quoted(digest), "declaration_digest IS NULL"}
                     local ranges: {string} = {}
-                    for rindex, predicate in ipairs(predicates) do
-                        local after = position.ranges[rindex]
-                        if after then
-                            if rindex == 3 then predicate = predicate .. " AND id>" .. quoted(after.id)
-                            else predicate = predicate .. " AND (declaration_digest,id)>(" .. quoted(after.digest) .. "," .. quoted(after.id) .. ")" end
+                    for rindex, original in ipairs(decl.range_predicates) do
+                        local prefix = decl.boundary_key .. tostring(rindex)
+                        local upper_id = boundaries[prefix .. "_id"]
+                        if upper_id ~= nil then
+                            local predicate = original
+                            local after = position.ranges[rindex]
+                            if rindex == 3 then
+                                predicate = predicate .. " AND id<=" .. quoted(tostring(upper_id))
+                                if after then predicate = predicate .. " AND id>" .. quoted(after.id) end
+                            else
+                                -- Use the tuple as the upper seek bound. A redundant
+                                -- scalar digest bound makes SQLite filter past it.
+                                predicate = (rindex == 2 and original .. " AND " or "") .. "(declaration_digest,id)<=(" .. quoted(boundaries[prefix .. "_digest"]) .. "," .. quoted(tostring(upper_id)) .. ")"
+                                if after then predicate = predicate .. " AND (declaration_digest,id)>(" .. quoted(after.digest) .. "," .. quoted(after.id) .. ")" end
+                            end
+                            ranges[#ranges + 1] = "SELECT * FROM (SELECT id,thread_id,declaration_digest," .. tostring(rindex) .. " AS range_id"
+                                .. decl.range_source .. " AND " .. predicate
+                                .. " ORDER BY declaration_digest,id LIMIT " .. tostring(examination_remaining) .. ") range" .. tostring(rindex)
                         end
-                        ranges[#ranges + 1] = "SELECT * FROM (SELECT id,thread_id,declaration_digest," .. tostring(rindex) .. " AS range_id"
-                            .. " FROM kickside_projection WHERE kind=" .. quoted(decl.kind) .. " AND projection_key=" .. quoted(key)
-                            .. " AND " .. predicate .. " AND id<=" .. quoted(tostring(boundaries.projection_upper))
-                            .. " ORDER BY declaration_digest,id LIMIT " .. tostring(examination_remaining) .. ") range" .. tostring(rindex)
                     end
-                    local own = decl.on == autoinit.PROJECTION_ON.LIFECYCLE
-                    local query = "WITH candidates AS MATERIALIZED (SELECT * FROM (" .. table.concat(ranges, " UNION ALL ")
-                        .. ") ranges ORDER BY range_id,declaration_digest,id LIMIT " .. tostring(examination_remaining) .. ")"
-                        .. " SELECT p.id,p.declaration_digest,p.range_id,c.component_id FROM candidates p"
-                        .. (own and " LEFT JOIN kickside_thread t ON t.id=p.thread_id" or "")
-                        .. " LEFT JOIN kickside_components c ON c.component_id=" .. (own and (dbtype == "postgres" and "(t.attrs->>'component_id')::uuid" or "(t.attrs->>'component_id')") or "p.thread_id")
-                        .. " AND " .. owner .. " ORDER BY p.range_id,p.declaration_digest,p.id"
-                    local rows, scan_err = sql.builder.select("id,declaration_digest,range_id,component_id")
-                        :from("(" .. query .. ") mismatches"):run_with(db):query()
-                    if scan_err then return finish(errors.wrap(scan_err, "converge: declaration scan failed")) end
-                    if type(rows) ~= "table" then return finish(missing_result("scan")) end
-                    local limit = examination_remaining
-                    for _, row in ipairs(rows) do
-                        examination_remaining = examination_remaining - 1
-                        position.ranges[tonumber(row.range_id)] = {id = tostring(row.id), digest = row.declaration_digest}
-                        if row.component_id ~= nil then
-                            local cause = repair(tostring(row.component_id))
-                            if cause then return finish(cause) end
+                    if #ranges > 0 then
+                        local own = decl.on == autoinit.PROJECTION_ON.LIFECYCLE
+                        local query = "WITH candidates AS MATERIALIZED (SELECT * FROM (" .. table.concat(ranges, " UNION ALL ")
+                            .. ") ranges ORDER BY range_id,declaration_digest,id LIMIT " .. tostring(examination_remaining) .. ")"
+                            .. " SELECT p.id,p.declaration_digest,p.range_id,c.component_id FROM candidates p"
+                            .. (own and " LEFT JOIN kickside_thread t ON t.id=p.thread_id" or "")
+                            .. " LEFT JOIN kickside_components c ON c.component_id=" .. (own and (dbtype == "postgres" and "(t.attrs->>'component_id')::uuid" or "(t.attrs->>'component_id')") or "p.thread_id")
+                            .. " AND p.id<=" .. quoted(tostring(boundaries.projection_upper)) .. " AND " .. owner .. " ORDER BY p.range_id,p.declaration_digest,p.id"
+                        local rows, scan_err = sql.builder.select("id,declaration_digest,range_id,component_id")
+                            :from("(" .. query .. ") mismatches"):run_with(db):query()
+                        if scan_err then return finish(errors.wrap(scan_err, "converge: declaration scan failed")) end
+                        if type(rows) ~= "table" then return finish(missing_result("scan")) end
+                        local limit = examination_remaining
+                        for _, row in ipairs(rows) do
+                            examination_remaining = examination_remaining - 1
+                            position.ranges[tonumber(row.range_id)] = {id = tostring(row.id), digest = row.declaration_digest}
+                            if row.component_id ~= nil then
+                                local cause = repair(tostring(row.component_id))
+                                if cause then return finish(cause) end
+                            end
+                            if remaining == 0 or examination_remaining == 0 then return resume(index % #kinds + 1) end
                         end
-                        if remaining == 0 or examination_remaining == 0 then return resume(index % #kinds + 1) end
+                        if #rows == limit then return resume(index % #kinds + 1) end
                     end
-                    if #rows == limit then return resume(index % #kinds + 1) end
                 end
                 position.ranges, position.declaration = {}, dindex + 1
             end
