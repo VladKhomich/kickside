@@ -136,6 +136,7 @@ local function render_call(entry: any, ref: any, pages: { integer }, opts: any):
     })
     if call_err ~= nil or type(res) ~= "table" or res.err ~= nil then
         local err = call_err or (type(res) == "table" and res.err)
+        log:warn("rasterize page render failed", { pages = pages, error = tostring(err) })
         return nil, public_failure(err, "render_failed", "Unable to render document pages.")
     end
     local ok = type(res.ok) == "table" and res.ok or {}
