@@ -1,5 +1,8 @@
 local env = require("env")
 local json = require("json")
+local http_errors = require("http_errors")
+local llm_mapper = require("llm_mapper")
+local llm_output = require("llm_output")
 
 local M = {}
 
@@ -106,24 +109,6 @@ function M.append_query(url: string, params: any): string
     return url .. sep .. table.concat(parts, "&")
 end
 
-local function first_string(value: any, keys: { string }): string?
-    if type(value) ~= "table" then return nil end
-    for _, key in ipairs(keys) do
-        local candidate = value[key]
-        if type(candidate) == "string" and candidate ~= "" then return candidate end
-    end
-    return nil
-end
-
-local function provider_error(parsed: any): string?
-    if type(parsed) ~= "table" then return nil end
-    if type(parsed.error) == "string" and parsed.error ~= "" then return parsed.error end
-    if type(parsed.error) == "table" then
-        return first_string(parsed.error, { "message", "detail", "description", "code", "type" })
-    end
-    return first_string(parsed, { "error_description", "message", "detail", "reason" })
-end
-
 function M.scrub_message(value: any): string
     local s = tostring(value or "")
     s = s:gsub("[Bb]earer%s+[^%s,\"'}]+", "Bearer [redacted]")
@@ -133,35 +118,49 @@ function M.scrub_message(value: any): string
     return s
 end
 
-function M.response_error(response: any, label: string?): string
-    local prefix = label or "provider request failed"
-    local status = response and tonumber(response.status_code)
-    if status then prefix = prefix .. " (HTTP " .. tostring(status) .. ")" end
-
-    local body = response and response.body or nil
-    if type(body) == "string" and body ~= "" then
-        local parsed = json.decode(body)
-        local message = provider_error(parsed)
-        if not message then
-            message = body:gsub("%s+", " ")
-            if #message > 260 then message = message:sub(1, 257) .. "..." end
-        end
-        if message and message ~= "" then
-            return prefix .. ": " .. M.scrub_message(message)
-        end
+function M.failure_message(label: string, diagnostics: any): string
+    if not diagnostics then return label end
+    local fields = {}
+    if diagnostics.kind then table.insert(fields, diagnostics.kind) end
+    if diagnostics.retryable ~= nil then
+        table.insert(fields, "retryable=" .. tostring(diagnostics.retryable))
     end
-
-    return prefix
+    if diagnostics.status_code then table.insert(fields, "HTTP " .. tostring(diagnostics.status_code)) end
+    return label .. " (" .. table.concat(fields, ", ") .. ")"
 end
 
-function M.decode_response(response: any, label: string?): (any?, string?)
+function M.transport_error(err: any, label: string?): (string, any?)
+    local _, classification = http_errors.classify(err)
+    local diagnostics = classification.kind and {
+        kind = classification.kind, retryable = classification.retryable,
+    } or nil
+    return M.failure_message(label or "provider request failed", diagnostics), diagnostics
+end
+
+function M.response_error(response: any, label: string?): (string, any?)
+    local status = response and tonumber(response.status_code)
+    local diagnostics = nil
+    if status then
+        local error_type = llm_mapper.classify_error({status_code = status})
+        local mapping = llm_output.ERROR_KIND_MAP[error_type]
+        diagnostics = {kind = mapping.kind, retryable = mapping.retryable, status_code = status}
+    end
+    return M.failure_message(label or "provider request failed", diagnostics), diagnostics
+end
+
+function M.decode_response(response: any, label: string?): (any?, string?, any?)
     if not response then return nil, "empty response" end
     local status = tonumber(response.status_code)
     if not status or status < 200 or status >= 300 then
         return nil, M.response_error(response, label)
     end
     local parsed, perr = json.decode(response.body or "")
-    if perr then return nil, "failed to parse model list: " .. tostring(perr) end
+    if perr then
+        local _, diagnostics = M.transport_error(perr)
+        diagnostics = diagnostics or {}
+        diagnostics.status_code = status
+        return nil, "failed to parse model list", diagnostics
+    end
     return parsed
 end
 
