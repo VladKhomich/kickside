@@ -359,11 +359,12 @@ entries:
       fixture: app:profile_execution_fixture
       registry_models: wippy.llm.discovery:models
       resolver: app:profile_resolver_fixture
+      context: app:profile_context_fixture
 
   - name: profile_execution_fixture
     kind: library.lua
     source: file://profile_driver_fixture.lua
-    modules: [sql]
+    modules: [sql, json]
 
   - name: profile_driver_fixture
     kind: library.lua
@@ -383,7 +384,7 @@ entries:
     imports:
       sql: app:profile_execution_fixture
       models_types: kickside.models:models_types
-      models_cache: kickside.models.service:models_cache
+      models_cache: app:profile_cache_fixture
       catalog_policy: kickside.models.catalog:policy
       catalog_card_policy: kickside.models.catalog:card_policy
 
@@ -404,3 +405,11 @@ entries:
     source: file://fixtures/profile_resolver.lua
     imports:
       model_catalog: app:profile_catalog_fixture
+
+  - name: profile_cache_fixture
+    kind: library.lua
+    source: file://fixtures/profile_cache.lua
+    modules: [store]
+    imports:
+      json: app:profile_execution_fixture
+      models_types: kickside.models:models_types

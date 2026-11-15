@@ -1,6 +1,13 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
-local M = {reads = 0, calls = 0, context = {}}
+local json = require("json")
+local M = {reads = 0, calls = 0, context = {}, decodes = 0, api_key = "fixture-cache-secret", model = "wire-model"}
+
+M.encode = json.encode
+function M.decode(raw)
+    M.decodes = M.decodes + 1
+    return json.decode(raw)
+end
 
 function M.get(id)
     M.reads = M.reads + 1
@@ -10,11 +17,10 @@ end
 function M.open(id, context)
     M.context = context
     assert(id == "wippy.llm.openai_compat:provider")
-    assert(context.api_key == "fixture-cache-secret")
+    assert(context.api_key == M.api_key)
     assert(context.base_url == "https://provider.example.test/v1")
-    assert(context.deadline_at == false, "Caller deadline reaches the saved driver")
     local function invoke(_, input)
-        assert(input.model == "wire-model")
+        assert(input.model == M.model)
         M.calls = M.calls + 1
         return {success = true}
     end

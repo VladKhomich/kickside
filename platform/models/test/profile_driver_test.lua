@@ -5,6 +5,7 @@ local driver = require("driver")
 local fixture = require("fixture")
 local registry_models = require("registry_models")
 local resolver = require("resolver")
+local context = require("context")
 
 local function define_tests()
     test.describe("Cached profile execution", function()
@@ -55,14 +56,46 @@ local function define_tests()
             test.is_nil(delete_err, tostring(delete_err))
             assert(ok, tostring(err))
         end)
-        test.it("adds zero SQL opens across repeated provider calls", function()
+        test.it("invalidates decoded routes and profiles on publication", function()
             local profile = assert(models_repo.create_profile({id = "cached-profile", name = "Cached profile",
                 provider_id = "wippy.llm.openai_compat:provider", base_url = "https://provider.example.test/v1",
                 api_key = "fixture-cache-secret"}))
             assert(models_repo.upsert_card({name = "cached-profile-model", provider_profile_id = profile.id,
                 provider_id = profile.provider_id, provider_model = "wire-model", capabilities = {"generate"},
                 max_tokens = 8192, output_tokens = 1024, enabled = true}))
-            fixture.reads, fixture.calls = 0, 0
+            local ok, err = pcall(function()
+                assert(driver.generate({}))
+                assert(models_repo.update_profile(profile.id, {api_key = "fixture-updated-secret"}))
+                fixture.api_key = "fixture-updated-secret"
+                assert(driver.generate({}))
+                test.eq(fixture.context.api_key, "fixture-updated-secret")
+                assert(models_repo.upsert_card({name = "cached-profile-model", provider_model = "updated-model"}))
+                fixture.model = "updated-model"
+                assert(driver.generate({}))
+                assert(models_repo.delete_card("cached-profile-model"))
+                local result, call_err = driver.generate({})
+                test.is_nil(result)
+                test.not_nil(call_err)
+            end)
+            fixture.api_key, fixture.model = "fixture-cache-secret", "wire-model"
+            local _, delete_err = models_repo.delete_profile(profile.id)
+            test.is_nil(delete_err, tostring(delete_err))
+            assert(ok, tostring(err))
+        end)
+        test.it("adds zero SQL opens, full decodes or catalog traversals across warm provider calls", function()
+            local profile = assert(models_repo.create_profile({id = "cached-profile", name = "Cached profile",
+                provider_id = "wippy.llm.openai_compat:provider", base_url = "https://provider.example.test/v1",
+                api_key = "fixture-cache-secret"}))
+            assert(models_repo.upsert_card({name = "cached-profile-model", provider_profile_id = profile.id,
+                provider_id = profile.provider_id, provider_model = "wire-model", capabilities = {"generate"},
+                max_tokens = 8192, output_tokens = 1024, enabled = true}))
+            assert(driver.generate({}))
+            local get_all, traversals = registry_models.get_all, 0
+            registry_models.get_all = function()
+                traversals = traversals + 1
+                return get_all()
+            end
+            fixture.reads, fixture.calls, fixture.decodes = 0, 0, 0
             local ok, err = pcall(function()
                 for _ = 1, 20 do
                     for _, method in ipairs({"status", "generate", "embed", "structured_output", "evaluate"}) do
@@ -71,9 +104,17 @@ local function define_tests()
                         test.is_true(result.success)
                     end
                 end
-                test.eq(fixture.calls, 100)
+                test.eq(fixture.context.deadline_at, 12345, "Request deadline disappears")
+                context.context.timeout = 7
+                assert(driver.generate({}))
+                test.eq(fixture.context.timeout, 7, "Request timeout disappears")
+                context.context.timeout = nil
+                test.eq(fixture.calls, 101)
                 test.eq(fixture.reads, 0, "Warm provider calls open SQL")
+                test.eq(fixture.decodes, 0, "Warm provider calls decode the full snapshot")
+                test.eq(traversals, 0, "Warm provider calls traverse the catalog")
             end)
+            registry_models.get_all = get_all
             local _, delete_err = models_repo.delete_profile(profile.id)
             test.is_nil(delete_err, tostring(delete_err))
             assert(ok, tostring(err))

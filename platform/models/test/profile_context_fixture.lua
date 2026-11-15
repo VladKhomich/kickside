@@ -1,2 +1,4 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-return {all = function() return {card = "cached-profile-model", deadline_at = 12345} end}
+local M = {context = {card = "cached-profile-model", deadline_at = 12345}}
+function M.all() return M.context end
+return M

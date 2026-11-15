@@ -92,8 +92,8 @@ local function define_tests()
             {name = "injecting provider headers", context = {headers = {Authorization = "untrusted", ["X-Untrusted"] = "present"}}},
             {name = "changing driver configuration", context = {
                 organization = "untrusted", api_version = "untrusted", region = "untrusted",
-                timeout = 1, timeout_env = "UNTRUSTED_TIMEOUT", api_key_env = "UNTRUSTED_KEY",
-                base_url_env = "UNTRUSTED_URL", client_id = "untrusted:client", deadline_at = 1,
+                timeout_env = "UNTRUSTED_TIMEOUT", api_key_env = "UNTRUSTED_KEY",
+                base_url_env = "UNTRUSTED_URL", client_id = "untrusted:client",
                 retry = {attempts = 10}, beta_features = {"untrusted"}, extension_option = "untrusted",
             }},
         }) do
@@ -113,6 +113,20 @@ local function define_tests()
                 test.not_nil(response)
             end)
         end
+        test.it("honors request execution controls through saved routes", function()
+            local profile = assert(models_repo.create_profile({id = "deadline-profile", name = "Deadline profile",
+                provider_id = "kickside.models.providers:fixture_provider", api_key = "fixture-provider-secret"}))
+            assert(models_repo.upsert_card({name = "deadline-model", provider_profile_id = profile.id,
+                provider_id = profile.provider_id, provider_model = "fixture", capabilities = {"generate"},
+                max_tokens = 8192, output_tokens = 1024, enabled = true}))
+            local scope = assert(security.named_scope("app:selected_model_members"))
+            local response, err = funcs.new():with_actor(security.new_actor("deadline-member", {})):with_scope(scope)
+                :call("kickside.models.test.module_access:deadline_probe", {model = "deadline-model"})
+            local _, delete_err = models_repo.delete_profile(profile.id)
+            test.is_nil(delete_err, tostring(delete_err))
+            test.is_nil(err, tostring(err))
+            test.not_nil(response)
+        end)
         test.it("resolves saved models under the member execution scope", function()
             local name = "member-resolver-model"
             local card, save_err = models_repo.upsert_card({name = name, title = "Member model",
@@ -269,6 +283,19 @@ return {
         end
         return {provider_id = route.id, calls = calls}
     end,
+    deadline_probe = function(input)
+        local time = require("time")
+        local before = math.floor(time.now():unix_nano() / 1000000)
+        local response, err = require("llm").generate("hello", {
+            model = input.model, max_tokens = 64, deadline_ms = 1000, timeout = 0.25})
+        assert(err == nil, tostring(err))
+        local after = math.floor(time.now():unix_nano() / 1000000)
+        local deadline = response.metadata.deadline_at
+        assert(type(deadline) == "number" and deadline >= before + 1000 and deadline <= after + 1000,
+            "Saved route discards the LLM request deadline: " .. tostring(deadline))
+        assert(response.metadata.timeout == 0.25, "Saved route discards the request timeout")
+        return true
+    end,
     driver_probe = function(input)
         local context = require("ctx").all()
         assert(context.api_key == "fixture-provider-secret", "Provider authentication fails")
@@ -278,7 +305,6 @@ return {
         for _, key in ipairs({"organization", "api_version", "region", "client_id", "extension_option"}) do
             assert(context[key] ~= "untrusted", "Caller changes " .. key)
         end
-        assert(context.timeout ~= 1 and context.deadline_at ~= 1, "Caller changes time limits")
         assert(context.timeout_env ~= "UNTRUSTED_TIMEOUT" and context.api_key_env ~= "UNTRUSTED_KEY"
             and context.base_url_env ~= "UNTRUSTED_URL", "Caller changes environment references")
         assert(not context.retry or context.retry.attempts ~= 10, "Caller changes retry policy")
@@ -289,6 +315,7 @@ return {
         elseif input and input.input then result = {embeddings = {{1}}}
         elseif input and input.questions then result = {readings = {}} end
         return {success = true, status = "healthy", result = result,
+            metadata = {deadline_at = context.deadline_at, timeout = input.timeout or context.timeout},
             tokens = {prompt_tokens = 1, completion_tokens = 1, total_tokens = 2}, finish_reason = "stop"}
     end,
     resolve_probe = function(input)

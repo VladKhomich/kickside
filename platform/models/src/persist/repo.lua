@@ -103,6 +103,7 @@ function M.reload(): (any?, any?)
     local _, commit_err = tx:commit()
     dbh:release()
     if commit_err then return nil, commit_err end
+    snapshot.profiles_by_id = profiles_by_id
     return snapshot
 end
 
@@ -125,13 +126,9 @@ end
 function M.get_profile(id: string): (any?, any?)
     local snap, err = M.snapshot()
     if err then return nil, err end
-    for _, profile in ipairs(snap.profiles or {}) do
-        if profile.id == id then
-            if profile.error then return nil, profile.error end
-            return profile
-        end
-    end
-    return nil
+    local profile = snap.profiles_by_id[id]
+    if profile and profile.error then return nil, profile.error end
+    return profile
 end
 
 function M.get_profile_public(id: string): (any?, any?)

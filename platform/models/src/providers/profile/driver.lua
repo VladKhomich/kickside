@@ -23,7 +23,7 @@ local function driver_context(provider_id: string, profile: any, options: any): 
     if not driver or not driver.id then return nil, "Provider missing driver configuration: " .. provider_id end
     local binding, binding_err = registry.get(tostring(driver.id))
     if not binding then return nil, binding_err or "Driver binding not found: " .. tostring(driver.id) end
-    local context: any = {headers = {}, beta_features = {}, retry = {}, deadline_at = false}
+    local context: any = {headers = {}, beta_features = {}, retry = {}}
     for _, key in ipairs(STRING_CONTEXT) do
         context[key], context[key .. "_env"] = false, false
     end
@@ -38,6 +38,10 @@ local function driver_context(provider_id: string, profile: any, options: any): 
     for key, value in pairs(policy.provider_context(profile)) do context[key] = value end
     for key, value in pairs(options or {}) do
         if key ~= "timeout" or value ~= "" then context[key] = value end
+    end
+    local execution = ctx.all() or {}
+    for _, key in ipairs({"deadline_at", "timeout", "cancel"}) do
+        if execution[key] ~= nil then context[key] = execution[key] end
     end
     return context
 end

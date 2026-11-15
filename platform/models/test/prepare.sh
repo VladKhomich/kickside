@@ -13,3 +13,4 @@ cp "$models_test_dir/../src/providers/profile/driver.lua" "$models_test_dir/fixt
 cp "$models_test_dir/../src/persist/repo.lua" "$models_test_dir/fixtures/profile_repo.lua"
 cp "$models_test_dir/../src/catalog/model_catalog.lua" "$models_test_dir/fixtures/profile_catalog.lua"
 cp "$models_test_dir/../src/catalog/resolver.lua" "$models_test_dir/fixtures/profile_resolver.lua"
+cp "$models_test_dir/../src/service/cache.lua" "$models_test_dir/fixtures/profile_cache.lua"
