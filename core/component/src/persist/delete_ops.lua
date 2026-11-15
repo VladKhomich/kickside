@@ -48,7 +48,7 @@ local function reroot_child_page(tx: Executor, db: Executor, parent_id: string, 
         local old = tostring(row.path)
         local path = new_root_path .. old:sub(#child_old_path + 1)
         local result, update_err = tx:execute("UPDATE " .. component_types.TABLES.COMPONENTS
-            .. " SET path=$1 WHERE component_id=$2 AND path=$3", { path, row.component_id, old })
+            .. " SET path=$1,identity_generation=identity_generation+1 WHERE component_id=$2 AND path=$3", { path, row.component_id, old })
         local _, write_err = affected_count(result, update_err, "child reroot path update failed", "child.path_update", 1, 1)
         if write_err then return nil, write_err end
     end

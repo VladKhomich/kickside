@@ -88,25 +88,24 @@ local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?,
     if tostring(row.job_id or "") ~= job_id then
         return nil, (errors.new({ message = "projection cursor slot mismatch", kind = errors.CONFLICT }) :: error)
     end
-    local identity_error: error? = nil
-    if row.execution_identity_json ~= nil then
-        local identity, identity_err = execution_identity.from_row(row.actor_id, row.execution_identity_json)
-        identity_error = identity_err
-        if not identity_error and type(identity) ~= "table" then identity_error = response_error("execution_identity") end
-    elseif row.actor_id ~= nil and not execution_identity.is_maintenance_key(row.actor_id) then
-        identity_error = errors.new({message = "projection cursor execution identity is missing", kind = errors.INVALID})
-    end
     local body, body_err = body_from(row.body)
     if body_err then return nil, body_err end
     row.body = body
     local authority, authority_err = owner_identity.from_snapshot(row)
     if authority_err then
         row.authority_error = authority_err
-    elseif identity_error then
-        if not authority then return nil, identity_error end
-        row.authority_error = identity_error
     else
         row.component_authority = authority
+        if not authority then
+            if row.execution_identity_json ~= nil then
+                local identity, identity_err = execution_identity.from_row(row.actor_id, row.execution_identity_json)
+                if identity_err then return nil, identity_err end
+                if type(identity) ~= "table" then return nil, response_error("execution_identity") end
+                row.identity = identity
+            elseif row.actor_id ~= nil then
+                return nil, errors.new({message = "projection cursor has no trusted execution identity", kind = errors.INVALID})
+            end
+        end
     end
     return row, nil
 end
@@ -326,18 +325,30 @@ function M.run(input: any): (table?, error?)
             local callback_db, callback_open_err = sql.get(db_id)
             if callback_open_err then return nil, callback_open_err end
             if not callback_db then return nil, response_error("callback.database") end
-            local fresh, fresh_err = snapshot(callback_db, cursor_id, job.id)
+            local rows, fresh_err = callback_db:query([[SELECT c.generation,c.status,c.last_seq,c.job_id,
+                o.identity_generation AS owner_identity_generation FROM kickside_projection_cursor c
+                LEFT JOIN kickside_components o ON o.component_id=$1 WHERE c.id=$2]],
+                {current.component_authority.component_id, cursor_id})
             fresh_err = release(callback_db, fresh_err)
             if fresh_err then return nil, fresh_err end
-            if tonumber(fresh.owner_identity_generation) ~= current.component_authority.generation
-                or tonumber(fresh.generation) ~= tonumber(current.generation) or fresh.status ~= "active" then
+            if type(rows) ~= "table" then return nil, response_error("callback.rows") end
+            local fresh = rows[1]
+            if not fresh or tonumber(fresh.owner_identity_generation) ~= current.component_authority.generation
+                or tonumber(fresh.generation) ~= tonumber(current.generation) or fresh.status ~= "active"
+                or fresh.job_id ~= job.id or tonumber(fresh.last_seq) ~= tonumber(result.last_seq) then
                 result.stale = true
                 return result, nil
             end
-            if fresh.authority_error then
-                return apply.fail(db_id, job, fresh, fresh.authority_error, true, result.completion)
+            local declared, declaration_err = owner_identity.check_declaration(current.component_authority.declaration)
+            if declaration_err or not declared then
+                local failed_snapshot: table = {}
+                for key, value in pairs(current) do failed_snapshot[key] = value end
+                failed_snapshot.last_seq = result.last_seq
+                return apply.fail(db_id, job, failed_snapshot, declaration_err or errors.new({
+                    kind = errors.PERMISSION_DENIED, retryable = false,
+                    message = "component projection declaration is removed before its callback",
+                    details = {code = "projection_owner_declaration_changed"}}), true, result.completion)
             end
-            post_commit.component_authority = fresh.component_authority
         end
         committed_input.projection.body = output.body or current.body
         committed_input.range.to_seq = result.last_seq

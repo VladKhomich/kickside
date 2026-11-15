@@ -173,6 +173,12 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         local owner = component_rows and component_rows[authority.component_id]
         owner_stale = owner == nil or tonumber(owner.identity_generation) ~= authority.generation
     end
+    for _, check in ipairs(checks) do
+        if check.generation ~= nil then
+            local component = component_rows and component_rows[check.component_id]
+            if not component or tonumber(component.identity_generation) ~= check.generation then owner_stale = true end
+        end
+    end
     if type(locked_threads) ~= "table" then return abort(response_error("locked_threads")) end
     local source_thread = locked_threads[tostring(snapshot.thread_id)]
     local current_head = tonumber(source_thread and source_thread.event_count)
@@ -379,7 +385,12 @@ function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: 
     if snapshot.component_authority then
         local actor, scope, resolve_err: any = nil, nil, nil
         local frame = snapshot.execution_frame
-        if frame and snapshot.component_authority.maintenance_owner then
+        local live: table? = nil
+        if snapshot.component_authority.identity and #writes == 0 then
+            live, resolve_err = execution_identity.authorize(snapshot.component_authority.identity, {
+                deferred_owner = worker.TICK_OWNER, execution_root = snapshot.component_authority.component_id,
+            })
+        elseif frame and snapshot.component_authority.maintenance_owner then
             actor, scope = frame.actor, frame.scope
         else
             actor, scope, resolve_err = worker.resolve_binding_identity({actor_id = snapshot.actor_id,
@@ -388,7 +399,9 @@ function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: 
         authorization_error = resolve_err
         if not authorization_error and #writes == 0 then
             local subjects, prefixes, subjects_err: any = nil, nil, nil
-            if frame and snapshot.component_authority.maintenance_owner and frame.access then
+            if live then
+                subjects, prefixes, subjects_err = access_subjects.for_authority(live)
+            elseif frame and snapshot.component_authority.maintenance_owner and frame.access then
                 subjects, prefixes = frame.access.subjects, frame.access.prefixes
             else
                 subjects, prefixes, subjects_err = access_subjects.for_actor(actor)

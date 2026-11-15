@@ -62,6 +62,13 @@ local function outcomes()
         test.is_true(fixture.thread_locked); test.eq(fixture.mask_queries, 1)
         test.eq(fixture.executions, 0); test.eq(fixture.appends, 0); test.eq(fixture.rollbacks, 1)
     end)
+    test.it("discards a returned write whose destination authority changes while locking", function()
+        fixture.reset("", nil, "advance")
+        fixture.checks = {{component_id = "other", subjects = {}, required_mask = 2, generation = 1}}
+        local result, err = call("advance")
+        test.is_nil(err); test.is_true(result.stale)
+        test.eq(fixture.mask_queries, 0); test.eq(fixture.executions, 0); test.eq(fixture.appends, 0)
+    end)
     test.it("defers output demand until all appends and prelocks the completing job", function()
         fixture.reset("", nil, "advance")
         local value, err = apply.advance("app:db", {id = "job", lease_token = "token", execution_seq = 1},

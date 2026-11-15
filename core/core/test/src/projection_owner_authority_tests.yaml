@@ -13,6 +13,7 @@ entries:
     worker: kickside.core.projections.persist:worker
     provision: kickside.core.threads:provision
     threads_writer: kickside.core.threads.persist:writer
+    teardown: kickside.component.persist:teardown
     jobs_wake: kickside.core.jobs.persist:wake
     fixture: kickside.core.threads:contract_fixture
     writer: kickside.core.projections.persist:writer
@@ -155,3 +156,16 @@ entries:
       search: app:scope_resolver_stub
       resolve: app:scope_resolver_stub
       exists: app:scope_resolver_stub
+
+- name: projection_owner_delete_kind
+  kind: contract.binding
+  meta:
+    class: [projection_owner_delete]
+    projections:
+    - kind: test.owner_seed
+      on: lifecycle
+      worker_ref: func://app:projection_owner_probe_worker
+      input_mode: prefetch_events
+  contracts:
+  - contract: kickside.contract:component
+    methods: {get_status: kickside.core.threads:thread_status}

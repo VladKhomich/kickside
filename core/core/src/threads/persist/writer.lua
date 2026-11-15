@@ -75,7 +75,7 @@ function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_
         end
         ctes[#ctes + 1] = [[locked_components AS MATERIALIZED (
             SELECT component_id,identity_generation,path FROM kickside_components WHERE ]] .. owners
-            .. " ORDER BY component_id " .. lock_suffix(dbtype) .. ")"
+            .. " ORDER BY component_id " .. (dbtype == sql.type.POSTGRES and "FOR SHARE" or "") .. ")"
     end
     local marks: {string} = {}
     for _, id in ipairs(ordered) do

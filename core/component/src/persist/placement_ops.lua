@@ -369,13 +369,16 @@ local function set_placement(tx: Executor, db: Executor, command: component_type
     end
     local now_ts = time.now():utc():format_rfc3339()
 
-    local _, uerr = sql.builder.update(component_types.TABLES.COMPONENTS)
+    local update = sql.builder.update(component_types.TABLES.COMPONENTS)
         :set("parent_id", new_parent_id)
         :set("position", new_position)
         :set("path", new_path)
         :set("updated_at", now_ts)
         :where("component_id = ?", component_id)
-        :run_with(tx):exec()
+    if new_path ~= old_path then
+        update = update:set("identity_generation", sql.builder.expr("identity_generation + 1"))
+    end
+    local _, uerr = update:run_with(tx):exec()
     if uerr then
         return nil, errors.wrap(uerr, "failed to update placement")
     end
@@ -386,6 +389,7 @@ local function set_placement(tx: Executor, db: Executor, command: component_type
         local d_new = new_path .. tostring(d.path):sub(#tostring(old_path) + 1)
         local _, dperr = sql.builder.update(component_types.TABLES.COMPONENTS)
             :set("path", d_new)
+            :set("identity_generation", sql.builder.expr("identity_generation + 1"))
             :where("component_id = ?", d.component_id)
             :run_with(tx):exec()
         if dperr then

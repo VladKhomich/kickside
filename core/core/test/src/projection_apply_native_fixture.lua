@@ -56,7 +56,7 @@ function M.lock_thread_rows_tx(_tx, _dialect, _threads, _components, cursor): (a
         rows[1].access_1 = 2
         M.access_mask = 0
     end
-    return threads, cursor_err, {other = {path = "/"}}, rows
+    return threads, cursor_err, {other = {path = "/", identity_generation = 2}}, rows
 end
 
 function M.lower_tx(...: any): (any, error?) return M.outcome("pin", {pin_generation = 1}) end

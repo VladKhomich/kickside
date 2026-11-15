@@ -64,6 +64,16 @@ return {run = test.run_cases(function()
             api.validate_event_types(fixture.database(), writes)
             test.eq(fixture.reads, 2); test.eq(fixture.access_checks, 2)
         end)
+        test.it("evaluates one producer capability per destination and event type", function()
+            fixture.reset("", nil)
+            local writes = {}
+            for index = 1, 5 do
+                writes[index] = {thread_id = fixture.ID, events = {{type = "guard:event", body = {marker = index}}}}
+            end
+            local allowed, err = api.validate_event_types(fixture.database(), writes)
+            test.is_true(allowed); test.is_nil(err)
+            test.eq(fixture.producer_checks, 1)
+        end)
         for _, stage in ipairs({"absent_kind", "absent_event"}) do
             test.it("undeclared input keeps its invalid classification/" .. stage, function()
                 fixture.reset(stage, nil); local allowed, err = call(); test.is_false(allowed); test.not_nil(err); test.eq(err:kind(), errors.INVALID)

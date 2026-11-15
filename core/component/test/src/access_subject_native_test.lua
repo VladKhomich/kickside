@@ -50,6 +50,19 @@ return {run = test.run_cases(function()
             test.eq(own[1].subject_id, "resolved-owner"); test.eq(own[2].subject_id, "resolved-group")
             test.eq(prefixes[1], "owned/path"); test.eq(#fixture.calls, 0)
         end)
+        test.it("expands a canonical live authority without rebuilding its actor", function()
+            fixture.reset("", nil)
+            local own, prefixes, err = subjects.for_authority({actor_id = "live-owner", principal = {kind = "user", id = "live-owner"},
+                meta = {security_groups = {"live-group", "live-group"}, access_filter = {prefixes = {"live/path"}}}})
+            test.is_nil(err); test.eq(#own, 2); test.eq(own[1].subject_id, "live-owner")
+            test.eq(own[2].subject_id, "live-group"); test.eq(prefixes[1], "live/path"); test.eq(#fixture.calls, 0)
+            local group, filter, group_err = subjects.for_authority({actor_id = "principal:group:live-group",
+                principal = {kind = "group", id = "live-group"}, meta = {security_groups = {"unrelated-group"},access_filter = {prefixes = {}}}})
+            test.is_nil(group_err); test.eq(#group, 1); test.eq(group[1].subject_type, "group"); test.eq(#filter, 0)
+            local refused, refused_prefixes, refused_err = subjects.for_authority({actor_id = "another-owner",
+                principal = {kind = "user", id = "live-owner"}, meta = {}})
+            test.eq(#refused, 0); test.is_nil(refused_prefixes); test.is_true(errors.is(refused_err, errors.PERMISSION_DENIED))
+        end)
         for _, stage in ipairs({"id", "meta"}) do
             test.it("explicit actor retains typed dependency failure/" .. stage, function()
                 local source = errors.new({kind = errors.UNAVAILABLE, retryable = true,

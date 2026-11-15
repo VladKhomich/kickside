@@ -302,6 +302,20 @@ function M.for_actor(actor: any): ({Subject}, {string}?, error?)
     return expand_subjects({own_subject(snapshot.actor_id)}, snapshot), filter_prefixes(snapshot), nil
 end
 
+-- Canonical live authorization already returns the principal actor metadata.
+-- Expand it through the same subject/filter path without minting another actor.
+function M.for_authority(authorized: table): ({Subject}, {string}?, error?)
+    local principal, err = execution_identity.check_principal(authorized.principal, "principal")
+    if err then return {}, nil, err end
+    if authorized.actor_id ~= execution_identity.actor_key(principal) or type(authorized.meta) ~= "table" then
+        return {}, nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "live authorization has no matching actor metadata"})
+    end
+    local snapshot = {actor_id = authorized.actor_id, meta = authorized.meta}
+    local subject = {subject_type = principal.kind, subject_id = principal.id}
+    return expand_subjects({subject}, snapshot), filter_prefixes(snapshot), nil
+end
+
 -- Build a parameterized "?,?,..." placeholder string for a subject list.
 function M.placeholders(subjects: any)
     local marks = table.create(#subjects, 0)

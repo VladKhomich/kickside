@@ -304,8 +304,12 @@ local function resolve_binding_identity(binding: table): (any, any, error?)
         end
         return (frame :: any).actor, (frame :: any).scope, nil
     end
-    local identity, row_err = execution_identity.from_row(binding.actor_id, binding.actor_context)
-    if row_err or not identity then return nil, nil, row_err end
+    local identity = binding.component_authority and binding.component_authority.identity
+    if not identity then
+        local row_err: error?
+        identity, row_err = execution_identity.from_row(binding.actor_id, binding.actor_context)
+        if row_err or not identity then return nil, nil, row_err end
+    end
     local resolved, resolve_err = execution_identity.resolve(identity, {
         deferred_owner = worker.TICK_OWNER,
         execution_root = binding.component_authority and binding.component_authority.component_id or (identity :: any).component_id,

@@ -17,6 +17,13 @@ local component_identity_ops = require("component_identity_ops")
 
 local M = {}
 
+local function identity_hash(id: table): string
+    return component_identity_ops.canonical_identity(id.principal, id.authorized_by, id.component_id,
+        id.captured_at, id.credential_id, id.link_id)
+end
+
+
+
 -- of_owner(stored, owner_key) -> ({ row?, system?, owner? }?, err?). stored is
 -- the component's stored execution identity (nil when it carries none) and
 -- owner_key the actor recorded as its owner. A stored identity that is not
@@ -42,6 +49,21 @@ local function denied(code: string, message: string): error
         message = message, details = {code = code, error_kind = "subject"}})
 end
 
+function M.check_declaration(descriptor: table): (boolean, error?)
+    for _, declaration in ipairs(autoinit.projections_for_impl(descriptor.impl_id)) do
+        local on = declaration.on or autoinit.PROJECTION_ON.THREAD
+        local key = declaration.projection_key
+        if type(key) ~= "string" or key == "" then key = "default" end
+        if declaration.kind == descriptor.kind and key == descriptor.projection_key and on == descriptor.on then
+            if declaration.worker_ref ~= descriptor.worker_ref then
+                return false, denied("projection_owner_declaration_changed", "component projection declaration changes before execution")
+            end
+            return true, nil
+        end
+    end
+    return false, nil
+end
+
 -- Component-derived registrations copy authority; neither copy is an authority
 -- source. Declaration keys and the framework thread relationship select the owner.
 function M.from_snapshot(row: table): (table?, error?)
@@ -56,21 +78,11 @@ function M.from_snapshot(row: table): (table?, error?)
         or lifecycle_log.thread_id(attrs.component_id) ~= row.thread_id) then return nil, nil end
     local impl_id = row.owner_impl_id or (lifecycle and attrs.class or nil)
     if type(impl_id) ~= "string" then return nil, nil end
-    local own = false
-    for _, declaration in ipairs(autoinit.projections_for_impl(impl_id)) do
-        local on = declaration.on or autoinit.PROJECTION_ON.THREAD
-        local key = declaration.projection_key
-        if type(key) ~= "string" or key == "" then key = "default" end
-        if declaration.kind == row.kind and key == row.projection_key
-            and on == (lifecycle and autoinit.PROJECTION_ON.LIFECYCLE or autoinit.PROJECTION_ON.THREAD) then
-            own = true
-            local meta = type(row.body.meta) == "table" and row.body.meta or nil
-            if not meta or declaration.worker_ref ~= meta.worker_ref then
-                return nil, denied("projection_owner_declaration_changed", "component projection declaration changes before execution")
-            end
-            break
-        end
-    end
+    local own, declaration_err = M.check_declaration({impl_id = impl_id,
+        on = lifecycle and autoinit.PROJECTION_ON.LIFECYCLE or autoinit.PROJECTION_ON.THREAD,
+        kind = row.kind, projection_key = row.projection_key,
+        worker_ref = type(row.body.meta) == "table" and row.body.meta.worker_ref or nil})
+    if declaration_err then return nil, declaration_err end
     if not own then
         if lifecycle and row.execution_identity_json == nil then
             local config = type(row.body.worker_config) == "table" and row.body.worker_config or {}
@@ -103,25 +115,40 @@ function M.from_snapshot(row: table): (table?, error?)
     end
     -- The reserved owner record is the authority. A materialized binding must
     -- match it; the binding itself never proves ownership.
-    local expected, expected_err = M.of_owner(stored, row.owner_key)
-    if expected_err then return nil, expected_err end
-    local actor_id = expected.row and expected.row.actor_id or expected.owner
-    local actor_context = expected.row and (expected.row :: any).actor_context or nil
-    if not execution_identity.rows_equal(row.actor_id, row.execution_identity_json, actor_id, actor_context)
-        or not execution_identity.rows_equal(row.projection_actor_id, row.projection_actor_context, actor_id, actor_context) then
-        return nil, denied("projection_owner_binding_changed", "component projection binding differs from its current owner")
+    local maintenance_owner: string? = nil
+    if stored ~= nil then
+        local valid, valid_err = execution_identity.validate(stored)
+        if valid ~= true then return nil, valid_err end
+        local cursor, cursor_err = execution_identity.from_row(row.actor_id, row.execution_identity_json)
+        if cursor_err then return nil, cursor_err end
+        local projection, projection_err: any = cursor, nil
+        if row.actor_id ~= row.projection_actor_id or row.execution_identity_json ~= row.projection_actor_context then
+            projection, projection_err = execution_identity.from_row(row.projection_actor_id, row.projection_actor_context)
+        end
+        if projection_err then return nil, projection_err end
+        if not cursor or not projection or not execution_identity.identities_equal(cursor, stored)
+            or not execution_identity.identities_equal(projection, stored) then
+            return nil, denied("projection_owner_binding_changed", "component projection binding differs from its current owner")
+        end
+    else
+        if not execution_identity.is_maintenance_key(row.owner_key) then
+            return nil, denied("component_execution_owner_missing", "component has no trusted execution owner")
+        end
+        maintenance_owner = row.owner_key
+        if row.actor_id ~= maintenance_owner or row.projection_actor_id ~= maintenance_owner
+            or row.execution_identity_json ~= nil or row.projection_actor_context ~= nil then
+            return nil, denied("projection_owner_binding_changed", "component projection binding differs from its current owner")
+        end
     end
     local generation = tonumber(row.owner_identity_generation)
     if generation == nil or generation < 0 or generation ~= math.floor(generation) then
         return nil, denied("projection_owner_generation_invalid", "component identity generation is invalid")
     end
     return {component_id = row.owner_component_id, impl_id = impl_id,
-        generation = generation, identity = stored, maintenance_owner = expected.owner}, nil
-end
-
-local function identity_hash(id: table): string
-    return component_identity_ops.canonical_identity(id.principal, id.authorized_by, id.component_id,
-        id.captured_at, id.credential_id, id.link_id)
+        generation = generation, identity = stored, maintenance_owner = maintenance_owner,
+        declaration = {impl_id = impl_id, kind = row.kind, projection_key = row.projection_key,
+            on = lifecycle and autoinit.PROJECTION_ON.LIFECYCLE or autoinit.PROJECTION_ON.THREAD,
+            worker_ref = row.body.meta.worker_ref}}, nil
 end
 
 -- The component hash is maintained with its private v2 record. Legacy records

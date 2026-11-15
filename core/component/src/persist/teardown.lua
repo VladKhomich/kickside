@@ -386,30 +386,30 @@ function M.unregister(component_id: string, child_policy: string?): (any, string
         return nil, "delete", abort_transaction(db, tx, (errors.new({ message = "component delete fence is not committed", kind = errors.CONFLICT }) :: error))
     end
 
-    local delete_result, err_delete = ops.dispatch(tx, db, {
-        type = ops.COMMAND_TYPES.DELETE_COMPONENT,
-        payload = { component_id = component_id, child_policy = child_policy },
-    })
-    if err_delete then
-        return nil, "delete", abort_transaction(db, tx, err_delete)
+    local lifecycle_pending = false
+    if summary then
+        local dbtype_raw, dbtype_err = db:type()
+        if dbtype_err then return nil, "delete", abort_transaction(db, tx, dbtype_err) end
+        local lifecycle_err, lifecycle_result = component_lifecycle.deleted({
+            tx = tx, dbtype = tostring(dbtype_raw), component_id = component_id,
+            impl_id = tostring(summary.impl_id), parent_id = summary.parent_id, parent_impl_id = parent_impl_id,
+        })
+        if lifecycle_err then return nil, "delete", abort_transaction(db, tx, lifecycle_err) end
+        lifecycle_pending = type(lifecycle_result) == "table" and lifecycle_result.pending == true
+    end
+    local delete_result: any = nil
+    if lifecycle_pending then
+        delete_result = {component_id = component_id, deleted = false, pending = true, wait_for = "lifecycle"}
+    else
+        local err_delete: error?
+        delete_result, err_delete = ops.dispatch(tx, db, {
+            type = ops.COMMAND_TYPES.DELETE_COMPONENT,
+            payload = { component_id = component_id, child_policy = child_policy },
+        })
+        if err_delete then return nil, "delete", abort_transaction(db, tx, err_delete) end
     end
 
     if delete_result and delete_result.changes_made and summary then
-        local dbtype_raw, dbtype_err = db:type()
-        if dbtype_err then
-            return nil, "delete", abort_transaction(db, tx, dbtype_err)
-        end
-        local lifecycle_err = component_lifecycle.deleted({
-            tx = tx,
-            dbtype = tostring(dbtype_raw),
-            component_id = component_id,
-            impl_id = tostring((summary :: any).impl_id),
-            parent_id = (summary :: any).parent_id,
-            parent_impl_id = parent_impl_id,
-        })
-        if lifecycle_err then
-            return nil, "delete", abort_transaction(db, tx, lifecycle_err)
-        end
         local pointer_result, pointer_err = tx:execute("INSERT INTO " .. REAP_TABLE
             .. " (component_id,created_at) VALUES ($1,$2) ON CONFLICT (component_id) DO NOTHING",
             { component_id, time.now():utc():format_rfc3339() })
@@ -426,7 +426,7 @@ function M.unregister(component_id: string, child_policy: string?): (any, string
     notification_err = error_envelope.cleanup(function(): (any, error?) return db:release() end,
         notification_err, "release component teardown database")
 
-    if delete_result and delete_result.changes_made and summary then
+    if summary then
         notification_err = error_envelope.cleanup(function(): (any, error?)
             return nil, component_lifecycle.committed()
         end, notification_err, "notify component lifecycle")

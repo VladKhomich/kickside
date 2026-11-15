@@ -158,6 +158,52 @@ return {run = test.run_cases(function()
             test.is_true(tonumber(threads[lifecycle.thread_id(id)].event_count) == 1, assert(json.encode(threads)))
             test.eq(tonumber(components[id].identity_generation), 0)
         end)
+        test.it("shares ancestor authority locks between sibling projections and fences authority writers", function()
+            local svc = service("system:lifecycle")
+            local parent = assert(svc:register({impl_id = "app:lifecycle_folder"}))
+            test.is_true(parent.success)
+            local children = {}
+            for index = 1, 2 do
+                children[index] = assert(svc:register({impl_id = "app:provision_owner_seeded_system_decl", parent_id = parent.component_id}))
+                test.is_true(children[index].success)
+            end
+            local db = assert(sql.get("app:db"))
+            local dialect = tostring(db:type())
+            local tx = assert(db:begin())
+            local first, first_err = threads_writer.lock_thread_rows_tx(tx, dialect,
+                {lifecycle.thread_id(children[1].component_id)}, {children[1].component_id})
+            local shared, share_err, writer_err: any = nil, nil, nil
+            if dialect == sql.type.POSTGRES then
+                local other = assert(sql.get("app:db"))
+                local reader = assert(other:begin())
+                shared, share_err = reader:query("SELECT component_id FROM kickside_components WHERE component_id=$1 FOR SHARE NOWAIT", {parent.component_id})
+                assert(reader:rollback())
+                local mutator = assert(other:begin())
+                local _, denied = mutator:query("SELECT component_id FROM kickside_components WHERE component_id=$1 FOR NO KEY UPDATE NOWAIT", {parent.component_id})
+                writer_err = denied
+                assert(mutator:rollback()); assert(other:release())
+            end
+            assert(tx:rollback()); assert(db:release())
+            test.is_nil(first_err); test.not_nil(first)
+            if dialect == sql.type.POSTGRES then
+                test.is_nil(share_err); test.not_nil(shared)
+                test.not_nil(writer_err, "authority mutation conflicts with an active authority reader")
+            end
+        end)
+        test.it("fences inherited authority when a subtree moves away and back", function()
+            local svc = service("system:lifecycle")
+            local root = assert(svc:register({impl_id = "app:lifecycle_folder"})).component_id
+            local branch = assert(svc:register({impl_id = "app:lifecycle_folder",parent_id = root})).component_id
+            local child = assert(svc:register({impl_id = "app:provision_owner_seeded_system_decl",parent_id = branch})).component_id
+            local db = assert(sql.get("app:db"))
+            local cursor = assert(db:query("SELECT id,job_id FROM kickside_projection_cursor WHERE thread_id=$1 AND actor_id=$2", {lifecycle.thread_id(child),"system:lifecycle"}))[1]
+            local job = claim_fixture_job(db,cursor.job_id)
+            local snapshot = assert(invoke.snapshot(db,cursor.id,job.id)); assert(db:release())
+            test.is_true(assert(svc:set_placement({component_id = branch,parent_id = false})).success)
+            test.is_true(assert(svc:set_placement({component_id = branch,parent_id = root})).success)
+            local result, err = apply.advance("app:db",job,snapshot,1,{body = {obsolete_ancestry = true}})
+            test.is_nil(err);test.is_true(result.stale)
+        end)
         test.it("runs retained lifecycle work after repairing legacy identity copies", function()
             local id, cursor, job = create()
             local db = assert(sql.get("app:db"))
@@ -488,6 +534,31 @@ return {run = test.run_cases(function()
             local after = assert(db:query("SELECT generation FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
             db:release(); test.eq(after.generation, prior.generation)
         end)
+        for _, owner in ipairs({"system:lifecycle", "deletion-owner"}) do
+            test.it("drains own deletion events before releasing trusted authority/" .. owner, function()
+                local id, cursor, job = create("app:projection_owner_delete_kind", owner)
+                local teardown = require("teardown")
+                local marked, mark_step, mark_err = teardown.begin_delete(id)
+                test.is_nil(mark_err); test.is_true(marked); test.is_nil(mark_step)
+                local removed, step, pending = teardown.unregister(id)
+                test.is_nil(removed); test.eq(step, "pending"); test.not_nil(pending)
+                local db = assert(sql.get("app:db"))
+                local live = assert(db:query("SELECT identity_generation FROM kickside_components WHERE component_id=$1", {id}))[1]
+                local events = assert(db:query("SELECT type FROM kickside_event WHERE thread_id=$1 ORDER BY seq", {lifecycle.thread_id(id)}))
+                db:release(); test.not_nil(live); test.eq(events[#events].type, lifecycle.EVENT.DELETED)
+                local result, err = invoke.run({job = job, payload = {cursor_id = cursor.id}})
+                test.is_nil(err); test.is_nil(result.invalid); test.eq(tonumber(result.last_seq), #events)
+                db = assert(sql.get("app:db"))
+                local body = assert(json.decode(assert(db:query("SELECT body FROM kickside_projection WHERE thread_id=$1", {lifecycle.thread_id(id)}))[1].body))
+                db:release(); test.eq(body.ran_as, owner); test.eq(body.last_type, lifecycle.EVENT.DELETED)
+                local finished, finish_step, finish_err = teardown.unregister(id)
+                test.is_nil(finish_err); test.is_nil(finish_step); test.is_true(finished.deleted)
+                db = assert(sql.get("app:db"))
+                local absent = assert(db:query("SELECT component_id FROM kickside_components WHERE component_id=$1", {id}))
+                local final_events = assert(db:query("SELECT type FROM kickside_event WHERE thread_id=$1 ORDER BY seq", {lifecycle.thread_id(id)}))
+                db:release(); test.eq(#absent, 0); test.eq(#final_events, #events)
+            end)
+        end
         test.it("rejects public owner writes and deletion from a WRITE holder", function()
             local id, cursor, job = create()
             local writer_id = "projection-writer-" .. uuid.v4()

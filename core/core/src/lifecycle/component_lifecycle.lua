@@ -236,7 +236,29 @@ function M.updated(args: any): (any?, error?)
 end
 
 function M.deleted(args: any): (any?, error?)
-    return handle(lifecycle_log.KIND.DELETED, args)
+    local result, err = handle(lifecycle_log.KIND.DELETED, args)
+    if err or not result or result.skipped then return result, err end
+    local pending: {string} = {}
+    local params: {any} = {result.thread_id}
+    for _, declaration in ipairs(autoinit.projections_for_impl(trim(args.impl_id))) do
+        if declaration.on == autoinit.PROJECTION_ON.LIFECYCLE then
+            params[#params + 1] = declaration.kind
+            local kind_index = #params
+            local key = trim(declaration.projection_key)
+            params[#params + 1] = key ~= "" and key or "default"
+            pending[#pending + 1] = "(p.kind=$" .. tostring(kind_index) .. " AND p.projection_key=$" .. tostring(#params) .. ")"
+        end
+    end
+    if #pending > 0 then
+        local rows, read_err = args.tx:query([[SELECT c.id FROM kickside_projection p
+            JOIN kickside_projection_cursor c ON c.projection_id=p.id
+            JOIN kickside_thread t ON t.id=p.thread_id
+            WHERE p.thread_id=$1 AND c.last_seq<t.event_count AND (]] .. table.concat(pending, " OR ") .. ") LIMIT 1", params)
+        if read_err then return nil, read_err end
+        if type(rows) ~= "table" then return nil, fail("lifecycle drain read returns no rows") end
+        result.pending = rows[1] ~= nil
+    end
+    return result, nil
 end
 
 -- converge_own registers the component's own lifecycle projections (`on: lifecycle`)
