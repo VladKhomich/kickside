@@ -11,7 +11,7 @@ function M.adapter_for(provider_id: string): any?
     return provider_registry.adapter_for(provider_id)
 end
 
-function M.discover(profile_id: string): (any?, any?)
+function M.discover(profile_id: string): (any?, any?, any?)
     local profile, profile_err = models_repo.get_profile(profile_id)
     if profile_err then return nil, profile_err end
     if not profile then return nil, "profile not found" end
@@ -21,12 +21,16 @@ function M.discover(profile_id: string): (any?, any?)
         return nil, "provider does not support model discovery yet"
     end
 
-    local rows, err = adapter.fetch(profile)
+    local rows, err, diagnostics = adapter.fetch(profile)
     if err then
-        err = "model discovery failed"
-        local _, status_err = models_repo.set_profile_status(profile_id, "unhealthy", err or "model discovery failed", nil)
+        if not diagnostics then
+            local _, classified = common.transport_error(err)
+            diagnostics = classified
+        end
+        err = common.failure_message("model discovery failed", diagnostics)
+        local _, status_err = models_repo.set_profile_status(profile_id, "unhealthy", err, nil)
         if status_err then return nil, status_err end
-        return nil, err
+        return nil, err, diagnostics
     end
 
     local saved = {}
@@ -109,7 +113,7 @@ function M.discover(profile_id: string): (any?, any?)
     }
 end
 
-function M.test(profile_id: string, opts: any): (any?, any?)
+function M.test(profile_id: string, opts: any): (any?, any?, any?)
     local profile, profile_err = models_repo.get_profile(profile_id)
     if profile_err then return nil, profile_err end
     if not profile then return nil, "profile not found" end
@@ -120,12 +124,12 @@ function M.test(profile_id: string, opts: any): (any?, any?)
         return nil, "provider does not support connection testing yet"
     end
 
-    local result, err
+    local result, err, diagnostics
     if adapter.test then
-        result, err = adapter.test(profile, opts or {})
+        result, err, diagnostics = adapter.test(profile, opts or {})
     elseif adapter.fetch then
         local rows
-        rows, err = adapter.fetch(profile)
+        rows, err, diagnostics = adapter.fetch(profile)
         if rows then
             result = {
                 success = true,
@@ -143,12 +147,16 @@ function M.test(profile_id: string, opts: any): (any?, any?)
         err = err or "connection test failed"
     end
     if not result then
-        err = "connection test failed"
+        if not diagnostics then
+            local _, classified = common.transport_error(err)
+            diagnostics = classified
+        end
+        err = common.failure_message("connection test failed", diagnostics)
         if not scoped_model then
             local _, status_err = models_repo.set_profile_status(profile_id, "unhealthy", err or "connection test failed", nil)
             if status_err then return nil, status_err end
         end
-        return nil, err or "connection test failed"
+        return nil, err, diagnostics
     end
 
     local message = result.message or "Connection test succeeded"

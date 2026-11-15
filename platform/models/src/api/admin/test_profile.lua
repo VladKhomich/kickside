@@ -28,10 +28,10 @@ local function handler()
         if type(decoded) == "table" then data = decoded end
     end
 
-    local result, err = model_discovery.test(id, data)
+    local result, err, diagnostics = model_discovery.test(id, data)
     if not result then
         res:set_status(err == "profile not found" and http.STATUS.NOT_FOUND or http.STATUS.BAD_REQUEST)
-        res:write_json({ success = false, error = err })
+        res:write_json({ success = false, error = err, diagnostics = diagnostics })
         return
     end
 

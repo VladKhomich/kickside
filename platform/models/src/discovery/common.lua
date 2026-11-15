@@ -1,5 +1,8 @@
 local env = require("env")
 local json = require("json")
+local http_errors = require("http_errors")
+local llm_mapper = require("llm_mapper")
+local llm_output = require("llm_output")
 
 local M = {}
 
@@ -115,22 +118,49 @@ function M.scrub_message(value: any): string
     return s
 end
 
-function M.response_error(response: any, label: string?): string
-    local prefix = label or "provider request failed"
-    local status = response and tonumber(response.status_code)
-    if status then prefix = prefix .. " (HTTP " .. tostring(status) .. ")" end
-
-    return prefix
+function M.failure_message(label: string, diagnostics: any): string
+    if not diagnostics then return label end
+    local fields = {}
+    if diagnostics.kind then table.insert(fields, diagnostics.kind) end
+    if diagnostics.retryable ~= nil then
+        table.insert(fields, "retryable=" .. tostring(diagnostics.retryable))
+    end
+    if diagnostics.status_code then table.insert(fields, "HTTP " .. tostring(diagnostics.status_code)) end
+    return label .. " (" .. table.concat(fields, ", ") .. ")"
 end
 
-function M.decode_response(response: any, label: string?): (any?, string?)
+function M.transport_error(err: any, label: string?): (string, any?)
+    local _, classification = http_errors.classify(err)
+    local diagnostics = classification.kind and {
+        kind = classification.kind, retryable = classification.retryable,
+    } or nil
+    return M.failure_message(label or "provider request failed", diagnostics), diagnostics
+end
+
+function M.response_error(response: any, label: string?): (string, any?)
+    local status = response and tonumber(response.status_code)
+    local diagnostics = nil
+    if status then
+        local error_type = llm_mapper.classify_error({status_code = status})
+        local mapping = llm_output.ERROR_KIND_MAP[error_type]
+        diagnostics = {kind = mapping.kind, retryable = mapping.retryable, status_code = status}
+    end
+    return M.failure_message(label or "provider request failed", diagnostics), diagnostics
+end
+
+function M.decode_response(response: any, label: string?): (any?, string?, any?)
     if not response then return nil, "empty response" end
     local status = tonumber(response.status_code)
     if not status or status < 200 or status >= 300 then
         return nil, M.response_error(response, label)
     end
     local parsed, perr = json.decode(response.body or "")
-    if perr then return nil, "failed to parse model list" end
+    if perr then
+        local _, diagnostics = M.transport_error(perr)
+        diagnostics = diagnostics or {}
+        diagnostics.status_code = status
+        return nil, "failed to parse model list", diagnostics
+    end
     return parsed
 end
 

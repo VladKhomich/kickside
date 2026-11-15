@@ -163,8 +163,12 @@ return {run = test.run_cases(function()
         end)
         test.it("returns bounded provider errors and stores no echoed credentials", function()
             local sentinel = "provider-credential-sentinel"
-            test.eq(common.response_error({status_code = 401, body = '{"error":{"message":"Invalid credential: ' .. sentinel .. '"}}'}),
-                "provider request failed (HTTP 401)")
+            local message, diagnostics = common.response_error({status_code = 401,
+                body = '{"error":{"message":"Invalid credential: ' .. sentinel .. '"}}'})
+            test.eq(message, "provider request failed (PermissionDenied, retryable=false, HTTP 401)")
+            test.eq(diagnostics.kind, errors.PERMISSION_DENIED)
+            test.eq(diagnostics.retryable, false)
+            test.eq(diagnostics.status_code, 401)
             local _, parse_err = common.decode_response({status_code = 200, body = '{"secret":"' .. sentinel})
             test.eq(parse_err, "failed to parse model list")
             local profile = assert(repo.create_profile({name = "Provider error", provider_id = "wippy.llm.openai_compat:provider", api_key = sentinel}))
