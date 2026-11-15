@@ -7,12 +7,12 @@ local trim = require("text_trim").trim
 
 local upload_query_repo = {}
 
-local function canonical_job(upload: string): string
+function upload_query_repo.processing_job_identity_sql(upload: string): string
     return "'7:uploads' || CAST(length(" .. upload .. "uuid) AS TEXT) || ':' || " .. upload .. "uuid || '7:process'"
 end
 
 local function intentless_job(upload: string): string
-    return upload .. "processing_intent_state IS NULL AND j.job_identity=" .. canonical_job(upload)
+    return upload .. "processing_intent_state IS NULL AND j.job_identity=" .. upload_query_repo.processing_job_identity_sql(upload)
 end
 
 local function select_upload_columns()

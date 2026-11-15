@@ -736,6 +736,50 @@ local function define_tests()
             db:release()
         end)
 
+        test.it("does not redeliver callbacks after committed failure settlement", function()
+            local id, owner = uuid_v4(), "callback-delivery-" .. uuid_v4()
+            ensure_uploads_component(owner)
+            local metadata = upload_metadata(owner, "callback.txt")
+            local identity = metadata[IDENTITY_META_KEY]
+            metadata.__upload_token = assert(upload_tokens.pack({upload_id = id,
+                function_id = "app:callback_probe", on_error_id = "app:callback_probe",
+                actor_id = identity.actor_id, actor_context = identity.actor_context}))
+            local upload = assert(upload_record_repo.create(id, owner, 1, "text/plain", "app:uploads", id,
+                "app:types.failing", metadata, "uploaded", nil, nil, true, 600000))
+            local queued = assert(process_worker.enqueue_upload_job(upload, true))
+            local db = assert(sql.get("app:db"))
+            local dbtype = tostring(db:type())
+            local processing = admit_job(db, queued.job_id, 5)
+            test.is_nil(jobs_lifecycle.fail_job(db, processing, dbtype, "execution ended", "deterministic"))
+            local settled, settle_err = process_job.dead({payload = {job_id = queued.job_id}})
+            test.is_nil(settle_err, tostring(settle_err))
+            test.is_true(settled.settled)
+            local callbacks = assert(db:query("SELECT id FROM kickside_job WHERE job_type=$1 AND CAST(payload AS TEXT) LIKE $2",
+                {"kickside.uploads.service:callback_job", "%" .. id .. "%"}))
+            test.eq(#callbacks, 1)
+            local callback = admit_job(db, callbacks[1].id, 1)
+            local _, delivery_err = worker_dispatch.execute_job(db, dbtype, callback)
+            test.is_nil(delivery_err, tostring(delivery_err))
+            test.is_nil(jobs_lifecycle.complete_job(db, callback, dbtype, {}))
+            test.eq(assert(db:query("SELECT status FROM kickside_job WHERE id=$1", {callback.id}))[1].status, "done")
+            local before = assert(upload_query_repo.get(id))
+            local redelivered, redelivery_err = process_job.dead({payload = {job_id = queued.job_id}})
+            test.is_nil(redelivery_err, tostring(redelivery_err))
+            test.is_false(redelivered.settled)
+            local after = assert(upload_query_repo.get(id))
+            test.eq(after.updated_at, before.updated_at)
+            test.eq(after.processing_job_id, before.processing_job_id)
+            local callback_rows = assert(db:query("SELECT id FROM kickside_job WHERE job_type=$1 AND CAST(payload AS TEXT) LIKE $2",
+                {"kickside.uploads.service:callback_job", "%" .. id .. "%"}))
+            test.eq(#callback_rows, 1)
+            test.eq(#assert(db:query("SELECT upload_id FROM upload_callback_probe WHERE upload_id=$1", {id})), 1)
+            test.eq(assert(upload_query_repo.get(id)).storage_state, "failed")
+            local events = assert(db:query("SELECT id FROM kickside_event WHERE external_id=$1 AND type=$2",
+                {id, uploads_events.TYPE.FAILED}))
+            test.eq(#events, 1)
+            db:release()
+        end)
+
 		test.it("settles terminal failure when its callback token is unreadable", function()
             local id, owner = uuid_v4(), "callback-failure-" .. uuid_v4()
             ensure_uploads_component(owner)
@@ -802,8 +846,9 @@ local function define_tests()
             db:release()
         end)
 
-        for _, state in ipairs({"pending", "running", "dead", "pruned"}) do
-            test.it("Retry fences the recorded processing job in state " .. state, function()
+        for _, legacy in ipairs({false, true}) do
+        for _, state in ipairs({"pending", "running", "done", "cancelled", "dead", "pruned"}) do
+            test.it("Retry fences processing state " .. state .. " with legacy=" .. tostring(legacy), function()
                 local id, owner = uuid_v4(), "retry-owner-" .. uuid_v4()
                 ensure_uploads_component(owner)
                 local upload = assert(upload_record_repo.create(id, owner, 1, "text/plain",
@@ -816,8 +861,11 @@ local function define_tests()
                 else
                     assert(db:execute("UPDATE kickside_job SET status=$1 WHERE id=$2", {state, queued.job_id}))
                 end
+                if legacy then
+                    assert(db:execute("UPDATE kickside_uploads SET processing_intent_state=NULL,processing_job_id=NULL WHERE uuid=$1", {id}))
+                end
                 local retried, err = upload_lib.retry_upload(id)
-                if state == "dead" or state == "pruned" then
+                if state == "done" or state == "cancelled" or state == "dead" or state == "pruned" then
                     test.is_nil(err, tostring(err))
                     test.not_nil(retried)
                     local stored = assert(upload_query_repo.get(id))
@@ -830,10 +878,15 @@ local function define_tests()
                 else
                     test.is_nil(retried)
                     test.is_true(errors.is(err, errors.CONFLICT))
-                    test.eq(assert(upload_query_repo.get(id)).processing_job_id, queued.job_id)
+                    local stored = assert(upload_query_repo.get(id))
+                    if legacy then test.is_nil(stored.processing_intent_state)
+                    else test.eq(stored.processing_intent_state, "acknowledged") end
+                    if legacy then test.is_nil(stored.processing_job_id)
+                    else test.eq(stored.processing_job_id, queued.job_id) end
                 end
                 db:release()
             end)
+        end
         end
 
 		test.it("settles an upload whose processing job dies without its handler", function()
@@ -1092,6 +1145,7 @@ local function define_tests()
 				transcription_error_test = "ocr_error",
 			})
 			local live = create_transcription_upload("transcription-retry-live", {})
+            assert(process_worker.enqueue_upload_job(live, true))
 
 			local _, live_err = upload_lib.retry_upload(live.uuid)
 			test.not_nil(live_err)

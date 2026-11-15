@@ -249,3 +249,13 @@ errors (a string or a message-only envelope) map to retryable
 An uncached PDF read invokes the adapter once. The current PDF API parses during
 `open()` for page count and again during `render()`; removing those two parses
 requires a converter API change. Uploads adds no separate count call to a read.
+
+### Interrupted processing
+
+A processing job that ends dead delivers its declared outcome and settles the
+upload as failed. For uploads stranded by earlier releases, use Retry in the
+processing preview. Retry preserves stored bytes and queues processing once when
+the previous job is terminal or absent; pending or running work cannot restart.
+This also supports earlier records without processing intents or job pointers.
+A permanent failure to prepare a failure callback is recorded separately as
+`callback_error` on the failure event; it does not undo the failed upload.
