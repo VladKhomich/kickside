@@ -2,6 +2,8 @@
 local registry = require("registry")
 local autoinit = require("autoinit")
 local funcs = require("funcs")
+local json = require("json")
+local crypto = require("crypto")
 local types = require("component_types")
 
 local M = {}
@@ -53,17 +55,36 @@ function M.validate(raw: unknown, schema: unknown?): error?
     return nil
 end
 
+-- A declaration revision describes only the path set, not registry churn or order.
+function M.revision(declarations: types.SecretField[]): (string?, error?)
+    local validation_err = M.validate(declarations)
+    if validation_err then return nil, validation_err end
+    local paths: {string} = {}
+    for _, field in ipairs(declarations) do
+        local encoded, encode_err = json.encode(field.path)
+        if encode_err then return nil, encode_err end
+        paths[#paths + 1] = encoded :: string
+    end
+    table.sort(paths)
+    local encoded, encode_err = json.encode(paths)
+    if encode_err then return nil, encode_err end
+    return crypto.hash.sha256(encoded :: string)
+end
+
 local cached_version: string? = nil
 local cached_fields: {[string]: {types.SecretField}} = {}
+local cached_revisions: {[string]: string} = {}
+local declaration_version: string? = nil
+local cached_kinds: types.SecretKind[] = {}
 
-function M.for_impl(impl_id: string): (types.SecretField[]?, error?)
+function M.for_impl(impl_id: string): (types.SecretField[]?, error?, string?)
     local version, version_err = registry.current_version()
     if version_err then return nil, version_err end
     local token = tostring(version:id())
     if token ~= cached_version then
-        cached_version, cached_fields = token, {}
+        cached_version, cached_fields, cached_revisions = token, {}, {}
     end
-    if cached_fields[impl_id] then return cached_fields[impl_id], nil end
+    if cached_fields[impl_id] then return cached_fields[impl_id], nil, cached_revisions[impl_id] end
     local entry, err = autoinit.kind_for_impl(impl_id)
     if err and not errors.is(err, errors.NOT_FOUND) then return nil, err end
     local raw = entry and entry.meta and entry.meta.secret_fields
@@ -73,21 +94,40 @@ function M.for_impl(impl_id: string): (types.SecretField[]?, error?)
     end
     local declaration_err = M.validate(raw, entry.meta.credential_schema)
     if declaration_err then return nil, declaration_err end
+    local revision, revision_err = M.revision(raw :: types.SecretField[])
+    if revision_err then return nil, revision_err end
     cached_fields[impl_id] = raw :: types.SecretField[]
-    return cached_fields[impl_id], nil
+    cached_revisions[impl_id] = revision :: string
+    return cached_fields[impl_id], nil, revision
 end
 
 function M.declarations(): (types.SecretKind[]?, string?, error?)
     local result, err = funcs.call("kickside.component:kind_declaration")
     if err then return nil, nil, err end
     local snapshot = result :: types.SecretDeclarations
+    if snapshot.version == declaration_version then return cached_kinds, snapshot.version, nil end
+    if snapshot.version ~= cached_version then
+        cached_version, cached_fields, cached_revisions = snapshot.version, {}, {}
+    end
     local kinds: {types.SecretKind} = {}
     for _, kind in ipairs(snapshot.kinds) do
         local validation_err = M.validate(kind.meta.secret_fields, kind.meta.credential_schema)
         if validation_err then return nil, nil, validation_err end
-        if #kind.meta.secret_fields > 0 then kinds[#kinds + 1] = kind end
+        if #kind.meta.secret_fields > 0 then
+            local revision = cached_revisions[kind.id]
+            if revision == nil then
+                local digest, revision_err = M.revision(kind.meta.secret_fields)
+                if revision_err then return nil, nil, revision_err end
+                revision = digest :: string
+                cached_revisions[kind.id] = revision
+                cached_fields[kind.id] = kind.meta.secret_fields
+            end
+            kinds[#kinds + 1] = {id = kind.id, meta = kind.meta, revision = revision}
+        end
     end
-    return kinds, snapshot.version, nil
+    table.sort(kinds, function(a: types.SecretKind, b: types.SecretKind): boolean return a.id < b.id end)
+    cached_kinds, declaration_version = kinds, snapshot.version
+    return cached_kinds, snapshot.version, nil
 end
 
 local function copy(value: types.JsonMap): types.JsonMap

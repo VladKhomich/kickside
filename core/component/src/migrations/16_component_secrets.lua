@@ -11,10 +11,12 @@ return require("migration").define(function()
                     local present = false
                     local generation_present = false
                     local incarnation_present = false
+                    local revision_present = false
                     for _, column in ipairs(columns) do
                         if column.name == "encrypted_secrets" then present = true end
                         if column.name == "secrets_generation" then generation_present = true end
                         if column.name == "secrets_incarnation" then incarnation_present = true end
+                        if column.name == "secrets_revision" then revision_present = true end
                     end
                     if not present then
                         local _, err = db:execute("ALTER TABLE kickside_components ADD COLUMN encrypted_secrets TEXT")
@@ -28,8 +30,10 @@ return require("migration").define(function()
                         local _, err = db:execute("ALTER TABLE kickside_components ADD COLUMN secrets_incarnation TEXT")
                         if err then error(err) end
                     end
-                    local _, index_err = db:execute("CREATE INDEX IF NOT EXISTS idx_component_secret_migration ON kickside_components(impl_id,component_id) WHERE encrypted_secrets IS NULL")
-                    if index_err then error(index_err) end
+                    if not revision_present then
+                        local _, err = db:execute("ALTER TABLE kickside_components ADD COLUMN secrets_revision TEXT")
+                        if err then error(err) end
+                    end
                 end)
             end)
         end

@@ -166,6 +166,7 @@ local function create_component(tx: Executor, db: Executor, command: component_t
     if secret_write then
         component_row.encrypted_secrets = secret_write.encrypted
         component_row.secrets_generation = secret_write.generation
+        component_row.secrets_revision = secret_write.revision
     end
     if initial_hash ~= nil then component_row.identity_hash = initial_hash end
     local inserted, err = sql.builder.insert(component_types.TABLES.COMPONENTS)

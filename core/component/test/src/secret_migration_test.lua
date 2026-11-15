@@ -32,7 +32,7 @@ return {run = test.run_cases(function()
             test.eq(report.converted, 1)
             local row = assert(db:query("SELECT secrets_revision,private_context FROM kickside_components WHERE component_id=$1", {stale}))[1]
             test.eq(row.secrets_revision, revision)
-            test.is_nil(row.private_context:find("revision-conversion-secret", 1, true))
+            test.is_nil(assert(json.encode(row.private_context)):find("revision-conversion-secret", 1, true))
             test.eq(assert(migration.run(2)).invalid, 0)
             test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id IN ($1,$2)", {current, stale})))
             test.is_nil(select(2, db:release()))

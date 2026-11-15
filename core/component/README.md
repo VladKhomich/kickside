@@ -144,8 +144,8 @@ with component access validation, or the existing trusted-system read through
 `kickside.component.system:read_private_context`. Dispatch permission alone does
 not authorize a credential read: the execution also needs `component.secrets.read`
 on the exact owning binding id. Attach these grants to the owning runtime
-functions, never member bundles. The client library preserves its internal merged
-view when the execution holds the corresponding dispatch authority.
+functions, never member bundles. The explicit runtime library methods preserve the internal merged
+view under these authorities.
 `component.get_context_snapshot(id, access, true)` returns that same internal view
 with its context revision for a compare-and-set write. Ordinary service context
 reads remain masked regardless of an execution's secret authority.
@@ -157,9 +157,15 @@ produce `component_secrets_key`; authentication failures produce
 `component_secrets_cannot_decrypt`. Non-secret reads remain available without a key.
 
 On update, the existing retention sweep converts declared kinds in bounded
-batches, one component per transaction. Removing plaintext and writing ciphertext
-commit together without changing revisions or timestamps. Interrupted conversion
-resumes; malformed rows remain intact and are counted. Install Component's storage
+batches, with one transaction and batch update per selected kind window. Each row
+records the digest of the secret paths it was converted under; changes to unrelated
+registry entries do not make that row a candidate again. A changed secret-path set
+makes older rows candidates for conversion. Windows use the existing implementation
+and component-id index, rotate fairly across kinds and capture a finite upper bound.
+Removing plaintext, writing ciphertext and recording the declaration revision commit
+together without changing context revisions or timestamps. Interrupted conversion
+resumes; malformed rows remain intact, are counted, and do not prevent the cursor
+from advancing. Install Component's storage
 capability first, then bindings' declarations and trusted runtime grants together.
 Undeclared kinds retain their existing storage behavior until their declaration ships.
 

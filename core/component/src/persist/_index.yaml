@@ -10,7 +10,6 @@ entries:
       component_types: kickside.component:types
       secret_fields: kickside.component:secret_fields
       secrets_document: kickside.component:secrets_document
-      meta_ops: kickside.component.persist:meta_ops
       persisted_json: kickside.contract:persisted_json
       error_envelope: kickside.contract:error_envelope
   - name: implementation_access

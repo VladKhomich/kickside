@@ -62,16 +62,17 @@ function M.decode(component_id: string, raw: string?, generation: integer?, inca
     return funcs.call("kickside.component.system:open_secrets", component_id, raw, generation, incarnation)
 end
 
-function M.write_paths(impl_id: string, previous: string?, generation: integer?, incarnation: string?): (types.SecretField[]?, error?)
-    local declarations, declaration_err = fields.for_impl(impl_id)
+function M.write_paths(impl_id: string, previous: string?, generation: integer?, incarnation: string?): (types.SecretField[]?, error?, string?)
+    local declarations, declaration_err, revision = fields.for_impl(impl_id)
     if declaration_err then return nil, declaration_err end
     local stored, stored_err = M.paths(previous, generation, incarnation)
     if stored_err then return nil, stored_err end
-    return fields.combine(declarations :: types.SecretField[], stored :: types.SecretField[])
+    local combined, combine_err = fields.combine(declarations :: types.SecretField[], stored :: types.SecretField[])
+    return combined, combine_err, revision
 end
 
 function M.prepare(component_id: string, impl_id: string, value: types.JsonMap, previous: string?, generation: integer?, incarnation: string?): (types.JsonMap?, types.SecretWrite?, error?)
-    local declarations, declaration_err = M.write_paths(impl_id, previous, generation, incarnation)
+    local declarations, declaration_err, revision = M.write_paths(impl_id, previous, generation, incarnation)
     if declaration_err then return nil, nil, declaration_err end
     if #declarations == 0 then return value, nil, nil end
     local visible, secrets, split_err = fields.partition(declarations, value)
@@ -79,7 +80,7 @@ function M.prepare(component_id: string, impl_id: string, value: types.JsonMap, 
     local row_incarnation = incarnation or uuid.v4()
     local encrypted, encrypt_err = M.encode(component_id, secrets :: types.JsonMap, declarations :: {types.SecretField}, (generation or 0) + 1, row_incarnation)
     if encrypt_err then return nil, nil, encrypt_err end
-    return visible, {encrypted = encrypted, generation = (generation or 0) + 1, incarnation = row_incarnation}, nil
+    return visible, {encrypted = encrypted, generation = (generation or 0) + 1, incarnation = row_incarnation, revision = revision}, nil
 end
 
 -- Called only by component-owned runtime entry points, after the existing read.

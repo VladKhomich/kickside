@@ -92,7 +92,7 @@ local function write(tx: any, component_id: string, context: { [string]: any }, 
         :set("context_revision", sql.builder.expr("context_revision + 1"))
         :set("updated_at", time.now():utc():format_rfc3339())
         :where("component_id = ?", component_id)
-    if secrets then statement = statement:set("encrypted_secrets", secrets.encrypted or sql.as.null()):set("secrets_generation", secrets.generation):set("secrets_incarnation", secrets.incarnation) end
+    if secrets then statement = statement:set("encrypted_secrets", secrets.encrypted or sql.as.null()):set("secrets_generation", secrets.generation):set("secrets_incarnation", secrets.incarnation):set("secrets_revision", secrets.revision or sql.as.null()) end
     local result, err = statement:run_with(tx):exec()
     if err then return nil, errors.wrap(err, "failed to write private context") end
     if result.rows_affected == 0 then return nil, failure("component not found", errors.NOT_FOUND) end
