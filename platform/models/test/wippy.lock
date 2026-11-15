@@ -3,7 +3,8 @@ directories:
     src: .
 modules:
     - name: kickside/contract
-      version: 0.0.0
+      version: 0.3.8
+      hash: c297c02ca276a5963bd688b6b022e54fcfe03450e30cf496481c14f963ae8134
     - name: kickside/models
       version: 0.0.0
     - name: wippy/bootloader

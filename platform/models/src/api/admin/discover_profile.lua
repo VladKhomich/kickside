@@ -15,10 +15,10 @@ local function handler()
         return
     end
 
-    local result, err = model_discovery.discover(id)
+    local result, err, diagnostics = model_discovery.discover(id)
     if not result then
         res:set_status(http.STATUS.BAD_REQUEST)
-        res:write_json({ success = false, error = err })
+        res:write_json({ success = false, error = err, diagnostics = diagnostics })
         return
     end
     res:set_status(http.STATUS.OK)
