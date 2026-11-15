@@ -375,109 +375,109 @@ function jobs.health(): (table?, error?)
         if type(policy) ~= "table" then return nil, response_error("health.policy") end
         local fresh_seconds = (policy :: any).lease_timeout_seconds
         local now = clock.now(dbtype)
-        local workers, worker_err = db:query([[SELECT w.id,p.registry_version,w.current_job_id,p.last_seen_at
-            FROM kickside_job_worker w JOIN kickside_job_worker_pulse p ON p.worker_id=w.id
-            ORDER BY w.id ASC LIMIT 256]])
+        local fresh_predicate = dbtype == sql.type.POSTGRES
+            and "p.last_seen_at > NOW() - ($1 * INTERVAL '1 second')"
+            or "p.last_seen_at > datetime('now', '-' || ? || ' seconds')"
+        local pulse_join = dbtype == sql.type.POSTGRES
+            and " JOIN LATERAL (SELECT registry_version,last_seen_at FROM kickside_job_worker_pulse WHERE worker_id=w.id LIMIT 1) p ON TRUE"
+            or " JOIN kickside_job_worker_pulse p ON p.worker_id=w.id"
+        local workers, worker_err = db:query([[SELECT w.id,p.registry_version,w.current_job_id,p.last_seen_at,]]
+            .. fresh_predicate .. [[ AS healthy
+            FROM (SELECT id,current_job_id FROM kickside_job_worker ORDER BY id ASC LIMIT 256) w]]
+            .. pulse_join .. " ORDER BY w.id ASC LIMIT 256", {fresh_seconds})
         workers, worker_err = sql_boundary.rows(workers, worker_err, "worker health query failed", "health.workers", response_error)
         if worker_err then return nil, worker_err end
+        for _, row in ipairs(workers) do row.healthy = row.healthy == true or row.healthy == 1 end
         local fresh_sql = dbtype == sql.type.POSTGRES
-            and "SELECT worker_id FROM kickside_job_worker_pulse WHERE last_seen_at > NOW() - ($1 * INTERVAL '1 second')"
-            or "SELECT worker_id FROM kickside_job_worker_pulse WHERE last_seen_at > datetime('now', '-' || ? || ' seconds')"
+            and "SELECT last_seen_at FROM kickside_job_worker_pulse WHERE last_seen_at > NOW() - ($1 * INTERVAL '1 second') ORDER BY last_seen_at DESC LIMIT 1001"
+            or "SELECT last_seen_at FROM kickside_job_worker_pulse WHERE last_seen_at > datetime('now', '-' || ? || ' seconds') ORDER BY last_seen_at DESC LIMIT 1001"
         local fresh, fresh_err = db:query(fresh_sql, { fresh_seconds })
         fresh, fresh_err = sql_boundary.rows(fresh, fresh_err, "fresh worker query failed", "health.fresh", response_error)
         if fresh_err then return nil, fresh_err end
-        local fresh_ids = {}
-        for _, row in ipairs(fresh) do fresh_ids[tostring(row.worker_id)] = true end
-        for _, row in ipairs(workers) do row.healthy = fresh_ids[tostring(row.id)] == true end
-
-        local expired, expired_err = sql.builder.select("COUNT(*) AS n")
-            :from("kickside_job")
-            :where(sql.builder.eq({ status = "running" }))
-            :where("lease_until IS NOT NULL AND lease_until < ?", now)
-            :run_with(db):query()
-        local expired_count, expired_count_err = sql_boundary.query_count(expired, expired_err,
-            "expired lease query failed", "health.expired", response_error)
-        if expired_count_err then return nil, expired_count_err end
-        local wake_rows, wake_err = sql.builder.select("COUNT(*) AS n")
-            :from("kickside_wake_fanout")
-            :where("demand_generation > ack_generation")
-            :run_with(db):query()
-        local wake_count, wake_count_err = sql_boundary.query_count(wake_rows, wake_err,
-            "wake health query failed", "health.wake", response_error)
-        if wake_count_err then return nil, wake_count_err end
-        local backlog, backlog_err = claim.due_backlog(db, dbtype,
-            math.floor((policy :: any).health_overdue_grace_ms / 1000))
-        if backlog_err then return nil, backlog_err end
-        if type(backlog) ~= "table" then return nil, response_error("health.backlog") end
-        local due_count, count_err = sql_boundary.number_value(backlog.count, "health.backlog.count", 0, true, false, response_error)
-        if count_err then return nil, count_err end
-        local overdue_count, overdue_err = sql_boundary.number_value(backlog.overdue, "health.backlog.overdue", 0, true, false, response_error)
+        local function count_matches(source: string, ordered: string, field: string, params: table?): (number?, boolean?, error?)
+            local rows, read_err = db:query("SELECT COUNT(*) AS n FROM (SELECT 1 FROM " .. source
+                .. " ORDER BY " .. ordered .. " LIMIT 1001) health_matches", params or {})
+            local count, count_err = sql_boundary.query_count(rows, read_err,
+                field .. " query failed", "health." .. field, response_error)
+            if count_err then return nil, nil, count_err end
+            return math.min(count :: number, 1000), count > 1000, nil
+        end
+        local pending_count, pending_capped, pending_err = count_matches(
+            "kickside_job WHERE status='pending'", "priority DESC,scheduled_at", "pending")
+        if pending_err then return nil, pending_err end
+        local running_count, running_capped, running_err = count_matches(
+            "kickside_job WHERE status='running'", "priority DESC,scheduled_at", "running")
+        if running_err then return nil, running_err end
+        local dead_count, dead_capped, dead_err = count_matches(
+            "kickside_job WHERE status='dead'", "priority DESC,scheduled_at", "dead")
+        if dead_err then return nil, dead_err end
+        local lease_source = dbtype == sql.type.SQLITE
+            and "kickside_job INDEXED BY idx_kickside_job_lease_reap"
+            or "kickside_job"
+        local expired_count, expired_capped, expired_err = count_matches(
+            lease_source .. " WHERE status='running' AND lease_until IS NOT NULL AND lease_until < $1",
+            "lease_until", "expired", {now})
+        if expired_err then return nil, expired_err end
+        local due_source = "kickside_job WHERE status='pending' AND scheduled_at IS NOT NULL AND scheduled_at <= "
+        local due_count, due_capped, due_err = count_matches(due_source .. "$1", "scheduled_at", "due", {now})
+        if due_err then return nil, due_err end
+        local overdue_deadline = dbtype == sql.type.POSTGRES
+            and "$1::timestamptz - ($2 * INTERVAL '1 second')"
+            or "datetime($1, '-' || $2 || ' seconds') || substr($1, 20)"
+        local overdue_count, overdue_capped, overdue_err = count_matches(due_source .. overdue_deadline,
+            "scheduled_at", "overdue", {now, math.floor((policy :: any).health_overdue_grace_ms / 1000)})
         if overdue_err then return nil, overdue_err end
-        local due_age_ms, age_err = sql_boundary.number_value(backlog.oldest_age_ms, "health.backlog.oldest_age_ms", 0, false, false, response_error)
+        local age_sql = dbtype == sql.type.POSTGRES
+            and "SELECT EXTRACT(EPOCH FROM ($1::timestamptz - (SELECT scheduled_at FROM " .. due_source .. "$1 ORDER BY scheduled_at LIMIT 1))) * 1000 AS age_ms"
+            or "SELECT (julianday($1) - julianday((SELECT scheduled_at FROM " .. due_source .. "$1 ORDER BY scheduled_at LIMIT 1))) * 86400000 AS age_ms"
+        local age, age_err = db:query(age_sql, {now})
+        age, age_err = sql_boundary.bounded_rows(age, age_err, "due age query failed", "health.age", 1, 1, response_error)
         if age_err then return nil, age_err end
-        -- A slot whose latest execution failed and that no schedule will run
-        -- again waits on its owner: a parked deterministic failure.
-        local failed_slots, failed_err = db:query([[SELECT COUNT(*) AS n FROM kickside_job j
-            JOIN kickside_job_run r ON r.job_id=j.id AND r.execution_seq=j.execution_seq
-            WHERE j.status='pending' AND j.slot AND j.scheduled_at IS NULL AND r.status='failed']])
-        local failed_slot_count, failed_slot_count_err = sql_boundary.query_count(failed_slots, failed_err,
-            "failed slot query failed", "health.failed", response_error)
-        if failed_slot_count_err then return nil, failed_slot_count_err end
-        local degraded, degraded_err = sql.builder.select("COUNT(*) AS n")
-            :from("kickside_job")
-            :where("status = 'pending' AND last_error IS NOT NULL")
-            :run_with(db):query()
-        local degraded_count, degraded_count_err = sql_boundary.query_count(degraded, degraded_err,
-            "degraded job query failed", "health.degraded", response_error)
-        if degraded_count_err then return nil, degraded_count_err end
-        local stranded, stranded_err = db:query([[SELECT id FROM kickside_job
-            WHERE status='pending' AND NOT slot AND last_error IS NOT NULL AND scheduled_at IS NULL
-            ORDER BY id ASC]])
+        local due_age_ms, value_err = sql_boundary.number_value(age[1].age_ms,
+            "health.age.age_ms", 0, false, true, response_error)
+        if value_err then return nil, value_err end
+        due_age_ms = math.max(0, math.floor(due_age_ms))
+        -- Filter only the bounded status window; absence is not proof that no stranded job exists.
+        local stranded, stranded_err = db:query([[SELECT id FROM (
+            SELECT id,slot,last_error,scheduled_at FROM kickside_job WHERE status='pending'
+            ORDER BY priority DESC,scheduled_at LIMIT 1001
+        ) pending_sample WHERE slot=FALSE AND last_error IS NOT NULL AND scheduled_at IS NULL LIMIT 16]])
         stranded, stranded_err = sql_boundary.rows(stranded, stranded_err,
             "stranded job query failed", "health.stranded", response_error)
         if stranded_err then return nil, stranded_err end
         local stranded_ids: string[] = {}
-        for _, row in ipairs(stranded) do stranded_ids[#stranded_ids + 1] = tostring(row.id) end
-        local control_age_sql = dbtype == sql.type.POSTGRES
-            and "SELECT EXTRACT(EPOCH FROM (NOW() - MIN(updated_at))) * 1000 AS age_ms FROM kickside_job WHERE wake_control_pending = TRUE"
-            or "SELECT (julianday('now') - julianday(MIN(updated_at))) * 86400000 AS age_ms FROM kickside_job WHERE wake_control_pending = 1"
-        local control_age, control_err = db:query(control_age_sql)
-        control_age, control_err = sql_boundary.rows(control_age, control_err,
-            "control wake age query failed", "health.control", response_error)
-        if control_err then return nil, control_err end
-        if not control_age or #control_age ~= 1 or type(control_age[1]) ~= "table" then return nil, response_error("health.control.age_ms") end
-        local control_ms, control_ms_err = sql_boundary.number_value(control_age[1].age_ms,
-            "health.control.age_ms", nil, false, true, response_error)
-        if control_ms_err then return nil, control_ms_err end
+        for _, row in ipairs(stranded) do stranded_ids[#stranded_ids+1] = tostring(row.id) end
         local issues: { table } = {}
         if #fresh == 0 then
             issues[#issues + 1] = { code = "no_live_workers", message = "no job worker has beaten within the lease window" }
         end
         if overdue_count > 0 then
-            issues[#issues + 1] = { code = "due_work_unclaimed", count = overdue_count, oldest_age_ms = due_age_ms,
-                message = "claimable jobs are due past the overdue grace and no worker has claimed them" }
+            issues[#issues + 1] = { code = "due_work_unclaimed", count = overdue_count, capped = overdue_capped, oldest_age_ms = due_age_ms,
+                message = "pending jobs are due past the overdue grace; concurrency or capacity may block claims" }
         end
         if #stranded_ids > 0 then
-            issues[#issues + 1] = {code = "stranded_jobs", count = #stranded_ids, job_ids = stranded_ids,
-                message = "one-shot jobs have errors and no schedule for another execution"}
-        end
-        if failed_slot_count > 0 then
-            issues[#issues + 1] = { code = "slots_failed", count = failed_slot_count,
-                message = "slots are parked after a failed execution and wait on their owner" }
+            issues[#issues + 1] = {code = "stranded_jobs", job_ids = stranded_ids,
+                message = "sampled one-shot jobs have errors and no schedule for another execution"}
         end
         return {
             healthy = #issues == 0,
-            failed_slots = failed_slot_count,
             issues = issues,
             workers = workers,
-            healthy_worker_count = #fresh,
+            healthy_worker_count = math.min(#fresh, 1000),
+            healthy_worker_count_capped = #fresh > 1000,
+            pending_jobs = pending_count,
+            pending_jobs_capped = pending_capped,
+            running_jobs = running_count,
+            running_jobs_capped = running_capped,
+            dead_jobs = dead_count,
+            dead_jobs_capped = dead_capped,
             due_unclaimed_count = due_count,
+            due_unclaimed_count_capped = due_capped,
             overdue_unclaimed_count = overdue_count,
+            overdue_unclaimed_count_capped = overdue_capped,
             due_unclaimed_oldest_age_ms = due_age_ms,
             expired_leases = expired_count,
-            undelivered_wake_keys = wake_count,
-            degraded_jobs = degraded_count,
-            oldest_undelivered_control_wake_age_ms = math.max(0, control_ms),
+            expired_leases_capped = expired_capped,
         }, nil
     end)
     return result :: table?, err

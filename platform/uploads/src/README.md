@@ -266,8 +266,12 @@ compatible pipelines. Jobs already queued retain their captured limits; manual
 retry captures current settings. A saved ceiling that differs from the current
 setting also retains its original policy.
 
-The normal maintenance callback settles uploads whose processing job is already
-dead, including earlier records without processing intents. Each bounded batch
-uses the same settlement as dead outcomes, and maintenance re-arms while batches
-remain. A permanent failure to prepare a failure callback is recorded separately
-as `callback_error` on the failure event; it does not undo the failed upload.
+### Interrupted processing
+
+A processing job that ends dead delivers its declared outcome and settles the
+upload as failed. For uploads stranded by earlier releases, use Retry in the
+processing preview. Retry preserves stored bytes and queues processing once when
+the previous job is terminal or absent; pending or running work cannot restart.
+This also supports earlier records without processing intents or job pointers.
+A permanent failure to prepare a failure callback is recorded separately as
+`callback_error` on the failure event; it does not undo the failed upload.
