@@ -69,6 +69,24 @@ local function define_tests()
             local serialized = require("json").encode(resolved)
             test.is_nil(serialized:find("fixture-provider-secret", 1, true), "Resolution discloses a saved provider credential")
         end)
+        test.it("executes saved routes inside the owner frame without database access", function()
+            local profile = assert(models_repo.create_profile({id = "binding-profile", name = "Binding profile",
+                provider_id = "kickside.models.providers:fixture_provider", api_key = "fixture-provider-secret"}))
+            assert(models_repo.upsert_card({name = "binding-model", provider_profile_id = profile.id,
+                provider_id = "kickside.models.providers:fixture_provider", provider_model = "fixture",
+                capabilities = {"generate", "embed", "structured_output"}, max_tokens = 8192, output_tokens = 1024, enabled = true}))
+            local scope = assert(security.named_scope("app:selected_model_members"))
+            local actor = security.new_actor("binding-member", {})
+            test.eq(scope:evaluate(actor, "db.get", "app:db"), "undefined")
+            local response, err = funcs.new():with_actor(actor):with_scope(scope)
+                :call("kickside.models.test.module_access:execution_probe", {model = "binding-model"})
+            local _, delete_err = models_repo.delete_profile(profile.id)
+            test.is_nil(delete_err, tostring(delete_err))
+            test.is_nil(err, tostring(err))
+            test.not_nil(response)
+            test.eq(response.provider_id, "kickside.models:provider")
+            test.eq(response.calls, 9)
+        end)
         test.it("resolves saved models under the member execution scope", function()
             local name = "member-resolver-model"
             local card, save_err = models_repo.upsert_card({name = name, title = "Member model",
@@ -183,6 +201,56 @@ return {
         local value, read_err = snapshot:get("snapshot")
         snapshot:release()
         return value, read_err
+    end,
+    execution_probe = function(input)
+        local card, resolve_err = require("llm").resolve_model(input.model)
+        if resolve_err then return nil, resolve_err end
+        local route = card.providers[1]
+        assert(route.id == "kickside.models:provider", "Saved route bypasses the models binding")
+        assert(require("json").encode(card):find("fixture-provider-secret", 1, true) == nil)
+        local provider, open_err = require("providers").open(route.id, route.context)
+        if open_err then return nil, open_err end
+        local calls = 0
+        for _, method in ipairs({"status", "generate", "embed", "structured_output", "evaluate"}) do
+            local result, err = provider[method](provider, {model = route.provider_model})
+            assert(err == nil, tostring(err))
+            assert(result and result.success == true, method .. " does not authenticate")
+            calls = calls + 1
+        end
+        local _, driver_err = provider:generate({model = route.provider_model, options = {reject = true}})
+        local direct = assert(require("providers").open("kickside.models.providers:fixture_provider", {api_key = "fixture-provider-secret"}))
+        local _, direct_err = direct:generate({model = route.provider_model, options = {reject = true}})
+        assert(type(driver_err) == type(direct_err), "Driver error type changes")
+        assert(tostring(driver_err) == tostring(direct_err) and tostring(driver_err) == "fixture-driver-error", tostring(driver_err))
+        local llm = require("llm")
+        for index, operation in ipairs({
+            function() return llm.generate("hello", {model = input.model, max_tokens = 64}) end,
+            function() return llm.embed("hello", {model = input.model}) end,
+            function() return llm.structured_output({type = "object"}, "hello", {model = input.model, max_tokens = 64}) end,
+            function() return llm.status({model = input.model}) end,
+        }) do
+            local result, err = operation()
+            assert(err == nil, tostring(err))
+            assert(result ~= nil, "LLM call fails")
+            if index == 1 then assert(result.result == "ok") end
+            if index == 2 then assert(result.result[1][1] == 1) end
+            if index == 3 then assert(result.result.ok == true) end
+            if index == 4 then assert(result.status == "healthy") end
+            calls = calls + 1
+        end
+        return {provider_id = route.id, calls = calls}
+    end,
+    driver_probe = function(input)
+        local context = require("ctx").all()
+        assert(context.api_key == "fixture-provider-secret", "Provider authentication fails")
+        assert(context.driver_default == "retained", "Driver options disappear")
+        if input and input.options and input.options.reject then return nil, "fixture-driver-error" end
+        local result = {content = "ok"}
+        if input and input.schema then result = {data = {ok = true}}
+        elseif input and input.input then result = {embeddings = {{1}}}
+        elseif input and input.questions then result = {readings = {}} end
+        return {success = true, status = "healthy", result = result,
+            tokens = {prompt_tokens = 1, completion_tokens = 1, total_tokens = 2}, finish_reason = "stop"}
     end,
     resolve_probe = function(input)
         local definition, err = require("contract").get("wippy.llm:model_resolver")

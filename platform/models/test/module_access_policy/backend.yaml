@@ -1,0 +1,32 @@
+version: "1.0"
+namespace: kickside.models.providers
+entries:
+- name: fixture_driver_probe
+  kind: function.lua
+  source: file://test.lua
+  method: driver_probe
+  modules: [registry, security, funcs, json, store, ctx]
+  imports:
+    test: wippy.test:test
+    models_repo: kickside.models.persist:repo
+    llm: wippy.llm:llm
+    contract: contract
+- name: fixture_provider
+  kind: registry.entry
+  meta: {type: llm.provider}
+  driver:
+    id: kickside.models.providers:fixture_driver
+    options: {driver_default: retained}
+- name: fixture_driver
+  kind: contract.binding
+  contracts:
+  - contract: wippy.llm:provider
+    methods: {status: kickside.models.providers:fixture_driver_probe}
+  - contract: wippy.llm:generator
+    methods: {generate: kickside.models.providers:fixture_driver_probe}
+  - contract: wippy.llm:embedder
+    methods: {embed: kickside.models.providers:fixture_driver_probe}
+  - contract: wippy.llm:structured_output
+    methods: {structured_output: kickside.models.providers:fixture_driver_probe}
+  - contract: wippy.llm:evaluator
+    methods: {evaluate: kickside.models.providers:fixture_driver_probe}

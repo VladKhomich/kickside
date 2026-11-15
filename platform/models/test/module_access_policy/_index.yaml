@@ -40,3 +40,36 @@ entries:
     models_repo: kickside.models.persist:repo
     llm: wippy.llm:llm
     contract: contract
+
+- name: execution_probe
+  kind: function.lua
+  source: file://test.lua
+  method: execution_probe
+  modules: [registry, security, funcs, json, store]
+  imports:
+    test: wippy.test:test
+    models_repo: kickside.models.persist:repo
+    llm: wippy.llm:llm
+    providers: wippy.llm.discovery:providers
+    contract: contract
+- name: member_provider_contract
+  kind: security.policy
+  groups: [app:selected_model_members]
+  policy:
+    resources: [wippy.llm:provider]
+    actions: [contract.get]
+    effect: allow
+- name: member_provider_call
+  kind: security.policy
+  groups: [app:selected_model_members]
+  policy:
+    resources: [status, generate, embed, structured_output, evaluate]
+    actions: [contract.call]
+    effect: allow
+- name: member_provider_context
+  kind: security.policy
+  groups: [app:selected_model_members]
+  policy:
+    resources: [context]
+    actions: [contract.context]
+    effect: allow

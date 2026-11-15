@@ -9,3 +9,5 @@ cp "$models_test_dir/../src/api/admin/upsert_card.lua" "$models_test_dir/fixture
 cp "$models_test_dir/../src/api/admin/get_admin.lua" "$models_test_dir/fixtures/get_admin.lua"
 
 cp "$models_test_dir/../src/discovery/reference_openrouter.lua" "$models_test_dir/fixtures/reference_openrouter.lua"
+cp "$models_test_dir/../src/providers/profile/driver.lua" "$models_test_dir/fixtures/profile_driver.lua"
+cp "$models_test_dir/../src/persist/repo.lua" "$models_test_dir/fixtures/profile_repo.lua"

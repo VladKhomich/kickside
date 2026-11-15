@@ -274,7 +274,7 @@ entries:
     kind: function.lua
     meta: { type: test, suite: kickside_models }
     source: file://models_secret_decode_test.lua
-    modules: [sql, funcs]
+    modules: [sql, funcs, env, crypto, base64]
     method: run
     imports:
       test: wippy.test:test
@@ -323,3 +323,57 @@ entries:
       model_catalog: kickside.models.catalog:model_catalog
       registry_models: wippy.llm.discovery:models
       models_repo: kickside.models.persist:repo
+
+  - name: secret_key_policy_test
+    kind: function.lua
+    meta: { type: test, suite: kickside_models }
+    source: file://secret_key_policy_test.lua
+    method: run
+    modules: [json, sql]
+    imports:
+      test: wippy.test:test
+      card_policy: kickside.models.catalog:card_policy
+      catalog_policy: kickside.models.catalog:policy
+      models_repo: kickside.models.persist:repo
+      fake_http: app:card_save_fake_http
+      admin_handler: app:card_save_admin
+
+  - name: profile_driver_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_models}
+    source: file://profile_driver_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      models_repo: kickside.models.persist:repo
+      driver: app:profile_driver_fixture
+      fixture: app:profile_execution_fixture
+
+  - name: profile_execution_fixture
+    kind: library.lua
+    source: file://profile_driver_fixture.lua
+    modules: [sql]
+
+  - name: profile_driver_fixture
+    kind: library.lua
+    source: file://fixtures/profile_driver.lua
+    imports:
+      ctx: app:profile_context_fixture
+      models_repo: app:profile_repo_fixture
+      catalog_policy: kickside.models.catalog:policy
+      providers: app:profile_execution_fixture
+
+  - name: profile_repo_fixture
+    kind: library.lua
+    source: file://fixtures/profile_repo.lua
+    modules: [uuid, funcs, process]
+    imports:
+      sql: app:profile_execution_fixture
+      models_types: kickside.models:models_types
+      models_cache: kickside.models.service:models_cache
+      catalog_policy: kickside.models.catalog:policy
+      catalog_card_policy: kickside.models.catalog:card_policy
+
+  - name: profile_context_fixture
+    kind: library.lua
+    source: file://profile_context_fixture.lua

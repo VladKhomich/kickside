@@ -52,6 +52,16 @@ end
 
 local function define_tests()
     test.describe("model provider-profile secrets", function()
+        test.it("opens ciphertext written with the existing raw environment key", function()
+            local hex = assert(require("env").get("ENCRYPTION_KEY"))
+            local bytes = ""
+            for i = 1, #hex, 2 do bytes = bytes .. string.char(tonumber(hex:sub(i, i + 1), 16)) end
+            local encrypted = assert(require("crypto").encrypt.aes('{"api_key":"previous-format-secret"}', bytes))
+            local encoded = require("base64").encode(encrypted)
+            local secret, err = catalog_policy.decrypt_secret(encoded)
+            test.is_nil(err, tostring(err))
+            test.eq(secret.api_key, "previous-format-secret")
+        end)
         test.it("returns an error for an undecryptable stored secret", function()
             local secret, err = catalog_policy.decrypt_secret("not-a-valid-encrypted-secret")
             test.is_nil(secret)
