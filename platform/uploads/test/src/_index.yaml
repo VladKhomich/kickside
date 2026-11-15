@@ -455,6 +455,8 @@ entries:
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       rasterizer: kickside.uploads.rasterize:rasterizer
+      stage_fixture: app:rasterize_stage_fixture
+      stage_logger: app:page_bytes_logger
       fixtures: app:rasterize_fixtures
       upload_query_repo: kickside.uploads.persist:upload_query_repo
     method: run
