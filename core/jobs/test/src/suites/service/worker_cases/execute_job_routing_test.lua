@@ -203,7 +203,7 @@ local function define_tests()
             test.is_true(found)
         end)
 
-        test.it("reports claimable work due past the overdue grace as unhealthy", function()
+        test.it("reports pending work due past the overdue grace as unhealthy", function()
             local db, db_err = get_db()
             test.is_nil(db_err)
             local dbtype = tostring(db:type())

@@ -1,7 +1,7 @@
 local test = require("test")
 local jobs = require("jobs")
 local fixture = require("fixture")
-local phases = {"policy", "workers", "fresh", "expired", "wake", "backlog", "failed", "degraded", "stranded", "control"}
+local phases = {"policy", "workers", "fresh", "pending", "running", "dead", "expired", "due", "overdue", "age", "stranded"}
 local function required(err: error?): error
     if not err then error(errors.new({kind = errors.INTERNAL, retryable = false, message = "health guard requires an error"})) end
     return err
@@ -39,7 +39,7 @@ return {run = test.run_cases(function()
                 end)
             end
         end
-        for _, phase in ipairs({"expired", "wake", "failed", "degraded"}) do
+        for _, phase in ipairs({"pending", "running", "dead", "expired", "due", "overdue"}) do
             for _, value in ipairs({-1, 0.5, "bad", math.huge}) do
                 test.it("invalid count/" .. phase .. "/" .. tostring(value), function()
                     proof(phase, {{n = value}}, "health." .. phase .. ".count")
@@ -49,37 +49,18 @@ return {run = test.run_cases(function()
                 proof(phase, {}, "health." .. phase .. ".count")
             end)
         end
-        for _, field in ipairs({"count", "overdue", "oldest_age_ms"}) do
-            for _, value in ipairs({false, "bad", math.huge, -1}) do
-                test.it("invalid backlog/" .. field .. "/" .. tostring(value), function()
-                    local row: any = {count = 0, overdue = 0, oldest_age_ms = 0}; row[field] = value
-                    proof("backlog", row, "health.backlog." .. field)
-                end)
-            end
-            test.it("missing backlog metric/" .. field, function()
-                local row: any = {count = 0, overdue = 0, oldest_age_ms = 0}; row[field] = nil
-                proof("backlog", row, "health.backlog." .. field)
+        for _, value in ipairs({false, "bad", math.huge, -1}) do
+            test.it("invalid due age/" .. tostring(value), function()
+                proof("age", {{age_ms = value}}, "health.age.age_ms")
             end)
         end
-        for _, value in ipairs({false, "bad", math.huge}) do
-            test.it("invalid control age/" .. tostring(value), function()
-                proof("control", {{age_ms = value}}, "health.control.age_ms")
-            end)
-        end
-        test.it("health retains its complete response and nullable control age", function()
+        test.it("health retains bounded status metrics and nullable due age", function()
             fixture.reset("", nil); local result, err = jobs.health(); test.is_nil(err); test.not_nil(result)
             test.is_true(result.healthy); test.eq(result.healthy_worker_count, 1); test.is_true(result.workers[1].healthy)
-            test.eq(result.failed_slots, 0); test.eq(result.expired_leases, 0); test.eq(result.undelivered_wake_keys, 0)
-            test.eq(result.degraded_jobs, 0); test.eq(result.oldest_undelivered_control_wake_age_ms, 0)
-            test.eq(result.due_unclaimed_count, 0); test.eq(result.due_unclaimed_oldest_age_ms, 0); test.eq(result.overdue_unclaimed_count, 0)
-            test.eq(fixture.releases, 1)
-        end)
-        test.it("degraded scheduled jobs do not create a health issue", function()
-            fixture.reset("degraded", nil); fixture.missing, fixture.value = true, {{n = 3}}
-            local result, err = jobs.health()
-            test.is_nil(err)
-            test.is_true(result.healthy)
-            test.eq(result.degraded_jobs, 3)
+            test.eq(result.pending_jobs,0);test.eq(result.running_jobs,0);test.eq(result.dead_jobs,0)
+            test.eq(result.expired_leases,0)
+            test.eq(result.due_unclaimed_count,0);test.eq(result.overdue_unclaimed_count,0);test.eq(result.due_unclaimed_oldest_age_ms,0)
+            test.eq(fixture.releases,1)
         end)
         test.it("names stranded job ids in its issue", function()
             fixture.reset("stranded", nil); fixture.missing, fixture.value = true, {{id = "job-one"}, {id = "job-two"}}
@@ -88,7 +69,7 @@ return {run = test.run_cases(function()
             test.is_false(result.healthy)
             test.eq(#result.issues, 1)
             test.eq(result.issues[1].code, "stranded_jobs")
-            test.eq(result.issues[1].count, 2)
+            test.is_nil(result.issues[1].count)
             test.eq(#result.issues[1].job_ids, 2)
             test.eq(result.issues[1].job_ids[1], "job-one")
             test.eq(result.issues[1].job_ids[2], "job-two")
