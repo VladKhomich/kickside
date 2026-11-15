@@ -14,38 +14,42 @@ entries:
   - funcs
   - json
   - store
+  - ctx
   imports:
     test: wippy.test:test
     models_repo: kickside.models.persist:repo
     llm: wippy.llm:llm
     contract: contract
+    providers: wippy.llm.discovery:providers
 
 - name: store_probe
   kind: function.lua
   source: file://test.lua
   method: store_probe
-  modules: [registry, security, funcs, json, store]
+  modules: [registry, security, funcs, json, store, ctx]
   imports:
     test: wippy.test:test
     models_repo: kickside.models.persist:repo
     llm: wippy.llm:llm
     contract: contract
+    providers: wippy.llm.discovery:providers
 - name: resolve_probe
   kind: function.lua
   source: file://test.lua
   method: resolve_probe
-  modules: [registry, security, funcs, json, store]
+  modules: [registry, security, funcs, json, store, ctx]
   imports:
     test: wippy.test:test
     models_repo: kickside.models.persist:repo
     llm: wippy.llm:llm
     contract: contract
+    providers: wippy.llm.discovery:providers
 
 - name: execution_probe
   kind: function.lua
   source: file://test.lua
   method: execution_probe
-  modules: [registry, security, funcs, json, store]
+  modules: [registry, security, funcs, json, store, ctx]
   imports:
     test: wippy.test:test
     models_repo: kickside.models.persist:repo

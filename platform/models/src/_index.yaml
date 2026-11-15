@@ -33,6 +33,19 @@ entries:
         path: .meta.target_db
       - entry: kickside.models:db_config
         path: .meta.db_id
+      - entry: kickside.models.catalog:catalog_database
+        path: .policy.resources +=
+
+  - name: encryption_key
+    kind: ns.requirement
+    default: wippy.bootloader.bootloaders:encryption_key_var
+    meta:
+      description: Environment variable holding the provider-profile encryption key.
+    targets:
+      - entry: kickside.models:db_config
+        path: .meta.encryption_key
+      - entry: kickside.models.catalog:catalog_key
+        path: .policy.resources +=
 
   - name: db_config
     kind: registry.entry
@@ -365,4 +378,4 @@ entries:
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
-    version: '*'
+    version: ">=0.3.8"

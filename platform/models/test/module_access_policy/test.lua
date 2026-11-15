@@ -87,6 +87,32 @@ local function define_tests()
             test.eq(response.provider_id, "kickside.models:provider")
             test.eq(response.calls, 9)
         end)
+        for _, hostile in ipairs({
+            {name = "redirecting saved credentials", context = {base_url = "https://untrusted.example.test/v1"}},
+            {name = "injecting provider headers", context = {headers = {Authorization = "untrusted", ["X-Untrusted"] = "present"}}},
+            {name = "changing driver configuration", context = {
+                organization = "untrusted", api_version = "untrusted", region = "untrusted",
+                timeout = 1, timeout_env = "UNTRUSTED_TIMEOUT", api_key_env = "UNTRUSTED_KEY",
+                base_url_env = "UNTRUSTED_URL", client_id = "untrusted:client", deadline_at = 1,
+                retry = {attempts = 10}, beta_features = {"untrusted"}, extension_option = "untrusted",
+            }},
+        }) do
+            test.it("keeps caller context from " .. hostile.name, function()
+                local profile = assert(models_repo.create_profile({id = "context-profile", name = "Context profile",
+                    provider_id = "kickside.models.providers:fixture_provider", api_key = "fixture-provider-secret"}))
+                assert(models_repo.upsert_card({name = "context-model", provider_profile_id = profile.id,
+                    provider_id = profile.provider_id, provider_model = "fixture", capabilities = {"generate"},
+                    max_tokens = 8192, output_tokens = 1024, enabled = true}))
+                local scope = assert(security.named_scope("app:selected_model_members"))
+                local actor = security.new_actor("context-member", {})
+                local response, err = funcs.new():with_actor(actor):with_scope(scope)
+                    :call("kickside.models.test.module_access:execution_probe", {model = "context-model", context = hostile.context})
+                local _, delete_err = models_repo.delete_profile(profile.id)
+                test.is_nil(delete_err, tostring(delete_err))
+                test.is_nil(err, tostring(err))
+                test.not_nil(response)
+            end)
+        end
         test.it("resolves saved models under the member execution scope", function()
             local name = "member-resolver-model"
             local card, save_err = models_repo.upsert_card({name = name, title = "Member model",
@@ -208,7 +234,10 @@ return {
         local route = card.providers[1]
         assert(route.id == "kickside.models:provider", "Saved route bypasses the models binding")
         assert(require("json").encode(card):find("fixture-provider-secret", 1, true) == nil)
-        local provider, open_err = require("providers").open(route.id, route.context)
+        local requested_context = {}
+        for key, value in pairs(route.context) do requested_context[key] = value end
+        for key, value in pairs(input.context or {}) do requested_context[key] = value end
+        local provider, open_err = require("providers").open(route.id, requested_context)
         if open_err then return nil, open_err end
         local calls = 0
         for _, method in ipairs({"status", "generate", "embed", "structured_output", "evaluate"}) do
@@ -229,7 +258,7 @@ return {
             function() return llm.structured_output({type = "object"}, "hello", {model = input.model, max_tokens = 64}) end,
             function() return llm.status({model = input.model}) end,
         }) do
-            local result, err = operation()
+            local result: any, err = operation()
             assert(err == nil, tostring(err))
             assert(result ~= nil, "LLM call fails")
             if index == 1 then assert(result.result == "ok") end
@@ -244,6 +273,16 @@ return {
         local context = require("ctx").all()
         assert(context.api_key == "fixture-provider-secret", "Provider authentication fails")
         assert(context.driver_default == "retained", "Driver options disappear")
+        assert(context.base_url ~= "https://untrusted.example.test/v1", "Caller redirects saved credentials")
+        assert(not context.headers or not context.headers["X-Untrusted"], "Caller injects provider headers")
+        for _, key in ipairs({"organization", "api_version", "region", "client_id", "extension_option"}) do
+            assert(context[key] ~= "untrusted", "Caller changes " .. key)
+        end
+        assert(context.timeout ~= 1 and context.deadline_at ~= 1, "Caller changes time limits")
+        assert(context.timeout_env ~= "UNTRUSTED_TIMEOUT" and context.api_key_env ~= "UNTRUSTED_KEY"
+            and context.base_url_env ~= "UNTRUSTED_URL", "Caller changes environment references")
+        assert(not context.retry or context.retry.attempts ~= 10, "Caller changes retry policy")
+        assert(not context.beta_features or context.beta_features[1] ~= "untrusted", "Caller changes API features")
         if input and input.options and input.options.reject then return nil, "fixture-driver-error" end
         local result = {content = "ok"}
         if input and input.schema then result = {data = {ok = true}}

@@ -11,6 +11,7 @@ entries:
     models_repo: kickside.models.persist:repo
     llm: wippy.llm:llm
     contract: contract
+    providers: wippy.llm.discovery:providers
 - name: fixture_provider
   kind: registry.entry
   meta: {type: llm.provider}
@@ -19,6 +20,8 @@ entries:
     options: {driver_default: retained}
 - name: fixture_driver
   kind: contract.binding
+  optional_context:
+    extension_option: {type: string}
   contracts:
   - contract: wippy.llm:provider
     methods: {status: kickside.models.providers:fixture_driver_probe}

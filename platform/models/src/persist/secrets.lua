@@ -1,21 +1,13 @@
 local crypto = require("crypto")
 local base64 = require("base64")
-local env = require("env")
+local secret_cipher = require("secret_cipher")
+local models_types = require("models_types")
 
 local M = {}
 
 local function key(): (string?, string?)
-    local hex, err = env.get("ENCRYPTION_KEY")
-    if err then return nil, "failed to read ENCRYPTION_KEY: " .. tostring(err) end
-    if not hex or hex == "" then return nil, "ENCRYPTION_KEY environment variable not set" end
-    if #hex ~= 64 then return nil, "ENCRYPTION_KEY must be 64 hex characters" end
-
-    local bytes = ""
-    for i = 1, #hex, 2 do
-        local byte = tonumber(hex:sub(i, i + 1), 16)
-        if not byte then return nil, "ENCRYPTION_KEY contains invalid hex characters" end
-        bytes = bytes .. string.char(byte :: integer)
-    end
+    local bytes, err = secret_cipher.load_key(models_types.encryption_key())
+    if err or not bytes then return nil, "failed to read ENCRYPTION_KEY: " .. tostring(err) end
     return bytes
 end
 

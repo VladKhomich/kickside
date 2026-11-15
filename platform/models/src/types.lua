@@ -32,6 +32,11 @@ function M.db_id(): string
     return entry.meta.db_id :: string
 end
 
+function M.encryption_key(): string
+    local entry = select(1, registry.get(M.DB_CONFIG)) :: any
+    return entry.meta.encryption_key :: string
+end
+
 function M.slug(value: any): string
     local s = tostring(value or ""):lower()
     s = s:gsub("[^%w%-_%.]+", "-")

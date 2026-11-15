@@ -5,57 +5,62 @@ entries:
     kind: function.lua
     source: file://driver.lua
     method: status
-    modules: [ctx]
+    modules: [ctx, registry]
     imports:
+      model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
       catalog_policy: kickside.models.catalog:policy
       providers: wippy.llm.discovery:providers
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
+      policies: [kickside.models.catalog:catalog_read, kickside.models.catalog:catalog_database, kickside.models.catalog:catalog_key, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
   - name: generate
     kind: function.lua
     source: file://driver.lua
     method: generate
-    modules: [ctx]
+    modules: [ctx, registry]
     imports:
+      model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
       catalog_policy: kickside.models.catalog:policy
       providers: wippy.llm.discovery:providers
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
+      policies: [kickside.models.catalog:catalog_read, kickside.models.catalog:catalog_database, kickside.models.catalog:catalog_key, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
   - name: embed
     kind: function.lua
     source: file://driver.lua
     method: embed
-    modules: [ctx]
+    modules: [ctx, registry]
     imports:
+      model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
       catalog_policy: kickside.models.catalog:policy
       providers: wippy.llm.discovery:providers
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
+      policies: [kickside.models.catalog:catalog_read, kickside.models.catalog:catalog_database, kickside.models.catalog:catalog_key, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
   - name: structured_output
     kind: function.lua
     source: file://driver.lua
     method: structured_output
-    modules: [ctx]
+    modules: [ctx, registry]
     imports:
+      model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
       catalog_policy: kickside.models.catalog:policy
       providers: wippy.llm.discovery:providers
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
+      policies: [kickside.models.catalog:catalog_read, kickside.models.catalog:catalog_database, kickside.models.catalog:catalog_key, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
   - name: evaluate
     kind: function.lua
     source: file://driver.lua
     method: evaluate
-    modules: [ctx]
+    modules: [ctx, registry]
     imports:
+      model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
       catalog_policy: kickside.models.catalog:policy
       providers: wippy.llm.discovery:providers
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
+      policies: [kickside.models.catalog:catalog_read, kickside.models.catalog:catalog_database, kickside.models.catalog:catalog_key, kickside.models.providers.profile:provider_contract, kickside.models.providers.profile:provider_call, kickside.models.providers.profile:provider_context]
   - name: provider_contract
     kind: security.policy
     meta: {private: true}

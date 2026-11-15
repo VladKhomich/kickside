@@ -11,7 +11,7 @@ function M.open(id, context)
     assert(id == "wippy.llm.openai_compat:provider")
     assert(context.api_key == "fixture-cache-secret")
     assert(context.base_url == "https://provider.example.test/v1")
-    assert(context.deadline_at == 12345)
+    assert(context.deadline_at == false, "Caller deadline reaches the saved driver")
     local function invoke(_, input)
         assert(input.model == "wire-model")
         M.calls = M.calls + 1

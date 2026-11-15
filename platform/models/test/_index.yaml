@@ -366,7 +366,9 @@ entries:
   - name: profile_driver_fixture
     kind: library.lua
     source: file://fixtures/profile_driver.lua
+    modules: [registry]
     imports:
+      model_catalog: app:profile_catalog_fixture
       ctx: app:profile_context_fixture
       models_repo: app:profile_repo_fixture
       catalog_policy: kickside.models.catalog:policy
@@ -386,3 +388,11 @@ entries:
   - name: profile_context_fixture
     kind: library.lua
     source: file://profile_context_fixture.lua
+
+  - name: profile_catalog_fixture
+    kind: library.lua
+    source: file://fixtures/profile_catalog.lua
+    imports:
+      registry_models: wippy.llm.discovery:models
+      models_repo: app:profile_repo_fixture
+      catalog_card_policy: kickside.models.catalog:card_policy
