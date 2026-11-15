@@ -269,7 +269,6 @@ local function define_tests()
                 if tostring(db:type()) == sql.type.SQLITE then
                     statements[#statements + 1] = "DROP INDEX uq_kickside_job_running_legacy_concurrency"
                     statements[#statements + 1] = "DROP INDEX idx_kickside_job_running_capacity"
-                    statements[#statements + 1] = "DROP INDEX idx_job_capacity_due_group"
                 end
                 statements[#statements + 1] = "ALTER TABLE kickside_job DROP COLUMN capacity_group"
                 statements[#statements + 1] = [[CREATE UNIQUE INDEX uq_kickside_job_running_concurrency ON kickside_job(concurrency_key)

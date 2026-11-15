@@ -88,49 +88,38 @@ makes the job claimable only after its registered execution child has ended.
 A gone child recovers in the same pass; a live child retains the termination fence.
 Heartbeats renew only matching, unexpired executions without a termination fence.
 
-`jobs.health()` reports `stranded_jobs` with up to 16 sample `job_ids` for
-erroneous pending one-shot jobs without a schedule. This invariant is unhealthy immediately; the
-existing `health.overdue_grace` bounds due-work diagnostics only. Scheduled retry
-errors remain part of `degraded_jobs` without creating a stranded-job issue.
+`jobs.health()` is a read-only operator diagnostic. It uses existing indexes and
+adds no schema, writes, claim checks or enqueue work. Each count reads at most
+1,001 index entries: exact through 1,000, then the lower bound 1,000 with its
+companion `<field>_capped` boolean set to `true`. Exactly 1,000 is not capped.
 
-Health is an instance-wide operator diagnostic. Each numeric count retains its
-existing field name and counts the same population. Counts are exact through
-1,000; above that they return the lower bound 1,000 and set the companion
-`<field>_capped` boolean to `true`. The counted fields are `failed_slots`,
-`healthy_worker_count`, `due_unclaimed_count`, `overdue_unclaimed_count`,
-`expired_leases`, `undelivered_wake_keys`, and `degraded_jobs`. Counted issues
-(`due_work_unclaimed`, `stranded_jobs`, `slots_failed`) use `{count, capped}`.
-A false `capped` means the count is exact, including exactly 1,000 matches.
-`stranded_jobs.job_ids` contains the first at most 16 matching IDs in ascending
-order; its `count` describes the population, independently of the sample.
+- `pending_jobs`, `running_jobs`, `dead_jobs`: jobs in each status. Terminal job
+  failures use the `dead` status; execution history is not inspected.
+- `due_unclaimed_count`: pending jobs with `scheduled_at <= now`, **due, not
+  necessarily claimable**. Concurrency and capacity blocking are ignored.
+- `overdue_unclaimed_count`: the same pending population past `health.overdue_grace`.
+  `due_work_unclaimed` issues carry this lower bound as `{count, capped}`.
+- `due_unclaimed_oldest_age_ms`: age of the oldest due pending job, read by an
+  ordered index seek with `LIMIT 1`; zero when none exists. Independent of the cap.
+- `expired_leases`: running jobs with an expired, non-null lease.
+- `healthy_worker_count`: pulses within the lease window. The worker list remains
+  limited to 256, with individual freshness reported as `healthy`.
 
-The existing `healthy`, issue codes, worker fields, and age fields keep their
-meaning. The worker list remains limited to 256. Ages describe the oldest
-matching work, with zero for an empty population, and remain independent of the
-count cap. Due and overdue counts apply the canonical dispatch eligibility
-predicate before their ordered 1,001-row limit; blocked concurrency keys and
-saturated capacity do not count as claimable work. The scheduler's uncapped
-backlog API remains unchanged when no limit is supplied.
+`stranded_jobs.job_ids` samples at most 16 erroneous unscheduled pending one-shot
+jobs from a window of at most 1,001 pending jobs in status-index order (priority
+then schedule). The window is bounded before filtering for stranded work. The
+sample is neither exhaustive nor globally ordered; it can omit stranded jobs,
+so an absent issue does not prove their absence. This issue has no population
+`count` or `capped` field. `healthy` means no issue is observed by these signals.
 
-Health performs no writes. Counts read at most 1,001 matching rows through their
-indexes, and capacity discovery uses indexed existence and first/last group
-reads. Worker discovery seeks `(worker, scheduled_at <= now)` even when every
-queued job is in the future. Failed-slot diagnostics start from current parked
-slots and seek their current execution by `(job_id, execution_seq)`; retained
-failures from superseded executions do not drive that read. Its cost follows
-the parked-slot population when current executions have not failed.
-Bounded health reads supply their indexed SQL sources to the canonical
-eligibility builder; shared claims keep their ordinary sources and index
-selection. Worker/group reads follow the worker expression and group index
-order, without sorting the due queue. The failed-slot count reads the parked-slot
-index in priority/ID order and seeks the current execution before its cap.
-
-Filtering for dynamic eligibility can visit more candidate rows: a
-100,000-job backlog blocked behind one running concurrency key takes about
-22 ms on PostgreSQL and 62 ms on SQLite for the ordered matching read. This is
-a known cost profile of the operator diagnostic; the limit follows eligibility
-so the result still includes eligible work beyond blocked candidates. Normal
-distributions use bounded indexed reads without retrieving the full job set.
+Diagnostic contract changes: due and overdue fields previously counted only
+claimable jobs. They now include blocked jobs. `failed_slots`, `degraded_jobs`,
+`undelivered_wake_keys`, `oldest_undelivered_control_wake_age_ms` and the
+`slots_failed` issue are omitted because existing indexes cannot bound those
+populations. Status counts replace failure-history inspection. No job data or
+scheduler behavior changes; the scheduler's eligibility-aware backlog API stays
+unchanged. Each health read is bounded independently of job-table size, including
+large blocked, future-only, mixed-deadline and successful parked-slot backlogs.
 
 After committing a transaction containing `jobs.enqueue_tx(tx, dbtype, params)`,
 call `jobs.nudge_workers(): (integer, error?)`. Never nudge before commit or after

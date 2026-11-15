@@ -153,15 +153,3 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
-
-  - name: 27_health_reads
-    kind: function.lua
-    meta:
-      type: migration
-      target_db: ""
-      timestamp: "2026-11-14T00:00:27Z"
-    source: file://27_health_reads.lua
-    imports:
-      migration: wippy.migration:migration
-      eligibility: kickside.core.jobs.persist:eligibility
-    method: migrate

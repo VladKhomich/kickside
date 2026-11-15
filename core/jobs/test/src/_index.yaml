@@ -4241,13 +4241,6 @@ entries:
       test: wippy.test:test
       jobs: app:health_bounded_source
       fixture: app:job_fixture
-      health_migration: app:health_reads_migration
       eligibility: kickside.core.jobs.persist:eligibility
       query_jobs: app:health_native_source
       query_fixture: app:health_native_fixture
-  - name: health_reads_migration
-    kind: library.lua
-    source: file://health_reads_migration.lua
-    imports:
-      migration: wippy.migration:core
-      eligibility: kickside.core.jobs.persist:eligibility

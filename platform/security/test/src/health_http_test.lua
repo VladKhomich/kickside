@@ -82,7 +82,7 @@ return {run = test.run_cases(function()
                 test.eq(type(body.health.healthy), "boolean")
                 test.eq(type(body.health.workers), "table")
                 test.eq(type(body.health.issues), "table")
-                for _, key in ipairs({"due_unclaimed_count", "overdue_unclaimed_count", "healthy_worker_count", "expired_leases"}) do
+                for _, key in ipairs({"due_unclaimed_count", "overdue_unclaimed_count", "healthy_worker_count", "expired_leases", "pending_jobs", "running_jobs", "dead_jobs"}) do
                     test.eq(type(body.health[key]), "number")
                     test.eq(type(body.health[key .. "_capped"]), "boolean")
                 end
@@ -90,7 +90,8 @@ return {run = test.run_cases(function()
                 local stranded = {}
                 for _, issue in ipairs(body.health.issues) do
                     if issue.code == "stranded_jobs" then
-                        test.is_false(issue.capped)
+                        test.is_nil(issue.capped)
+                        test.is_nil(issue.count)
                         test.is_true(#issue.job_ids <= 16)
                         for _, id in ipairs(issue.job_ids) do stranded[id] = true end
                     end
