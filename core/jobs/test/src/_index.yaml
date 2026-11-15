@@ -4356,6 +4356,7 @@ entries:
       lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
       lease_status: kickside.core.jobs.persist:lease_status
+      proc_supervisor: kickside.core.jobs:proc_supervisor
       wake: kickside.core.jobs.persist:wake
       slot_purge: kickside.core.jobs.persist:slot_purge
       clock: kickside.core.jobs:clock
