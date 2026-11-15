@@ -80,10 +80,8 @@ entries:
 
 - name: deadline_probe
   kind: function.lua
-  source: file://test.lua
-  method: deadline_probe
-  modules: [time, registry, security, funcs]
+  source: file://deadline_probe.lua
+  method: run
+  modules: [time]
   imports:
-    test: wippy.test:test
-    models_repo: kickside.models.persist:repo
     llm: wippy.llm:llm
