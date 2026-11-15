@@ -37,6 +37,31 @@ return {run = test.run_cases(function()
             test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id IN ($1,$2)", {current, stale})))
             test.is_nil(select(2, db:release()))
         end)
+        test.it("advances across current rows without reaching beyond the bounded window", function()
+            local db = assert(sql.get("app:db"))
+            local revision = assert(fields.revision({{path = {"api_key"}, type = "string"}}))
+            local ids = {}
+            for i = 1, 5 do
+                local id = uuid.v7()
+                ids[#ids + 1] = id
+                test.is_nil(select(2, db:execute([[INSERT INTO kickside_components
+                    (component_id,impl_id,private_context,secrets_revision)
+                    VALUES ($1,'app:secret_kind',$2,$3)]],
+                    {id, assert(json.encode({api_key = "window-secret"})), i < 5 and revision or "older"})))
+            end
+            for _ = 1, 2 do
+                local report = assert(migration.run(2))
+                test.eq(report.converted, 0)
+                test.eq(report.invalid, 0)
+                test.is_true(report.needs_continue)
+                test.is_nil(assert(db:query("SELECT encrypted_secrets FROM kickside_components WHERE component_id=$1", {ids[5]}))[1].encrypted_secrets)
+            end
+            local report = assert(migration.run(2))
+            test.eq(report.converted, 1)
+            test.is_false(report.needs_continue)
+            for _, id in ipairs(ids) do test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id=$1", {id}))) end
+            test.is_nil(select(2, db:release()))
+        end)
         test.it("advances bounded windows across malformed rows", function()
             local db = assert(sql.get("app:db"))
             local ids = {}

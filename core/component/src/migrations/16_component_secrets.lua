@@ -34,6 +34,11 @@ return require("migration").define(function()
                         local _, err = db:execute("ALTER TABLE kickside_components ADD COLUMN secrets_revision TEXT")
                         if err then error(err) end
                     end
+                    local _, index_err = db:execute([[CREATE INDEX IF NOT EXISTS idx_kickside_components_impl_component
+                        ON kickside_components (impl_id, component_id)]])
+                    if index_err then error(index_err) end
+                    local _, drop_err = db:execute("DROP INDEX IF EXISTS idx_kickside_components_impl_id")
+                    if drop_err then error(drop_err) end
                 end)
             end)
         end

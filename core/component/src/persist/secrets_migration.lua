@@ -9,7 +9,7 @@ local cleanup = require("error_envelope").cleanup
 
 type Report = {converted: integer, invalid: integer, needs_continue: boolean}
 type Candidate = {component_id: string, impl_id: string, private_context: unknown,
-    encrypted_secrets: string?, secrets_generation: integer?, secrets_incarnation: string?}
+    encrypted_secrets: string?, secrets_generation: integer?, secrets_incarnation: string?, secrets_revision: string?}
 type Change = {id: string, context: string?, secret: types.SecretWrite?}
 type Scan = {cursor: string?, upper: string?, complete: boolean, revision: string}
 type Parameter = string | integer
@@ -123,13 +123,11 @@ local function window(db: sql.DB, engine: string, kind: types.SecretKind, scan: 
     limit: integer): (integer?, integer?, integer?, error?)
     local tx, begin_err = db:begin()
     if begin_err then return nil, nil, nil, begin_err end
-    local parameters: {Parameter} = {kind.id, scan.upper :: string, kind.revision :: string}
-    local filter = ""
-    if scan.cursor then parameters[4] = scan.cursor; filter = " AND component_id > $4" end
-    local rows, primary = tx:query([[SELECT component_id,impl_id,private_context,encrypted_secrets,secrets_generation,secrets_incarnation
-        FROM kickside_components WHERE impl_id=$1 AND component_id <= $2
-        AND (secrets_revision IS NULL OR secrets_revision <> $3)]] .. filter
-        .. " ORDER BY component_id LIMIT " .. tostring(limit + 1)
+    local parameters: {Parameter} = {kind.id, scan.upper :: string, scan.cursor or "00000000-0000-0000-0000-000000000000", limit + 1}
+    local query = [[SELECT component_id,impl_id,private_context,encrypted_secrets,secrets_generation,secrets_incarnation,secrets_revision
+        FROM kickside_components WHERE impl_id=$1 AND component_id <= $2 AND component_id %s $3
+        ORDER BY component_id LIMIT $4]]
+    local rows, primary = tx:query(string.format(query, scan.cursor and ">" or ">=")
         .. (engine == sql.type.POSTGRES and " FOR UPDATE" or ""), parameters)
     local changes: {Change} = {}
     local converted, invalid, processed = 0, 0, 0
@@ -138,13 +136,15 @@ local function window(db: sql.DB, engine: string, kind: types.SecretKind, scan: 
         processed = math.min(limit, #rows)
         for index = 1, processed do
             local row = rows[index] :: Candidate
-            local change, prepare_err = prepare(row, kind)
-            if prepare_err then
-                if invalid_row(prepare_err) then invalid = invalid + 1
-                else primary = prepare_err; break end
-            elseif change then
-                changes[#changes + 1] = change
-                if change.secret then converted = converted + 1 end
+            if row.secrets_revision ~= kind.revision then
+                local change, prepare_err = prepare(row, kind)
+                if prepare_err then
+                    if invalid_row(prepare_err) then invalid = invalid + 1
+                    else primary = prepare_err; break end
+                elseif change then
+                    changes[#changes + 1] = change
+                    if change.secret then converted = converted + 1 end
+                end
             end
             cursor = row.component_id
         end
