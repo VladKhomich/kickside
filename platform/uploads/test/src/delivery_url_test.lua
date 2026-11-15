@@ -15,7 +15,7 @@ return {run = test.run_cases(function()
         local api = uploads
         local function record(path)
             local id = uuid.v4()
-            local actor=security.actor():id()
+            local actor=assert(security.actor()):id()
             local container=types.component_id_for_owner(actor)
             local db=assert(sql.get("app:db"))
             assert(db:execute([[INSERT INTO kickside_components(component_id,impl_id,private_context,created_at,updated_at)

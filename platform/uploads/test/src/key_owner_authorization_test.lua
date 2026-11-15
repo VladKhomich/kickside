@@ -13,7 +13,7 @@ local raw=require("raw")
 local http=require("http_probe")
 local function probe(args)
     local key,key_err=env.get("ENCRYPTION_KEY")
-    local value,err=tokens.pack_read({upload_id=args.id})
+    local value,err=tokens.pack_read({upload_id=args.id,artifact_id=args.artifact_id})
     return {value=value,error=err,key_denied=key==nil and key_err~=nil}
 end
 local function raw_probe(args)

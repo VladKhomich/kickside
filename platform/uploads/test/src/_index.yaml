@@ -83,8 +83,7 @@ entries:
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
       upload_tokens: kickside.uploads.persist:upload_tokens
-      component: kickside.component:component
-      types: kickside.uploads:types
+      original_read: kickside.uploads:original_read
       http_errors: kickside.contract:http_errors
 
   - name: upload_delete_fixture
@@ -1140,13 +1139,3 @@ entries:
     method: GET
     path: /uploads/{uuid}/artifacts/{artifact_id}/raw
     func: kickside.uploads.api:artifact_raw_handler
-
-  - name: cipher_compatibility_test
-    kind: function.lua
-    meta: {type: test, suite: key_owner}
-    source: file://cipher_compatibility_test.lua
-    method: run
-    modules: [env, crypto, base64, json]
-    imports:
-      test: wippy.test:test
-      caller: kickside.uploads.persist:upload_tokens

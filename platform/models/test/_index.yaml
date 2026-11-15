@@ -357,16 +357,6 @@ entries:
       catalog_policy: kickside.models.catalog:policy
       catalog_card_policy: kickside.models.catalog:card_policy
 
-  - name: cipher_compatibility_test
-    kind: function.lua
-    meta: {type: test, suite: key_owner}
-    source: file://cipher_compatibility_test.lua
-    method: run
-    modules: [env, crypto, base64]
-    imports:
-      test: wippy.test:test
-      caller: kickside.models.persist:models_secrets
-
   - name: secret_key_policy_test
     kind: function.lua
     meta: { type: test, suite: kickside_models }

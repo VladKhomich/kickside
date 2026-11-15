@@ -7,8 +7,7 @@ local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
 local metadata_sanitizer = require("metadata_sanitizer")
 local upload_tokens = require("upload_tokens")
-local component = require("component")
-local types = require("types")
+local original_read = require("original_read")
 local http_errors = require("http_errors")
 
 local function json_error(res: any, status: any, message: string, details: any?)
@@ -47,12 +46,7 @@ local function require_owned_upload(req: any, res: any): (any?, string?)
         json_error(res, http.STATUS.NOT_FOUND, "Upload not found")
         return nil, "not_found"
     end
-    local component_id = types.component_id_for_owner(upload.actor_id)
-    if not component_id then
-        json_error(res, http.STATUS.INTERNAL_ERROR, "Upload owner is invalid")
-        return nil, "invalid_owner"
-    end
-    local _, access_err = component.validate_access(component_id, component.ACCESS.READ)
+    local _, access_err = original_read.authorize_container(upload.actor_id :: string)
     if access_err then
         if errors.is(access_err, errors.PERMISSION_DENIED) or errors.is(access_err, errors.NOT_FOUND) then
             json_error(res, http.STATUS.NOT_FOUND, "Upload not found")
@@ -98,12 +92,7 @@ local function require_readable_upload(req: any, res: any, artifact_id: string?)
         json_error(res, http.STATUS.UNAUTHORIZED, "Invalid actor ID")
         return nil, "unauthorized"
     end
-    local component_id = types.component_id_for_owner(upload.actor_id)
-    if not component_id then
-        json_error(res, http.STATUS.INTERNAL_ERROR, "Upload owner is invalid")
-        return nil, "invalid_owner"
-    end
-    local _, access_err = component.validate_access(component_id, component.ACCESS.READ)
+    local _, access_err = original_read.authorize_container(upload.actor_id :: string)
     if access_err then
         if errors.is(access_err, errors.PERMISSION_DENIED) or errors.is(access_err, errors.NOT_FOUND) then
             json_error(res, http.STATUS.NOT_FOUND, "Upload not found")

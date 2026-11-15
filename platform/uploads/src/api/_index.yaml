@@ -298,8 +298,7 @@ entries:
     source: file://artifacts.lua
     imports:
       upload_response: kickside.uploads.api:upload_response
-      component: kickside.component:component
-      types: kickside.uploads:types
+      original_read: kickside.uploads:original_read
       http_errors: kickside.contract:http_errors
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
@@ -337,8 +336,7 @@ entries:
     source: file://artifacts.lua
     imports:
       upload_response: kickside.uploads.api:upload_response
-      component: kickside.component:component
-      types: kickside.uploads:types
+      original_read: kickside.uploads:original_read
       http_errors: kickside.contract:http_errors
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo

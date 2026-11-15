@@ -311,7 +311,7 @@ local function define_tests()
 
         test.it("packs narrow upload read capabilities without execution identity", function()
             local upload_id = uuid_v4()
-            local actor=security.actor():id()
+            local actor=assert(security.actor()):id()
             local container=upload_types.component_id_for_owner(actor)
             local db=assert(sql.get("app:db"))
             assert(db:execute([[INSERT INTO kickside_components(component_id,impl_id,private_context,created_at,updated_at)

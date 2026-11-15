@@ -7,21 +7,28 @@ local types = require("types")
 
 local M = {}
 
+function M.authorize_container(actor_id: string): (boolean?, error?)
+    local container_id = types.component_id_for_owner(actor_id)
+    if not container_id then
+        return nil, errors.new({kind = errors.INTERNAL, message = "Upload owner is invalid", retryable = false})
+    end
+    local _, err = component.validate_access(container_id, component.ACCESS.READ)
+    if err then return nil, err end
+    return true, nil
+end
+
 function M.authorize(upload: types.UploadReadRef): (boolean?, error?)
     local actor = security.actor()
     if not actor then
         return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "Authentication required",
             retryable = false, details = {code = "authentication_required"}})
     end
-    local container_id = types.component_id_for_owner(upload.actor_id)
-    if not container_id then
-        return nil, errors.new({kind = errors.INTERNAL, message = "Upload owner is invalid", retryable = false})
-    end
-    local _, container_err = component.validate_access(container_id, component.ACCESS.READ)
-    if not container_err then return true, nil end
+    local allowed, container_err = M.authorize_container(upload.actor_id)
+    if allowed then return true, nil end
     if not errors.is(container_err, errors.PERMISSION_DENIED) and not errors.is(container_err, errors.NOT_FOUND) then
         return nil, container_err
     end
+    local container_id = types.component_id_for_owner(upload.actor_id)
     local references, reference_err = component.query({meta = {upload_id = upload.uuid},
         access_mask = component.ACCESS.READ, limit = 16, include = {meta = false}})
     if reference_err then return nil, reference_err end
@@ -37,7 +44,7 @@ function M.authorize(upload: types.UploadReadRef): (boolean?, error?)
             if not checked[principal_key] then
                 checked[principal_key] = true
                 if principal_key == upload.actor_id then return true, nil end
-                local masks, masks_err = component.principal_masks_system(principal, {container_id})
+                local masks, masks_err = component.principal_masks_system(principal, {container_id :: string})
                 if masks_err then return nil, masks_err end
                 if access_policy.has_all((masks or {})[container_id] or 0, component.ACCESS.READ) then return true, nil end
             end

@@ -178,6 +178,45 @@ return {run = test.run_cases(function()
             denied(reassigned, reassign_err)
             test.eq(raw(reader).status_code, 404)
         end)
+        test.it("mints artifact capabilities only for upload-container readers", function()
+            register(owner, {}, types.component_id_for_owner(owner), types.IMPL)
+            local reference = register(owner, {upload_id = upload_id})
+            share(owner, reference, reader, 1)
+            local artifact_id = uuid.v4()
+            local db = assert(sql.get("app:db"))
+            assert(db:execute([[INSERT INTO kickside_upload_artifacts
+                (artifact_id,upload_id,kind,mime_type,locator,metadata)
+                VALUES($1,$2,'content','text/plain',$3,'{}')]],
+                {artifact_id, upload_id, '{"storage_id":"app:uploads","storage_path":"' .. upload_id .. '"}'}))
+            db:release()
+            local suffix = "/artifacts/" .. artifact_id .. "/raw"
+            test.eq(raw(reader).status_code, 200)
+            test.eq(raw(reader, nil, upload_id, suffix).status_code, 404)
+            test.eq(raw(owner, nil, upload_id, suffix).body, "private bytes")
+            local function mint(actor, artifact)
+                local scope = security.new_scope({
+                    assert(security.policy("app:read_token_probe_call")),
+                    assert(security.policy("kickside.uploads.security:module_runtime")),
+                    assert(security.policy("app:read_token_runtime")),
+                    assert(security.policy("kickside.uploads.security:uploads_resource_access")),
+                    assert(security.policy("app:read_token_issuer"))})
+                local result, err = funcs.new():with_actor(security.new_actor(actor, {})):with_scope(scope)
+                    :call("app:read_token_probe", {id = upload_id, artifact_id = artifact})
+                test.is_nil(err, tostring(err)); test.is_true(result.key_denied)
+                return result
+            end
+            local original = mint(reader)
+            test.is_nil(original.error, tostring(original.error)); test.not_nil(original.value)
+            test.eq(raw(reader, "?token=" .. original.value).status_code, 200)
+            test.eq(raw(reader, "?token=" .. original.value, upload_id, suffix).status_code, 404)
+            local refused = mint(reader, artifact_id)
+            test.is_nil(refused.value, "reference READ must not grant artifact capabilities")
+            test.not_nil(refused.error)
+            local allowed = mint(owner, artifact_id)
+            test.is_nil(allowed.error, tostring(allowed.error)); test.not_nil(allowed.value)
+            local response = raw(reader, "?token=" .. allowed.value, upload_id, suffix)
+            test.eq(response.status_code, 200, response.body); test.eq(response.body, "private bytes")
+        end)
         test.it("preserves upload-scoped read tokens used by document readers", function()
             register(owner,{},types.component_id_for_owner(owner),types.IMPL)
             local issued,issue_err=call_as(owner,"kickside.uploads.tokens:pack_read",upload_id,{upload_id=upload_id})

@@ -9,12 +9,12 @@ local DEFAULT_READ_TTL_SECONDS = 300
 local MAX_READ_TTL_SECONDS = 3600
 
 -- Get encryption key from environment
-local function get_encryption_key()
+local function get_encryption_key(): string
     local variable, variable_err = env.get("kickside.uploads.env:encryption_key")
     if variable_err then error(variable_err, 0) end
     local key, err = secret_cipher.load_key(variable)
     if err then error(err, 0) end
-    return key
+    return key :: string
 end
 
 local function base64url_encode(raw: string): (string?, string?)
@@ -76,7 +76,13 @@ local function pack_read(params)
 
     local upload, lookup_err = require("upload_query_repo").get_read_ref(params.upload_id)
     if lookup_err then return nil, lookup_err end
-    local _, access_err = require("original_read").authorize({uuid = params.upload_id, actor_id = upload.actor_id :: string})
+    local read_policy = require("original_read")
+    local _, access_err
+    if params.artifact_id ~= nil then
+        _, access_err = read_policy.authorize_container(upload.actor_id :: string)
+    else
+        _, access_err = read_policy.authorize({uuid = params.upload_id, actor_id = upload.actor_id :: string})
+    end
     if access_err then return nil, access_err end
 
     local now = os.time()
