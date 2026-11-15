@@ -7,10 +7,10 @@ modules:
     - name: kickside/contract
       version: 0.0.0
     - name: kickside/core
-      version: 0.0.0
+      version: 0.3.17
     - name: kickside/doc2md
-      version: 0.8.22
-      hash: f7d2155373f5b081fc8334e1a7b7104a819639a0d7f2adb3e9624b7bffb88a3c
+      version: 0.8.24
+      hash: 7cc8af30e6cdbba2f40a77ac2115891311bb91c4227b4c0892dc0be03b29ab72
     - name: kickside/execution
       version: 0.2.7
     - name: kickside/jobs
