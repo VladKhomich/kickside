@@ -13,13 +13,8 @@ local retention_notifier = require("retention_notifier")
 local retention_pin = require("retention_pin")
 local execution_identity = require("execution_identity")
 local error_envelope = require("error_envelope")
-local component_access = require("component_access")
 local worker = require("worker")
 local funcs = require("funcs")
-local component_access_policy = require("component_access_policy")
-local component_placement = require("component_placement")
-local access_subjects = require("access_subjects")
-local owner_identity = require("owner_identity")
 
 local M = {}
 
@@ -203,34 +198,6 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     end
 
     if authorization_error then return abort(authorization_error) end
-    local access: table = {}
-    if #checks > 0 then
-        local columns: {string} = {}
-        local fence_args: {any} = {}
-        for index, check in ipairs(checks) do
-            local statement, args = component_access.effective_mask_query(check.subjects, check.component_id)
-            local offset = #fence_args
-            statement = statement:gsub("%$(%d+)", function(raw) return "$" .. tostring((tonumber(raw) :: number) + offset) end)
-            columns[#columns + 1] = "(" .. statement .. ") AS access_" .. tostring(index)
-            for _, arg in ipairs(args) do fence_args[#fence_args + 1] = arg end
-        end
-        -- A fresh statement snapshot follows the component locks. PostgreSQL
-        -- must see a grant revocation that commits while those locks wait.
-        local masks, mask_err = tx:query("SELECT " .. table.concat(columns, ","), fence_args)
-        if mask_err then return abort(errors.wrap(mask_err, "projection access fence read failed")) end
-        if type(masks) ~= "table" or type(masks[1]) ~= "table" then return abort(response_error("access.rows")) end
-        access = masks[1]
-    end
-    for index, check in ipairs(checks) do
-        local mask = math.tointeger(tonumber(access["access_" .. tostring(index)]))
-        local component = component_rows[check.component_id]
-        if not component or not mask or not component_access_policy.has_all(mask, check.required_mask)
-            or (check.prefixes and not component_placement.path_under_any(component.path, check.prefixes)) then
-            return abort(errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
-                message = "projection component access changes before apply",
-                details = {code = "projection_component_access_denied", error_kind = "access"}}))
-        end
-    end
     local prior = tonumber(snapshot.last_seq)
     if prior == nil then return abort(response_error("cursor.last_seq")) end
     local last = prefetched_last
@@ -375,44 +342,26 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
     return result, nil
 end
 
--- Resolve returned writes live before taking an apply connection. Actor-bound
--- authorization re-enters Component and Threads, including SQLite's single pool.
+-- Authorize returned destinations under the admitted frame before taking an
+-- apply connection; actor-bound calls re-enter SQLite's single pool.
 function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
     local checks: table[] = {}
     local authorization_error: error? = nil
     if snapshot.component_authority then
-        local actor, scope, resolve_err: any = nil, nil, nil
         local frame = snapshot.execution_frame
-        local live: table? = nil
-        if snapshot.component_authority.identity and #writes == 0 then
-            live, resolve_err = execution_identity.authorize(snapshot.component_authority.identity, {
-                deferred_owner = worker.TICK_OWNER, execution_root = snapshot.component_authority.component_id,
-            })
-        elseif frame and snapshot.component_authority.maintenance_owner then
+        local actor, scope, resolve_err: any = nil, nil, nil
+        if frame then
             actor, scope = frame.actor, frame.scope
         else
-            actor, scope, resolve_err = worker.resolve_binding_identity({actor_id = snapshot.actor_id,
+            -- Direct internal callers establish admission here. Invoked workers
+            -- carry their admitted frame for the duration of this round.
+            actor, scope, resolve_err = worker.admit_binding_identity({actor_id = snapshot.actor_id,
                 actor_context = snapshot.execution_identity_json, component_authority = snapshot.component_authority})
         end
         authorization_error = resolve_err
-        if not authorization_error and #writes == 0 then
-            local subjects, prefixes, subjects_err: any = nil, nil, nil
-            if live then
-                subjects, prefixes, subjects_err = access_subjects.for_authority(live)
-            elseif frame and snapshot.component_authority.maintenance_owner and frame.access then
-                subjects, prefixes = frame.access.subjects, frame.access.prefixes
-            else
-                subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
-            end
-            authorization_error = subjects_err
-            if not authorization_error then
-                local required_checks, check_err = owner_identity.access_checks(snapshot.component_authority, subjects, prefixes)
-                authorization_error = check_err
-                if not authorization_error then checks = required_checks :: table[] end
-            end
-        elseif not authorization_error then
+        if not authorization_error and #writes > 0 then
             local executor, builder_err = funcs.new()
             if builder_err then authorization_error = builder_err
             elseif not executor then authorization_error = response_error("authorization.executor") end

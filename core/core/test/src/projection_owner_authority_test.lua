@@ -39,6 +39,22 @@ local function create(impl_id: string?, actor_id: string?)
     db:release()
     return id, cursor, job
 end
+local function admit(snapshot)
+    local _, err, frame = worker.run({actor_id = snapshot.actor_id, actor_context = snapshot.execution_identity_json,
+        component_authority = snapshot.component_authority, worker_ref = "func://app:projection_owner_probe_worker",
+        worker_runtime = "func", target_id = "app:projection_owner_probe_worker", system_identity = true},
+        {projection = {body = {}}, range = {to_seq = 1}})
+    test.is_nil(err); test.not_nil(frame)
+    snapshot.execution_frame = frame
+end
+local function next_invocation(id, cursor)
+    local db = assert(sql.get("app:db"))
+    assert(threads_writer.append_system(db, lifecycle.thread_id(id),
+        {{type = lifecycle.EVENT.UPDATED, body_json = "{}", role = "system"}}))
+    local job = projection_claim.claim(db, cursor.job_id)
+    assert(db:release())
+    return job
+end
 return {run = test.run_cases(function()
     test.describe("projection component owner authority", function()
         for _, attack in ipairs({"missing-owner", "changed-owner", "revoked-access", "legacy-binding", "invalid-identity", "unknown-owner"}) do
@@ -300,12 +316,13 @@ return {run = test.run_cases(function()
                 test.is_nil(err); test.is_true(result.invalid)
             end)
         end
-        for _, phase in ipairs({"admission", "apply"}) do
+        for _, phase in ipairs({"admission", "apply", "round"}) do
             for _, status in ipairs({"deleted", "disabled"}) do
                 test.it("resolves current v2 principal status/" .. status .. "/" .. phase, function()
                     local id, cursor, job = create(nil, "transition-" .. uuid.v4())
                     local db = assert(sql.get("app:db"))
                     local snapshot = assert(invoke.snapshot(db, cursor.id, cursor.job_id))
+                    if phase == "round" then db:release(); admit(snapshot); db = assert(sql.get("app:db")) end
                     assert(db:execute("INSERT INTO kickside_component_meta (meta_id,component_id,key,value) VALUES ($1,$2,'core_test.principal_state',$3)", {uuid.v4(), id, status}))
                     db:release()
                     if phase == "apply" then
@@ -313,15 +330,20 @@ return {run = test.run_cases(function()
                         test.is_nil(result); test.not_nil(err)
                         test.is_true(errors.is(err, errors.PERMISSION_DENIED) or errors.is(err, errors.NOT_FOUND))
                     end
+                    if phase == "round" then
+                        local applied, apply_err = apply.advance("app:db", job, snapshot, 1, {body = {admitted_fold = true}})
+                        test.is_nil(apply_err); test.eq(applied.last_seq, 1)
+                        job = next_invocation(id, cursor)
+                    end
                     local result, err = invoke.run({job = job, payload = {cursor_id = cursor.id}})
                     test.is_nil(err); test.is_true(result.invalid)
                     db = assert(sql.get("app:db"))
                     local row = assert(db:query("SELECT last_seq,status FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
-                    db:release(); test.eq(tonumber(row.last_seq), 0); test.eq(row.status, "invalid")
+                    db:release(); test.eq(tonumber(row.last_seq), phase == "round" and 1 or 0); test.eq(row.status, "invalid")
                 end)
             end
         end
-        for _, phase in ipairs({"admission", "apply"}) do
+        for _, phase in ipairs({"admission", "apply", "round"}) do
             for _, revoked in ipairs({"authorizer", "membership", "credential", "delegation"}) do
                 test.it("revalidates v2 authority/" .. revoked .. "/" .. phase, function()
                     local operator = "transition-" .. uuid.v4()
@@ -350,6 +372,7 @@ return {run = test.run_cases(function()
                     local actor, _, resolve_err = worker.resolve_binding_identity({actor_id = snapshot.actor_id,
                         actor_context = snapshot.execution_identity_json, component_authority = snapshot.component_authority})
                     test.is_nil(resolve_err); test.not_nil(actor)
+                    if phase == "round" then admit(snapshot) end
                     if revoked == "authorizer" then
                         test.is_true(assert(svc:grant_subtree({root_component_id = id,
                             subject = {subject_type = "user", subject_id = "projection-administrator-" .. uuid.v4()}, access_mask = 15})).success)
@@ -365,17 +388,22 @@ return {run = test.run_cases(function()
                         local applied, apply_err = apply.advance("app:db", job, snapshot, 1, {body = {revoked_fold = true}})
                         test.is_nil(applied); test.is_true(errors.is(apply_err, errors.PERMISSION_DENIED), tostring(apply_err))
                     end
+                    if phase == "round" then
+                        local applied, apply_err = apply.advance("app:db", job, snapshot, 1, {body = {admitted_fold = true}})
+                        test.is_nil(apply_err); test.eq(applied.last_seq, 1)
+                        job = next_invocation(id, cursor)
+                    end
                     local result, err = invoke.run({job = job, payload = {cursor_id = cursor.id}})
                     test.is_nil(err); test.is_true(result.invalid)
                     db = assert(sql.get("app:db"))
                     local after = assert(db:query("SELECT last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
                     local invoked = assert(db:query("SELECT value FROM kickside_component_meta WHERE component_id=$1 AND key='owner_test.invoked'", {id}))[1]
-                    db:release(); test.eq(tonumber(after.last_seq), 0); test.eq(after.status, "invalid")
+                    db:release(); test.eq(tonumber(after.last_seq), phase == "round" and 1 or 0); test.eq(after.status, "invalid")
                     test.not_nil(after.last_error); test.eq(invoked.value, "0")
                 end)
             end
         end
-        test.it("reuses the maintenance frame while checking current access at apply", function()
+        test.it("uses admitted maintenance authority for the round and denies the next invocation", function()
             local id, cursor, job = create()
             local db = assert(sql.get("app:db"))
             local snapshot = assert(invoke.snapshot(db, cursor.id, job.id)); db:release()
@@ -386,8 +414,11 @@ return {run = test.run_cases(function()
             snapshot.execution_frame = frame
             test.is_true(assert(service("system:lifecycle"):revoke_subtree({root_component_id = id,
                 subject = {subject_type = "user", subject_id = "system:lifecycle"}})).success)
-            local result, err = apply.advance("app:db", job, snapshot, 1, {body = {revoked_frame = true}})
-            test.is_nil(result); test.is_true(errors.is(err, errors.PERMISSION_DENIED), tostring(err))
+            local result, err = apply.advance("app:db", job, snapshot, 1, {body = {admitted_frame = true}})
+            test.is_nil(err); test.eq(result.last_seq, 1)
+            job = next_invocation(id, cursor)
+            result, err = invoke.run({job = job, payload = {cursor_id = cursor.id}})
+            test.is_nil(err); test.is_true(result.invalid)
         end)
         for _, principal_kind in ipairs({"user", "group"}) do
             test.it("runs both component projection categories under exact v2/" .. principal_kind, function()

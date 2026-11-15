@@ -345,6 +345,8 @@ local function admit_binding_identity(binding: table): (any, any, error?, table?
     return actor, scope, nil, access
 end
 
+worker.admit_binding_identity = admit_binding_identity
+
 local function executor_response(field: string, value: any, cause: error?): (any, error?)
     if cause then return nil, errors.wrap(cause, "projection worker executor " .. field .. " refused") end
     if not value then

@@ -10,8 +10,6 @@ local json = require("json")
 local writer = require("threads_writer")
 local component_client = require("component_client")
 local core_types = require("core_types")
-local access_subjects = require("access_subjects")
-local owner_identity = require("owner_identity")
 local common = require("contract_common")
 local is_str = common.is_str
 local trim = common.trim
@@ -277,7 +275,7 @@ function M.normalize_writes(writes: any): error?
 end
 
 -- Component owns the access decision; the stored kind owns event declarations.
-local function validate_normalized_event_types(db: sql.DB, writes: {table}, user_append: boolean): (boolean, error?, {[string]: boolean}?, {[string]: table}?)
+local function validate_normalized_event_types(db: sql.DB, writes: {table}, user_append: boolean, component_owned: boolean?): (boolean, error?, {[string]: boolean}?, {[string]: table}?)
     local output_only = true
     local access_required: {[string]: boolean} = {}
     local destinations: {[string]: table} = {}
@@ -320,11 +318,11 @@ local function validate_normalized_event_types(db: sql.DB, writes: {table}, user
         end
         if not producer_write then
             output_only = false
-            if user_append and not access_required[write.thread_id] then
-                access_required[write.thread_id] = true
-                local _, access_err = component_client.validate_access(write.thread_id, (core_types.ACCESS.WRITE :: integer))
-                if access_err then return false, access_err end
-            end
+        end
+        if (component_owned == true or (user_append and not producer_write)) and not access_required[write.thread_id] then
+            access_required[write.thread_id] = true
+            local _, access_err = component_client.validate_access(write.thread_id, (core_types.ACCESS.WRITE :: integer))
+            if access_err then return false, access_err end
         end
     end
     return user_append == false or output_only, nil, access_required, destinations
@@ -350,44 +348,20 @@ function M.authorize_writes(args: any): (table?, error?)
     local user_append, authority_err = authority()
     if authority_err then return nil, authority_err end
     local checks: {table} = {}
-    local actor, actor_err = security.actor()
-    if actor_err then return nil, actor_err end
-    local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
-    if subjects_err then return nil, subjects_err end
-    if owner then
-        local check_err: error?
-        local required_checks, check_err = owner_identity.access_checks(owner, subjects, prefixes)
-        if check_err then return nil, check_err end
-        checks = required_checks :: table[]
-    end
     if #writes > 0 then
         local db, db_err = common.open_db()
         if db_err then return nil, db_err end
-        local _, authorize_err, access_required, destinations = validate_normalized_event_types(db, writes, user_append == true)
+        local _, authorize_err, access_required, destinations = validate_normalized_event_types(db, writes, user_append == true, owner ~= nil)
         local _, release_err = db:release()
         if authorize_err then return nil, authorize_err end
         if release_err then return nil, registry_failure("authorization database release failed", release_err) end
         local checked: {[string]: boolean} = {}
         for _, write in ipairs(writes) do
-            -- Maintenance projections hold the same component WRITE boundary as
-            -- their direct component calls; producer capabilities retain their
-            -- existing user publication semantics.
-            local requires_access = owner ~= nil and not user_append
-            if user_append then requires_access = access_required[write.thread_id] == true end
-            if requires_access and not checked[write.thread_id] then
+            if access_required[write.thread_id] and not checked[write.thread_id] then
                 checked[write.thread_id] = true
-                if not user_append then
-                    local _, access_err = component_client.validate_access(write.thread_id, core_types.ACCESS.WRITE)
-                    if access_err then return nil, access_err end
-                end
-                if owner and owner.component_id == write.thread_id then
-                    checks[1].required_mask = checks[1].required_mask | core_types.ACCESS.WRITE
-                else
-                    local generation = destinations[write.thread_id].generation
-                    if generation == nil then return nil, response_error("destination.generation") end
-                    checks[#checks + 1] = {component_id = write.thread_id, required_mask = core_types.ACCESS.WRITE,
-                        subjects = subjects, prefixes = prefixes, generation = generation}
-                end
+                local generation = destinations[write.thread_id].generation
+                if generation == nil then return nil, response_error("destination.generation") end
+                checks[#checks + 1] = {component_id = write.thread_id, generation = generation}
             end
         end
     end

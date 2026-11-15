@@ -167,8 +167,6 @@ entries:
     modules: [json]
     imports:
       component_identity_ops: kickside.component.persist:identity_ops
-      access_subjects: kickside.component.persist:access_subjects
-      core_types: kickside.core:types
       autoinit: kickside.component:autoinit
       lifecycle_log: kickside.core.threads.persist:lifecycle
       error_envelope: kickside.contract:error_envelope
@@ -402,8 +400,6 @@ entries:
     source: file://contract/event_authorization.lua
     modules: [sql, security, registry, uuid, json]
     imports:
-      owner_identity: kickside.core.threads:owner_identity
-      access_subjects: kickside.component.persist:access_subjects
       execution_identity: kickside.execution:execution_identity
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
@@ -964,8 +960,6 @@ entries:
     method: authorize_writes
     modules: [sql, security, registry, uuid, json]
     imports:
-      owner_identity: kickside.core.threads:owner_identity
-      access_subjects: kickside.component.persist:access_subjects
       execution_identity: kickside.execution:execution_identity
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope

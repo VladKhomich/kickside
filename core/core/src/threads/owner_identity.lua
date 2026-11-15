@@ -11,8 +11,6 @@ local error_envelope = require("error_envelope")
 local json = require("json")
 local lifecycle_log = require("lifecycle_log")
 local autoinit = require("autoinit")
-local access_subjects = require("access_subjects")
-local core_types = require("core_types")
 local component_identity_ops = require("component_identity_ops")
 
 local M = {}
@@ -176,24 +174,6 @@ function M.binding_matches(owner_hash: any, owner_key: any, legacy_identity: any
     end
     local id, err = execution_identity.from_row(actor_id, context)
     return err == nil and id ~= nil and identity_hash(id) == expected
-end
-
-function M.access_checks(authority: table, subjects: table[], prefixes: {string}?): (table[]?, error?)
-    local check = {component_id = authority.component_id, subjects = subjects, prefixes = prefixes,
-        required_mask = core_types.ACCESS.READ | core_types.ACCESS.WRITE}
-    local checks: table[] = {check}
-    if authority.identity then
-        local id = authority.identity
-        if execution_identity.same_principal(id.authorized_by, id.principal) then
-            check.required_mask = check.required_mask | core_types.ACCESS.ADMIN
-        else
-            local authorizer_subjects, err = access_subjects.principal_subjects(id.authorized_by)
-            if err then return nil, err end
-            checks[#checks + 1] = {component_id = authority.component_id, subjects = authorizer_subjects,
-                required_mask = core_types.ACCESS.ADMIN}
-        end
-    end
-    return checks, nil
 end
 
 return M
