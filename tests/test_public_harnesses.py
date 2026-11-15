@@ -77,13 +77,13 @@ class PublicHarnessTests(unittest.TestCase):
         self.assertIn(ROOT / 'platform/ui-kit/package/package.json', checked)
 
     def test_stateful_postgres_jobs_allocate_and_select_owned_databases(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        jobs = re.split(r'(?m)^        - module: ', workflow)[1:]
+        jobs = json.loads((ROOT / '.github/module-matrix.json').read_text())['include']
         checked = []
-        for job in jobs:
-            module = job.splitlines()[0]
-            if not re.search(r'(?m)^          engine: postgres$', job):
+        for row in jobs:
+            module = row['module']
+            if row['engine'] != 'postgres':
                 continue
+            job = row['commands']
             harness = ROOT / module / 'test/.wippy.yaml'
             if not harness.is_file() or not re.search(r'(?m)^  pg_database:', harness.read_text()):
                 continue
@@ -107,12 +107,9 @@ class PublicHarnessTests(unittest.TestCase):
         self.assertTrue(checked, 'CI must exercise stateful PostgreSQL harnesses')
 
     def test_automation_upgrade_and_live_harnesses_use_separate_databases(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        jobs = re.split(r'(?m)^        - module: ', workflow)[1:]
-        job = next(job for job in jobs if job.splitlines()[0] == 'platform/automation'
-                   and re.search(r'(?m)^          engine: postgres$', job))
-        commands = '\n'.join(line[12:] for line in job.split('          commands: |\n', 1)[1].splitlines()
-                             if line.startswith('            '))
+        jobs = json.loads((ROOT / '.github/module-matrix.json').read_text())['include']
+        commands = next(row['commands'] for row in jobs
+                        if row['module'] == 'platform/automation' and row['engine'] == 'postgres')
         # Execute CI's routing and cleanup, without building modules or opening
         # PostgreSQL. Record the database selected by each real shell command.
         with tempfile.TemporaryDirectory() as temp:
