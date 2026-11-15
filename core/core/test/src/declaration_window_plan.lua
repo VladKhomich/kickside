@@ -2,7 +2,7 @@
 local sql = require("sql")
 local json = require("json")
 local fs = require("fs")
-local M = {builder = {}, plans = 0, growth = 0}
+local M = {builder = {}, plans = 0, growth = 0, continuation_plans = 0}
 M.get = sql.get
 function M.builder.select(...: string): any
     local columns = table.concat({...}, ",")
@@ -22,6 +22,7 @@ function M.builder.select(...: string): any
         end
         if (columns .. source .. predicate):find("declaration_digest", 1, true) then
             local postgres = handle:type() == "postgres"
+            local continued = source:find("(declaration_digest,id)>", 1, true) ~= nil
             assert(not source:find("SELECT component_id FROM kickside_components", 1, true),
                 "digest maintenance seeks mismatches without materializing unchanged components")
             local prefix = postgres and "EXPLAIN (ANALYZE,FORMAT JSON) " or "EXPLAIN QUERY PLAN "
@@ -48,6 +49,10 @@ function M.builder.select(...: string): any
                         assert(detail:find("(declaration_digest,id)<", 1, true),
                             "the index stops at the captured tuple rather than filtering beyond it: " .. detail)
                     end
+                    if continued and detail:find("idx_projection_declaration_digest", 1, true) then
+                        assert(detail:find("(declaration_digest,id)>", 1, true),
+                            "continuation seeks past the examined tuple: " .. detail)
+                    end
                 end
             end
             local encoded = assert(json.encode(plan))
@@ -57,6 +62,12 @@ function M.builder.select(...: string): any
                 local storage = assert(fs.get("app:uploads"))
                 assert(storage:writefile("declaration-growth-" .. (postgres and "postgres" or "sqlite") .. ".json",
                     assert(json.encode({query = "SELECT " .. columns .. " FROM " .. source, plan = plan}))))
+            end
+            if continued then
+                local storage = assert(fs.get("app:uploads"))
+                assert(storage:writefile("declaration-continuation-" .. (postgres and "postgres" or "sqlite") .. ".json",
+                    assert(json.encode({query = "SELECT " .. columns .. " FROM " .. source, plan = plan}))))
+                M.continuation_plans = M.continuation_plans + 1
             end
             M.plans = M.plans + 1
         end

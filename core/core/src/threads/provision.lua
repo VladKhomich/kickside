@@ -397,9 +397,9 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                                 predicate = predicate .. " AND id<=" .. quoted(tostring(upper_id))
                                 if after then predicate = predicate .. " AND id>" .. quoted(after.id) end
                             else
-                                -- Use the tuple as the upper seek bound. A redundant
-                                -- scalar digest bound makes SQLite filter past it.
-                                predicate = (rindex == 2 and original .. " AND " or "") .. "(declaration_digest,id)<=(" .. quoted(boundaries[prefix .. "_digest"]) .. "," .. quoted(tostring(upper_id)) .. ")"
+                                -- Redundant scalar bounds make SQLite filter past
+                                -- the tuple endpoints instead of seeking to them.
+                                predicate = (rindex == 2 and not after and original .. " AND " or "") .. "(declaration_digest,id)<=(" .. quoted(boundaries[prefix .. "_digest"]) .. "," .. quoted(tostring(upper_id)) .. ")"
                                 if after then predicate = predicate .. " AND (declaration_digest,id)>(" .. quoted(after.digest) .. "," .. quoted(after.id) .. ")" end
                             end
                             ranges[#ranges + 1] = "SELECT * FROM (SELECT id,thread_id,declaration_digest," .. tostring(rindex) .. " AS range_id"

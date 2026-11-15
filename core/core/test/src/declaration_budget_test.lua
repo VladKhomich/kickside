@@ -28,7 +28,7 @@ return {run = test.run_cases(function()
                 assert(tx:execute("DELETE FROM kickside_job WHERE id IN (SELECT job_id FROM kickside_projection_cursor WHERE thread_id IN (SELECT id FROM kickside_thread WHERE " .. threads .. "))"))
                 assert(tx:execute("DELETE FROM kickside_thread WHERE " .. threads))
                 local components = #owned > 0 and "component_id IN ('" .. table.concat(owned, "','") .. "')" or "1=0"
-                if population then components = "(" .. components .. " OR impl_id='test.window.plan')" end
+                if population then components = "(" .. components .. " OR impl_id IN ('test.window.plan','test.window.other'))" end
                 assert(tx:execute("DELETE FROM kickside_component_meta WHERE component_id IN (SELECT component_id FROM kickside_components WHERE " .. components .. ")"))
                 assert(tx:execute("DELETE FROM kickside_components WHERE " .. components))
                 assert(tx:commit())
@@ -130,6 +130,53 @@ return {run = test.run_cases(function()
             test.is_nil(grown.continuation, "post-boundary growth does not extend the captured digest ranges")
             test.eq(plan.growth, -1)
             plan.growth = 0
+        end)
+        test.it("seeks past examined mismatches owned by another implementation", function()
+            local db = assert(sql.get("app:db"))
+            population = true
+            local component = uuid.v7()
+            owned[#owned + 1] = component
+            assert(db:execute("INSERT INTO kickside_components(component_id,impl_id) VALUES ($1,'test.window.plan')", {component}))
+            assert(db:execute("INSERT INTO kickside_thread(id,component_id,thread_class) VALUES ($1,$2,'plan')", {component,component}))
+            local registered = assert(register.register_projection(db, component, {kind = "plan", worker_ref = "func://app:test_count_worker", system_identity = true}))
+            local template = assert(db:query("SELECT body,declaration_digest FROM kickside_projection WHERE id=$1", {registered.projection_id}))[1]
+            local postgres = db:type() == "postgres"
+            if postgres then assert(db:execute("VACUUM kickside_components")) end
+            local sequence = postgres and "SELECT generate_series(1,100001) AS n"
+                or "WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM series WHERE n<100001) SELECT n FROM series"
+            local id = "'aaaaaaaa-aaaa-4aaa-8aaa-' || " .. (postgres and "lpad(n::text,12,'0')" or "printf('%012d',n)")
+            if postgres then id = "(" .. id .. ")::uuid" end
+            local tx = assert(db:begin())
+            assert(tx:execute("INSERT INTO kickside_thread(id,component_id,thread_class) SELECT " .. id .. "," .. id .. ",'plan.growth' FROM (" .. sequence .. ") series"))
+            assert(tx:execute("INSERT INTO kickside_components(component_id,impl_id) SELECT id,'test.window.other' FROM kickside_thread WHERE thread_class='plan.growth'"))
+            local suffix = postgres and "right(id::text,12)" or "substr(id,-12)"
+            assert(tx:execute("INSERT INTO kickside_projection(id,thread_id,kind,body,declaration_digest) SELECT id,id,'plan','{}','zzz' || " .. suffix .. " FROM kickside_thread WHERE thread_class='plan.growth'"))
+            local healthy = postgres and "SELECT generate_series(1,256) AS n"
+                or "WITH RECURSIVE series(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM series WHERE n<256) SELECT n FROM series"
+            local healthy_id = "'bbbbbbbb-bbbb-4bbb-8bbb-' || " .. (postgres and "lpad(n::text,12,'0')" or "printf('%012d',n)")
+            if postgres then healthy_id = "(" .. healthy_id .. ")::uuid" end
+            assert(tx:execute("INSERT INTO kickside_components(component_id,impl_id) SELECT " .. healthy_id .. ",'test.window.plan' FROM (" .. healthy .. ") series"))
+            assert(tx:execute("INSERT INTO kickside_thread(id,component_id,thread_class) SELECT component_id,component_id,'plan' FROM kickside_components WHERE impl_id='test.window.plan' AND component_id<>$1", {component}))
+            assert(tx:execute("INSERT INTO kickside_projection(id,thread_id,kind,body,declaration_digest) SELECT component_id,component_id,'plan',$1,$2 FROM kickside_components WHERE impl_id='test.window.plan' AND component_id<>$3", {template.body,template.declaration_digest,component}))
+            assert(tx:execute("INSERT INTO kickside_projection_cursor(id,projection_id,thread_id,job_id) SELECT component_id,component_id,component_id,$1 FROM kickside_components WHERE impl_id='test.window.plan' AND component_id<>$2", {registered.job_id,component}))
+            assert(tx:execute("INSERT INTO kickside_component_meta(meta_id,component_id,key,value) SELECT component_id,component_id,'type','thread' FROM kickside_components WHERE impl_id='test.window.plan'"))
+            assert(tx:execute("INSERT INTO kickside_component_meta(meta_id,component_id,key,value) SELECT " .. (postgres and "('cccccccc-cccc-4ccc-8ccc-' || right(p.id::text,12))::uuid" or "'cccccccc-cccc-4ccc-8ccc-' || substr(p.id,-12)") .. ",p.thread_id,'thread_class','plan' FROM kickside_projection p JOIN kickside_components c ON c.component_id=p.thread_id WHERE c.impl_id='test.window.plan'"))
+            assert(tx:commit())
+            assert(db:execute("ANALYZE"))
+            assert(db:release())
+            local page = assert(provision.converge({}, {}))
+            test.eq(page.checked, 0)
+            test.not_nil(page.continuation)
+            local continuation = page.continuation
+            local before = plan.continuation_plans
+            for _, preceding in ipairs({0, 10000, 100000}) do
+                continuation.positions["test.window.plan"].ranges[2] = {
+                    digest = string.format("zzz%012d", preceding), id = string.format("aaaaaaaa-aaaa-4aaa-8aaa-%012d", preceding)}
+                local continued = assert(provision.converge({}, {}, continuation))
+                test.eq(continued.checked, 0, "foreign declarations are examined without repair or rewriting")
+                if preceding == 100000 then test.is_nil(continued.continuation) end
+            end
+            test.eq(plan.continuation_plans - before, 3)
         end)
         test.it("replaces the projection kind index with bounded digest range seeks", function()
             local db = assert(sql.get("app:db"))
