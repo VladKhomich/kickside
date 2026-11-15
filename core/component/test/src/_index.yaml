@@ -83,7 +83,7 @@ entries:
     kind: security.policy
     policy:
       actions: component.secrets.read
-      resources: ['app:secret_kind']
+      resources: ['app:secret_kind', 'app:evolving_secret_kind']
       effect: allow
   - name: secret_cipher_errors_test
     kind: function.lua
