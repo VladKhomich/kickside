@@ -51,6 +51,24 @@ end
 local lock_template_key: string? = nil
 local lock_template: string? = nil
 local function lock_statement(dbtype: string, component_count: number, thread_count: number, with_cursor: boolean): string
+    -- SQLite serializes this transaction; indexed joins need no lock-order CTEs.
+    if dbtype == sql.type.SQLITE and component_count <= 1 then
+        local marks: {string} = {}
+        for index = 1, thread_count do marks[index] = "?" .. tostring(component_count + index) end
+        local fields = "t.id,t.event_count,t.max_pruned_seq,t.deleting_at"
+        local joins = ""
+        if component_count == 1 then
+            fields = fields .. ",c.component_id,c.identity_generation,c.path"
+            joins = " LEFT JOIN kickside_components c ON c.component_id=?1"
+        end
+        if with_cursor then
+            fields = fields .. ",p.id AS cursor_id,p.generation AS cursor_generation,p.last_seq AS cursor_last_seq,"
+                .. "p.status AS cursor_status,p.job_id AS cursor_job_id"
+            joins = joins .. " LEFT JOIN kickside_projection_cursor p ON p.id=?" .. tostring(component_count + thread_count + 1)
+        end
+        return "SELECT " .. fields .. " FROM kickside_thread t" .. joins
+            .. " WHERE t.id IN (" .. table.concat(marks, ",") .. ") ORDER BY t.id"
+    end
     local argument_count = 0
     local ctes: {string} = {}
     local components_given = component_count > 0

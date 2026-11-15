@@ -3191,6 +3191,7 @@ entries:
     kind: library.lua
     source: file://projection_invoke_native_source.lua
     imports:
+      access_subjects: kickside.component.persist:access_subjects
       owner_identity: kickside.core.threads:owner_identity
       time: app:projection_invoke_native_time_adapter
       sql: app:projection_invoke_native_sql_adapter

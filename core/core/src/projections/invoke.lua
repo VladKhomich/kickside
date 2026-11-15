@@ -15,6 +15,7 @@ local execution_identity = require("execution_identity")
 local job_types = require("job_types")
 local error_envelope = require("error_envelope")
 local owner_identity = require("owner_identity")
+local access_subjects = require("access_subjects")
 
 local M = {}
 
@@ -56,6 +57,17 @@ local function event_types(body: table): { string }?
     return #out > 0 and out or nil
 end
 
+-- Compose the canonical effective-access query into the existing owner read.
+-- Maintenance frames carry only their user-typed actor subject, without groups
+-- or path restrictions. Values remain fresh for every invocation and callback.
+local maintenance_access, maintenance_args = access_subjects.effective_mask_query(
+    {{subject_type = "user", subject_id = "owner"}}, "component")
+local references = {component = "o.component_id", owner = "m.value", user = "'user'"}
+maintenance_access = maintenance_access:gsub("%$(%d+)", function(index: string): string
+    return references[maintenance_args[tonumber(index) :: number]]
+end)
+local MAINTENANCE_ACCESS = "COALESCE((" .. maintenance_access .. "),0)"
+
 local function snapshot_statement(dialect: string): string
     local component_key = "COALESCE(NULLIF(t.component_id,''),t.attrs ->> 'component_id')"
     local stored_identity = "CASE WHEN json_valid(o.private_context) THEN o.private_context -> '$._execution_identity' END"
@@ -72,7 +84,8 @@ local function snapshot_statement(dialect: string): string
         t.component_id AS thread_component_id,t.attrs AS thread_attrs,
         o.component_id AS owner_component_id,o.impl_id AS owner_impl_id,
         o.identity_generation AS owner_identity_generation,m.value AS owner_key,]] .. stored_identity .. [[ AS owner_execution_identity,
-        ]] .. readable .. [[ AS owner_context_readable
+        ]] .. readable .. [[ AS owner_context_readable,CASE WHEN ]] .. stored_identity
+        .. [[ IS NULL THEN ]] .. MAINTENANCE_ACCESS .. [[ END AS maintenance_access_mask
         FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id
         JOIN kickside_thread t ON t.id=c.thread_id
@@ -250,6 +263,7 @@ function M.run(input: any): (table?, error?)
         binding.actor_context = current.execution_identity_json
         binding.system_identity = system_identity
         binding.component_authority = current.component_authority
+        binding.maintenance_access_mask = current.maintenance_access_mask
         local post_err: error? = nil
         post_commit, post_err = worker.post_commit_binding(binding)
         if post_err then return nil, release(db, post_err) end
@@ -332,8 +346,10 @@ function M.run(input: any): (table?, error?)
             if callback_open_err then return nil, callback_open_err end
             if not callback_db then return nil, response_error("callback.database") end
             local rows, fresh_err = callback_db:query([[SELECT c.generation,c.status,c.last_seq,c.job_id,
-                o.identity_generation AS owner_identity_generation FROM kickside_projection_cursor c
-                LEFT JOIN kickside_components o ON o.component_id=$1 WHERE c.id=$2]],
+                o.identity_generation AS owner_identity_generation,]] .. MAINTENANCE_ACCESS .. [[ AS maintenance_access_mask
+                FROM kickside_projection_cursor c
+                LEFT JOIN kickside_components o ON o.component_id=$1
+                LEFT JOIN kickside_component_meta m ON m.component_id=o.component_id AND m.key='owner' WHERE c.id=$2]],
                 {current.component_authority.component_id, cursor_id})
             fresh_err = release(callback_db, fresh_err)
             if fresh_err then return nil, fresh_err end
@@ -345,6 +361,7 @@ function M.run(input: any): (table?, error?)
                 result.stale = true
                 return result, nil
             end
+            post_commit.maintenance_access_mask = fresh.maintenance_access_mask
             local declared, declaration_err = owner_identity.check_declaration(current.component_authority.declaration)
             if declaration_err or not declared then
                 local failed_snapshot: table = {}

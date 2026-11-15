@@ -45,6 +45,7 @@ entries:
     core_db: kickside.core:db
     worker: kickside.core.projections.persist:worker
     owner_identity: kickside.core.threads:owner_identity
+    access_subjects: kickside.component.persist:access_subjects
     projection_policy: kickside.core.projections:policy_config
     apply: app:projection_owner_callback_apply
     trace_context: kickside.execution:trace

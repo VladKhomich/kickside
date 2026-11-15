@@ -289,19 +289,39 @@ worker.TICK_OWNER = "kickside.core.projections:tick"
 -- context) runs as that framework actor under the runner's scope. A binding with
 -- no stored identity is a system projection and runs in the runner's own
 -- framework context. Returns (actor?, scope?, err?).
+-- One worker-local frame. Ownership and placement share identity_generation;
+-- registry publication invalidates maintenance actor declarations and grants.
+local maintenance_cache: table? = nil
+
 local function resolve_binding_identity(binding: table): (any, any, error?)
     if type(binding.actor_id) ~= "string" or (binding.actor_id :: string) == "" then
         return nil, nil, nil
     end
     if binding.actor_context == nil then
-        local frame, frame_err = execution_identity.maintenance_frame(binding.actor_id)
-        if frame_err or not frame then return nil, nil, frame_err end
         local authority = binding.component_authority
-        if type(authority) ~= "table" or authority.maintenance_owner ~= binding.actor_id then
+        if type(authority) ~= "table" or authority.maintenance_owner ~= binding.actor_id
+            or type(authority.component_id) ~= "string" or type(authority.generation) ~= "number" then
             return nil, nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
                 message = "maintenance projection has no trusted component binding",
                 details = {code = "projection_maintenance_binding_missing", error_kind = "subject"}})
         end
+        local version, version_err = registry.current_version()
+        if version_err then return nil, nil, version_err end
+        if not version then
+            return nil, nil, errors.new({kind = errors.UNAVAILABLE,
+                message = "projection maintenance registry revision is unavailable"})
+        end
+        local revision = tostring(version:id())
+        local cached = maintenance_cache
+        if cached and cached.component_id == authority.component_id and cached.owner == binding.actor_id
+            and cached.generation == authority.generation and cached.revision == revision then
+            return cached.frame.actor, cached.frame.scope, nil
+        end
+        maintenance_cache = nil
+        local frame, frame_err = execution_identity.maintenance_frame(binding.actor_id)
+        if frame_err or not frame then return nil, nil, frame_err end
+        maintenance_cache = {component_id = authority.component_id, owner = binding.actor_id,
+            generation = authority.generation, revision = revision, frame = frame}
         return (frame :: any).actor, (frame :: any).scope, nil
     end
     local identity = binding.component_authority and binding.component_authority.identity
@@ -328,14 +348,22 @@ local function admit_binding_identity(binding: table): (any, any, error?, table?
         local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
         if subjects_err then return nil, nil, subjects_err end
         access = {subjects = subjects, prefixes = prefixes}
-        local db, db_err = sql.get(core_db.id())
-        if db_err then return nil, nil, db_err end
-        if not db then return nil, nil, errors.new({kind = errors.UNAVAILABLE, message = "component authority database unavailable"}) end
-        local allowed, access_err = component_access.check_user_access(db, actor:id(), authority.component_id,
-            core_types.ACCESS.READ | core_types.ACCESS.WRITE, subjects, prefixes, true, true)
-        access_err = error_envelope.cleanup(function(): (any, error?) return db:release() end,
-            access_err, "release projection owner admission database")
-        if access_err then return nil, nil, access_err end
+        local allowed: boolean? = nil
+        local access_err: error? = nil
+        if authority.maintenance_owner and binding.maintenance_access_mask ~= nil then
+            local mask = math.tointeger(tonumber(binding.maintenance_access_mask))
+            local required = core_types.ACCESS.READ | core_types.ACCESS.WRITE
+            allowed = mask ~= nil and (mask & required) == required
+        else
+            local db, db_err = sql.get(core_db.id())
+            if db_err then return nil, nil, db_err end
+            if not db then return nil, nil, errors.new({kind = errors.UNAVAILABLE, message = "component authority database unavailable"}) end
+            allowed, access_err = component_access.check_user_access(db, actor:id(), authority.component_id,
+                core_types.ACCESS.READ | core_types.ACCESS.WRITE, subjects, prefixes, true, true)
+            access_err = error_envelope.cleanup(function(): (any, error?) return db:release() end,
+                access_err, "release projection owner admission database")
+            if access_err then return nil, nil, access_err end
+        end
         if not allowed then
             return nil, nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
                 message = "projection owner no longer has component access",
