@@ -42,6 +42,20 @@ return {run = test.run_cases(function()
             test.eq(denied_err:details().code, "projection_component_access_denied")
             test.eq(fixture.frames, 1); test.eq(fixture.calls, 1)
         end)
+        test.it("reuses the maintenance executor under the same frame and rebuilds after registry publication", function()
+            fixture.reset("", nil)
+            local b = {worker_ref = "func://app:worker", worker_runtime = "func", target_id = "app:worker",
+                actor_id = "system:lifecycle", maintenance_access_mask = 3, component_authority = {
+                    component_id = "executor", maintenance_owner = "system:lifecycle", generation = 0}}
+            for _ = 1, 2 do
+                local result, err = worker.run(b, {})
+                test.is_nil(err); test.not_nil(result)
+            end
+            test.eq(fixture.actors, 1); test.eq(fixture.scopes, 1); test.eq(fixture.configures, 1); test.eq(fixture.calls, 2)
+            fixture.revision = "executor-updated"
+            test.not_nil(worker.run(b, {}))
+            test.eq(fixture.actors, 2); test.eq(fixture.scopes, 2); test.eq(fixture.configures, 2); test.eq(fixture.calls, 3)
+        end)
         test.it("does not cache v2 resolution or mint without a trusted binding", function()
             fixture.reset("", nil)
             for _ = 1, 2 do test.not_nil(worker.resolve_binding_identity(binding())) end

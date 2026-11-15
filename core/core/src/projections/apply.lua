@@ -368,16 +368,20 @@ function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: 
         end
         authorization_error = resolve_err
         if not authorization_error and #writes > 0 then
-            local executor, builder_err = funcs.new()
-            if builder_err then authorization_error = builder_err
-            elseif not executor then authorization_error = response_error("authorization.executor") end
-            if not authorization_error then
-                executor, authorization_error = executor:with_actor(actor)
-                if not authorization_error and not executor then authorization_error = response_error("authorization.actor") end
-            end
-            if not authorization_error then
-                executor, authorization_error = executor:with_scope(scope)
-                if not authorization_error and not executor then authorization_error = response_error("authorization.scope") end
+            local executor: any = frame and frame.executor
+            if not executor then
+                local builder_err: error? = nil
+                executor, builder_err = funcs.new()
+                if builder_err then authorization_error = builder_err
+                elseif not executor then authorization_error = response_error("authorization.executor") end
+                if not authorization_error then
+                    executor, authorization_error = executor:with_actor(actor)
+                    if not authorization_error and not executor then authorization_error = response_error("authorization.actor") end
+                end
+                if not authorization_error then
+                    executor, authorization_error = executor:with_scope(scope)
+                    if not authorization_error and not executor then authorization_error = response_error("authorization.scope") end
+                end
             end
             if not authorization_error then
                 local admitted, admission_err = executor:call("kickside.core.threads:authorize_projection_writes",

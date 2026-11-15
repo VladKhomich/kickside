@@ -293,7 +293,7 @@ worker.TICK_OWNER = "kickside.core.projections:tick"
 -- registry publication invalidates maintenance actor declarations and grants.
 local maintenance_cache: table? = nil
 
-local function resolve_binding_identity(binding: table): (any, any, error?, table?)
+local function resolve_binding_identity(binding: table): (any, any, error?, table?, table?)
     if type(binding.actor_id) ~= "string" or (binding.actor_id :: string) == "" then
         return nil, nil, nil
     end
@@ -315,7 +315,7 @@ local function resolve_binding_identity(binding: table): (any, any, error?, tabl
         local cached = maintenance_cache
         if cached and cached.component_id == authority.component_id and cached.owner == binding.actor_id
             and cached.generation == authority.generation and cached.revision == revision then
-            return cached.frame.actor, cached.frame.scope, nil, cached.frame.access
+            return cached.frame.actor, cached.frame.scope, nil, cached.frame.access, cached.frame
         end
         maintenance_cache = nil
         local frame, frame_err = execution_identity.maintenance_frame(binding.actor_id)
@@ -325,7 +325,7 @@ local function resolve_binding_identity(binding: table): (any, any, error?, tabl
         frame.access = {subjects = subjects, prefixes = prefixes}
         maintenance_cache = {component_id = authority.component_id, owner = binding.actor_id,
             generation = authority.generation, revision = revision, frame = frame}
-        return (frame :: any).actor, (frame :: any).scope, nil, frame.access
+        return (frame :: any).actor, (frame :: any).scope, nil, frame.access, frame
     end
     local identity = binding.component_authority and binding.component_authority.identity
     if not identity then
@@ -338,12 +338,12 @@ local function resolve_binding_identity(binding: table): (any, any, error?, tabl
         execution_root = binding.component_authority and binding.component_authority.component_id or (identity :: any).component_id,
     })
     if resolve_err or not resolved then return nil, nil, resolve_err end
-    return (resolved :: any).actor, (resolved :: any).scope, nil
+    return (resolved :: any).actor, (resolved :: any).scope, nil, nil, resolved
 end
 worker.resolve_binding_identity = resolve_binding_identity
 
-local function admit_binding_identity(binding: table): (any, any, error?, table?)
-    local actor, scope, err, access = resolve_binding_identity(binding)
+local function admit_binding_identity(binding: table): (any, any, error?, table?, table?)
+    local actor, scope, err, access, frame = resolve_binding_identity(binding)
     if err then return nil, nil, err end
     local authority = binding.component_authority
     if authority then
@@ -374,7 +374,8 @@ local function admit_binding_identity(binding: table): (any, any, error?, table?
                 details = {code = "projection_component_access_denied", error_kind = "access"}})
         end
     end
-    return actor, scope, nil, access
+    if frame then frame.access = access end
+    return actor, scope, nil, access, frame
 end
 
 worker.admit_binding_identity = admit_binding_identity
@@ -409,21 +410,25 @@ function worker.run(binding: table, worker_input: table): (table?, error?, table
     local validated, validate_err = worker.validate(binding, binding.system_identity == true)
     if validate_err or not validated then return nil, validate_err end
 
-    local actor, scope, ident_err, access = admit_binding_identity(binding)
+    local actor, scope, ident_err, access, frame = admit_binding_identity(binding)
     if ident_err then
         return nil, ident_err
     end
 
-    local executor: any = funcs.new()
-    local executor_err: error? = nil
-    if actor then
-        executor, executor_err = executor_response("actor", executor:with_actor(actor))
+    local executor: any = frame and frame.executor
+    if not executor then
+        executor = funcs.new()
+        local executor_err: error? = nil
+        if actor then
+            executor, executor_err = executor_response("actor", executor:with_actor(actor))
+            if executor_err then return nil, executor_err end
+            executor, executor_err = executor_response("scope", executor:with_scope(scope))
+            if executor_err then return nil, executor_err end
+        end
+        executor, executor_err = executor_response("options", executor:with_options({retry = {max_attempts = 1}}))
         if executor_err then return nil, executor_err end
-        executor, executor_err = executor_response("scope", executor:with_scope(scope))
-        if executor_err then return nil, executor_err end
+        if frame then frame.executor = executor end
     end
-    executor, executor_err = executor_response("options", executor:with_options({retry = {max_attempts = 1}}))
-    if executor_err then return nil, executor_err end
     local result, run_err = executor:call(target_id, worker_input)
 
     if run_err then
@@ -432,7 +437,7 @@ function worker.run(binding: table, worker_input: table): (table?, error?, table
     end
     local output, normalize_err = normalize_result(result)
     if normalize_err then return nil, normalize_err end
-    return output, nil, actor and {actor = actor, scope = scope, access = access} or nil
+    return output, nil, frame or (actor and {actor = actor, scope = scope, access = access} or nil)
 end
 
 local function interpret_proc_exit(result: any): (table?, error?)
@@ -510,7 +515,7 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if host == "" then
         return nil, (errors.new({ message = "proc:// projection worker requires a process host", kind = errors.INVALID }) :: error)
     end
-    local actor, scope, ident_err, access = admit_binding_identity(binding)
+    local actor, scope, ident_err, access, frame = admit_binding_identity(binding)
     if ident_err then
         return nil, ident_err
     end
@@ -562,7 +567,7 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if run_err then
         return nil, run_err
     end
-    return output, nil, actor and {actor = actor, scope = scope, access = access} or nil
+    return output, nil, frame or (actor and {actor = actor, scope = scope, access = access} or nil)
 end
 
 return worker
