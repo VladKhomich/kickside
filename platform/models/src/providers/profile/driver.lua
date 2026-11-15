@@ -46,7 +46,7 @@ local function call(method: string, input: any): (any?, any?)
     local context = ctx.all() or {}
     local card, read_err = model_catalog.get_by_name(context.card)
     if not card then return nil, read_err end
-    if not card or card.enabled == false then return nil, "Model route is unavailable" end
+    if card.enabled == false then return nil, "Model route is unavailable" end
     local route = card.providers and card.providers[1]
     local profile, profile_err = models_repo.get_profile(card.provider_profile_id)
     if profile_err then return nil, profile_err end

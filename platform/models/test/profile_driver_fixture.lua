@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
-local M = {reads = 0, calls = 0}
+local M = {reads = 0, calls = 0, context = {}}
 
 function M.get(id)
     M.reads = M.reads + 1
@@ -8,6 +8,7 @@ function M.get(id)
 end
 
 function M.open(id, context)
+    M.context = context
     assert(id == "wippy.llm.openai_compat:provider")
     assert(context.api_key == "fixture-cache-secret")
     assert(context.base_url == "https://provider.example.test/v1")

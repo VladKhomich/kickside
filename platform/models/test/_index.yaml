@@ -357,6 +357,8 @@ entries:
       models_repo: kickside.models.persist:repo
       driver: app:profile_driver_fixture
       fixture: app:profile_execution_fixture
+      registry_models: wippy.llm.discovery:models
+      resolver: app:profile_resolver_fixture
 
   - name: profile_execution_fixture
     kind: library.lua
@@ -396,3 +398,9 @@ entries:
       registry_models: wippy.llm.discovery:models
       models_repo: app:profile_repo_fixture
       catalog_card_policy: kickside.models.catalog:card_policy
+
+  - name: profile_resolver_fixture
+    kind: library.lua
+    source: file://fixtures/profile_resolver.lua
+    imports:
+      model_catalog: app:profile_catalog_fixture
