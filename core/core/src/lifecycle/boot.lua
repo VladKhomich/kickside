@@ -164,9 +164,9 @@ local function main(_args: any): any
         -- land without that message: an install whose changed modules exclude
         -- core, or migrations applied after an install that ran none.
         local cases = { events:case_receive(), applied:case_receive() }
-        local advance = continuation and not parked and time.after("1ms") or nil
+        local advance = continuation and not parked and not converge_err and time.after("1ms") or nil
         if advance then cases[#cases + 1] = advance:case_receive() end
-        local retry = parked and time.after(tostring(consts.SCHEMA_RETRY_MS) .. "ms") or nil
+        local retry = (parked or (continuation and converge_err)) and time.after(tostring(consts.SCHEMA_RETRY_MS) .. "ms") or nil
         if retry then cases[#cases + 1] = retry:case_receive() end
         local selected = channel.select(cases)
         local ev = selected.value
@@ -174,12 +174,12 @@ local function main(_args: any): any
             if converge_err then error(converge_err) end
             return { ok = true, count = count }
         end
-        if selected.channel == advance and advance then
+        if (selected.channel == advance and advance) or (selected.channel == retry and retry and continuation and not parked) then
             local advance_err = continue_convergence()
+            converge_err = advance_err
             if advance_err then
-                continuation = nil
-                converge_err = advance_err
                 logger:error("system lifecycle convergence failed", {reason = tostring(advance_err), error_native = error_envelope.encode(advance_err)})
+                if not advance_err:retryable() then error(advance_err) end
             end
         elseif selected.channel == applied or selected.channel == retry then
             local next_state, next_count, next_err, next_ledger_failed = converge_when_ready(ledger_failed)

@@ -468,7 +468,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         end
         local fenced, fence_err = sql.builder.update("kickside_projection_cursor")
             :set("generation", sql.builder.expr("generation + 1")):set("updated_at", now)
-            :set("last_seq", refresh_from or start_seq):set("status", "active"):set("last_error", nil)
+            :set("last_seq", refresh_from or start_seq)
             :where(sql.builder.eq({ projection_id = projection_id })):run_with(tx):exec()
         if fence_err then return nil, errors.wrap(fence_err, "failed to fence refreshed projection") end
         local _, proof_err = sql_boundary.number_value(type(fenced) == "table" and fenced.rows_affected or nil,
@@ -502,9 +502,11 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             end
             generation = prior_generation + (declaration_changed and 0 or 1)
             local cursor_update = sql.builder.update("kickside_projection_cursor")
-                :set("last_seq", cursor_head):set("status", "active")
-                :set("generation", generation):set("last_error", nil)
-                :set("updated_at", now)
+                :set("last_seq", cursor_head)
+                :set("generation", generation):set("updated_at", now)
+            if not declaration_changed then
+                cursor_update = cursor_update:set("status", "active"):set("last_error", nil)
+            end
             if params.ensure ~= true then
                 cursor_update = cursor_update:set("actor_id", actor_id_col)
                     :set("execution_identity_json", actor_context_col)

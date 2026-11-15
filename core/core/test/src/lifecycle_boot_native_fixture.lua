@@ -1,9 +1,11 @@
 local process = require("process")
 local channel = require("channel")
+local time = require("time")
 local M = {event = process.event, registry = {CONSISTENT = process.registry.CONSISTENT}}
 function M.reset(stage: string, source: error?, override: any?, pending: boolean?): ()
     M.stage, M.source, M.override, M.pending = stage, source, override, pending == true
     M.calls, M.ledger, M.events_ch, M.batch_count = {}, nil, nil, nil
+    M.page_failure, M.page_attempts = nil, {}
 end
 -- Scripts successive ledger reads ("unavailable", "pending", "applied") and
 -- keeps the events channel open until a convergence closes it.
@@ -20,7 +22,15 @@ end
 function M.new_actor(...): any hit("actor"); return {} end
 function M.named_scope(...): (any, error?) return response("scope", {}) end
 function M.ensure_system(...): (any, error?) return response("provision", {"system"}) end
-function M.converge(...): (any, error?)
+function M.converge(_actor: any, _scope: any, continuation: table?): (any, error?)
+    if M.page_failure then
+        local position = continuation and continuation.after or "start"
+        M.page_attempts[#M.page_attempts + 1] = position
+        if #M.page_attempts == 2 then
+            hit("converge")
+            return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "transient convergence page refusal"})
+        end
+    end
     if M.batch_count and (M.calls.converge or 0) + 1 < M.batch_count then
         return response("converge", {checked = 256, healed = 256, skipped = {}, continuation = {kind_index = 1, after = tostring(M.calls.converge or 0)}})
     end
@@ -51,6 +61,10 @@ function M.setup(_database_id: string): any
             {id = "app.other.migrations:pending", applied = false}}, nil
     end}
 end
-function M.listen(_topic: string): (any, error?) hit("listen"); return channel.new(), nil end
+function M.listen(_topic: string): (any, error?)
+    hit("listen")
+    if M.page_failure then return time.after("3s"), nil end
+    return channel.new(), nil
+end
 function M.registry.register(_name: string, _pid: any, _scope: any): (boolean?, error?) hit("register"); return true, nil end
 return M

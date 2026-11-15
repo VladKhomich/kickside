@@ -160,6 +160,41 @@ return {run = test.run_cases(function()
             test.eq(assert(json.encode(after.body)), assert(json.encode(before.body)))
             test.eq(converge(scope).checked, 0)
         end)
+        test.it("preserves every cursor status and error while refreshing forward at the locked head", function()
+            local threads, actor, scope, id = setup(true)
+            local params = {thread_id = id, kind = KIND, worker_ref = "func://app:test_count_worker",
+                worker_input_mode = "prefetch_events", events = {input = {{type = "app:threads_keep"}}}}
+            for _, key in ipairs({"default", "invalid", "active"}) do
+                params.cursor_key = key
+                assert(threads:register_projection(params))
+            end
+            for index = 1, 150 do
+                assert(threads:append_event({thread_id = id, event = {type = "app:threads_keep", body = {}}}))
+            end
+            local before = state(id)
+            local db = assert(sql.get("app:db"))
+            assert(db:execute([[UPDATE kickside_projection_cursor SET last_seq=100,
+                status=CASE WHEN cursor_key='default' THEN 'paused' ELSE cursor_key END,
+                last_error='retained cursor diagnostic' WHERE projection_id=$1]], {before.id}))
+            local cursors = assert(db:query("SELECT id,status,generation,job_id,last_error FROM kickside_projection_cursor WHERE projection_id=$1", {before.id}))
+            assert(db:release())
+            params.cursor_key, params.ensure = "default", true
+            params.events.input[2] = {type = "app:threads_skip"}
+            assert(threads:register_projection(params))
+            db = assert(sql.get("app:db"))
+            for _, cursor in ipairs(cursors) do
+                local after = assert(db:query("SELECT status,last_seq,generation,job_id,last_error FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
+                test.eq(after.status, cursor.status)
+                test.eq(after.last_error, cursor.last_error)
+                test.eq(after.job_id, cursor.job_id)
+                test.eq(tonumber(after.last_seq), 150)
+                test.eq(tonumber(after.generation), assert(tonumber(cursor.generation)) + 1)
+            end
+            assert(db:release())
+            test.eq(tonumber(state(id).declaration_from_seq), 151)
+            test.eq(#state(id).body.events.input, 2)
+            assert(threads:remove_projection({thread_id = id, projection_id = before.id}))
+        end)
         for _, history in ipairs({"retained", "pruned", "legacy"}) do
         for _, boot in ipairs({false, true}) do
         test.it("refreshes " .. history .. " declarations forward only/boot=" .. tostring(boot), function()

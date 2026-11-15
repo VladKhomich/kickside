@@ -54,8 +54,8 @@ local function define_tests()
                 local cursor = assert(db:query("SELECT last_seq,status,last_error,generation FROM kickside_projection_cursor WHERE id=$1",
                     {registered.cursor_id}))[1]
                 test.eq(tonumber(cursor.last_seq), 7)
-                test.eq(cursor.status, "active")
-                test.is_nil(cursor.last_error)
+                test.eq(cursor.status, status)
+                test.eq(cursor.last_error, "retained error")
                 test.eq(tonumber(cursor.generation), registered.generation + 1, "old worker snapshots cannot overwrite the refreshed declaration")
                 local sibling_cursor = assert(db:query("SELECT generation,last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1", {sibling.cursor_id}))[1]
                 test.eq(tonumber(sibling_cursor.generation), sibling.generation + 1, "all cursors share the refreshed declaration")
@@ -76,6 +76,9 @@ local function define_tests()
                 test.eq(unfiltered.generation, ensured.generation + 1)
                 local last = assert(db:query("SELECT body FROM kickside_projection WHERE id=$1", {registered.projection_id}))[1]
                 test.is_nil(assert(json.decode(last.body)).events)
+                local final_cursor = assert(db:query("SELECT status,last_error FROM kickside_projection_cursor WHERE id=$1", {registered.cursor_id}))[1]
+                test.eq(final_cursor.status, status)
+                test.eq(final_cursor.last_error, "retained error")
                 local removed, remove_err = writer.remove_projection(db, id, {projection_id = registered.projection_id})
                 test.is_nil(remove_err)
                 test.eq(removed.removed_cursors, 2)
