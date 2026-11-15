@@ -4192,3 +4192,55 @@ entries:
     kind: db.sql.sqlite
     foreign_keys: true
     file: ":memory:"
+
+  - name: health_bounded_source
+    kind: library.lua
+    meta:
+      comment: 'Durable jobs API: enqueue, post-commit nudge, slot purge, fenced cancellation,
+        lease validation, completion, listing, retention, and health.'
+    source: file://health_native_source.lua
+    modules:
+    - sql
+    - logger
+    imports:
+      runtime_policy: kickside.core.jobs.policy:runtime
+      config: app:health_bounded_config
+      lifecycle: kickside.core.jobs.persist:lifecycle
+      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
+      lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
+      lease_status: kickside.core.jobs.persist:lease_status
+      wake: kickside.core.jobs.persist:wake
+      slot_purge: kickside.core.jobs.persist:slot_purge
+      clock: kickside.core.jobs:clock
+      completion: kickside.core.jobs.persist:completion
+      retention: kickside.core.jobs.persist:retention
+      thread_teardown: kickside.core.jobs.persist:thread_teardown
+      api_scope: kickside.core.jobs.api:scope
+      lease_release: kickside.core.jobs:lease_release
+      claim: kickside.core.jobs.persist:claim
+      error_envelope: kickside.contract:error_envelope
+      committed_error: kickside.contract:committed_error
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
+  - name: health_bounded_config
+    kind: library.lua
+    source: file://health_bounded_config.lua
+  - name: private_queue_health_bounded
+    kind: db.sql.sqlite
+    foreign_keys: true
+    file: ':memory:'
+  - name: health_bounded_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: jobs_health_bounded
+    source: file://health_bounded_test.lua
+    method: run
+    modules:
+    - sql
+    imports:
+      test: wippy.test:test
+      jobs: app:health_bounded_source
+      fixture: app:job_fixture
+      eligibility: kickside.core.jobs.persist:eligibility
+      query_jobs: app:health_native_source
+      query_fixture: app:health_native_fixture
