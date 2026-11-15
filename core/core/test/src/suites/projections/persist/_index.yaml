@@ -35,7 +35,7 @@ entries:
     imports:
       writer: kickside.core.projections.persist:writer
       invoke: kickside.core.projections:invoke
-      claim: kickside.core.jobs.persist:claim
+      projection_claim: app:projection_claim
       test: wippy.test:test
     method: run
   - name: slot_test

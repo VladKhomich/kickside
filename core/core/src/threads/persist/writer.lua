@@ -148,7 +148,7 @@ function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_
     for index, row in ipairs(rows :: table[]) do
         if type(row.id) ~= "string" or row.id == "" then return nil, response_error("lock.row.id") end
         if components_given and row.component_id then components[row.component_id] = row end
-        if row.event_count ~= nil then snapshots[thread_key(dbtype, row.id)] = row end
+        if not components_given or row.event_count ~= nil then snapshots[thread_key(dbtype, row.id)] = row end
         if cursor_id and index == 1 and row.cursor_id ~= nil then
             local current: table = {generation = row.cursor_generation, last_seq = row.cursor_last_seq,
                 status = row.cursor_status, job_id = row.cursor_job_id}
