@@ -23,7 +23,7 @@ entries:
     test: wippy.test:test
     lifecycle: kickside.core.threads.persist:lifecycle
     invoke: kickside.core.projections:invoke
-    claim: kickside.core.jobs.persist:claim
+    projection_claim: app:projection_claim
     apply: kickside.core.projections:apply
 
 - name: projection_owner_callback_fixture

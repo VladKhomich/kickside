@@ -4,7 +4,7 @@ local sql = require("sql")
 local uuid = require("uuid")
 local writer = require("writer")
 local apply = require("apply")
-local claim = require("claim")
+local projection_claim = require("projection_claim")
 local invoke = require("invoke")
 local pin = require("pin")
 local prune = require("prune")
@@ -39,17 +39,9 @@ local function fixture(): (string, table)
     db:release()
     return thread, registered
 end
-local function claim_registered(db: sql.DB, registered: table): table
-    execute(db, [[UPDATE kickside_job SET scheduled_at=created_at,
-        priority=(SELECT COALESCE(MAX(priority),0)+1 FROM kickside_job) WHERE id=$1]], {registered.job_id})
-    local job, err = claim.claim_job(db, tostring(db:type()))
-    if err then error(tostring(err)) end
-    if not job or job.id ~= registered.job_id then error("registered slot is not claimed") end
-    return job
-end
 local function block(thread: string, registered: table): table
     local db = assert(sql.get("app:db"))
-    local job = claim_registered(db, registered)
+    local job = projection_claim.claim(db, registered.job_id)
     local snapshot = query(db, "SELECT * FROM kickside_projection_cursor WHERE id=$1", { registered.cursor_id })[1]
     db:release()
     local result, failure = apply.fail("app:db", job, snapshot,
@@ -79,7 +71,7 @@ return test.run_cases(function()
             registration(db, thread)
             test.is_nil(select(1, pin.read(db, thread, "projection:" .. registered.cursor_id)))
             test.eq(sweep(db, thread).deleted, 0, "the corrected cursor protects the same input")
-            local job = claim_registered(db, registered)
+            local job = projection_claim.claim(db, registered.job_id)
             db:release()
             local folded, fold_err = invoke.run({job = job, payload = {cursor_id = registered.cursor_id}})
             test.is_nil(fold_err)

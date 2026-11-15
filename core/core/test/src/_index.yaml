@@ -7,6 +7,12 @@ namespace: app
 # Excluded from publish (see wippy.yaml).
 
 entries:
+  - name: projection_claim
+    kind: library.lua
+    source: file://projection_claim.lua
+    imports:
+      claim: kickside.core.jobs.persist:claim
+
   - name: dep.wippy.test
     kind: ns.dependency
     component: wippy/test

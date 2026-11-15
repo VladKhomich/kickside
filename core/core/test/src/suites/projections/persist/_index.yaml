@@ -13,7 +13,7 @@ entries:
       test: wippy.test:test
       writer: kickside.core.projections.persist:writer
       apply: kickside.core.projections:apply
-      claim: kickside.core.jobs.persist:claim
+      projection_claim: app:projection_claim
       cancellation: kickside.core.jobs.persist:lifecycle_cancel
       prune_scaffold: app:prune_scaffold
   - name: returned_authorization_test
@@ -155,7 +155,7 @@ entries:
       test: wippy.test:test
       writer: kickside.core.projections.persist:writer
       apply: kickside.core.projections:apply
-      claim: kickside.core.jobs.persist:claim
+      projection_claim: app:projection_claim
       invoke: kickside.core.projections:invoke
       pin: kickside.core.retention:pin
       prune: kickside.core.retention:prune
