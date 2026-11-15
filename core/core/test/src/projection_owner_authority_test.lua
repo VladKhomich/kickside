@@ -270,7 +270,7 @@ return {run = test.run_cases(function()
         end)
         for _, mode in ipairs({"generation", "revoke"}) do
             test.it("revalidates the owner before a post-commit callback/" .. mode, function()
-                local id, cursor, job = create("app:projection_owner_callback_kind")
+                local id, cursor, job = create("app:projection_owner_callback_kind", mode == "revoke" and "callback-user-" .. uuid.v4() or nil)
                 local db = assert(sql.get("app:db"))
                 assert(db:execute("INSERT INTO kickside_component_meta (meta_id,component_id,key,value) VALUES ($1,$2,'owner_test.callback','0')", {uuid.v4(), id}))
                 db:release()
@@ -286,6 +286,23 @@ return {run = test.run_cases(function()
                 if mode == "revoke" then test.eq(after.status, "invalid"); test.not_nil(after.last_error) end
             end)
         end
+        test.it("retains maintenance callback admission for the round and denies revoked access next invocation", function()
+            local id, cursor, job = create("app:projection_owner_callback_kind")
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("INSERT INTO kickside_component_meta (meta_id,component_id,key,value) VALUES ($1,$2,'owner_test.callback','0')", {uuid.v4(), id}))
+            assert(db:release())
+            callback_fixture.mode = "revoke"
+            local result, err = callback_invoke.run({job = job, payload = {cursor_id = cursor.id}})
+            test.is_nil(err); test.is_nil(result.invalid); test.is_nil(result.stale)
+            db = assert(sql.get("app:db"))
+            local callback = assert(db:query("SELECT value FROM kickside_component_meta WHERE component_id=$1 AND key='owner_test.callback'", {id}))[1]
+            assert(db:release()); test.eq(callback.value, "system:lifecycle")
+            local denied, denied_err = invoke.run({job = next_invocation(id, cursor), payload = {cursor_id = cursor.id}})
+            test.is_nil(denied_err); test.is_true(denied.invalid)
+            db = assert(sql.get("app:db"))
+            local after = assert(db:query("SELECT status,last_seq,last_error FROM kickside_projection_cursor WHERE id=$1", {cursor.id}))[1]
+            assert(db:release()); test.eq(after.status, "invalid"); test.not_nil(after.last_error); test.eq(tonumber(after.last_seq), 1)
+        end)
         test.it("authorizes allowed and denied maintenance destinations as one atomic result", function()
             local id, cursor, job = create()
             local f = fixture.new()

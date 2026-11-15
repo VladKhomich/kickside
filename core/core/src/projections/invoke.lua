@@ -59,7 +59,7 @@ end
 
 -- Compose the canonical effective-access query into the existing owner read.
 -- Maintenance frames carry only their user-typed actor subject, without groups
--- or path restrictions. Values remain fresh for every invocation and callback.
+-- or path restrictions. Values remain fresh for every invocation.
 local maintenance_access, maintenance_args = access_subjects.effective_mask_query(
     {{subject_type = "user", subject_id = "owner"}}, "component")
 local references = {component = "o.component_id", owner = "m.value", user = "'user'"}
@@ -346,11 +346,10 @@ function M.run(input: any): (table?, error?)
             if callback_open_err then return nil, callback_open_err end
             if not callback_db then return nil, response_error("callback.database") end
             local rows, fresh_err = callback_db:query([[SELECT c.generation,c.status,c.last_seq,c.job_id,
-                o.identity_generation AS owner_identity_generation,]]
-                .. (current.component_authority.maintenance_owner and MAINTENANCE_ACCESS or "NULL") .. [[ AS maintenance_access_mask
+                o.identity_generation AS owner_identity_generation
                 FROM kickside_projection_cursor c
                 LEFT JOIN kickside_components o ON o.component_id=$1
-                LEFT JOIN kickside_component_meta m ON m.component_id=o.component_id AND m.key='owner' WHERE c.id=$2]],
+                WHERE c.id=$2]],
                 {current.component_authority.component_id, cursor_id})
             fresh_err = release(callback_db, fresh_err)
             if fresh_err then return nil, fresh_err end
@@ -362,7 +361,6 @@ function M.run(input: any): (table?, error?)
                 result.stale = true
                 return result, nil
             end
-            post_commit.maintenance_access_mask = fresh.maintenance_access_mask
             local declared, declaration_err = owner_identity.check_declaration(current.component_authority.declaration)
             if declaration_err or not declared then
                 local failed_snapshot: table = {}
@@ -376,7 +374,7 @@ function M.run(input: any): (table?, error?)
         end
         committed_input.projection.body = output.body or current.body
         committed_input.range.to_seq = result.last_seq
-        local _, post_err = worker.run(post_commit, committed_input)
+        local _, post_err = worker.run(post_commit, committed_input, current.execution_frame)
         if post_err then
             if current.component_authority and job_types.is_deterministic_kind(post_err:kind()) then
                 local failed_snapshot: table = {}

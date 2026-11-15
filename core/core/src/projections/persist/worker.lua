@@ -342,11 +342,14 @@ local function resolve_binding_identity(binding: table): (any, any, error?, tabl
 end
 worker.resolve_binding_identity = resolve_binding_identity
 
-local function admit_binding_identity(binding: table): (any, any, error?, table?, table?)
+local function admit_binding_identity(binding: table, admitted_frame: table?): (any, any, error?, table?, table?)
     local actor, scope, err, access, frame = resolve_binding_identity(binding)
     if err then return nil, nil, err end
     local authority = binding.component_authority
-    if authority then
+    -- A callback may reuse this invocation's admitted maintenance frame only
+    -- after its fresh generation fence. Resolution above checks the cache key,
+    -- including registry revision; v2 authority always resolves live.
+    if authority and not (authority.maintenance_owner and frame and frame == admitted_frame) then
         if not access then
             local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
             if subjects_err then return nil, nil, subjects_err end
@@ -395,7 +398,7 @@ end
 -- run_proc_supervised so their execution is bounded and terminable. A proc binding
 -- reaching this path is a wiring fault, surfaced as a hard error rather than run
 -- unsupervised.
-function worker.run(binding: table, worker_input: table): (table?, error?, table?)
+function worker.run(binding: table, worker_input: table, admitted_frame: table?): (table?, error?, table?)
     local target_id = tostring(binding.target_id)
     local runtime = tostring(binding.worker_runtime)
     local worker_ref = tostring(binding.worker_ref)
@@ -410,7 +413,7 @@ function worker.run(binding: table, worker_input: table): (table?, error?, table
     local validated, validate_err = worker.validate(binding, binding.system_identity == true)
     if validate_err or not validated then return nil, validate_err end
 
-    local actor, scope, ident_err, access, frame = admit_binding_identity(binding)
+    local actor, scope, ident_err, access, frame = admit_binding_identity(binding, admitted_frame)
     if ident_err then
         return nil, ident_err
     end

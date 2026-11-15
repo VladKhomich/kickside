@@ -57,6 +57,37 @@ return {run = test.run_cases(function()
             test.is_nil(refresh_err); test.not_nil(refreshed)
             test.eq(fixture.actors, 2); test.eq(fixture.scopes, 2); test.eq(fixture.configures, 2); test.eq(fixture.calls, 3)
         end)
+        test.it("reuses callback admission only for the same cached maintenance frame", function()
+            fixture.reset("", nil)
+            local b = {worker_ref = "func://app:worker", worker_runtime = "func", target_id = "app:worker",
+                actor_id = "system:lifecycle", maintenance_access_mask = 3, component_authority = {
+                    component_id = "callback", maintenance_owner = "system:lifecycle", generation = 0}}
+            local _, err, frame = worker.run(b, {})
+            test.is_nil(err); test.not_nil(frame)
+            b.maintenance_access_mask = 0
+            local callback, callback_err, retained = worker.run(b, {}, frame)
+            test.is_nil(callback_err); test.not_nil(callback); test.eq(retained, frame)
+            test.eq(fixture.frames, 1); test.eq(fixture.configures, 1); test.eq(fixture.calls, 2)
+            local denied, denied_err = worker.run(b, {})
+            test.is_nil(denied); test.eq(denied_err:kind(), errors.PERMISSION_DENIED)
+            for _, change in ipairs({"generation", "component", "owner", "registry"}) do
+                if change == "generation" then b.component_authority.generation = 2
+                elseif change == "component" then b.component_authority.component_id = "other-callback"
+                elseif change == "owner" then b.actor_id = "system:kickside.jobs"; b.component_authority.maintenance_owner = b.actor_id
+                else fixture.revision = "callback-updated" end
+                local stale, stale_err = worker.run(b, {}, frame)
+                test.is_nil(stale); test.eq(stale_err:kind(), errors.PERMISSION_DENIED)
+            end
+            test.eq(fixture.calls, 2)
+        end)
+        test.it("never reuses a v2 callback authority frame", function()
+            fixture.reset("", nil)
+            local _, err, frame = worker.run(binding(), {})
+            test.is_nil(err); test.not_nil(frame)
+            local result, callback_err = worker.run(binding(), {}, frame)
+            test.is_nil(callback_err); test.not_nil(result); test.eq(fixture.resolves, 2)
+            test.eq(fixture.configures, 2)
+        end)
         test.it("does not cache v2 resolution or mint without a trusted binding", function()
             fixture.reset("", nil)
             for _ = 1, 2 do test.not_nil(worker.resolve_binding_identity(binding())) end
