@@ -633,6 +633,7 @@ entries:
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
+      projection_claim: app:projection_claim
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
 
@@ -838,6 +839,7 @@ entries:
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
+      projection_claim: app:projection_claim
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
 

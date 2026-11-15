@@ -10,6 +10,7 @@ local uuid = require("uuid")
 local security = require("security")
 local contract = require("contract")
 local provision = require("provision")
+local projection_claim = require("projection_claim")
 local autoinit = require("autoinit")
 local channel = require("channel")
 local process = require("process")
@@ -819,18 +820,27 @@ local function define_tests()
         end)
 
         -- Runs the Jobs pool until the component's lifecycle projection of kind
-        -- reaches its lifecycle thread head or records a failure, and returns the
+        -- reaches its lifecycle thread head or becomes invalid, and returns the
         -- projection's identity, body, cursor position and recorded failure.
         local function fold_lifecycle_projection(component_id: string, kind: string): table
+            local thread_id = lifecycle.thread_id(component_id)
+            local d = db()
+            local owned = assert(d:query([[SELECT c.job_id FROM kickside_projection p
+                JOIN kickside_projection_cursor c ON c.projection_id=p.id
+                WHERE p.thread_id=$1 AND p.kind=$2]], {thread_id, kind}))[1]
+            test.not_nil(owned)
+            -- Pending jobs can retain an earlier worker interruption.
+            assert(d:execute("UPDATE kickside_job SET last_error='previous worker attempt interrupted' WHERE id=$1 AND status='pending'", {owned.job_id}))
+            projection_claim.prepare(d, owned.job_id)
+            d:release()
             local events = process.events()
             local pid, spawn_err = process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes")
             if spawn_err or not pid then error("projection Jobs pool failed to start: " .. tostring(spawn_err)) end
-            local thread_id = lifecycle.thread_id(component_id)
             local deadline = time.now():add(20 * time.SECOND)
             local observed: table? = nil
             while true do
                 local d = db()
-                local rows = assert(d:query([[SELECT p.actor_id, p.body, c.last_seq, c.last_error,
+                local rows = assert(d:query([[SELECT p.actor_id, p.body, c.last_seq, c.last_error, c.status AS cursor_status,
                         j.last_error AS job_error, t.event_count
                     FROM kickside_projection p
                     JOIN kickside_projection_cursor c ON c.projection_id=p.id
@@ -840,9 +850,8 @@ local function define_tests()
                 d:release()
                 local row = rows[1]
                 if row == nil then error("lifecycle projection " .. kind .. " is not registered") end
-                local failure = row.last_error or row.job_error
-                if (tonumber(row.last_seq) or 0) >= (tonumber(row.event_count) or 0)
-                    or (type(failure) == "string" and failure ~= "") then
+                if ((tonumber(row.last_seq) or 0) >= (tonumber(row.event_count) or 0)
+                    and row.last_error == nil and row.job_error == nil) or row.cursor_status == "invalid" then
                     observed = row
                     break
                 end
