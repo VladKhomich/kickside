@@ -3,7 +3,7 @@ local registry = require("registry")
 local autoinit = require("autoinit")
 local funcs = require("funcs")
 local json = require("json")
-local crypto = require("crypto")
+local hash = require("hash")
 local types = require("component_types")
 
 local M = {}
@@ -68,7 +68,7 @@ function M.revision(declarations: types.SecretField[]): (string?, error?)
     table.sort(paths)
     local encoded, encode_err = json.encode(paths)
     if encode_err then return nil, encode_err end
-    return crypto.hash.sha256(encoded :: string)
+    return hash.sha256(encoded :: string)
 end
 
 local cached_version: string? = nil

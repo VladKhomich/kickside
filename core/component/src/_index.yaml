@@ -99,7 +99,7 @@ entries:
   - name: secret_fields
     kind: library.lua
     source: file://secret_fields.lua
-    modules: [registry, funcs, json, crypto]
+    modules: [registry, funcs, json, hash]
     imports:
       autoinit: kickside.component:autoinit
       component_types: kickside.component:types

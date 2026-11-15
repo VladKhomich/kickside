@@ -107,7 +107,7 @@ return {run = test.run_cases(function()
                 include = {private_context = true, meta = false}})
             test.is_nil(list_err)
             test.eq(listed[1].private_context.api_key.set, true)
-            test.is_nil(assert(json.encode(listed)):find(SENTINEL, 1, true))
+            test.is_nil((assert(json.encode(listed)):find(SENTINEL, 1, true)))
             local runtime_rows, runtime_err = component.list_runtime_context({component_ids = {id},
                 include = {private_context = true, meta = false}})
             test.is_nil(runtime_err)

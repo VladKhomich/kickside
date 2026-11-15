@@ -60,33 +60,36 @@ local function write_batch(tx: sql.Transaction, changes: {Change}, revision: str
     if #changes == 0 then return nil end
     local parameters: {Parameter} = {revision}
     local ids: {string} = {}
-    local cases: {[string]: {string}} = {private_context = {}, encrypted_secrets = {},
-        secrets_generation = {}, secrets_incarnation = {}}
+    local references: {[string]: string} = {}
     local function bind(value: Parameter): string
         parameters[#parameters + 1] = value
         return "$" .. tostring(#parameters)
     end
-    for _, change in ipairs(changes) do
-        local id = bind(change.id)
-        ids[#ids + 1] = id
-        if change.secret then
-            local values: {[string]: Parameter} = {
-                private_context = change.context :: string,
-                encrypted_secrets = change.secret.encrypted :: string,
-                secrets_generation = change.secret.generation,
-                secrets_incarnation = change.secret.incarnation}
-            for column, value in pairs(values) do
-                cases[column][#cases[column] + 1] = "WHEN " .. id .. " THEN " .. bind(value)
-            end
-        end
+    local function reference(id: string): string
+        if not references[id] then references[id] = bind(id) end
+        return references[id]
     end
     local assignments: {string} = {"secrets_revision=$1"}
+    -- SQLite assigns named parameter positions in SQL occurrence order.
     for _, column in ipairs({"private_context", "encrypted_secrets", "secrets_generation", "secrets_incarnation"}) do
-        if #cases[column] > 0 then
+        local cases: {string} = {}
+        for _, change in ipairs(changes) do
+            if change.secret then
+                local value: Parameter
+                if column == "private_context" then value = change.context :: string
+                elseif column == "encrypted_secrets" then value = change.secret.encrypted :: string
+                elseif column == "secrets_generation" then value = change.secret.generation
+                else value = change.secret.incarnation end
+                local id = reference(change.id)
+                cases[#cases + 1] = "WHEN " .. id .. " THEN " .. bind(value)
+            end
+        end
+        if #cases > 0 then
             assignments[#assignments + 1] = column .. "=CASE component_id "
-                .. table.concat(cases[column], " ") .. " ELSE " .. column .. " END"
+                .. table.concat(cases, " ") .. " ELSE " .. column .. " END"
         end
     end
+    for _, change in ipairs(changes) do ids[#ids + 1] = reference(change.id) end
     local _, write_err = tx:execute("UPDATE kickside_components SET " .. table.concat(assignments, ",")
         .. " WHERE component_id IN (" .. table.concat(ids, ",") .. ")", parameters)
     return write_err
