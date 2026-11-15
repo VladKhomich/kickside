@@ -16,7 +16,7 @@ local function default_base_url(profile: any, region: string): string
     return "https://bedrock." .. region .. ".amazonaws.com"
 end
 
-function M.fetch(profile: any): ({ any }?, string?)
+function M.fetch(profile: any): ({ any }?, string?, any?)
     local region = common.resolve_value(profile, "region", "AWS_REGION")
         or common.resolve_value(profile, "aws_region", "AWS_DEFAULT_REGION")
         or "us-east-1"
@@ -47,7 +47,7 @@ function M.fetch(profile: any): ({ any }?, string?)
         secret_key = secret_key,
         session_token = session_token,
     })
-    if not signed_headers then return nil, "Bedrock request signing failed: " .. tostring(sign_err) end
+    if not signed_headers then return nil, common.transport_error(sign_err, "Bedrock request signing failed") end
 
     local request_headers: { [string]: string } = {}
     for k, v in pairs(signed_headers) do
@@ -58,10 +58,10 @@ function M.fetch(profile: any): ({ any }?, string?)
         headers = request_headers,
         timeout = common.timeout(profile, 30),
     })
-    if err then return nil, tostring(err) end
+    if err then return nil, common.transport_error(err) end
 
-    local parsed, perr = common.decode_response(response)
-    if not parsed then return nil, perr end
+    local parsed, perr, diagnostics = common.decode_response(response)
+    if not parsed then return nil, perr, diagnostics end
     if type(parsed.modelSummaries) == "table" then return common.as_array(parsed.modelSummaries) end
     return {}
 end
