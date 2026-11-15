@@ -62,7 +62,7 @@ local function define_tests()
                 (id,name,provider_id,config_json,secret_json,enabled,status,message,created_at,updated_at)
                 VALUES ($1,'Legacy headers','wippy.llm.openai_compat:provider',$2,$3,1,'healthy','',3,7)]],
                 {id, assert(json.encode({base_url = "https://example.invalid", headers = {Authorization = secret}})), existing})))
-            local result, err = funcs.call("kickside.models.migrations:03_encrypt_legacy_headers",
+            local result, err = funcs.call("kickside.models.migrations:04_encrypt_legacy_headers",
                 {database_id = "app:db", id = "legacy-headers-upgrade", direction = "up", force = true})
             test.is_nil(err)
             test.eq(result.failed, 0)
@@ -77,7 +77,7 @@ local function define_tests()
             local profile = assert(models_repo.get_profile(id))
             test.eq(catalog_policy.provider_context(profile).headers.Authorization, secret)
             test.is_nil((assert(json.encode(catalog_policy.public_profile(profile))):find(secret, 1, true)))
-            local repeated = assert(funcs.call("kickside.models.migrations:03_encrypt_legacy_headers",
+            local repeated = assert(funcs.call("kickside.models.migrations:04_encrypt_legacy_headers",
                 {database_id = "app:db", id = "legacy-headers-repeat", direction = "up", force = true}))
             test.eq(repeated.failed, 0)
             local after = assert(db:query("SELECT * FROM kickside_model_provider_profiles WHERE id=$1", {id}))[1]

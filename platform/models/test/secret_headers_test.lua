@@ -96,7 +96,7 @@ return {run = test.run_cases(function()
                     {string.format("paged-headers-%04d", i),config,preserved,"Invalid credential: " .. sentinel}))
             end
             local function migrate()
-                return funcs.call("kickside.models.migrations:03_encrypt_legacy_headers", {
+                return funcs.call("kickside.models.migrations:04_encrypt_legacy_headers", {
                     database_id = "app:db", id = "paged-headers-upgrade", direction = "up"})
             end
             local function row(i)
