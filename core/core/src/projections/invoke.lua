@@ -64,7 +64,7 @@ local maintenance_access, maintenance_args = access_subjects.effective_mask_quer
     {{subject_type = "user", subject_id = "owner"}}, "component")
 local references = {component = "o.component_id", owner = "m.value", user = "'user'"}
 maintenance_access = maintenance_access:gsub("%$(%d+)", function(index: string): string
-    return references[maintenance_args[tonumber(index) :: number]]
+    return references[maintenance_args[tonumber(index) :: number]] :: string
 end)
 local MAINTENANCE_ACCESS = "COALESCE((" .. maintenance_access .. "),0)"
 

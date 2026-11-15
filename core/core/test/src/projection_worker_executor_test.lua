@@ -53,7 +53,8 @@ return {run = test.run_cases(function()
             end
             test.eq(fixture.actors, 1); test.eq(fixture.scopes, 1); test.eq(fixture.configures, 1); test.eq(fixture.calls, 2)
             fixture.revision = "executor-updated"
-            test.not_nil(worker.run(b, {}))
+            local refreshed, refresh_err = worker.run(b, {})
+            test.is_nil(refresh_err); test.not_nil(refreshed)
             test.eq(fixture.actors, 2); test.eq(fixture.scopes, 2); test.eq(fixture.configures, 2); test.eq(fixture.calls, 3)
         end)
         test.it("does not cache v2 resolution or mint without a trusted binding", function()

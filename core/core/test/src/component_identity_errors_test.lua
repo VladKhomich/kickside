@@ -68,7 +68,8 @@ return {run = test.run_cases(function()
             end
             test.eq(fixture.declarations, 1)
             fixture.revision = "new"
-            test.is_true(counted_owner_identity.check_declaration(descriptor)); test.eq(fixture.declarations, 2)
+            local refreshed, refresh_err = counted_owner_identity.check_declaration(descriptor)
+            test.is_nil(refresh_err); test.is_true(refreshed); test.eq(fixture.declarations, 2)
             descriptor.worker_ref = "func://app:changed"
             local allowed, err = counted_owner_identity.check_declaration(descriptor)
             test.is_false(allowed); test.eq(err:kind(), errors.PERMISSION_DENIED)
