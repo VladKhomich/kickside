@@ -74,6 +74,17 @@ return {run = test.run_cases(function()
             test.is_true(allowed); test.is_nil(err)
             test.eq(fixture.producer_checks, 1)
         end)
+        for _, maintenance in ipairs({false, true}) do
+            test.it("preserves producer admission for component-owned writes/" .. tostring(maintenance), function()
+                fixture.reset("", nil); fixture.maintenance = maintenance
+                local result, err = api.authorize_writes({component_authority = {component_id = fixture.ID},
+                    writes = {{thread_id = fixture.ID, events = {{type = "guard:event", body = {}}}}}})
+                test.is_nil(err); test.not_nil(result)
+                test.eq(fixture.access_checks, maintenance and 1 or 0)
+                test.eq(#result.checks, maintenance and 1 or 0)
+                test.eq(fixture.producer_checks, 1)
+            end)
+        end
         for _, stage in ipairs({"absent_kind", "absent_event"}) do
             test.it("undeclared input keeps its invalid classification/" .. stage, function()
                 fixture.reset(stage, nil); local allowed, err = call(); test.is_false(allowed); test.not_nil(err); test.eq(err:kind(), errors.INVALID)

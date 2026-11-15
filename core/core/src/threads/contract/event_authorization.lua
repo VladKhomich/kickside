@@ -319,7 +319,7 @@ local function validate_normalized_event_types(db: sql.DB, writes: {table}, user
         if not producer_write then
             output_only = false
         end
-        if (component_owned == true or (user_append and not producer_write)) and not access_required[write.thread_id] then
+        if ((component_owned == true and not user_append) or (user_append and not producer_write)) and not access_required[write.thread_id] then
             access_required[write.thread_id] = true
             local _, access_err = component_client.validate_access(write.thread_id, (core_types.ACCESS.WRITE :: integer))
             if access_err then return false, access_err end

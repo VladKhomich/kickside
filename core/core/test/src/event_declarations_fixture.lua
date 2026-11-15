@@ -1,6 +1,7 @@
 local M = {}
 M.ID = "018fa746-bd62-7000-a000-000000000001"
 function M.reset(stage: string, source: error?)
+    M.maintenance = false
     M.access_checks = 0
     M.producer_checks = 0
     M.stage, M.source, M.reads, M.lookups, M.lookups_by_id = stage, source, 0, 0, {}
@@ -10,7 +11,8 @@ function M.query(...)
     if M.stage == "read" then return nil, M.source end
     return {{id = M.ID, component_id = M.ID, thread_class = "guard_class", impl_id = "guard:component", identity_generation = 0}}, nil
 end
-function M.database(): any return {query = M.query} end
+function M.database(): any return {query = M.query, release = function() return true, nil end} end
+function M.open_db(): any return M.database(), nil end
 function M.get(id: string): (any, error?)
     M.lookups = M.lookups + 1
     M.lookups_by_id[id] = (M.lookups_by_id[id] or 0) + 1
@@ -33,5 +35,5 @@ function M.can(action, ...): boolean
     return true
 end
 function M.actor_id(): string return "guard_actor" end
-function M.is_maintenance_actor(): boolean return false end
+function M.is_maintenance_actor(): boolean return M.maintenance end
 return M
