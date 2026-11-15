@@ -19,9 +19,11 @@ function M.open(id, context)
     assert(id == "wippy.llm.openai_compat:provider")
     assert(context.api_key == M.api_key)
     assert(context.base_url == "https://provider.example.test/v1")
+    if M.open_error then return nil, M.open_error end
     local function invoke(_, input)
         assert(input.model == M.model)
         M.calls = M.calls + 1
+        if M.response ~= nil or M.failure ~= nil then return M.response, M.failure end
         return {success = true}
     end
     return {status = invoke, generate = invoke, embed = invoke, structured_output = invoke, evaluate = invoke}

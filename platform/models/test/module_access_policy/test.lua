@@ -127,6 +127,22 @@ local function define_tests()
             test.is_nil(err, tostring(err))
             test.not_nil(response)
         end)
+        for _, echo in ipairs({"message", "details", "metadata"}) do
+            test.it("keeps returned provider " .. echo .. " free of saved credentials", function()
+                local profile = assert(models_repo.create_profile({id = "echo-profile", name = "Echo profile",
+                    provider_id = "kickside.models.providers:fixture_provider", api_key = "fixture-provider-secret"}))
+                assert(models_repo.upsert_card({name = "echo-model", provider_profile_id = profile.id,
+                    provider_id = profile.provider_id, provider_model = "fixture", capabilities = {"generate"},
+                    max_tokens = 8192, output_tokens = 1024, enabled = true}))
+                local scope = assert(security.named_scope("app:selected_model_members"))
+                local response, err = funcs.new():with_actor(security.new_actor("echo-member", {})):with_scope(scope)
+                    :call("kickside.models.test.module_access:execution_probe", {model = "echo-model", echo = echo})
+                local _, delete_err = models_repo.delete_profile(profile.id)
+                test.is_nil(delete_err, tostring(delete_err))
+                test.is_nil(err, tostring(err))
+                test.eq(response, true)
+            end)
+        end
         test.it("resolves saved models under the member execution scope", function()
             local name = "member-resolver-model"
             local card, save_err = models_repo.upsert_card({name = name, title = "Member model",
@@ -253,6 +269,32 @@ return {
         for key, value in pairs(input.context or {}) do requested_context[key] = value end
         local provider, open_err = require("providers").open(route.id, requested_context)
         if open_err then return nil, open_err end
+        if input.echo then
+            local result, failure = provider:generate({model = route.provider_model, options = {echo = input.echo}})
+            local diagnostic
+            if input.echo == "metadata" then
+                assert(failure == nil, tostring(failure))
+                assert(result.success == true and result.metadata.status == 401)
+                diagnostic = require("json").encode(result)
+            elseif input.echo == "details" then
+                assert(failure:kind() == errors.PERMISSION_DENIED and failure:retryable() == false)
+                assert(failure:details().status == 401)
+                diagnostic = tostring(failure) .. require("json").encode(failure:details())
+            else
+                local direct = assert(require("providers").open("kickside.models.providers:fixture_provider",
+                    {api_key = "fixture-provider-secret"}))
+                local _, direct_error = direct:generate({model = route.provider_model, options = {echo = input.echo}})
+                assert(type(failure) == type(direct_error), "Driver error type changes")
+                if type(failure) == "userdata" then
+                    assert(failure:kind() == direct_error:kind() and failure:retryable() == direct_error:retryable())
+                end
+                diagnostic = tostring(failure)
+            end
+            assert(not diagnostic:find("fixture-provider-secret", 1, true), "Caller receives raw credential")
+            assert(not diagnostic:find("Zml4dHVyZS1wcm92aWRlci1zZWNyZXQ=", 1, true), "Caller receives encoded credential")
+            assert(diagnostic:find("401", 1, true), "Non-secret diagnostics disappear")
+            return true
+        end
         local calls = 0
         for _, method in ipairs({"status", "generate", "embed", "structured_output", "evaluate"}) do
             local result, err = provider[method](provider, {model = route.provider_model})
@@ -296,6 +338,15 @@ return {
             and context.base_url_env ~= "UNTRUSTED_URL", "Caller changes environment references")
         assert(not context.retry or context.retry.attempts ~= 10, "Caller changes retry policy")
         assert(not context.beta_features or context.beta_features[1] ~= "untrusted", "Caller changes API features")
+        if input and input.options and input.options.echo then
+            local message = "HTTP 401: " .. context.api_key
+            local details = {status = 401, nested = {authorization = "Bearer " .. context.api_key,
+                encoded = "Zml4dHVyZS1wcm92aWRlci1zZWNyZXQ="}}
+            if input.options.echo == "metadata" then return {success = true, metadata = details} end
+            if input.options.echo == "message" then return nil, message end
+            return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = message, details = details})
+        end
         if input and input.options and input.options.reject then return nil, "fixture-driver-error" end
         local result = {content = "ok"}
         if input and input.schema then result = {data = {ok = true}}

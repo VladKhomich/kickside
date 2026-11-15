@@ -5,7 +5,7 @@ entries:
     kind: function.lua
     source: file://driver.lua
     method: status
-    modules: [ctx, registry]
+    modules: [base64, ctx, registry]
     imports:
       model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
@@ -17,7 +17,7 @@ entries:
     kind: function.lua
     source: file://driver.lua
     method: generate
-    modules: [ctx, registry]
+    modules: [base64, ctx, registry]
     imports:
       model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
@@ -29,7 +29,7 @@ entries:
     kind: function.lua
     source: file://driver.lua
     method: embed
-    modules: [ctx, registry]
+    modules: [base64, ctx, registry]
     imports:
       model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
@@ -41,7 +41,7 @@ entries:
     kind: function.lua
     source: file://driver.lua
     method: structured_output
-    modules: [ctx, registry]
+    modules: [base64, ctx, registry]
     imports:
       model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo
@@ -53,7 +53,7 @@ entries:
     kind: function.lua
     source: file://driver.lua
     method: evaluate
-    modules: [ctx, registry]
+    modules: [base64, ctx, registry]
     imports:
       model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo

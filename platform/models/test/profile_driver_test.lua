@@ -6,9 +6,66 @@ local fixture = require("fixture")
 local registry_models = require("registry_models")
 local resolver = require("resolver")
 local context = require("context")
+local base64 = require("base64")
+local json = require("json")
 
 local function define_tests()
     test.describe("Cached profile execution", function()
+        for _, boundary in ipairs({"open string", "open details", "method string", "method details", "response metadata"}) do
+            test.it("redacts injected credentials from " .. boundary, function()
+                local secret = "fixture-cache-secret.%+[value]?"
+                local profile = assert(models_repo.create_profile({id = "cached-profile", name = "Cached profile",
+                    provider_id = "wippy.llm.openai_compat:provider", base_url = "https://provider.example.test/v1",
+                    api_key = secret}))
+                assert(models_repo.upsert_card({name = "cached-profile-model", provider_profile_id = profile.id,
+                    provider_id = profile.provider_id, provider_model = "wire-model", capabilities = {"generate"},
+                    max_tokens = 8192, output_tokens = 1024, enabled = true}))
+                local original_key = fixture.api_key
+                fixture.api_key = secret
+                local message = "HTTP 401: " .. secret .. "; Bearer " .. secret .. "; " .. base64.encode(secret)
+                local details = {status = 401, nested = {message = message, values = {secret, "Bearer " .. secret,
+                    base64.encode(secret)}, [secret] = "credential key"}, retryable = false}
+                local failure = errors.new({kind = errors.PERMISSION_DENIED, message = message,
+                    retryable = false, details = details})
+                if boundary == "open string" then fixture.open_error = message
+                elseif boundary == "open details" then fixture.open_error = failure
+                elseif boundary == "method string" then fixture.failure = message
+                elseif boundary == "method details" then fixture.failure = failure
+                else fixture.response = {success = true, result = {content = "ok"}, metadata = details} end
+                local ok, err = pcall(function()
+                    for _, method in ipairs({"status", "generate", "embed", "structured_output", "evaluate"}) do
+                        local response, call_err = driver[method]({})
+                        local diagnostic
+                        if boundary == "response metadata" then
+                            test.is_nil(call_err)
+                            test.eq(response.result.content, "ok")
+                            test.eq(response.metadata.status, 401)
+                            test.eq(response.metadata.retryable, false)
+                            diagnostic = json.encode(response)
+                        else
+                            test.is_nil(response)
+                            test.eq(type(call_err), type(boundary:find("string", 1, true) and message or failure))
+                            diagnostic = tostring(call_err)
+                            if not boundary:find("string", 1, true) then
+                                test.eq(call_err:kind(), failure:kind())
+                                test.eq(call_err:retryable(), failure:retryable())
+                                test.eq(call_err:details().status, 401)
+                                diagnostic = diagnostic .. json.encode(call_err:details())
+                            end
+                        end
+                        test.is_nil(diagnostic:find(secret, 1, true), "Caller receives injected secret")
+                        test.is_nil(diagnostic:find(base64.encode(secret), 1, true), "Caller receives encoded secret")
+                        test.not_nil(diagnostic:find("401", 1, true), "Non-secret diagnostics disappear")
+                    end
+                    test.eq(details.nested.values[1], secret, "Driver-owned metadata changes")
+                end)
+                fixture.api_key = original_key
+                fixture.open_error, fixture.failure, fixture.response = nil, nil, nil
+                local _, delete_err = models_repo.delete_profile(profile.id)
+                test.is_nil(delete_err, tostring(delete_err))
+                assert(ok, tostring(err))
+            end)
+        end
         test.it("keeps legacy inline provider routes unchanged", function()
             local get_all = registry_models.get_all
             local route = {id = "wippy.llm.openai_compat:provider", provider_model = "wire-model",

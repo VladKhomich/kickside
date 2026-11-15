@@ -438,6 +438,7 @@ M.encode_json = encode_json
 M.bool_int = bool_int
 M.encrypt_secret = encrypt_secret
 M.decrypt_secret = decrypt_secret
+M.secret_keys = SECRET_KEYS
 M.provider_context = provider_context
 M.public_profile = public_profile
 M.clean_profile_input = clean_profile_input

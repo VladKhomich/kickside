@@ -1,4 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+local base64 = require("base64")
 local ctx = require("ctx")
 local registry = require("registry")
 local model_catalog = require("model_catalog")
@@ -46,6 +47,45 @@ local function driver_context(provider_id: string, profile: any, options: any): 
     return context
 end
 
+local function redact_returns(context: any): (any) -> any
+    local secrets = {}
+    local function collect(value: any)
+        if type(value) == "string" and value ~= "" then
+            secrets[value] = true
+            secrets[base64.encode(value)] = true
+            secrets["Bearer " .. value] = true
+        elseif type(value) == "table" then
+            for _, child in pairs(value) do collect(child) end
+        end
+    end
+    for key in pairs(policy.secret_keys) do collect(context[key]) end
+    collect(context.headers)
+    local literals = {}
+    for secret in pairs(secrets) do literals[#literals + 1] = secret end
+    table.sort(literals, function(a, b) return #a > #b end)
+    local patterns = {}
+    for _, literal in ipairs(literals) do
+        patterns[#patterns + 1] = literal:gsub("(%W)", "%%%1")
+    end
+    local seen = {}
+    local function redact(value: any): any
+        if type(value) == "string" then
+            for _, pattern in ipairs(patterns) do value = value:gsub(pattern, "[redacted]") end
+        elseif type(value) == "table" then
+            if seen[value] then return seen[value] end
+            local out = {}
+            seen[value] = out
+            for key, child in pairs(value) do out[redact(key)] = redact(child) end
+            return out
+        elseif type(value) == "userdata" and type(value.message) == "function" then
+            return errors.new({kind = value:kind(), retryable = value:retryable(),
+                message = redact(value:message()), details = redact(value:details())})
+        end
+        return value
+    end
+    return redact
+end
+
 local function call(method: string, input: any): (any?, any?)
     local context = ctx.all() or {}
     local card, read_err = model_catalog.get_by_name(context.card)
@@ -58,12 +98,14 @@ local function call(method: string, input: any): (any?, any?)
     if profile.error then return nil, profile.error end
     local real_context, context_err = driver_context(route.id, profile, route.options)
     if not real_context then return nil, context_err end
+    local redact = redact_returns(real_context)
     local provider, err = providers.open(route.id, real_context)
-    if not provider then return nil, err end
+    if not provider then return nil, redact(err) end
     local request = {}
     for key, value in pairs(input or {}) do request[key] = value end
     request.model = route.provider_model
-    return provider[method](provider, request)
+    local result, call_err = provider[method](provider, request)
+    return redact(result), redact(call_err)
 end
 
 function M.status(input: any): (any?, any?) return call("status", input) end
