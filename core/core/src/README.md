@@ -76,3 +76,4 @@ The standalone application harness (`test/`) provisions an in-memory database,
 a process host, a permissive scope, and the component module, then runs its
 harness-owned suites. Suites also run against PostgreSQL by pointing
 `target_db` at a `db.sql.postgres` resource.
+
