@@ -321,7 +321,13 @@ end
 local function copy_secret_config(input: any, existing_secret: any?): any
     local _, submitted = split_config(input.config)
     for key, _ in pairs(SECRET_KEYS) do submitted[key] = nil end
-    local secret_config = merge_config(existing_secret, submitted)
+    local secret_config = merge_config(existing_secret, {})
+    for key, _ in pairs(type(input.config) == "table" and input.config or {}) do
+        if not SECRET_KEYS[key] then secret_config[key] = submitted[key] end
+    end
+    for _, key in ipairs(CONFIG_KEYS) do
+        if input[key] ~= nil and not sensitive_config_key(key) then secret_config[key] = nil end
+    end
     if input.headers ~= nil then secret_config.headers = input.headers end
     if input.clear_headers == true then clear_headers(secret_config) end
     for key, _ in pairs(SECRET_KEYS) do

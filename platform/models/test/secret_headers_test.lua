@@ -49,6 +49,40 @@ return {run = test.run_cases(function()
             assert(repo.delete_profile(profile.id))
             if not ok then error(err) end
         end)
+        test.it("replaces nested public and secret subtrees together without moving credentials between routes", function()
+            local profile = assert(repo.create_profile({name = "Route replacement", api_key = "retained-key",
+                config = {transport = {headers = {Authorization = "transport-secret"}, timeout = 5},
+                    routes = {{endpoint = "https://first.example", headers = {Authorization = "first-secret"}},
+                              {endpoint = "https://second.example", headers = {Authorization = "second-secret"}}}}}))
+            local ok, err = pcall(function()
+                local function context(patch)
+                    assert(repo.update_profile(profile.id, patch))
+                    return policy.provider_context(assert(repo.get_profile(profile.id)))
+                end
+                local current = context({name = "Unchanged routes"})
+                test.eq(current.routes[1].headers.Authorization, "first-secret")
+                test.eq(current.routes[2].headers.Authorization, "second-secret")
+                current = context({config = {routes = {{endpoint = "https://second.example"},
+                                                       {endpoint = "https://first.example"}}}})
+                test.is_nil(current.routes[1].headers)
+                test.is_nil(current.routes[2].headers)
+                test.eq(current.transport.headers.Authorization, "transport-secret")
+                current = context({config = {routes = {{endpoint = "https://replacement.example",
+                    headers = {Authorization = "replacement-secret"}}}, transport = {timeout = 8}}})
+                test.eq(#current.routes, 1)
+                test.eq(current.routes[1].endpoint, "https://replacement.example")
+                test.eq(current.routes[1].headers.Authorization, "replacement-secret")
+                test.is_nil(current.transport.headers)
+                test.eq(current.api_key, "retained-key")
+                current = context({config = {routes = {}}})
+                test.eq(next(current.routes), nil)
+                test.is_nil(assert(repo.get_profile(profile.id)).secret_config.routes)
+                current = context({config = {transport = "disabled"}})
+                test.eq(current.transport, "disabled")
+            end)
+            assert(repo.delete_profile(profile.id))
+            if not ok then error(err) end
+        end)
         test.it("resumes a paged nested-header migration after a failed page without rewriting committed secrets", function()
             local db = assert(sql.get("app:db"))
             local sentinel = "migration-credential-sentinel"
