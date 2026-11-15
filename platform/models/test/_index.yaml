@@ -354,6 +354,5 @@ entries:
     modules: [json, sql]
     imports:
       test: wippy.test:test
-      card_policy: kickside.models.catalog:card_policy
       catalog_policy: kickside.models.catalog:policy
       models_repo: kickside.models.persist:repo
