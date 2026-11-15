@@ -148,10 +148,13 @@ return {run = test.run_cases(function()
             end}
             local threads, err, components, cursors = threads_writer.lock_thread_rows_tx(executor, tostring(db:type()),
                 {lifecycle.thread_id(id)}, {id}, cursor.id)
-            test.is_nil(err)
+            local closed, close_err: any = nil, nil
+            if err then closed, close_err = tx:rollback() else closed, close_err = tx:commit() end
+            local released, release_err = db:release()
+            test.is_nil(err); test.is_nil(close_err); test.is_nil(release_err)
+            test.is_true(closed == true); test.is_true(released == true)
             test.eq(queries, 1); test.eq(#cursors, 1); test.eq(cursors[1].job_id, cursor.job_id)
             test.eq(tonumber(cursors[1].last_seq), 0)
-            assert(tx:commit()); assert(db:release())
             test.is_true(tonumber(threads[lifecycle.thread_id(id)].event_count) == 1, assert(json.encode(threads)))
             test.eq(tonumber(components[id].identity_generation), 0)
         end)
