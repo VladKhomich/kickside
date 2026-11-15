@@ -4542,6 +4542,7 @@ entries:
       register: kickside.core.projections.persist:register
       prune: kickside.core.retention:prune
       writer: kickside.core.projections.persist:writer
+      projection_claim: app:projection_claim
 
   - name: provision_native_lifecycle_adapter
     kind: library.lua

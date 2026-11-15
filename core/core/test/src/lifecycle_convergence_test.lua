@@ -13,6 +13,7 @@ local lifecycle = require("lifecycle")
 local register = require("register")
 local prune = require("prune")
 local writer = require("writer")
+local projection_claim = require("projection_claim")
 local IMPL = "app:lifecycle_convergence_kind"
 local KIND = "test.lifecycle.converge"
 local function scope(): any return assert(security.named_scope("wippy.security:process")) end
@@ -42,6 +43,10 @@ local function converge(continuation: table?): any
     return result
 end
 local function catch_up(id: string)
+    local cursor = state(id)
+    local db = assert(sql.get("app:db"))
+    projection_claim.prepare(db, cursor.job_id)
+    assert(db:release())
     local events = process.events()
     local pid = assert(process.spawn_monitored("kickside.core.jobs.service:worker", "app:processes"))
     local deadline = time.now():add("5s")
