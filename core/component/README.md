@@ -146,9 +146,10 @@ not authorize a credential read: the execution also needs `component.secrets.rea
 on the exact owning binding id. Attach these grants to the owning runtime
 functions, never member bundles. The explicit runtime library methods preserve the internal merged
 view under these authorities.
-`component.get_context_snapshot(id, access, true)` returns that same internal view
-with its context revision for a compare-and-set write. Ordinary service context
-reads remain masked regardless of an execution's secret authority.
+`read_runtime_context` returns the merged context and its revision for a
+compare-and-set write. `component.get_context_snapshot(id, access, true)` and
+ordinary service context reads remain masked regardless of an execution's secret
+authority.
 
 The defaulted `encryption_key` requirement names `ENCRYPTION_KEY`. Only Component's
 cipher functions receive its exact environment grant. Each worker derives its key
