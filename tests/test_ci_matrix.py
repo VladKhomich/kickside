@@ -12,7 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from ci_matrix import select_matrix
+from ci_matrix import dependency_graph, select_matrix
 
 
 class MatrixTests(unittest.TestCase):
@@ -87,10 +87,76 @@ class MatrixTests(unittest.TestCase):
   - kind: registry.entry
     component: example/other
 ''')
+        self.write('platform/leaf/test/wippy.lock', yaml.safe_dump({
+            'modules': [{'name': 'elsewhere/other'}]}))
         self.base = self.commit()
         self.write('platform/other/source.lua', 'return {}')
         self.commit()
         self.assert_modules(['platform/other'])
+
+    def test_symlinked_harness_inputs_select_transitive_consumers(self):
+        self.write('platform/other/src/maintenance_actors/_index.yaml', 'entries: []\n')
+        link = self.root / 'platform/middle/test/maintenance_actor_declarations/core/_index.yaml'
+        link.parent.mkdir(parents=True)
+        link.symlink_to('../../../../other/src/maintenance_actors/_index.yaml')
+        self.base = self.commit()
+        self.write('platform/other/src/maintenance_actors/_index.yaml', 'entries: []\nversion: "1.0"\n')
+        self.commit()
+        self.assert_modules(self.paths[1:])
+
+    def test_symlinked_directories_select_consumers(self):
+        self.write('platform/other/src/policies/policy.lua', 'return {}')
+        link = self.root / 'platform/leaf/test/policies'
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to('../../other/src/policies', target_is_directory=True)
+        self.base = self.commit()
+        self.write('platform/other/src/policies/policy.lua', 'return {changed = true}')
+        self.commit()
+        self.assert_modules(['platform/other', 'platform/leaf'])
+
+    def test_harness_workspace_replacements_select_local_consumers(self):
+        self.dependency('platform/leaf', 'external', directory='test')
+        self.write('platform/leaf/test/.wippy.yaml', yaml.safe_dump({
+            'workspace': {'replacements': {'example/other': '../../other'}}}))
+        self.write('platform/leaf/test/wippy.lock', yaml.safe_dump({
+            'modules': [{'name': 'example/external'}]}))
+        self.base = self.commit()
+        self.write('platform/other/source.lua', 'return {}')
+        self.commit()
+        self.assert_modules(['platform/other', 'platform/leaf'])
+
+    def test_lockfile_local_modules_select_consumers_through_external_dependencies(self):
+        self.dependency('platform/middle', 'external')
+        self.write('platform/middle/test/wippy.lock', yaml.safe_dump({
+            'modules': [{'name': 'example/external'}, {'name': 'example/other'}]}))
+        self.base = self.commit()
+        self.write('platform/other/source.lua', 'return {}')
+        self.commit()
+        self.assert_modules(self.paths[1:])
+
+    def test_unresolved_external_chain_selects_consumer_and_its_dependents(self):
+        for index, locked_modules in enumerate((None, [{'name': 'example/base'}])):
+            with self.subTest(locked_modules=locked_modules):
+                self.dependency('platform/middle', 'external')
+                if locked_modules is not None:
+                    self.write('platform/middle/test/wippy.lock', yaml.safe_dump({
+                        'modules': locked_modules}))
+                self.base = self.commit()
+                self.write('platform/other/source.lua', f'return {{value = {index}}}')
+                self.commit()
+                self.assert_modules(self.paths[1:])
+
+    def test_unresolved_external_chain_does_not_add_jobs_for_empty_diff(self):
+        self.dependency('platform/middle', 'external')
+        self.base = self.commit()
+        self.assert_modules([])
+
+    def test_unresolved_shared_external_chain_selects_every_module(self):
+        self.dependency('build-inputs', 'external')
+        self.base = self.commit()
+        self.write('platform/other/source.lua', 'return {}')
+        self.commit()
+        self.assert_modules(self.paths)
 
     def test_local_frontend_source_imports_select_their_consumers(self):
         self.write('platform/leaf/ui/vite.config.ts',
@@ -179,6 +245,16 @@ class MatrixTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_repository_harness_inputs_have_dependency_edges(self):
+        modules = sorted({row['module'] for row in json.loads(
+            (ROOT / '.github/module-matrix.json').read_text())['include']})
+        graph = dependency_graph(ROOT, modules)
+        for dependency, consumer in (('core/core', 'core/execution'),
+                                     ('platform/workflows', 'core/component'),
+                                     ('platform/oauth', 'platform/sync')):
+            with self.subTest(dependency=dependency, consumer=consumer):
+                self.assertIn(consumer, graph[dependency])
+
     def test_workflow_consumes_selection_and_keeps_check_names(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())['jobs']
         modules = jobs['modules']

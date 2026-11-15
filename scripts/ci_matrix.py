@@ -20,37 +20,67 @@ def owner(path, modules):
     return next((module for module in modules if path.startswith(module + '/')), None)
 
 
+def target_owner(path, repository, modules):
+    target = path.resolve()
+    if target.is_relative_to(repository):
+        return owner(target.relative_to(repository).as_posix() + '/', modules)
+    return None
+
+
 def dependency_graph(repository, modules):
     identities = {}
     for module in modules:
         manifest = yaml.safe_load((repository / module / 'wippy.yaml').read_text())
         identities[manifest['organization'] + '/' + manifest['module']] = module
     consumers = {module: set() for module in modules}
+    external = {module: set() for module in [*modules, None]}
+    resolved = {module: set() for module in [*modules, None]}
     for path in git_paths(repository, 'ls-files', '-z'):
         source = repository / path
         module = owner(path, modules)
         dependencies = set()
+        if source.is_symlink():
+            dependency = target_owner(source, repository, modules)
+            if dependency:
+                dependencies.add(dependency)
+        if source.name == 'wippy.lock':
+            lock = yaml.safe_load(source.read_text())
+            for entry in lock.get('modules', []):
+                resolved[module].add(entry['name'])
+                dependency = identities.get(entry['name'])
+                if dependency:
+                    dependencies.add(dependency)
         if source.suffix in ('.yaml', '.yml'):
             text = source.read_text()
-            if 'ns.dependency' in text:
+            if 'ns.dependency' in text or source.name == '.wippy.yaml':
                 for document in yaml.safe_load_all(text):
                     if isinstance(document, dict):
+                        for component, reference in document.get('workspace', {}).get('replacements', {}).items():
+                            dependency = target_owner(source.parent / reference, repository, modules)
+                            if dependency:
+                                dependencies.add(dependency)
+                                resolved[module].add(component)
                         for entry in document.get('entries', []):
                             if entry.get('kind') == 'ns.dependency':
                                 dependency = identities.get(entry['component'])
                                 if dependency:
                                     dependencies.add(dependency)
+                                else:
+                                    external[module].add(entry['component'])
         # Frontend aliases and relative imports also consume sibling source.
         if module and source.suffix in ('.json', '.ts', '.tsx', '.js', '.mjs', '.vue'):
             for reference in re.findall(r'''["'](\.{1,2}/[^"'\n]+)["']''', source.read_text()):
-                target = (source.parent / reference).resolve()
-                if target.is_relative_to(repository):
-                    dependency = owner(target.relative_to(repository).as_posix() + '/', modules)
-                    if dependency:
-                        dependencies.add(dependency)
+                dependency = target_owner(source.parent / reference, repository, modules)
+                if dependency:
+                    dependencies.add(dependency)
         for dependency in dependencies:
             # A declaration outside a module belongs to shared infrastructure.
             consumers[dependency].add(module)
+    for module in external:
+        if external[module] - resolved[module]:
+            # Without a resolved closure, any local module can feed the external chain.
+            for dependency in modules:
+                consumers[dependency].add(module)
     return consumers
 
 
