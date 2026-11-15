@@ -179,8 +179,9 @@ local function converge_executor(component_id: string, opener_actor: any, opener
     return scoped, nil
 end
 
--- Existence checks retain the population queries; declaration maintenance seeks
--- only mismatches. A finite run rotates kinds, examines at most 4096 mismatches
+-- Existence checks retain the bulk reconciliation pass; lifecycle missing sets
+-- are reused across turns. Declaration maintenance seeks only mismatches. A finite
+-- run rotates kinds, examines at most 4096 mismatches
 -- and repairs at most 256 components per turn through the existing owners.
 function M.converge(opener_actor: any, opener_scope: any, continuation: table?): ({ [string]: any }, error?)
     local summary: { [string]: any } = {checked = 0, healed = 0, skipped = {}}
@@ -200,13 +201,13 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
         if release_err and cause then return summary, error_envelope.wrap_secondary(release_err, cause, "converge: database release failed") end
         return summary, release_err and errors.wrap(release_err, "converge: database release failed") or cause
     end
-    local function converge_lifecycle(component_id: string, impl_id: string): error?
+    local function converge_lifecycle(component_id: string, impl_id: string, projections: table): error?
         local dbtype, type_err = db:type()
         if type_err then return type_err end
         local tx, begin_err = db:begin()
         if begin_err then return begin_err end
         if not tx then return missing_result("begin") end
-        local _, own_err = component_lifecycle.converge_own(tx, tostring(dbtype), component_id, impl_id)
+        local _, own_err = component_lifecycle.converge_own(tx, tostring(dbtype), component_id, impl_id, projections)
         if own_err then
             local _, rollback_err = tx:rollback()
             if rollback_err then return error_envelope.wrap_secondary(rollback_err, own_err, "converge: lifecycle rollback failed") end
@@ -240,6 +241,7 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                     local digest, digest_err = proj_register.declaration_digest(expected, own and "lifecycle" or nil)
                     if digest_err then kind.declaration_error = digest_err; break end
                     decl.declaration_digest = digest
+                    decl.declaration = {body = expected, digest = digest}
                 end
             end
         end
@@ -285,7 +287,7 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                         if converge_err then cause = errors.wrap(converge_err, "converge_thread failed") end
                     end
                 end
-                if not cause and kind.own_lifecycle then cause = converge_lifecycle(component_id, tostring(kind.impl_id)) end
+                if not cause and kind.own_lifecycle then cause = converge_lifecycle(component_id, tostring(kind.impl_id), kind.projections) end
                 if cause then
                     summary.skipped[#summary.skipped + 1] = {component_id = component_id, impl_id = kind.impl_id,
                         reason = cause:message(), error = error_envelope.encode(cause)}
@@ -299,7 +301,8 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                 local range = owner .. (position.missing and " AND c.component_id>" .. quoted(position.missing) or "")
                 local function source(joins: string, predicate: string)
                     sources[#sources + 1] = "SELECT component_id FROM (SELECT c.component_id FROM kickside_components c " .. joins
-                        .. " WHERE " .. range .. " AND " .. predicate .. " ORDER BY CAST(c.component_id AS TEXT) LIMIT " .. tostring(remaining) .. ") missing" .. tostring(#sources + 1)
+                        .. " WHERE " .. range .. " AND " .. predicate .. " ORDER BY CAST(c.component_id AS TEXT)"
+                        .. (kind.own_lifecycle and "" or " LIMIT " .. tostring(remaining)) .. ") missing" .. tostring(#sources + 1)
                 end
                 if type(kind.class) == "string" and kind.class ~= "" then
                     source("LEFT JOIN kickside_thread t ON t.id=c.component_id"
@@ -333,18 +336,31 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                             .. " AS component_id FROM kickside_thread WHERE thread_class="
                             .. quoted(lifecycle_log.class_for(tostring(kind.component_impl_id or kind.impl_id))) .. ") "
                     end
-                    local rows, scan_err = sql.builder.select("DISTINCT component_id")
-                        :from("(" .. prefix .. "SELECT component_id FROM (" .. table.concat(sources, " UNION ALL ") .. ") missing_set) missing")
-                        :order_by("component_id"):limit(remaining):run_with(db):query()
-                    if scan_err then return finish(errors.wrap(scan_err, "converge: existence scan failed")) end
-                    if type(rows) ~= "table" then return finish(missing_result("scan")) end
+                    local rows = position.missing_rows
+                    if not rows then
+                        local query = sql.builder.select("DISTINCT component_id")
+                            :from("(" .. prefix .. "SELECT component_id FROM (" .. table.concat(sources, " UNION ALL ") .. ") missing_set) missing")
+                            :order_by("component_id")
+                        if not kind.own_lifecycle then query = query:limit(remaining) end
+                        local scan_err: error?
+                        rows, scan_err = query:run_with(db):query()
+                        if scan_err then return finish(errors.wrap(scan_err, "converge: existence scan failed")) end
+                        if type(rows) ~= "table" then return finish(missing_result("scan")) end
+                        if kind.own_lifecycle then position.missing_rows, position.missing_index = rows, 1 end
+                    end
                     local limit = remaining
-                    for _, row in ipairs(rows) do
+                    local start = position.missing_index or 1
+                    local last = math.min(#rows, start + limit - 1)
+                    for rindex = start, last do
+                        local row = rows[rindex]
                         position.missing = tostring(row.component_id)
                         local cause = repair(tostring(row.component_id))
                         if cause then return finish(cause) end
                     end
-                    if #rows < limit then position.missing = false end
+                    if kind.own_lifecycle then
+                        position.missing_index = last + 1
+                        if last == #rows then position.missing, position.missing_rows = false, nil end
+                    elseif #rows < limit then position.missing = false end
                     if remaining == 0 then return resume(index % #kinds + 1) end
                 else position.missing = false end
             end

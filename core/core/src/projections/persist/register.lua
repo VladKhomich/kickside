@@ -212,7 +212,7 @@ end
 -- the caller begins and commits; on error the caller rolls back. Declaration
 -- convergence passes ensure=true. Changed declarations preserve the fold and
 -- advance to the refresh head, fencing previously loaded workers.
-function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table, declaration: table?): (RegisterResult?, error?)
+function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table, declaration: table?, routing: string?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -372,7 +372,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             if not declaration_changed and not reset then digest = projection_rows[1].declaration_digest end
             if not digest then
                 local digest_err: error?
-                digest, digest_err = writer.declaration_digest(body)
+                digest, digest_err = writer.declaration_digest(body, routing)
                 if digest_err then return nil, digest_err end
             end
         end
@@ -413,7 +413,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     else
         if not digest then
             local digest_err: error?
-            digest, digest_err = writer.declaration_digest(body)
+            digest, digest_err = writer.declaration_digest(body, routing)
             if digest_err then return nil, digest_err end
         end
         projection_id = uuid.v7()

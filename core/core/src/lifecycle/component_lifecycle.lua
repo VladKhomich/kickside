@@ -4,7 +4,6 @@
 -- thread-backed component's primary thread row commit with the component mutation.
 
 local uuid = require("uuid")
-local registry = require("registry")
 local autoinit = require("autoinit")
 local lifecycle_log = require("component_lifecycle_log")
 local writer = require("proj_writer")
@@ -48,36 +47,7 @@ local function merged_worker_config(p: table, parent_id: string, parent_impl_id:
     return cfg
 end
 
-local declaration_version: string? = nil
-local declarations: {[string]: table[]} = {}
-
--- Registry revisions are immutable. Preparing a binding replaces repeated kind
--- lookups and canonicalization on the lifecycle mutation path.
-local function projections_for_impl(impl_id: string): (table[]?, error?)
-    local version, version_err = registry.current_version()
-    if version_err then return nil, version_err end
-    if not version then return nil, fail("lifecycle declaration registry version missing") end
-    local revision = tostring(version:id())
-    if declaration_version ~= revision then
-        declarations, declaration_version = {}, revision
-    end
-    if declarations[impl_id] then return declarations[impl_id], nil end
-    local projections = autoinit.projections_for_impl(impl_id)
-    for _, p in ipairs(projections) do
-        if p.on == autoinit.PROJECTION_ON.LIFECYCLE then
-            local body, body_err = writer.declaration_body({worker_ref = p.worker_ref,
-                worker_input_mode = p.input_mode, worker_config = p.worker_config, events = p.events})
-            if body_err then return nil, body_err end
-            local digest, digest_err = writer.declaration_digest(body, "lifecycle")
-            if digest_err then return nil, digest_err end
-            p.declaration = {body = body, digest = digest}
-        end
-    end
-    declarations[impl_id] = projections
-    return projections, nil
-end
-
-local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, attach_parent: boolean): error?
+local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, attach_parent: boolean, prepared: table?): error?
     local parent_id = trim(args.parent_id)
     local parent_impl_id = trim(args.parent_impl_id)
     local child_id = trim(args.component_id)
@@ -89,9 +59,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
     end
 
     local function attach(impl_id: string, on: string): error?
-        local projections, declaration_err = projections_for_impl(impl_id)
-        if declaration_err then return declaration_err end
-        for _, p in ipairs(projections) do
+        for _, p in ipairs(prepared or autoinit.projections_for_impl(impl_id)) do
             if p.on == on then
                 local own = on == autoinit.PROJECTION_ON.LIFECYCLE
                 local key = p.projection_key
@@ -113,7 +81,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
                     system_identity = true,
                     ensure = own,
                 }
-                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params, own and p.declaration or nil)
+                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params, own and (p :: table).declaration or nil, own and "lifecycle" or nil)
                 if reg_err then return reg_err end
             end
         end
@@ -233,12 +201,12 @@ end
 -- component whose declared lifecycle projection is absent since its last event.
 -- Registration is an ensure: surviving projections and cursors keep their progress.
 -- Returns the lifecycle thread id, or nil for a component exempt from one.
-function M.converge_own(tx: sql.Transaction, dbtype: string, component_id: string, impl_id: string): (string?, error?)
+function M.converge_own(tx: sql.Transaction, dbtype: string, component_id: string, impl_id: string, prepared: table?): (string?, error?)
     if lifecycle_log.is_exempt(impl_id) then return nil, nil end
     local lifecycle_thread_id, ensure_err = lifecycle_log.ensure_tx(tx, component_id, impl_id)
     if ensure_err or not lifecycle_thread_id then return nil, ensure_err end
     local attach_err = attach_lifecycle_projections({ tx = tx, dbtype = dbtype,
-        component_id = component_id, impl_id = impl_id }, lifecycle_thread_id :: string, false)
+        component_id = component_id, impl_id = impl_id }, lifecycle_thread_id :: string, false, prepared)
     if attach_err then return nil, attach_err end
     return lifecycle_thread_id, nil
 end

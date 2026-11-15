@@ -12,18 +12,43 @@ local provision = require("provision")
 return {run = test.run_cases(function()
     test.describe("declaration maintenance budget", function()
         local original: any = nil
+        local owned: {string} = {}
+        local population = false
         test.after_each(function()
+            if #owned > 0 or population then
+                local db = assert(sql.get("app:db"))
+                local tx = assert(db:begin())
+                local ids: {string} = {}
+                for _, id in ipairs(owned) do
+                    ids[#ids + 1] = "'" .. id .. "'"
+                    ids[#ids + 1] = "'" .. require("lifecycle_log").thread_id(id) .. "'"
+                end
+                local threads = #ids > 0 and "id IN (" .. table.concat(ids, ",") .. ")" or "1=0"
+                if population then threads = "(" .. threads .. " OR id IN (SELECT component_id FROM kickside_components WHERE impl_id='test.window.plan'))" end
+                assert(tx:execute("DELETE FROM kickside_job WHERE id IN (SELECT job_id FROM kickside_projection_cursor WHERE thread_id IN (SELECT id FROM kickside_thread WHERE " .. threads .. "))"))
+                assert(tx:execute("DELETE FROM kickside_thread WHERE " .. threads))
+                local components = #owned > 0 and "component_id IN ('" .. table.concat(owned, "','") .. "')" or "1=0"
+                if population then components = "(" .. components .. " OR impl_id='test.window.plan')" end
+                assert(tx:execute("DELETE FROM kickside_component_meta WHERE component_id IN (SELECT component_id FROM kickside_components WHERE " .. components .. ")"))
+                assert(tx:execute("DELETE FROM kickside_components WHERE " .. components))
+                assert(tx:commit())
+                assert(db:release())
+                owned, population = {}, false
+            end
             if original then assert(registry.apply_version(original)); original = nil end
         end)
-        test.it("prepares lifecycle digests once and invalidates on a registry revision", function()
+        test.it("reads lifecycle declarations without revision checks or repeated hashing", function()
             original = assert(registry.current_version())
             local db = assert(sql.get("app:db"))
             local id = uuid.v7()
+            owned[#owned + 1] = id
             local impl = "app:lifecycle_convergence_kind"
             assert(db:execute("INSERT INTO kickside_components(component_id,impl_id) VALUES ($1,$2)", {id,impl}))
             local function update()
                 local tx = assert(db:begin())
-                assert(lifecycle.updated({tx = tx, dbtype = assert(db:type()), component_id = id, impl_id = impl}))
+                local result, err = lifecycle.updated({tx = tx, dbtype = assert(db:type()), component_id = id, impl_id = impl})
+                if err then assert(tx:rollback()); assert(db:release()); error(err) end
+                test.not_nil(result)
                 assert(tx:commit())
             end
             update()
@@ -45,6 +70,7 @@ return {run = test.run_cases(function()
         test.it("reuses the stored digest for unchanged lifecycle registration", function()
             local db = assert(sql.get("app:db"))
             local id = uuid.v7()
+            owned[#owned + 1] = id
             assert(db:execute("INSERT INTO kickside_thread(id,component_id,thread_class) VALUES ($1,$2,'digest')", {id,id}))
             local params = {kind = "digest", worker_ref = "func://app:test_count_worker", system_identity = true, ensure = true}
             assert(register.register_projection(db, id, params))
@@ -55,7 +81,9 @@ return {run = test.run_cases(function()
         end)
         test.it("seeks only divergent declaration rows in a healthy population", function()
             local db = assert(sql.get("app:db"))
+            population = true
             local seed = uuid.v4()
+            owned[#owned + 1] = seed
             assert(db:execute("INSERT INTO kickside_thread(id,component_id,thread_class) VALUES($1,$2,'plan')", {seed,seed}))
             local registered = assert(register.register_projection(db, seed, {kind = "plan", worker_ref = "func://app:test_count_worker", system_identity = true}))
             local template = assert(db:query("SELECT body,declaration_digest FROM kickside_projection WHERE id=$1", {registered.projection_id}))[1]

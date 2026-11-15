@@ -203,6 +203,22 @@ return {run = test.run_cases(function()
             test.eq(fixture.queries, 42)
             test.eq(fixture.max_page, 4096)
         end)
+        test.it("reuses lifecycle existence materialization across repair turns", function()
+            fixture.reset("", nil)
+            fixture.lifecycle, fixture.lifecycle_missing, fixture.unchanged_count = true, 600, 10000
+            local continuation, total, turns = nil, 0, 0
+            repeat
+                local before = fixture.calls
+                local page = assert(provision.converge({}, {}, continuation))
+                test.is_true(fixture.calls - before <= 256)
+                total, turns = total + page.healed, turns + 1
+                continuation = page.continuation
+                test.is_true(turns <= 4)
+            until not continuation
+            test.eq(total, 600)
+            test.eq(turns, 3)
+            test.eq(fixture.lifecycle_scans, 1, "lifecycle existence is materialized once for the finite run")
+        end)
         for _, changed in ipairs({false, true}) do
             test.it("bounds ten thousand lifecycle digest checks/" .. tostring(changed), function()
                 fixture.reset("", nil)
@@ -225,7 +241,7 @@ return {run = test.run_cases(function()
                 test.eq(fixture.max_page, changed and 4096 or 0)
             end)
         end
-        test.it("limits every divergence source before union and sorting", function()
+        test.it("limits each declaration range before union and sorting", function()
             fixture.reset("", nil)
             fixture.require_window = true
             local _, err = provision.converge({}, {})

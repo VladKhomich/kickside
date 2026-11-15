@@ -4525,8 +4525,8 @@ entries:
     - uuid
     - process
     - sql
-    - registry
     imports:
+      registry: app:declaration_mutation_registry
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
@@ -4566,3 +4566,7 @@ entries:
   - name: declaration_window_autoinit
     kind: library.lua
     source: file://declaration_window_autoinit.lua
+
+  - name: declaration_mutation_registry
+    kind: library.lua
+    source: file://declaration_mutation_registry.lua
