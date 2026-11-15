@@ -16,7 +16,7 @@ end
 local db = {}
 function db:type(): string return "sqlite" end
 function db:begin(): any return {commit = function(): boolean return true end} end
-function M.converge_own(tx: any, dialect: string, id: string, impl: string): (string?, error?)
+function M.converge_own(tx: any, dialect: string, id: string, impl: string, prepared: table?): (string?, error?)
     M.calls = M.calls + 1
     return id, nil
 end
