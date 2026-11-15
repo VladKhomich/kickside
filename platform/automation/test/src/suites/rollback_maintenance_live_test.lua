@@ -75,13 +75,13 @@ return {run = test.run_cases(function()
 
         test.it("visits every deletion when workers remove the previous page", function()
             local env = h.setup("rollback_pages", KIND)
-            local ids = {env.automation_id}
+            local ids: {string} = {env.automation_id}
             for _ = 2, 101 do
                 local result, err = env.caller:call("kickside.automation.agent:automations_manage",
                     {action = "install", type = KIND, input = {}})
                 test.is_nil(err, tostring(err))
                 test.is_true(result.success, json.encode(result))
-                ids[#ids + 1] = result.id
+                ids[#ids + 1] = result.id :: string
             end
             for _, id in ipairs(ids) do dead_deletion(env, id) end
             idle_pool()

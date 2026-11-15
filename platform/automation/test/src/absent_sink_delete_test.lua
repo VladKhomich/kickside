@@ -12,7 +12,7 @@ local slot = require("slot")
 return test.run_cases(function()
     test.describe("automation deletion without an external sink", function()
         test.it("deletes a sync through its declared platform owner without resolving its sink", function()
-            test.is_nil(registry.get("example.absent.sink:items"))
+            test.is_nil((registry.get("example.absent.sink:items")))
             local service = assert(component.get_service())
             local created, err = service:register({component_id = uuid.v7(), impl_id = "kickside.sync:sync",
                 private_context = {sink = {port = "example.absent.sink:items", config = {}}},
