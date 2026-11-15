@@ -550,3 +550,10 @@ entries:
     targets:
       - {entry: kickside.settings.env:encryption_key, path: .default}
       - {entry: kickside.settings:reader_secrets, path: '.policy.resources +='}
+
+  - name: dep.kickside.core
+    version: '>=0.3.17'
+    kind: ns.dependency
+    meta:
+      comment: Wake retention through its public notifier after committed settings reach the local cache.
+    component: kickside/core

@@ -366,3 +366,17 @@ entries:
     imports:
       test: wippy.test:test
       caller: kickside.models.persist:models_secrets
+
+  - name: secret_key_policy_test
+    kind: function.lua
+    meta: { type: test, suite: kickside_models }
+    source: file://secret_key_policy_test.lua
+    method: run
+    modules: [json, sql]
+    imports:
+      test: wippy.test:test
+      card_policy: kickside.models.catalog:card_policy
+      catalog_policy: kickside.models.catalog:policy
+      models_repo: kickside.models.persist:repo
+      fake_http: app:card_save_fake_http
+      admin_handler: app:card_save_admin
