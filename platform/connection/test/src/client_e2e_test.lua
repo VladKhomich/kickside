@@ -43,7 +43,7 @@ local function cases()
             local result, err = owner:call("kickside.component.binding:get_access_context_func", {component_id = id, access_mask = 1, include_context = true})
             test.is_nil(err); test.is_true(result.success)
             test.eq(result.context.api_key.set, true)
-            test.is_nil(assert(json.encode(result)):find("native-http-fixture", 1, true))
+            test.is_nil((assert(json.encode(result)):find("native-http-fixture", 1, true)))
         end)
         test.it("resolves a stored private credential and reads and writes over real HTTP", function()
             for _, write in ipairs({false, true}) do
