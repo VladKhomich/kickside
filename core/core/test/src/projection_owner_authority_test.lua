@@ -172,12 +172,15 @@ return {run = test.run_cases(function()
             local tx = assert(db:begin())
             local first, first_err = threads_writer.lock_thread_rows_tx(tx, dialect,
                 {lifecycle.thread_id(children[1].component_id)}, {children[1].component_id})
-            local shared, share_err, writer_err: any = nil, nil, nil
+            local shared, share_err, writer_err, tree_writer: any = nil, nil, nil, nil
             if dialect == sql.type.POSTGRES then
                 local other = assert(sql.get("app:db"))
                 local reader = assert(other:begin())
                 shared, share_err = reader:query("SELECT component_id FROM kickside_components WHERE component_id=$1 FOR SHARE NOWAIT", {parent.component_id})
                 assert(reader:rollback())
+                local tree = assert(other:begin())
+                tree_writer = assert(tree:query("SELECT pg_try_advisory_xact_lock(hashtextextended('kickside.component.placement',0)) AS acquired"))[1].acquired
+                assert(tree:rollback())
                 local mutator = assert(other:begin())
                 local _, denied = mutator:query("SELECT component_id FROM kickside_components WHERE component_id=$1 FOR NO KEY UPDATE NOWAIT", {parent.component_id})
                 writer_err = denied
@@ -187,6 +190,7 @@ return {run = test.run_cases(function()
             test.is_nil(first_err); test.not_nil(first)
             if dialect == sql.type.POSTGRES then
                 test.is_nil(share_err); test.not_nil(shared)
+                test.is_false(tree_writer, "structural writers wait before taking component locks")
                 test.not_nil(writer_err, "authority mutation conflicts with an active authority reader")
             end
         end)
@@ -557,6 +561,20 @@ return {run = test.run_cases(function()
                 local absent = assert(db:query("SELECT component_id FROM kickside_components WHERE component_id=$1", {id}))
                 local final_events = assert(db:query("SELECT type FROM kickside_event WHERE thread_id=$1 ORDER BY seq", {lifecycle.thread_id(id)}))
                 db:release(); test.eq(#absent, 0); test.eq(#final_events, #events)
+            end)
+        end
+        for _, status in ipairs({"paused", "invalid"}) do
+            test.it("does not retain deleted authority for a nonrunnable cursor/" .. status, function()
+                local id, cursor, job = create("app:projection_owner_delete_kind")
+                local db = assert(sql.get("app:db"))
+                assert(db:execute("UPDATE kickside_projection_cursor SET status=$1 WHERE id=$2", {status,cursor.id}))
+                assert(db:release())
+                local teardown = require("teardown")
+                test.is_true(assert(teardown.begin_delete(id)))
+                local removed, step, err = teardown.unregister(id)
+                test.is_nil(err); test.is_nil(step); test.is_true(removed.deleted)
+                local result, run_err = invoke.run({job = job,payload = {cursor_id = cursor.id}})
+                test.is_nil(run_err); test.is_true(result.stale)
             end)
         end
         test.it("rejects public owner writes and deletion from a WRITE holder", function()

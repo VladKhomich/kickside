@@ -73,8 +73,15 @@ function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_
             owners = [[component_id IN (SELECT ancestor_id FROM kickside_component_ancestor WHERE component_id IN (]]
                 .. selected .. [[) UNION SELECT component_id FROM kickside_components WHERE component_id IN (]] .. selected .. "))"
         end
+        -- Structural writers take the same fence exclusively before component rows.
+        local placement_fence = ""
+        if dbtype == sql.type.POSTGRES then
+            ctes[#ctes + 1] = [[placement_fence AS MATERIALIZED (
+                SELECT pg_advisory_xact_lock_shared(hashtextextended('kickside.component.placement',0)))]]
+            placement_fence = " CROSS JOIN placement_fence"
+        end
         ctes[#ctes + 1] = [[locked_components AS MATERIALIZED (
-            SELECT component_id,identity_generation,path FROM kickside_components WHERE ]] .. owners
+            SELECT component_id,identity_generation,path FROM kickside_components]] .. placement_fence .. " WHERE " .. owners
             .. " ORDER BY component_id " .. (dbtype == sql.type.POSTGRES and "FOR SHARE" or "") .. ")"
     end
     local marks: {string} = {}

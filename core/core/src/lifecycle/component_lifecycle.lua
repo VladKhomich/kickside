@@ -253,7 +253,7 @@ function M.deleted(args: any): (any?, error?)
         local rows, read_err = args.tx:query([[SELECT c.id FROM kickside_projection p
             JOIN kickside_projection_cursor c ON c.projection_id=p.id
             JOIN kickside_thread t ON t.id=p.thread_id
-            WHERE p.thread_id=$1 AND c.last_seq<t.event_count AND (]] .. table.concat(pending, " OR ") .. ") LIMIT 1", params)
+            WHERE p.thread_id=$1 AND c.status='active' AND c.last_seq<t.event_count AND (]] .. table.concat(pending, " OR ") .. ") LIMIT 1", params)
         if read_err then return nil, read_err end
         if type(rows) ~= "table" then return nil, fail("lifecycle drain read returns no rows") end
         result.pending = rows[1] ~= nil
