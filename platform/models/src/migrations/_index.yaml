@@ -44,3 +44,18 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 04_encrypt_legacy_headers
+    kind: function.lua
+    meta:
+      type: migration
+      depends_on:
+        - ns:wippy.migration
+        - kickside.models.migrations:03_capability_ownership
+      timestamp: "2026-11-13T00:00:02Z"
+    source: file://04_encrypt_legacy_headers.lua
+    method: migrate
+    modules: [json]
+    imports:
+      migration: wippy.migration:migration
+      catalog_policy: kickside.models.catalog:policy

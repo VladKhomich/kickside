@@ -14,3 +14,9 @@ cp "$models_test_dir/../src/persist/repo.lua" "$models_test_dir/fixtures/profile
 cp "$models_test_dir/../src/catalog/model_catalog.lua" "$models_test_dir/fixtures/profile_catalog.lua"
 cp "$models_test_dir/../src/catalog/resolver.lua" "$models_test_dir/fixtures/profile_resolver.lua"
 cp "$models_test_dir/../src/service/cache.lua" "$models_test_dir/fixtures/profile_cache.lua"
+for provider in openai_like anthropic google_genai bedrock; do
+    cp "$models_test_dir/../src/discovery/providers/$provider.lua" "$models_test_dir/fixtures/$provider.lua"
+done
+for handler in discover_profile test_profile; do
+    cp "$models_test_dir/../src/api/admin/$handler.lua" "$models_test_dir/fixtures/$handler.lua"
+done

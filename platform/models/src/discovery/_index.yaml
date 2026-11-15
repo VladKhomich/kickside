@@ -8,6 +8,10 @@ entries:
       comment: Shared discovery helpers for provider adapters.
     source: file://common.lua
     modules: [env, json]
+    imports:
+      http_errors: kickside.contract:http_errors
+      llm_mapper: wippy.llm.openai_compat:mapper
+      llm_output: wippy.llm:output
 
   - name: mapper
     kind: library.lua

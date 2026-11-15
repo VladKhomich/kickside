@@ -74,7 +74,7 @@ local function auth_headers(profile: any): { [string]: string }
     return headers
 end
 
-function M.fetch(profile: any): ({ any }?, string?)
+function M.fetch(profile: any): ({ any }?, string?, any?)
     local headers = auth_headers(profile)
 
     local base_url = common.configured_base_url(profile, "https://api.openai.com/v1")
@@ -82,10 +82,10 @@ function M.fetch(profile: any): ({ any }?, string?)
         headers = headers,
         timeout = common.timeout(profile, 30),
     })
-    if err then return nil, common.scrub_message(err) end
+    if err then return nil, common.transport_error(err) end
 
-    local parsed, perr = common.decode_response(response, "model list failed")
-    if not parsed then return nil, perr end
+    local parsed, perr, diagnostics = common.decode_response(response, "model list failed")
+    if not parsed then return nil, perr, diagnostics end
     return common.model_rows(parsed)
 end
 
@@ -119,11 +119,11 @@ local function auto_test_model(rows: any): string
     return fallback
 end
 
-function M.test(profile: any, opts: any): (any?, string?)
+function M.test(profile: any, opts: any): (any?, string?, any?)
     local model = test_model(profile, opts)
     if model == "" then
-        local rows, err = M.fetch(profile)
-        if err then return nil, err end
+        local rows, err, diagnostics = M.fetch(profile)
+        if err then return nil, err, diagnostics end
         model = auto_test_model(rows)
         if model ~= "" then
             opts = { model = model }
@@ -151,7 +151,7 @@ function M.test(profile: any, opts: any): (any?, string?)
             stream = false,
         }),
     })
-    if err then return nil, "chat completion probe failed: " .. common.scrub_message(err) end
+    if err then return nil, common.transport_error(err, "chat completion probe failed") end
     local status = tonumber(response and response.status_code)
     if not status or status < 200 or status >= 300 then
         return nil, common.response_error(response, "chat completion probe failed")
