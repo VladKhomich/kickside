@@ -26,7 +26,7 @@ local function check(message, diagnostics, kind, retryable, status)
     test.is_nil(diagnostics.details)
     test.contains(message, kind)
     if status then test.contains(message, "HTTP " .. tostring(status)) end
-    test.is_nil(assert(json.encode({message, diagnostics})):find(sentinel, 1, true))
+    test.is_nil((assert(json.encode({message, diagnostics})):find(sentinel, 1, true)))
 end
 
 return {run = test.run_cases(function()
@@ -110,7 +110,7 @@ return {run = test.run_cases(function()
             test.is_nil(value)
             test.not_nil(diagnostics)
             test.eq(diagnostics.status_code, 200)
-            test.is_nil(assert(json.encode({message, diagnostics})):find(sentinel, 1, true))
+            test.is_nil((assert(json.encode({message, diagnostics})):find(sentinel, 1, true)))
         end)
     end)
 end)}
