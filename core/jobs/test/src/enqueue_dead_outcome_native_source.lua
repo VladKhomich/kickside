@@ -1,0 +1,1 @@
+../../src/persist/dead_outcome.lua

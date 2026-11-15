@@ -13,21 +13,12 @@ M.META = "meta.job_dead"
 M.NAMESPACE = "kickside.jobs.dead"
 M.KEY = "outcome"
 
--- The dead handler a worker_ref declares, or nil when it declares none or its
--- entry is absent. An invalid declaration is refused.
-function M.handler(worker_ref: any): (string?, error?)
-    local reference = job_types.worker_reference(worker_ref)
-    if not reference or reference.worker_ref == job_types.WAKE_CONTINUATION_TYPE then return nil, nil end
-    local entry, lookup_err = registry.get(reference.target_id)
-    if lookup_err then
-        if errors.is(lookup_err, errors.NOT_FOUND) then return nil, nil end
-        return nil, errors.wrap(lookup_err, "job dead handler lookup failed: " .. reference.target_id)
-    end
-    local meta = type(entry) == "table" and (entry :: any).meta or nil
+-- Validate the declaration in metadata already resolved for worker admission.
+function M.validate(worker_ref: any, meta: table?): (string?, error?)
     local declared = type(meta) == "table" and meta.job_dead or nil
     if declared == nil then return nil, nil end
     if type(declared) ~= "string" or declared == "" then
-        return nil, (errors.new({ message = M.META .. " of " .. reference.target_id .. " must name a function",
+        return nil, (errors.new({ message = M.META .. " of " .. tostring(worker_ref) .. " must name a function",
             kind = errors.INVALID, retryable = false }) :: error)
     end
     local target, target_err = registry.get(declared)
@@ -45,6 +36,21 @@ function M.handler(worker_ref: any): (string?, error?)
             kind = errors.INVALID, retryable = false})
     end
     return declared :: string, nil
+end
+
+-- The dead handler a worker_ref declares, or nil when it declares none or its
+-- entry is absent. An invalid declaration is refused.
+function M.handler(worker_ref: any): (string?, error?)
+    local reference = job_types.worker_reference(worker_ref)
+    if not reference or reference.worker_ref == job_types.WAKE_CONTINUATION_TYPE then return nil, nil end
+    local entry, lookup_err = registry.get(reference.target_id)
+    if lookup_err then
+        if errors.is(lookup_err, errors.NOT_FOUND) then return nil, nil end
+        return nil, errors.wrap(lookup_err, "job dead handler lookup failed: " .. reference.target_id)
+    end
+    local meta = type(entry) == "table" and (entry :: any).meta or nil
+    if meta == nil and type(entry) == "table" and type(entry.data) == "table" then meta = entry.data.meta end
+    return M.validate(worker_ref, meta)
 end
 
 function M.is_outcome(row: table): boolean
