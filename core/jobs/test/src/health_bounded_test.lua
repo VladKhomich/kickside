@@ -163,6 +163,29 @@ return {run = test.run_cases(function()
                 test.is_nil(issue(assert(jobs.health()),"stranded_jobs"))
             end)
         end)
+        test.it("seeks expired leases with 100k future running jobs before and after planner statistics",function()
+            queue(function(db,dbtype)
+                seed(db,dbtype,100000)
+                assert(db:execute("UPDATE kickside_job SET status='running',lease_until='2099-01-01 00:00:00'"))
+                for _, analyzed in ipairs({false,true}) do
+                    if analyzed then assert(db:execute("ANALYZE kickside_job")) end
+                    query_fixture.reset("",nil);query_fixture.dbtype=dbtype
+                    assert(query_jobs.health())
+                    local query=query_fixture.queries[6]
+                    test.is_true(query.statement:find("lease_until",1,true)~=nil)
+                    local explain=plan(db,dbtype,query.statement,query.params)
+                    test.is_true(explain:find(dbtype==sql.type.SQLITE and "idx_kickside_job_lease_reap (lease_until>? AND lease_until<?)"
+                        or "Index Cond: (lease_until <",1,true)~=nil,explain)
+                    if dbtype==sql.type.SQLITE then
+                        test.is_true(explain:find("USE TEMP B-TREE",1,true)==nil,explain)
+                    end
+                    test.eq(assert(db:query(query.statement,query.params))[1].n,0)
+                    local health=assert(jobs.health())
+                    test.eq(health.expired_leases,0)
+                    test.is_false(health.expired_leases_capped)
+                end
+            end)
+        end)
         test.it("caps expired leases through the existing lease index",function()
             queue(function(db,dbtype)
                 seed(db,dbtype,1001)

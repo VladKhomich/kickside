@@ -392,8 +392,11 @@ function jobs.health(): (table?, error?)
         local dead_count, dead_capped, dead_err = count_matches(
             "kickside_job WHERE status='dead'", "priority DESC,scheduled_at", "dead")
         if dead_err then return nil, dead_err end
+        local lease_source = dbtype == sql.type.SQLITE
+            and "kickside_job INDEXED BY idx_kickside_job_lease_reap"
+            or "kickside_job"
         local expired_count, expired_capped, expired_err = count_matches(
-            "kickside_job WHERE status='running' AND lease_until IS NOT NULL AND lease_until < $1",
+            lease_source .. " WHERE status='running' AND lease_until IS NOT NULL AND lease_until < $1",
             "lease_until", "expired", {now})
         if expired_err then return nil, expired_err end
         local due_source = "kickside_job WHERE status='pending' AND scheduled_at IS NOT NULL AND scheduled_at <= "
