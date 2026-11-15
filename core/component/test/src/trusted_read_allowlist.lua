@@ -227,8 +227,8 @@ M.ALLOW = {
     },
     ["core/core/src/threads/contract/event_authorization.lua"] = {
         list_system = {
-            count = 2,
-            why = "append and primary-emit authorization use the stored kind after canonical component WRITE; first-touch reads existence before registration",
+            count = 1,
+            why = "primary-emit authorization reads existence and the stored kind before first-touch registration",
             entry = "kickside.core.threads:append_event_method",
         },
         component_owner_record = {

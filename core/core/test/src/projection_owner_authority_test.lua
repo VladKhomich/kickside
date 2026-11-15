@@ -231,7 +231,7 @@ return {run = test.run_cases(function()
             test.is_nil(select(2, f.as_owner("create", {id = target, impl_id = "kickside.test.threads:thread_kind"})))
             local db = assert(sql.get("app:db"))
             local snapshot, snapshot_err = invoke.snapshot(db, cursor.id, job.id)
-            test.is_nil(snapshot_err); db:release()
+            test.is_nil(snapshot_err); snapshot = assert(snapshot); db:release()
             local result, err = apply.advance("app:db", job, snapshot, 1, {
                 body = {forbidden_fold = true},
                 append_events = {{thread_id = target, events = {{type = "kickside.test.threads:changed", body = {}}}}},
@@ -701,6 +701,7 @@ return {run = test.run_cases(function()
             local db = assert(sql.get("app:db"))
             local snapshot, snapshot_err = invoke.snapshot(db, cursor.id, job.id)
             test.is_nil(snapshot_err)
+            snapshot = assert(snapshot)
             assert(db:execute("UPDATE kickside_components SET identity_generation=identity_generation+2 WHERE component_id=$1", {id}))
             db:release()
             local result, err = apply.advance("app:db", job, snapshot, 1, {body = {stale_fold = true}})
