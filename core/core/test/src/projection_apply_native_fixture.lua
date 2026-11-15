@@ -5,6 +5,7 @@ function M.reset(stage: string, source: any, mode: string)
     M.missing, M.proof, M.rollback_source, M.release_source = false, nil, nil, nil
     M.rollbacks, M.releases, M.commits, M.executions, M.encodes = 0, 0, 0, 0, 0
     M.appends, M.deferred, M.wakes, M.completing = 0, 0, 0, nil
+    M.append_batches = {}
     M.published_after, M.wake_keys, M.cached_appends = 0, {}, 0
     M.thread_locked, M.cursor_before_thread = false, false
     M.checks, M.access_mask, M.mask_queries = nil, 2, 0
@@ -34,6 +35,7 @@ function M.call(_target: string, args: table): (any, error?)
 end
 function M.append_system_tx(_tx: any, _dbtype: any, thread_id: any, _events: any, _completion_id: any, opts: any): (any, error?)
     M.appends = M.appends + 1
+    M.append_batches[#M.append_batches + 1] = {thread_id = thread_id, events = _events}
     if opts and opts.defer_wake == true then M.deferred = M.deferred + 1 end
     if opts and type(opts.locked_threads) == "table" then M.cached_appends = M.cached_appends + 1 end
     return M.outcome("append", {max_seq = 1, inserted = 1, thread_id = thread_id})

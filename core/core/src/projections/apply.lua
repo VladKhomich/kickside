@@ -81,6 +81,7 @@ local function append_writes(output: table, source_id: string, body: table): (ta
     if output.append_events == nil then return {}, nil end
     if not dense_array(output.append_events) then return nil, invalid("append_events must be a dense array") end
     local writes: table[] = {}
+    local by_thread: {[string]: table} = {}
     local types = input_type_set(body)
     for i, write in ipairs(output.append_events) do
         if type(write) ~= "table" or type(write.thread_id) ~= "string" or write.thread_id == "" then
@@ -88,7 +89,13 @@ local function append_writes(output: table, source_id: string, body: table): (ta
         end
         local raw = type(write.events) == "table" and write.events or (type(write.event) == "table" and { write.event } or nil)
         if not dense_array(raw) or #raw == 0 then return nil, invalid("append_events[" .. tostring(i) .. "] needs a dense events array") end
-        local events: table[] = {}
+        local destination = by_thread[write.thread_id]
+        if not destination then
+            destination = {thread_id = write.thread_id, events = {}}
+            by_thread[write.thread_id] = destination
+            writes[#writes + 1] = destination
+        end
+        local events: table[] = destination.events
         for j, event in ipairs(raw) do
             if type(event) ~= "table" or type(event.type) ~= "string" or event.type == "" then
                 return nil, invalid("append_events[" .. tostring(i) .. "].events[" .. tostring(j) .. "] needs type")
@@ -110,7 +117,6 @@ local function append_writes(output: table, source_id: string, body: table): (ta
             copy.body = nil
             events[#events + 1] = copy
         end
-        writes[#writes + 1] = { thread_id = write.thread_id, events = events }
     end
     return writes, nil
 end

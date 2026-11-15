@@ -71,6 +71,8 @@ return {run = test.run_cases(function()
                     assert(db:execute("UPDATE kickside_components SET private_context=$1 WHERE component_id=$2", {'{"_execution_identity":{"version":1}}', id}))
                 elseif attack == "unknown-owner" then
                     assert(db:execute("UPDATE kickside_component_meta SET value='unknown' WHERE component_id=$1 AND key='owner'", {id}))
+                    assert(db:execute("UPDATE kickside_projection SET actor_id='unknown' WHERE thread_id=$1", {lifecycle.thread_id(id)}))
+                    assert(db:execute("UPDATE kickside_projection_cursor SET actor_id='unknown' WHERE id=$1", {cursor.id}))
                 else
                     assert(db:execute("UPDATE kickside_projection SET actor_id=NULL,actor_context=NULL WHERE thread_id=$1", {lifecycle.thread_id(id)}))
                     assert(db:execute("UPDATE kickside_projection_cursor SET actor_id=NULL,execution_identity_json=NULL WHERE id=$1", {cursor.id}))

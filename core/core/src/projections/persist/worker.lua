@@ -293,7 +293,7 @@ worker.TICK_OWNER = "kickside.core.projections:tick"
 -- registry publication invalidates maintenance actor declarations and grants.
 local maintenance_cache: table? = nil
 
-local function resolve_binding_identity(binding: table): (any, any, error?)
+local function resolve_binding_identity(binding: table): (any, any, error?, table?)
     if type(binding.actor_id) ~= "string" or (binding.actor_id :: string) == "" then
         return nil, nil, nil
     end
@@ -315,14 +315,17 @@ local function resolve_binding_identity(binding: table): (any, any, error?)
         local cached = maintenance_cache
         if cached and cached.component_id == authority.component_id and cached.owner == binding.actor_id
             and cached.generation == authority.generation and cached.revision == revision then
-            return cached.frame.actor, cached.frame.scope, nil
+            return cached.frame.actor, cached.frame.scope, nil, cached.frame.access
         end
         maintenance_cache = nil
         local frame, frame_err = execution_identity.maintenance_frame(binding.actor_id)
         if frame_err or not frame then return nil, nil, frame_err end
+        local subjects, prefixes, subjects_err = access_subjects.for_actor(frame.actor)
+        if subjects_err then return nil, nil, subjects_err end
+        frame.access = {subjects = subjects, prefixes = prefixes}
         maintenance_cache = {component_id = authority.component_id, owner = binding.actor_id,
             generation = authority.generation, revision = revision, frame = frame}
-        return (frame :: any).actor, (frame :: any).scope, nil
+        return (frame :: any).actor, (frame :: any).scope, nil, frame.access
     end
     local identity = binding.component_authority and binding.component_authority.identity
     if not identity then
@@ -340,14 +343,15 @@ end
 worker.resolve_binding_identity = resolve_binding_identity
 
 local function admit_binding_identity(binding: table): (any, any, error?, table?)
-    local actor, scope, err = resolve_binding_identity(binding)
+    local actor, scope, err, access = resolve_binding_identity(binding)
     if err then return nil, nil, err end
     local authority = binding.component_authority
-    local access: table? = nil
     if authority then
-        local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
-        if subjects_err then return nil, nil, subjects_err end
-        access = {subjects = subjects, prefixes = prefixes}
+        if not access then
+            local subjects, prefixes, subjects_err = access_subjects.for_actor(actor)
+            if subjects_err then return nil, nil, subjects_err end
+            access = {subjects = subjects, prefixes = prefixes}
+        end
         local allowed: boolean? = nil
         local access_err: error? = nil
         if authority.maintenance_owner and binding.maintenance_access_mask ~= nil then
@@ -359,7 +363,7 @@ local function admit_binding_identity(binding: table): (any, any, error?, table?
             if db_err then return nil, nil, db_err end
             if not db then return nil, nil, errors.new({kind = errors.UNAVAILABLE, message = "component authority database unavailable"}) end
             allowed, access_err = component_access.check_user_access(db, actor:id(), authority.component_id,
-                core_types.ACCESS.READ | core_types.ACCESS.WRITE, subjects, prefixes, true, true)
+                core_types.ACCESS.READ | core_types.ACCESS.WRITE, access.subjects, access.prefixes, true, true)
             access_err = error_envelope.cleanup(function(): (any, error?) return db:release() end,
                 access_err, "release projection owner admission database")
             if access_err then return nil, nil, access_err end

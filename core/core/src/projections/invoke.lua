@@ -346,7 +346,8 @@ function M.run(input: any): (table?, error?)
             if callback_open_err then return nil, callback_open_err end
             if not callback_db then return nil, response_error("callback.database") end
             local rows, fresh_err = callback_db:query([[SELECT c.generation,c.status,c.last_seq,c.job_id,
-                o.identity_generation AS owner_identity_generation,]] .. MAINTENANCE_ACCESS .. [[ AS maintenance_access_mask
+                o.identity_generation AS owner_identity_generation,]]
+                .. (current.component_authority.maintenance_owner and MAINTENANCE_ACCESS or "NULL") .. [[ AS maintenance_access_mask
                 FROM kickside_projection_cursor c
                 LEFT JOIN kickside_components o ON o.component_id=$1
                 LEFT JOIN kickside_component_meta m ON m.component_id=o.component_id AND m.key='owner' WHERE c.id=$2]],

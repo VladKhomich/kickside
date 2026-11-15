@@ -58,6 +58,30 @@ return {run = test.run_cases(function()
                 test.is_true(errors.is(err, errors.PERMISSION_DENIED)); test.is_false(err:retryable())
             end)
         end
+        test.it("reuses parsed declaration facts only until the registry changes", function()
+            fixture.reset("", nil)
+            local descriptor = {impl_id = "kind", kind = "fold", on = "thread", projection_key = "default",
+                worker_ref = "func://app:worker"}
+            for _ = 1, 2 do
+                local allowed, err = counted_owner_identity.check_declaration(descriptor)
+                test.is_nil(err); test.is_true(allowed)
+            end
+            test.eq(fixture.declarations, 1)
+            fixture.revision = "new"
+            test.is_true(counted_owner_identity.check_declaration(descriptor)); test.eq(fixture.declarations, 2)
+            descriptor.worker_ref = "func://app:changed"
+            local allowed, err = counted_owner_identity.check_declaration(descriptor)
+            test.is_false(allowed); test.eq(err:kind(), errors.PERMISSION_DENIED)
+            test.eq(fixture.declarations, 2, "worker refs remain checked against cached declarations")
+        end)
+        for _, stage in ipairs({"declaration_revision", "declaration_lookup"}) do
+            test.it("propagates declaration authority failures/" .. stage, function()
+                local source = errors.new({kind = errors.UNAVAILABLE, message = "declaration unavailable", retryable = true})
+                fixture.reset(stage, source)
+                local allowed, err = counted_owner_identity.check_declaration({impl_id = "kind"})
+                test.is_false(allowed); test.not_nil(err); test.eq(err:kind(), source:kind()); test.is_true(err:retryable())
+            end)
+        end
         test.it("resolves each maintenance owner once within a bounded reconciliation window", function()
             fixture.reset("", nil)
             local owners = {}

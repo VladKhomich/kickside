@@ -86,6 +86,20 @@ local function outcomes()
         test.eq(fixture.wakes, 1)
         test.eq(fixture.completing, "job")
     end)
+    test.it("appends each returned destination once while preserving its event order", function()
+        fixture.reset("", nil, "advance")
+        local value, err = apply.advance("app:db", {id = "job", lease_token = "token", execution_seq = 1},
+            {id = "cursor", thread_id = "thread", projection_id = "projection", generation = 1, last_seq = 0, body = {}}, 1,
+            {append_events = {{thread_id = "other", event = {type = "first", body_json = "{}"}},
+                {thread_id = "another", event = {type = "between", body_json = "{}"}},
+                {thread_id = "other", events = {{type = "second", body_json = "{}"}, {type = "third", body_json = "{}"}}}}})
+        test.is_nil(err); test.not_nil(value); test.eq(fixture.appends, 2)
+        test.eq(fixture.append_batches[1].thread_id, "other")
+        local events = fixture.append_batches[1].events
+        test.eq(#events, 3); test.eq(events[1].type, "first"); test.eq(events[2].type, "second"); test.eq(events[3].type, "third")
+        test.eq(fixture.append_batches[2].events[1].type, "between")
+        test.eq(fixture.wakes, 1); test.eq(#fixture.wake_keys, 2)
+    end)
     test.it("locks the source thread before recording a failure", function()
         fixture.reset("", nil, "fail")
         local value, err = call("fail")

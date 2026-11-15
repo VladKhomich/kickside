@@ -13,6 +13,8 @@ local lifecycle_log = require("lifecycle_log")
 local autoinit = require("autoinit")
 local component_identity_ops = require("component_identity_ops")
 
+local registry = require("registry")
+
 local M = {}
 
 local function identity_hash(id: table): string
@@ -47,8 +49,28 @@ local function denied(code: string, message: string): error
         message = message, details = {code = code, error_kind = "subject"}})
 end
 
+-- Keep only the most recent parsed kind; registry publication invalidates it.
+local declaration_cache: table? = nil
+local function projections_for_impl(impl_id: string): (table?, error?)
+    local version, version_err = registry.current_version()
+    if version_err then return nil, version_err end
+    if not version then
+        return nil, errors.new({kind = errors.UNAVAILABLE, message = "projection declaration registry revision is unavailable"})
+    end
+    local revision = tostring(version:id())
+    local cached = declaration_cache
+    if cached and cached.impl_id == impl_id and cached.revision == revision then return cached.declarations, nil end
+    declaration_cache = nil
+    local declarations, err = autoinit.projections_for_impl(impl_id)
+    if err then return nil, err end
+    declaration_cache = {impl_id = impl_id, revision = revision, declarations = declarations}
+    return declarations, nil
+end
+
 function M.check_declaration(descriptor: table): (boolean, error?)
-    for _, declaration in ipairs(autoinit.projections_for_impl(descriptor.impl_id)) do
+    local declarations, declaration_err = projections_for_impl(descriptor.impl_id)
+    if declaration_err then return false, declaration_err end
+    for _, declaration in ipairs(declarations) do
         local on = declaration.on or autoinit.PROJECTION_ON.THREAD
         local key = declaration.projection_key
         if type(key) ~= "string" or key == "" then key = "default" end
@@ -88,7 +110,9 @@ function M.from_snapshot(row: table): (table?, error?)
                 and type(config.parent_component_id) == "string" and config.parent_component_id ~= attrs.component_id
                 and type(config.parent_impl_id) == "string" and row.actor_id == nil
                 and row.projection_actor_id == nil and row.projection_actor_context == nil then
-                for _, declaration in ipairs(autoinit.projections_for_impl(config.parent_impl_id)) do
+                local declarations, parent_err = projections_for_impl(config.parent_impl_id)
+                if parent_err then return nil, parent_err end
+                for _, declaration in ipairs(declarations) do
                     local base = declaration.projection_key
                     local key = type(base) == "string" and base ~= "" and base .. ":parent:" .. config.parent_component_id
                         or "parent:" .. config.parent_component_id
@@ -129,9 +153,11 @@ function M.from_snapshot(row: table): (table?, error?)
             return nil, denied("projection_owner_binding_changed", "component projection binding differs from its current owner")
         end
     else
-        if not execution_identity.is_maintenance_key(row.owner_key) then
+        if type(row.owner_key) ~= "string" or row.owner_key == "" then
             return nil, denied("component_execution_owner_missing", "component has no trusted execution owner")
         end
+        -- The worker validates the actor declaration while constructing its
+        -- generation- and registry-bound frame; the snapshot proves ownership.
         maintenance_owner = row.owner_key
         if row.actor_id ~= maintenance_owner or row.projection_actor_id ~= maintenance_owner
             or row.execution_identity_json ~= nil or row.projection_actor_context ~= nil then

@@ -164,7 +164,7 @@ entries:
     meta:
       comment: Derives the execution identity a component's declared projections run under from its owner record.
     source: file://owner_identity.lua
-    modules: [json]
+    modules: [json, registry]
     imports:
       component_identity_ops: kickside.component.persist:identity_ops
       autoinit: kickside.component:autoinit
