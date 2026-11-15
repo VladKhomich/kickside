@@ -147,9 +147,18 @@ entries:
         methods: {get_status: "app:secret_kind_status"}
   - name: secret_kind_status
     kind: function.lua
-    source: 'local ctx = require("ctx"); return {run = function() return {success = true, credential_present = ctx.get("api_key") == "component-storage-credential-sentinel"} end}'
+    source: 'local ctx = require("ctx"); local component = require("component"); return {run = function() local context, err = component.get_private_runtime_context(ctx.get("component_id")); if err then return nil, err end; return {success = true, credential_present = context.api_key == "component-storage-credential-sentinel"} end}'
     modules: [ctx]
+    imports: {component: 'kickside.component:component'}
+    security:
+      policies: [app:secret_own_kind, app:secret_runtime_dispatch]
     method: run
+  - name: secret_runtime_dispatch
+    kind: security.policy
+    policy:
+      actions: funcs.call
+      resources: [kickside.component.system:read_private_context]
+      effect: allow
   - name: secret_storage_test
     kind: function.lua
     meta: {type: test, suite: component_secret_storage}
@@ -157,6 +166,7 @@ entries:
     method: run
     modules: [sql, uuid, time, json]
     imports:
+      secret_fields: kickside.component:secret_fields
       placement: kickside.component.persist:placement_ops
       deletion: kickside.component.persist:delete_ops
       reader: kickside.component.persist:component_reader
