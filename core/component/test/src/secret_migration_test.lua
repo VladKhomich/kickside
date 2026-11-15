@@ -10,10 +10,83 @@ local funcs = require("funcs")
 local security = require("security")
 local context_ops = require("context_ops")
 local reader = require("reader")
+local fields = require("secret_fields")
 local INCARNATION = "11111111-1111-4111-8111-111111111111"
 
 return {run = test.run_cases(function()
     test.describe("existing component secrets migration", function()
+        test.it("never parses up-to-date rows while draining an older declaration revision", function()
+            local db = assert(sql.get("app:db"))
+            local current, stale = uuid.v7(), uuid.v7()
+            local revision = assert(fields.revision({{path = {"api_key"}, type = "string"}}))
+            test.is_nil(select(2, db:execute([[INSERT INTO kickside_components
+                (component_id,impl_id,private_context,encrypted_secrets,secrets_revision)
+                VALUES ($1,'app:secret_kind',$2,'invalid-envelope',$3)]],
+                {current, assert(json.encode({api_key = 42})), revision})))
+            test.is_nil(select(2, db:execute([[INSERT INTO kickside_components
+                (component_id,impl_id,private_context,secrets_revision)
+                VALUES ($1,'app:secret_kind',$2,'older-declaration')]],
+                {stale, assert(json.encode({api_key = "revision-conversion-secret"}))})))
+            local report = assert(migration.run(2))
+            test.eq(report.invalid, 0)
+            test.eq(report.converted, 1)
+            local row = assert(db:query("SELECT secrets_revision,private_context FROM kickside_components WHERE component_id=$1", {stale}))[1]
+            test.eq(row.secrets_revision, revision)
+            test.is_nil(row.private_context:find("revision-conversion-secret", 1, true))
+            test.eq(assert(migration.run(2)).invalid, 0)
+            test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id IN ($1,$2)", {current, stale})))
+            test.is_nil(select(2, db:release()))
+        end)
+        test.it("advances bounded windows across malformed rows", function()
+            local db = assert(sql.get("app:db"))
+            local ids = {}
+            for i = 1, 7 do
+                local id = uuid.v7()
+                ids[#ids + 1] = id
+                local value = i < 7 and {api_key = 42} or {api_key = "bounded-valid-secret"}
+                test.is_nil(select(2, db:execute("INSERT INTO kickside_components(component_id,impl_id,private_context) VALUES ($1,'app:secret_kind',$2)",
+                    {id, assert(json.encode(value))})))
+            end
+            local invalid, converted = 0, 0
+            for i = 1, 10 do
+                local report = assert(migration.run(2))
+                test.is_true(report.invalid + report.converted <= 2)
+                invalid, converted = invalid + report.invalid, converted + report.converted
+                if not report.needs_continue then break end
+                test.is_true(i < 10)
+            end
+            test.eq(invalid, 6)
+            test.eq(converted, 1)
+            for _, id in ipairs(ids) do test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id=$1", {id}))) end
+            test.is_nil(select(2, db:release()))
+        end)
+        test.it("finishes captured windows and serves other kinds while one kind keeps growing", function()
+            local db = assert(sql.get("app:db"))
+            local ids = {}
+            local function seed(kind: string): string
+                local id = uuid.v7()
+                ids[#ids + 1] = id
+                test.is_nil(select(2, db:execute("INSERT INTO kickside_components(component_id,impl_id,private_context) VALUES ($1,$2,$3)",
+                    {id, kind, assert(json.encode({api_key = "fair-secret"}))})))
+                return id
+            end
+            for _ = 1, 4 do seed("app:secret_kind") end
+            local other = seed("app:evolving_secret_kind")
+            local finished = false
+            for _ = 1, 20 do
+                seed("app:secret_kind")
+                local report = assert(migration.run(1))
+                local row = assert(db:query("SELECT encrypted_secrets FROM kickside_components WHERE component_id=$1", {other}))[1]
+                if not report.needs_continue then
+                    test.not_nil(row.encrypted_secrets)
+                    finished = true
+                    break
+                end
+            end
+            test.is_true(finished)
+            for _, id in ipairs(ids) do test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id=$1", {id}))) end
+            test.is_nil(select(2, db:release()))
+        end)
         test.it("migrates new secret declarations on previously encrypted rows without changing existing secrets", function()
             local db = assert(sql.get("app:db"))
             local bad, id = uuid.v7(), uuid.v7()

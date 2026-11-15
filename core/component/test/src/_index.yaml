@@ -26,7 +26,7 @@ entries:
   - name: secret_fields_native
     kind: library.lua
     source: file://secret_fields_native.lua
-    modules: [funcs]
+    modules: [funcs, json, crypto]
     imports:
       registry: app:secret_declaration_registry
       autoinit: app:secret_declaration_fixture
@@ -112,6 +112,7 @@ entries:
       test: wippy.test:test
       context_ops: kickside.component.persist:context_ops
       secrets_migration: kickside.component.persist:secrets_migration
+      secret_fields: kickside.component:secret_fields
       component: kickside.component:component
   - name: secret_test_storage
     kind: env.storage.static

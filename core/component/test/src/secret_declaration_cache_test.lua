@@ -5,6 +5,23 @@ local fixture = require("fixture")
 
 return {run = test.run_cases(function()
     test.describe("component declaration revision cache", function()
+        test.it("hashes the declared path set independently of order and unrelated registry changes", function()
+            local original = assert(fields.revision({{path = {"api_key"}, type = "string"},
+                {path = {"auth", "password"}, type = "string"}}))
+            local reordered = assert(fields.revision({{path = {"auth", "password"}, type = "string"},
+                {path = {"api_key"}, type = "string"}}))
+            test.eq(original, reordered)
+            test.is_true(original ~= assert(fields.revision({{path = {"api_key"}, type = "string"}})))
+            fixture.version = fixture.version + 1
+            fixture.fields = {{path = {"api_key"}, type = "string"}}
+            local _, first_err, first = fields.for_impl("kind")
+            test.is_nil(first_err)
+            fixture.version = fixture.version + 1
+            local _, second_err, second = fields.for_impl("kind")
+            test.is_nil(second_err)
+            test.not_nil(first)
+            test.eq(first, second)
+        end)
         test.it("invalidates secret paths when the central registry revision changes", function()
             fixture.version = fixture.version + 1
             fixture.reads = 0
