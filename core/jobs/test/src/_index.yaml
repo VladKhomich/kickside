@@ -2246,8 +2246,8 @@ entries:
       listing: kickside.core.jobs.persist:listing
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
-      capacity: app:capacity_native_adapter
-      dead_outcome: kickside.core.jobs.persist:dead_outcome
+      capacity: app:enqueue_capacity_native_source
+      dead_outcome: app:enqueue_dead_outcome_native_source
 
   - name: enqueue_native_test
     kind: function.lua
@@ -4361,3 +4361,29 @@ entries:
       eligibility: kickside.core.jobs.persist:eligibility
       query_jobs: app:health_native_source
       query_fixture: app:health_native_fixture
+
+  - name: enqueue_capacity_native_source
+    kind: library.lua
+    source: file://enqueue_capacity_native_source.lua
+    modules: [contract]
+    imports:
+      registry: app:enqueue_native_fixture
+      job_types: kickside.core.jobs:types
+
+  - name: enqueue_dead_outcome_native_source
+    kind: library.lua
+    source: file://enqueue_dead_outcome_native_source.lua
+    imports:
+      registry: app:enqueue_native_fixture
+      job_types: kickside.core.jobs:types
+      capacity: app:enqueue_capacity_native_source
+
+  - name: enqueue_admission_native_test
+    kind: function.lua
+    meta: {type: test, suite: jobs_enqueue_native}
+    source: file://enqueue_admission_native_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      enqueue: app:enqueue_native_source
+      fixture: app:enqueue_native_fixture
