@@ -56,9 +56,7 @@ local function event_types(body: table): { string }?
     return #out > 0 and out or nil
 end
 
-local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?, error?)
-    local dialect, dialect_err = db:type()
-    if dialect_err then return nil, dialect_err end
+local function snapshot_statement(dialect: string): string
     local component_key = "COALESCE(NULLIF(t.component_id,''),t.attrs ->> 'component_id')"
     local stored_identity = "CASE WHEN json_valid(o.private_context) THEN o.private_context -> '$._execution_identity' END"
     local readable = "CASE WHEN json_valid(o.private_context) THEN json_type(o.private_context) IN ('object','array') ELSE 0 END"
@@ -67,7 +65,7 @@ local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?,
         stored_identity = "(o.private_context -> '_execution_identity')::text"
         readable = "jsonb_typeof(o.private_context) IN ('object','array')"
     end
-    local rows, err = db:query([[SELECT c.id,c.projection_id,c.thread_id,c.cursor_key,c.last_seq,
+    return [[SELECT c.id,c.projection_id,c.thread_id,c.cursor_key,c.last_seq,
         c.generation,c.status,c.job_id,c.debounce_idle_ms,c.debounce_max_ms,
         c.actor_id,c.execution_identity_json,p.kind,p.body,p.projection_key,t.event_count,
         p.actor_id AS projection_actor_id,p.actor_context AS projection_actor_context,
@@ -80,7 +78,15 @@ local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?,
         JOIN kickside_thread t ON t.id=c.thread_id
         LEFT JOIN kickside_components o ON o.component_id=]] .. component_key .. [[
         LEFT JOIN kickside_component_meta m ON m.component_id=o.component_id AND m.key='owner'
-        WHERE c.id=$1]], { cursor_id })
+        WHERE c.id=$1 ]]
+end
+local POSTGRES_SNAPSHOT = snapshot_statement(sql.type.POSTGRES)
+local SQLITE_SNAPSHOT = snapshot_statement(sql.type.SQLITE)
+
+local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?, error?)
+    local dialect, dialect_err = db:type()
+    if dialect_err then return nil, dialect_err end
+    local rows, err = db:query(dialect == sql.type.POSTGRES and POSTGRES_SNAPSHOT or SQLITE_SNAPSHOT, {cursor_id})
     if err then return nil, errors.wrap(err, "projection snapshot failed") end
     if type(rows) ~= "table" then return nil, response_error("snapshot.rows") end
     local row = rows[1]

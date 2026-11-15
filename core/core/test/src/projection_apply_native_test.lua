@@ -54,13 +54,14 @@ local function native(first: integer, last: integer)
     end
 end
 local function outcomes()
-    test.it("reads returned-write authority after a revocation releases the component lock", function()
+    test.it("retains returned-write admission through the apply round", function()
         fixture.reset("", nil, "advance")
-        fixture.checks = {{component_id = "other", subjects = {}, required_mask = 2}}
+        fixture.checks = {{component_id = "other", generation = 2}}
         local result, err = call("advance")
-        test.is_nil(result); test.is_true(errors.is(err, errors.PERMISSION_DENIED), tostring(err))
-        test.is_true(fixture.thread_locked); test.eq(fixture.mask_queries, 1)
-        test.eq(fixture.executions, 0); test.eq(fixture.appends, 0); test.eq(fixture.rollbacks, 1)
+        test.is_nil(err); test.eq(result.last_seq, 1)
+        test.is_true(fixture.thread_locked); test.eq(fixture.mask_queries, 0)
+        test.eq(fixture.access_mask, 0, "revocation commits during the lock wait")
+        test.eq(fixture.executions, 2); test.eq(fixture.appends, 1); test.eq(fixture.rollbacks, 0)
     end)
     test.it("discards a returned write whose destination authority changes while locking", function()
         fixture.reset("", nil, "advance")
