@@ -48,7 +48,7 @@ function M.new(dependencies: types.Object?): types.Client
         end
         -- This second check is the effect gate; query alone is not authority to
         -- read private context or mutate an external service.
-        local stored, context_err = components.get_context(row.component_id, mask)
+        local stored, context_err = components.get_runtime_context(row.component_id, mask)
         if context_err or not stored then return nil, context_err end
         local conn: types.Connection = {component_id = row.component_id, deadline = deadline, api_key_scheme = api_key_scheme}
         if safe_token(stored.api_key) then

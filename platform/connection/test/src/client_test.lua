@@ -22,7 +22,7 @@ local function cases()
                     seen[#seen + 1] = "query"
                     return {{component_id = "selected", meta = {provider = "notion"}}}
                 end,
-                get_context = function(id, mask)
+                get_runtime_context = function(id, mask)
                     test.eq(id, "selected"); test.eq(mask, 2)
                     seen[#seen + 1] = "context"
                     return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "read-only actor"})
@@ -33,6 +33,27 @@ local function cases()
             test.is_nil(conn); test.is_true(errors.is(err, errors.PERMISSION_DENIED))
             test.eq(table.concat(seen, ","), "query,context")
         end)
+        test.it("uses the checked runtime credential read for token connections", function()
+            local reads = 0
+            local client = transport.new({capacity = passthrough(), component = {
+                ACCESS = {READ = 1, WRITE = 2},
+                query = function() return {{component_id = "selected", meta = {provider = "notion"}}} end,
+                get_context = function() error("external context only returns credential presence") end,
+                get_runtime_context = function(id, mask)
+                    test.eq(id, "selected"); test.eq(mask, 1)
+                    reads = reads + 1
+                    return {api_key = "runtime-token"}
+                end,
+                open = function() error("token connections do not open OAuth") end,
+            }, http = {request = function(_, _, options)
+                test.eq(options.headers.Authorization, "Bearer runtime-token")
+                return {status_code = 200, body = "{}"}
+            end}})
+            local conn, err = client.connect("notion", "selected", false)
+            test.is_nil(err); test.not_nil(conn)
+            local result, request_err = client.request(conn, request)
+            test.is_nil(request_err); test.is_true(result.success); test.eq(reads, 1)
+        end)
         test.it("rejects mismatched, disabled, and ambiguous accounts without reading secrets", function()
             for _, rows in ipairs({
                 {{component_id = "wrong", meta = {provider = "box"}}},
@@ -40,7 +61,7 @@ local function cases()
                 {{component_id = "a", meta = {provider = "notion"}}, {component_id = "b", meta = {provider = "notion"}}},
             }) do
                 local client = transport.new({component = {ACCESS = {READ = 1, WRITE = 2}, query = function() return rows end,
-                    get_context = function() error("must not read credentials") end}})
+                    get_runtime_context = function() error("must not read credentials") end}})
                 local conn, err = client.connect("notion", nil, false)
                 test.is_nil(conn); test.is_true(errors.is(err, errors.INVALID))
             end

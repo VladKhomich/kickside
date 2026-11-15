@@ -1,6 +1,14 @@
 version: "1.0"
 namespace: app.client_test
 entries:
+  - name: key_storage
+    kind: env.storage.static
+    values:
+      KEY: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  - name: encryption_key
+    kind: env.variable
+    variable: KEY
+    storage: app.client_test:key_storage
   - name: server
     kind: http.service
     addr: :19185
@@ -36,6 +44,7 @@ entries:
   - name: binding
     kind: contract.binding
     meta:
+      secret_fields: [{path: [api_key], type: string}]
       provider: provider_http_fixture
       class: [connection]
       credential_schema:
@@ -68,6 +77,6 @@ entries:
     source: file://client_e2e_test.lua
     method: run
     meta: {type: test, suite: provider_client_e2e}
-    modules: [sql, uuid, security, funcs, time]
+    modules: [sql, uuid, security, funcs, time, json]
     imports:
       test: wippy.test:test
