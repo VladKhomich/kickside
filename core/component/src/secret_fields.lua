@@ -131,6 +131,9 @@ function M.declarations(): (types.SecretKind[]?, string?, error?)
 end
 
 local function copy(value: types.JsonMap): types.JsonMap
+    if next(value) == nil then
+        return json.encode(value) == "{}" and table.create(0, 1) or {}
+    end
     local result: types.JsonMap = {}
     for key, item in pairs(value) do
         result[key] = type(item) == "table" and copy(item :: types.JsonMap) or item
