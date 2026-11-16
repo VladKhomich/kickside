@@ -7,9 +7,10 @@ entries:
     meta: {type: test, suite: kickside_inbox, group: KickSide Inbox}
     source: file://execution_root_expectation.lua
     method: run
-    modules: [funcs, contract, security, uuid]
+    modules: [funcs, contract, security, uuid, registry, sql]
     imports:
       test: wippy.test:test
+      execution_identity: kickside.execution:execution_identity
       test_identity: app:test_identity
       component: kickside.component:component
   - name: inbox_select_identity_probe

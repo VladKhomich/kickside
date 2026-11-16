@@ -629,6 +629,13 @@ entries:
       provision: kickside.core.threads:provision
       autoinit: kickside.component:autoinit
 
+  - name: provision_user_call_deny
+    kind: security.policy
+    policy:
+      resources: kickside.core.threads:provision_user
+      actions: funcs.call
+      effect: deny
+
   - name: provision_kind_read_deny
     kind: security.policy
     policy:

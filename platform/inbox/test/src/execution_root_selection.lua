@@ -16,6 +16,6 @@ return {run = function(args: any): (any?, error?)
         local threads = assert(assert(contract.get("kickside.core:threads"))
             :with_actor(security.actor()):with_scope(security.scope()):open())
         return threads:catch_up_projection({thread_id = args.component_id,
-            kind = "kickside.inbox:items", projection_key = "default", cursor_key = "default", max_ticks = 20})
+            kind = "kickside.inbox:items", projection_key = "default", cursor_key = "default", max_ticks = args.max_ticks or 20})
     end
 end}

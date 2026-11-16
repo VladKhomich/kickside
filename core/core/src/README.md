@@ -37,7 +37,13 @@ hierarchy.
 
 A declared user singleton created by `provision.ensure_user` or first-touch
 singleton emission receives its own execution root, authorized by its owning
-user. Core selects that identity through its private provisioning function; its
+user, only in the user's own frame (no inherited identity, or an inherited
+`authorized_by` equal to that user). A delegated frame retains its inherited root
+and authorizer unchanged, so revoking the authorizer's live delegation still stops
+deferred work. Provisioning derives the singleton key from the authenticated
+actor; the private entry refuses caller-supplied keys. Ordinary first-touch
+creation does not require permission to call that entry.
+Core selects the owner identity through its private provisioning function; its
 actor/scope construction capabilities are removed before registration and declared
 callbacks. Callers need no general actor-creation grant. Credential and link
 restrictions remain attached. The caller's frame and

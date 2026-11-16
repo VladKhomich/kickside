@@ -48,9 +48,9 @@ local function missing_result(field: string): error
         retryable = false, details = {code = "provision_response", field = field}})
 end
 
--- User provisioning is an owner admission, independent of the component frame
--- that first needed the singleton. Keep all request restrictions, but let ordinary
--- registration fill the newly created component's own root. Never mutate the caller.
+-- A user's own frame may admit an independent singleton root. Delegated frames
+-- retain their inherited root and authorizer so live delegation still fences work.
+-- Keep request restrictions and never mutate the caller.
 local function user_actor(actor: any): (any?, error?)
     if execution_identity.is_maintenance_key(actor:id()) then return actor, nil end
     local principal, principal_err = execution_identity.principal_of_key(actor:id())
@@ -65,6 +65,9 @@ local function user_actor(actor: any): (any?, error?)
         if not execution_identity.same_principal(inherited.principal, principal) then
             return nil, errors.new({kind = errors.PERMISSION_DENIED,
                 message = "provisioning identity does not match its owning user"})
+        end
+        if not execution_identity.same_principal(inherited.authorized_by, principal) then
+            return actor, nil
         end
     end
     local restrictions = inherited or meta
@@ -358,16 +361,20 @@ end
 -- worker at first ingest for non-interactive/bridge actors that never log in. The
 -- actor owns the provisioned components; idempotent, so either owner converges.
 function M.ensure_user(actor: any, scope: any, scope_key: string): ({ string }?, error?)
+    if scope_key ~= actor:id() then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED,
+            message = "user provisioning key must match the authenticated actor"})
+    end
     local meta = actor:meta() or {}
     if meta.execution_identity == nil and meta.component_id == nil then
-        return provision_scope(actor, scope, scope_key, autoinit.SCOPE.USER :: string)
+        return provision_scope(actor, scope, actor:id(), autoinit.SCOPE.USER :: string)
     end
-    return provision_user(actor, scope, {scope_key = scope_key})
+    return provision_user(actor, scope, {})
 end
 
 -- Internal first-touch emit path. Only the owning user's declared singleton
 -- enters provisioning; all other creation paths retain normal frame capture.
-local function ensure_singleton(actor: any, scope: any, args: any): (boolean?, error?)
+local function is_user_singleton(actor: any, args: any): (boolean?, error?)
     local entry, lookup_err = registry.get(args.impl_id)
     if lookup_err then return nil, lookup_err end
     local meta = entry and entry.meta or {}
@@ -378,6 +385,12 @@ local function ensure_singleton(actor: any, scope: any, args: any): (boolean?, e
         or args.component_id ~= autoinit.component_id(actor:id(), class) then
         return false, nil
     end
+    return true, nil
+end
+
+local function ensure_singleton(actor: any, scope: any, args: any): (boolean?, error?)
+    local eligible, eligibility_err = is_user_singleton(actor, args)
+    if eligibility_err or not eligible then return eligible, eligibility_err end
     local owner, owner_err = user_actor(actor)
     if owner_err then return nil, owner_err end
     local threads, open_err = open_threads(owner, scope)
@@ -389,6 +402,8 @@ local function ensure_singleton(actor: any, scope: any, args: any): (boolean?, e
 end
 
 function M.ensure_singleton(actor: any, scope: any, args: any): (boolean?, error?)
+    local eligible, eligibility_err = is_user_singleton(actor, args)
+    if eligibility_err or not eligible then return eligible, eligibility_err end
     return provision_user(actor, scope, args)
 end
 
@@ -401,11 +416,15 @@ function M.provision_user(args: any): (any?, error?)
         return nil, errors.new({kind = errors.PERMISSION_DENIED,
             message = "user provisioning requires an authenticated actor and scope"})
     end
-    local scope = caller_scope:without(PROVISION_IDENTITY)
     if args.scope_key ~= nil then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED,
+            message = "user provisioning does not accept a caller-supplied key"})
+    end
+    local scope = caller_scope:without(PROVISION_IDENTITY)
+    if args.component_id == nil then
         local owner, owner_err = user_actor(actor)
         if owner_err then return nil, owner_err end
-        return provision_scope(owner, scope, args.scope_key, autoinit.SCOPE.USER :: string)
+        return provision_scope(owner, scope, actor:id(), autoinit.SCOPE.USER :: string)
     end
     return ensure_singleton(actor, scope, args)
 end

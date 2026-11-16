@@ -30,7 +30,6 @@ local function fixture(restricted: boolean?): (any, any, any, string, string, st
         authorized_by = {kind = "user", id = user}, component_id = root,
         captured_at = "2026-11-16T00:00:00Z"}
     if restricted then
-        captured.authorized_by = {kind = "user", id = "original-authorizer"}
         captured.credential_id = uuid.v4()
         captured.link_id = uuid.v4()
     end
@@ -107,7 +106,7 @@ return {run = test.run_cases(function()
             test.eq(stored.authorized_by.id, user)
             local inherited = assert(framed:call("app:uploads_select_identity_probe", {operation = "identity"}))
             test.eq(inherited.component_id, root)
-            test.eq(inherited.authorized_by.id, "original-authorizer")
+            test.eq(inherited.authorized_by.id, user)
             test.eq(stored.credential_id, inherited.credential_id)
             test.eq(stored.link_id, inherited.link_id)
             -- Idempotent provisioning does not replace an existing identity.
