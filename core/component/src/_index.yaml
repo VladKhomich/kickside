@@ -71,7 +71,7 @@ entries:
   - name: encryption_key
     kind: ns.requirement
     default: ENCRYPTION_KEY
-    meta: {value_kind: env.variable, comment: Installation encryption key; changes take effect on restart.}
+    meta: {comment: Installation encryption key; changes take effect on restart.}
     targets:
       - {entry: kickside.component.env:encryption_key, path: .default}
       - {entry: kickside.component:secrets_key_access, path: '.policy.resources +='}
