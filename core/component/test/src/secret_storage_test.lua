@@ -9,12 +9,53 @@ local component = require("component")
 local reader = require("reader")
 local placement = require("placement")
 local deletion = require("deletion")
+local rollback = require("lifecycle_rollback")
 
 local fields = require("secret_fields")
 local SENTINEL = "component-storage-credential-sentinel"
 
 return {run = test.run_cases(function()
     test.describe("separate component secret storage", function()
+        test.it("upgrades rollback state without rewriting encrypted credentials", function()
+            local db = assert(sql.get("app:db"))
+            local id = uuid.v7()
+            local timestamp = time.now():utc():format_rfc3339()
+            test.is_nil(select(2, db:execute([[INSERT INTO kickside_components
+                (component_id,impl_id,private_context,position,created_at,updated_at,context_revision)
+                VALUES ($1,'app:secret_kind','{}','n',$2,$2,0)]], {id, timestamp})))
+            local tx = assert(db:begin())
+            local written, write_err = context_ops.set_context(tx, {component_id = id,
+                private_context = {api_key = SENTINEL, cursor = 5}})
+            if write_err then tx:rollback() else tx:commit() end
+            test.is_nil(write_err)
+            test.is_true(written.changes_made)
+            local before = assert(db:query("SELECT * FROM kickside_components WHERE component_id=$1", {id}))[1]
+            local upgrade_tx = assert(db:begin())
+            local upgraded, upgrade_err = rollback.upgrade_tx(upgrade_tx, id, function()
+                return {{target = "example:cleanup", args = {}}}, true
+            end)
+            if upgrade_err then upgrade_tx:rollback() else upgrade_tx:commit() end
+            test.is_nil(upgrade_err)
+            test.is_true(upgraded.changes_made)
+            local after = assert(db:query("SELECT * FROM kickside_components WHERE component_id=$1", {id}))[1]
+            test.eq(after.encrypted_secrets, before.encrypted_secrets)
+            test.eq(tonumber(after.secrets_generation), tonumber(before.secrets_generation))
+            test.eq(tonumber(after.context_revision), tonumber(before.context_revision) + 1)
+            test.is_nil(assert(json.encode(after)):find(SENTINEL, 1, true))
+            local context = assert(component.get_private_runtime_context(id))
+            test.eq(context.api_key, SENTINEL)
+            test.eq(context.cursor, 5)
+            test.eq(context._rollback[1].target, "example:cleanup")
+            local repeat_tx = assert(db:begin())
+            local repeated, repeat_err = rollback.upgrade_tx(repeat_tx, id, function(chain) return chain, false end)
+            if repeat_err then repeat_tx:rollback() else repeat_tx:commit() end
+            test.is_nil(repeat_err)
+            test.is_false(repeated.changes_made)
+            local repeated_row = assert(db:query("SELECT context_revision FROM kickside_components WHERE component_id=$1", {id}))[1]
+            test.eq(tonumber(repeated_row.context_revision), tonumber(after.context_revision))
+            test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id=$1", {id})))
+            test.is_nil(select(2, db:release()))
+        end)
         test.it("rejects ciphertext from a deleted incarnation of the same component", function()
             local db = assert(sql.get("app:db"))
             local id, actor_id = uuid.v7(), uuid.v7()
@@ -112,6 +153,16 @@ return {run = test.run_cases(function()
                 include = {private_context = true, meta = false}})
             test.is_nil(runtime_err)
             test.eq(runtime_rows[1].private_context.api_key, SENTINEL)
+            local after, after_err = component.list_system({component_ids = {id}, after_component_id = id,
+                order_by = {field = "component_id", direction = "ASC"},
+                include = {private_context = true, meta = false}})
+            test.is_nil(after_err)
+            test.eq(#after, 0)
+            local runtime_after, runtime_after_err = component.list_runtime_context({component_ids = {id}, after_component_id = id,
+                order_by = {field = "component_id", direction = "ASC"},
+                include = {private_context = true, meta = false}})
+            test.is_nil(runtime_after_err)
+            test.eq(#runtime_after, 0)
             local instance, open_err = component.open_private(id)
             test.is_nil(open_err)
             local status, status_err = assert(instance):get_status({})

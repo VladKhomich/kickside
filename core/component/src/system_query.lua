@@ -7,6 +7,9 @@ local function query(filter: component_types.QueryFilter?, secrets: boolean): (c
     local f: component_types.QueryFilter = filter or {}
     local reader = component_reader.new()
 
+    if type(f.after_component_id) == "string" and f.after_component_id ~= "" then
+        reader = reader:after_component(f.after_component_id)
+    end
     if type(f.component_ids) == "table" and #f.component_ids > 0 then
         reader = reader:with_components(f.component_ids)
     end
