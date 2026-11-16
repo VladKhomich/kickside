@@ -85,3 +85,28 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 ## License
 
 [KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
+
+### Implementation deletion admission
+
+A component kind may declare `meta.delete_admission`, naming a library import on
+`kickside.component:delete_admission`. Its module wires that import declaratively
+with an `ns.requirement` targeting `.imports.<alias>`, whose default is its
+validator `library.lua`. Kinds without the declaration retain their behavior. Declaration lookup uses the
+existing trusted kind reader after deletion is authorized.
+The library exports `validate(payload) -> error?` (nil admits deletion).
+
+`begin_delete` calls the validator after locking the component row and validating
+access and child policy, before marking deletion or enrolling its job. The payload
+contains `tx`, `component_id`, `impl_id`, `child_policy` and `options`. The active
+transaction is passed by reference, following `component_lifecycle`; it must be
+used for read-only validation, never committed, rolled back or released by the
+validator. No cleanup or external side effect belongs here. A typed error rolls
+back admission and reaches both secured deletion and trusted owner deletion.
+A declared but unwired or malformed validator fails closed. Already accepted
+deletions resume their original intent without rerunning admission.
+
+The seam runs only on deletion admission and validates the state visible to its
+transaction. It adds no locks or checks to implementation write paths; each
+implementation documents any race with concurrent writes. The seam admits one
+component at a time; a cascade can already have accepted parents or unrelated
+siblings when a child refuses.

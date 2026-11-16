@@ -380,6 +380,14 @@ entries:
       - funcs
       - security
 
+  - name: delete_admission
+    kind: library.lua
+    meta:
+      comment: Transaction-aware implementation deletion validators; kind metadata names a declaratively wired library import.
+    source: file://delete_admission.lua
+    imports:
+      autoinit: kickside.component:autoinit
+
   - name: component_lifecycle
     kind: library.lua
     meta:

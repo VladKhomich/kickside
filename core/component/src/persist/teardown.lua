@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- Component deletion intent, provider cleanup and final unregister.
 
 local sql = require("sql")
@@ -11,6 +12,7 @@ local meta_service = require("meta_service")
 local ops = require("component_ops")
 local placement = require("placement")
 local component_lifecycle = require("component_lifecycle")
+local delete_admission = require("delete_admission")
 local error_envelope = require("error_envelope")
 
 local M = {}
@@ -247,7 +249,7 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
     if lock_err or not locked or tonumber(locked.rows_affected) == nil then
         return false, "delete", abort_transaction(db, tx, internal("component delete fence lock failed", lock_err or "missing row proof"))
     end
-    local rows, fence_err = tx:query("SELECT deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", { component_id })
+    local rows, fence_err = tx:query("SELECT impl_id,deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", { component_id })
     if fence_err or type(rows) ~= "table" then
         return false, "delete", abort_transaction(db, tx, internal("component delete fence read failed", fence_err or "missing result"))
     end
@@ -259,6 +261,13 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
         })
         if validation_err then
             return false, "delete", abort_transaction(db, tx, validation_err)
+        end
+        local admission_err = delete_admission.validate({
+            tx = tx, component_id = component_id, impl_id = rows[1].impl_id,
+            child_policy = child_policy, options = delete_options,
+        })
+        if admission_err then
+            return false, "delete", abort_transaction(db, tx, admission_err)
         end
         local mark_err = ops.mark_deleting_tx(tx, component_id, true)
         if mark_err then
