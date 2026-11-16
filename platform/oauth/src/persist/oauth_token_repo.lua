@@ -55,7 +55,7 @@ function M.get_access_token(component_id: string?): (oauth_types.AccessTokenResu
         return nil, "No access token available"
     end
 
-    local access_token, err = decrypt_access_token(connection.access_token_encrypted :: string, encryption_key)
+    local access_token, err = decrypt_access_token(connection.access_token_encrypted :: string, encryption_key :: string)
     if err then
         return nil, "Failed to decrypt access token: " .. err
     end
@@ -114,7 +114,7 @@ function M.update_tokens(component_id: string?, tokens: any, expires_at: any?, e
     end
 
     -- Decrypt current data
-    local oauth_data, err = decrypt_oauth_data(connection.oauth_data_encrypted :: string, encryption_key)
+    local oauth_data, err = decrypt_oauth_data(connection.oauth_data_encrypted :: string, encryption_key :: string)
     if err then
         return nil, "Failed to decrypt OAuth data: " .. err
     end
@@ -130,13 +130,13 @@ function M.update_tokens(component_id: string?, tokens: any, expires_at: any?, e
     end
 
     -- Re-encrypt data
-    local encrypted_data, err = encrypt_oauth_data(oauth_data :: oauth_types.SecretPayload, encryption_key)
+    local encrypted_data, err = encrypt_oauth_data(oauth_data :: oauth_types.SecretPayload, encryption_key :: string)
     if err then
         return nil, "Failed to encrypt updated OAuth data: " .. err
     end
 
     -- Encrypt the access token separately for optimized access
-    local access_token_encrypted, err = encrypt_access_token(token_set.access_token, encryption_key)
+    local access_token_encrypted, err = encrypt_access_token(token_set.access_token, encryption_key :: string)
     if err then
         return nil, "Failed to encrypt access token: " .. err
     end

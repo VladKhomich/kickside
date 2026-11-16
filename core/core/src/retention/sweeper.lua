@@ -101,7 +101,7 @@ local function parse_timestamp(raw: string, dbtype: string): (any?, error?)
     }
     local layouts = dbtype == sql.type.SQLITE and sqlite_layouts or postgres_layouts
     for _, layout in ipairs(layouts) do
-        local parsed, parse_err = time.parse(layout, raw)
+        local parsed, parse_err = time.parse(layout, raw, time.utc)
         if not parse_err and parsed then return parsed, nil end
     end
     return nil, response_failure("retention timestamp has an unknown shape", "timestamp")
