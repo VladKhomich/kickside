@@ -21,7 +21,7 @@ class PublicHarnessTests(unittest.TestCase):
             self.assertTrue(setups, name + ' must install the supported runtime')
             for setup in setups:
                 with self.subTest(workflow=name, setup=setup):
-                    self.assertRegex(setup, r'(?m)^        version: 0\.3\.63a$')
+                    self.assertRegex(setup, r'(?m)^        version: 0\.3\.64a$')
 
     def test_ci_materializes_ui_kit_from_the_checkout(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
