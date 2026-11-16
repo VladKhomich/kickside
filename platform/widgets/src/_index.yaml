@@ -98,6 +98,14 @@ entries:
     props:
       type: object
       properties:
+        label:
+          type: string
+          default: ""
+          description: Accessible name supplied by the containing form.
+        description:
+          type: string
+          default: ""
+          description: Accessible help supplied by the containing form.
         value:
           type: string
           default: ""
