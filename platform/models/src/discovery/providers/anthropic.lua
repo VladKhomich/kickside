@@ -5,7 +5,7 @@ local M = {}
 
 M.provider_ids = { common.PROVIDERS.ANTHROPIC }
 
-function M.fetch(profile: any): ({ any }?, string?)
+function M.fetch(profile: any): ({ any }?, string?, any?)
     local api_key = common.resolve_value(profile, "api_key", "ANTHROPIC_API_KEY")
     if not api_key then return nil, "Anthropic API key is required" end
 
@@ -18,10 +18,10 @@ function M.fetch(profile: any): ({ any }?, string?)
         headers = headers,
         timeout = common.timeout(profile, 30),
     })
-    if err then return nil, tostring(err) end
+    if err then return nil, common.transport_error(err) end
 
-    local parsed, perr = common.decode_response(response)
-    if not parsed then return nil, perr end
+    local parsed, perr, diagnostics = common.decode_response(response)
+    if not parsed then return nil, perr, diagnostics end
     return common.model_rows(parsed)
 end
 

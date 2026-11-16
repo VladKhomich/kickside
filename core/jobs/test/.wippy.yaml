@@ -296,3 +296,13 @@ profiles:
       "app:private_queue_retention_dispatch:options.search_path": jobs_retention_dispatch
       "app:private_queue_retention_dispatch:pool.max_open": 8
       "app:private_queue_retention_dispatch:pool.max_idle": 4
+      "app:private_queue_health_bounded:kind": "db.sql.postgres"
+      "app:private_queue_health_bounded:host": "${pg_host}"
+      "app:private_queue_health_bounded:port": "${pg_port}"
+      "app:private_queue_health_bounded:database": "${pg_database}"
+      "app:private_queue_health_bounded:username": "${pg_username}"
+      "app:private_queue_health_bounded:password": "${pg_password}"
+      "app:private_queue_health_bounded:options.sslmode": "disable"
+      "app:private_queue_health_bounded:options.search_path": "jobs_health_bounded"
+      "app:private_queue_health_bounded:pool.max_open": 16
+      "app:private_queue_health_bounded:pool.max_idle": 8

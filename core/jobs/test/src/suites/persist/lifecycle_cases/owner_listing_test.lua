@@ -188,7 +188,8 @@ local function define_tests()
             end
             local after = assert(jobs.health())
             test.eq(after.due_unclaimed_count, before.due_unclaimed_count + due_count)
-            test.eq(after.failed_slots, before.failed_slots)
+            test.eq(after.pending_jobs, before.pending_jobs + #specs)
+            test.is_nil(after.failed_slots)
             local stranded = {}
             for _, issue in ipairs(after.issues) do
                 if issue.code == "stranded_jobs" then

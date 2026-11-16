@@ -273,7 +273,7 @@ entries:
     kind: function.lua
     meta: { type: test, suite: kickside_models }
     source: file://models_secret_decode_test.lua
-    modules: [sql, funcs]
+    modules: [sql, funcs, json]
     method: run
     imports:
       test: wippy.test:test
@@ -336,3 +336,115 @@ entries:
       models_repo: kickside.models.persist:repo
       fake_http: app:card_save_fake_http
       admin_handler: app:card_save_admin
+
+  - name: secret_headers_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_models}
+    source: file://secret_headers_test.lua
+    method: run
+    modules: [sql, json, funcs]
+    imports:
+      test: wippy.test:test
+      policy: kickside.models.catalog:policy
+      repo: kickside.models.persist:repo
+      common: kickside.models.discovery:common
+      discovery: kickside.models.discovery:model_discovery
+      card_test: app:card_test_source
+      fake_http: app:card_save_fake_http
+      llm_fixture: app:card_test_llm
+
+  - name: card_test_llm
+    kind: library.lua
+    source: file://card_test_llm.lua
+  - name: card_test_catalog
+    kind: library.lua
+    source: file://card_test_catalog.lua
+  - name: card_test_source
+    kind: library.lua
+    source: file://card_test_source.lua
+    modules: [json, time]
+    imports:
+      http: app:card_save_fake_http
+      llm: app:card_test_llm
+      prompt: wippy.llm:prompt
+      model_catalog: app:card_test_catalog
+
+
+  - name: discovery_http_fixture
+    kind: library.lua
+    source: file://discovery_http_fixture.lua
+
+  - name: diagnostics_openai_like
+    kind: library.lua
+    source: file://fixtures/openai_like.lua
+    modules: [json]
+    imports:
+      http_client: app:discovery_http_fixture
+      discovery_common: kickside.models.discovery:common
+      model_mapper: kickside.models.discovery:mapper
+      sigv4: wippy.llm.bedrock:sigv4
+
+  - name: diagnostics_anthropic
+    kind: library.lua
+    source: file://fixtures/anthropic.lua
+    modules: [json]
+    imports:
+      http_client: app:discovery_http_fixture
+      discovery_common: kickside.models.discovery:common
+      model_mapper: kickside.models.discovery:mapper
+      sigv4: wippy.llm.bedrock:sigv4
+
+  - name: diagnostics_google_genai
+    kind: library.lua
+    source: file://fixtures/google_genai.lua
+    modules: [json]
+    imports:
+      http_client: app:discovery_http_fixture
+      discovery_common: kickside.models.discovery:common
+      model_mapper: kickside.models.discovery:mapper
+      sigv4: wippy.llm.bedrock:sigv4
+
+  - name: diagnostics_bedrock
+    kind: library.lua
+    source: file://fixtures/bedrock.lua
+    modules: [json]
+    imports:
+      http_client: app:discovery_http_fixture
+      discovery_common: kickside.models.discovery:common
+      model_mapper: kickside.models.discovery:mapper
+      sigv4: wippy.llm.bedrock:sigv4
+
+  - name: diagnostics_discover_profile
+    kind: library.lua
+    source: file://fixtures/discover_profile.lua
+    modules: [json]
+    imports:
+      http: app:card_save_fake_http
+      model_discovery: kickside.models.discovery:model_discovery
+
+  - name: diagnostics_test_profile
+    kind: library.lua
+    source: file://fixtures/test_profile.lua
+    modules: [json]
+    imports:
+      http: app:card_save_fake_http
+      model_discovery: kickside.models.discovery:model_discovery
+
+  - name: discovery_diagnostics_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_models}
+    source: file://discovery_diagnostics_test.lua
+    method: run
+    modules: [json]
+    imports:
+      test: wippy.test:test
+      repo: kickside.models.persist:repo
+      discovery: kickside.models.discovery:model_discovery
+      http_fixture: app:discovery_http_fixture
+      fake_http: app:card_save_fake_http
+      discover_handler: app:diagnostics_discover_profile
+      test_handler: app:diagnostics_test_profile
+      openai: app:diagnostics_openai_like
+      anthropic: app:diagnostics_anthropic
+      google: app:diagnostics_google_genai
+      bedrock: app:diagnostics_bedrock
