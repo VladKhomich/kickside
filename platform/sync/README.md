@@ -75,6 +75,16 @@ Create a **Data Sync** Automation, select an event or collection source port, co
 | --- | --- |
 | [`kickside.sync:sync_contract`](src/_index.yaml) | `reconfigure` |
 
+The Sync kind also implements `kickside.automation:prepared_installable`.
+`prepare_install` validates the declaration and returns the same pure plan as
+`install`, without creating components, drives, jobs or provider effects. The
+existing selected installer persists that plan before creating the Automation
+under its selected principal. Identical requests replay the recorded result;
+changed input for the same request conflicts. Interrupted installs recover from
+the reserved plan without preparing again. Ordinary installs remain unchanged.
+Release this capability together with the pending-publication deletion protection
+in [#512](https://github.com/kicksideai/kickside/pull/512).
+
 ### Host requirements
 
 Bind these exact requirement IDs through the module’s dependency declaration
