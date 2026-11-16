@@ -9,5 +9,10 @@ cp "$models_test_dir/../src/api/admin/upsert_card.lua" "$models_test_dir/fixture
 cp "$models_test_dir/../src/api/admin/get_admin.lua" "$models_test_dir/fixtures/get_admin.lua"
 
 cp "$models_test_dir/../src/discovery/reference_openrouter.lua" "$models_test_dir/fixtures/reference_openrouter.lua"
-
 cp "$models_test_dir/../src/persist/profile_reload.lua" "$models_test_dir/fixtures/profile_reload.lua"
+for provider in openai_like anthropic google_genai bedrock; do
+    cp "$models_test_dir/../src/discovery/providers/$provider.lua" "$models_test_dir/fixtures/$provider.lua"
+done
+for handler in discover_profile test_profile; do
+    cp "$models_test_dir/../src/api/admin/$handler.lua" "$models_test_dir/fixtures/$handler.lua"
+done

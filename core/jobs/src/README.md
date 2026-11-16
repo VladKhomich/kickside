@@ -88,10 +88,38 @@ makes the job claimable only after its registered execution child has ended.
 A gone child recovers in the same pass; a live child retains the termination fence.
 Heartbeats renew only matching, unexpired executions without a termination fence.
 
-`jobs.health()` reports `stranded_jobs` with `job_ids` for erroneous pending
-one-shot jobs without a schedule. This invariant is unhealthy immediately; the
-existing `health.overdue_grace` bounds due-work diagnostics only. Scheduled retry
-errors remain part of `degraded_jobs` without creating a stranded-job issue.
+`jobs.health()` is a read-only operator diagnostic. It uses existing indexes and
+adds no schema, writes, claim checks or enqueue work. Each count reads at most
+1,001 index entries: exact through 1,000, then the lower bound 1,000 with its
+companion `<field>_capped` boolean set to `true`. Exactly 1,000 is not capped.
+
+- `pending_jobs`, `running_jobs`, `dead_jobs`: jobs in each status. Terminal job
+  failures use the `dead` status; execution history is not inspected.
+- `due_unclaimed_count`: pending jobs with `scheduled_at <= now`, **due, not
+  necessarily claimable**. Concurrency and capacity blocking are ignored.
+- `overdue_unclaimed_count`: the same pending population past `health.overdue_grace`.
+  `due_work_unclaimed` issues carry this lower bound as `{count, capped}`.
+- `due_unclaimed_oldest_age_ms`: age of the oldest due pending job, read by an
+  ordered index seek with `LIMIT 1`; zero when none exists. Independent of the cap.
+- `expired_leases`: running jobs with an expired, non-null lease.
+- `healthy_worker_count`: pulses within the lease window. The worker list remains
+  limited to 256, with individual freshness reported as `healthy`.
+
+`stranded_jobs.job_ids` samples at most 16 erroneous unscheduled pending one-shot
+jobs from a window of at most 1,001 pending jobs in status-index order (priority
+then schedule). The window is bounded before filtering for stranded work. The
+sample is neither exhaustive nor globally ordered; it can omit stranded jobs,
+so an absent issue does not prove their absence. This issue has no population
+`count` or `capped` field. `healthy` means no issue is observed by these signals.
+
+Diagnostic contract changes: due and overdue fields previously counted only
+claimable jobs. They now include blocked jobs. `failed_slots`, `degraded_jobs`,
+`undelivered_wake_keys`, `oldest_undelivered_control_wake_age_ms` and the
+`slots_failed` issue are omitted because existing indexes cannot bound those
+populations. Status counts replace failure-history inspection. No job data or
+scheduler behavior changes; the scheduler's eligibility-aware backlog API stays
+unchanged. Each health read is bounded independently of job-table size, including
+large blocked, future-only, mixed-deadline and successful parked-slot backlogs.
 
 After committing a transaction containing `jobs.enqueue_tx(tx, dbtype, params)`,
 call `jobs.nudge_workers(): (integer, error?)`. Never nudge before commit or after
