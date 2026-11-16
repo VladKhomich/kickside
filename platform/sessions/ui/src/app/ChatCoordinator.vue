@@ -220,6 +220,15 @@ function restoreChatTabs() {
   removedTabs.clear()
 }
 
+/**
+ * Move a session from a blank /sessions inline. The blank /sessions was only a
+ * step on the way, so its history entry is replaced: Back goes to the page
+ * before it, not to the blank chat. A Host without the option adds an entry.
+ */
+function carryIn(sessionId: string, current: HostRoute) {
+  host?.navigate(`${sessionPath(sessionId)}${current.search}${current.hash}`, { replace: true })
+}
+
 function applyContext(context: IntentContext | undefined, sessionId: string) {
   if (!context || !isRecord(context.context)) return
   host?.setContext(context.context, sessionId, context.source)
@@ -324,7 +333,7 @@ function onPanelAnnounced(sessionId: string) {
   // A drawer start that finishes while the reader sits on a blank /sessions
   // takes the usual carry-in: the session moves inline.
   const current = readRoute(readLayout())
-  if (isBareSessions(current)) host?.navigate(`${sessionPath(sessionId)}${current.search}${current.hash}`)
+  if (isBareSessions(current)) carryIn(sessionId, current)
 }
 
 function onLayoutEvent(event: LayoutEvent) {
@@ -360,8 +369,7 @@ function onNavigated(prev: HostRoute, next: HostRoute, layout: LayoutLike) {
     removeChatTabs(layout)
     // Bare /sessions is a blank chat; a session held in the panel moves inline.
     // A panel cleared by "New chat" holds none, so it is left blank.
-    if (held && isBareSessions(next))
-      host?.navigate(`${sessionPath(held)}${next.search}${next.hash}`)
+    if (held && isBareSessions(next)) carryIn(held, next)
   }
   else if (!isSessions && wasSessions) {
     const left = sessionIdFromPath(prev.path)
