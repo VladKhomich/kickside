@@ -39,10 +39,9 @@ end
 function M.write_tx(tx: any, component_id: string, chain: any): error?
     local steps, invalid_err = M.validate(chain)
     if invalid_err then return invalid_err end
-    local stored, read_err = context_ops.lock_and_read_tx(tx, component_id)
-    if read_err or not stored then return read_err end
-    stored._rollback = steps
-    local _, write_err = context_ops.write_context_tx(tx, component_id, stored)
+    local stored, read_err, _, row = context_ops.lock_and_read_tx(tx, component_id)
+    if read_err or not stored or not row then return read_err end
+    local _, write_err = context_ops.write_context_tx(tx, row, stored, {_rollback = steps})
     return write_err
 end
 
@@ -53,8 +52,8 @@ end
 -- blocked on the old chain resumes through its original Jobs identity.
 function M.upgrade_tx(tx: any, component_id: string, upgrade: any): (any?, error?)
     if type(upgrade) ~= "function" then return nil, invalid("rollback upgrade rule is required") end
-    local stored, read_err = context_ops.lock_and_read_tx(tx, component_id)
-    if read_err or not stored then return nil, read_err end
+    local stored, read_err, _, row = context_ops.lock_and_read_tx(tx, component_id)
+    if read_err or not stored or not row then return nil, read_err end
     local current, current_err = M.validate(stored._rollback or {})
     if current_err or not current then return nil, current_err end
     local upgraded, changed = upgrade(current)
@@ -62,9 +61,8 @@ function M.upgrade_tx(tx: any, component_id: string, upgrade: any): (any?, error
     if changed == true then
         local steps, invalid_err = M.validate(upgraded)
         if invalid_err then return nil, invalid_err end
-        stored._rollback = steps
         local write_err
-        result, write_err = context_ops.write_context_tx(tx, component_id, stored)
+        result, write_err = context_ops.write_context_tx(tx, row, stored, {_rollback = steps})
         if write_err then return nil, write_err end
     end
     local rows, fence_err = tx:query("SELECT deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", {component_id})
