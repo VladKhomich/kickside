@@ -363,6 +363,40 @@ local function define_tests()
             end)
         end)
 
+        test.it("keeps every omitted setting when importing only a profile timeout", function()
+            scenario(function()
+                local before = assert(models_repo.get_profile("io-env-gateway"))
+                local expected = json.decode(encoded(before.config))
+                expected.timeout = 47
+                local reload = models_repo.reload
+                local reloads = 0
+                models_repo.reload = function()
+                    reloads = reloads + 1
+                    return reload()
+                end
+                local ok, err = pcall(function()
+                    local status, result = post_import({ version = 1, profiles = {
+                        { id = before.id, config = { timeout = 47 } },
+                    } })
+                    test.eq(status, 200, tostring(result and result.error))
+                    test.eq(reloads, 1, "import reads a separate snapshot before its write transaction")
+                    test.eq(#result.profiles.updated, 1)
+                    local after = assert(models_repo.get_profile(before.id))
+                    test.eq(after.name, before.name)
+                    test.eq(after.provider_id, before.provider_id)
+                    test.eq(after.enabled, before.enabled)
+                    test.is_true(policy.same_value(after.config, expected), "import drops an omitted configuration setting")
+                    test.is_true(policy.same_value(after.secret_config, before.secret_config), "import changes omitted credentials")
+                    test.eq(after.status, before.status)
+                    test.eq(after.message, before.message)
+                    test.eq(after.last_discovered_at, before.last_discovered_at)
+                    test.eq(after.created_at, before.created_at)
+                end)
+                models_repo.reload = reload
+                if not ok then error(err, 0) end
+            end)
+        end)
+
         test.it("keeps nested credentials and their ciphertext while importing public configuration", function()
             scenario(function()
                 local doc = export_document()
@@ -390,29 +424,29 @@ local function define_tests()
             end)
         end)
 
-        test.it("preserves exact ciphertext when importing profile configuration after a credential rotation", function()
+        test.it("preserves rotated ciphertext even when the merge sees an older credential", function()
             scenario(function()
                 local doc = export_document()
                 find(doc.profiles, "id", "io-keyed-gateway").config.timeout = 46
                 local rotated = assert(policy.encrypt_secret({ api_key = "test-test-test-0003" }))
-                local reload = models_repo.reload
+                local db = assert(sql.get("app:db"))
+                local _, write_err = db:execute("UPDATE kickside_model_provider_profiles SET secret_json = $1 WHERE id = $2",
+                    { rotated, "io-keyed-gateway" })
+                db:release()
+                test.is_nil(write_err)
+                local decrypt = policy.decrypt_secret
                 local injected = false
-                models_repo.reload = function()
-                    local snapshot, err = reload()
-                    if not injected and not err then
+                policy.decrypt_secret = function(ciphertext)
+                    if not injected and ciphertext == rotated then
                         injected = true
-                        local db = assert(sql.get("app:db"))
-                        local _, write_err = db:execute("UPDATE kickside_model_provider_profiles SET secret_json = $1 WHERE id = $2",
-                            { rotated, "io-keyed-gateway" })
-                        db:release()
-                        test.is_nil(write_err)
+                        return { api_key = SECRET_VALUE }
                     end
-                    return snapshot, err
+                    return decrypt(ciphertext)
                 end
                 local ok, err = pcall(function()
                     local status, result = post_import(doc)
                     test.eq(status, 200, tostring(result and result.error))
-                    test.is_true(injected, "rotation must occur after import reads the snapshot")
+                    test.is_true(injected, "merge must see the older credential context")
                     local db = assert(sql.get("app:db"))
                     local rows, read_err = db:query("SELECT secret_json FROM kickside_model_provider_profiles WHERE id = $1",
                         { "io-keyed-gateway" })
@@ -423,7 +457,7 @@ local function define_tests()
                     test.eq(profile.secret_config.api_key, "test-test-test-0003")
                     test.eq(profile.config.timeout, 46)
                 end)
-                models_repo.reload = reload
+                policy.decrypt_secret = decrypt
                 if not ok then error(err, 0) end
             end)
         end)

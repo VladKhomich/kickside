@@ -26,35 +26,14 @@ local function db()
     return handle
 end
 
-function M.reload(): (any?, any?)
-    local handle, derr = db()
-    if not handle then return nil, derr end
-    local dbh = handle :: sql.DB
-
-    -- SPEC: Reloads serialize their SQL reads through cache publication. A later
-    -- publication cannot contain rows read before the preceding publication.
-    -- SQLite owns one application connection for the transaction's lifetime;
-    -- PostgreSQL takes a transaction-scoped reload lock before either read.
-    local tx, txerr = dbh:begin()
-    if txerr or not tx then dbh:release(); return nil, txerr end
-    local function fail(err: any): (any?, any?)
-        tx:rollback()
-        dbh:release()
-        return nil, err
-    end
-    if dbh:type() == sql.type.POSTGRES then
-        local _, lock_err = tx:query(
-            "SELECT pg_advisory_xact_lock(hashtextextended('kickside.models.reload', 0))", {})
-        if lock_err then return fail(lock_err) end
-    end
-
-    local profile_rows, perr = tx:query([[
+local function read_snapshot(exec: Executor): (any?, any?)
+    local profile_rows, perr = exec:query([[
         SELECT id, name, provider_id, config_json, secret_json, enabled, status, message,
                last_discovered_at, created_at, updated_at
         FROM kickside_model_provider_profiles
         ORDER BY name ASC
     ]], {})
-    if perr then return fail(perr) end
+    if perr then return nil, perr end
 
     local profiles = {}
     local profiles_by_id = {}
@@ -81,7 +60,7 @@ function M.reload(): (any?, any?)
         profiles_by_id[tostring(profile.id)] = profile
     end
 
-    local card_rows, cerr = tx:query([[
+    local card_rows, cerr = exec:query([[
         SELECT name, title, description, provider_id, provider_profile_id, provider_model,
                capabilities_json, classes_json, priority, max_tokens, output_tokens, capability_ownership_json,
                dimensions, pricing_json, options_json, source, enabled, metadata_json,
@@ -89,18 +68,44 @@ function M.reload(): (any?, any?)
         FROM kickside_model_cards
         ORDER BY name ASC
     ]], {})
-    if cerr then return fail(cerr) end
+    if cerr then return nil, cerr end
 
     local cards = {}
     for _, row in ipairs(card_rows or {}) do
         local r = row :: any
         local profile = r.provider_profile_id and profiles_by_id[tostring(r.provider_profile_id)] or nil
         local card, card_err = card_policy.build_card(r, profile)
-        if card_err then return fail(card_err) end
+        if card_err then return nil, card_err end
         table.insert(cards, card)
     end
 
-    local snapshot = { profiles = profiles, cards = cards }
+    return { profiles = profiles, cards = cards }
+end
+
+function M.reload(): (any?, any?)
+    local handle, derr = db()
+    if not handle then return nil, derr end
+    local dbh = handle :: sql.DB
+
+    -- SPEC: Reloads serialize their SQL reads through cache publication. A later
+    -- publication cannot contain rows read before the preceding publication.
+    -- SQLite owns one application connection for the transaction's lifetime;
+    -- PostgreSQL takes a transaction-scoped reload lock before either read.
+    local tx, txerr = dbh:begin()
+    if txerr or not tx then dbh:release(); return nil, txerr end
+    local function fail(err: any): (any?, any?)
+        tx:rollback()
+        dbh:release()
+        return nil, err
+    end
+    if dbh:type() == sql.type.POSTGRES then
+        local _, lock_err = tx:query(
+            "SELECT pg_advisory_xact_lock(hashtextextended('kickside.models.reload', 0))", {})
+        if lock_err then return fail(lock_err) end
+    end
+
+    local snapshot, read_err = read_snapshot(tx)
+    if read_err then return fail(read_err) end
     models_cache.replace(snapshot)
     local _, commit_err = tx:commit()
     dbh:release()
@@ -433,7 +438,7 @@ end
 
 -- Merges an export document into the stored setup by profile id and card name;
 -- nothing is deleted and stored secrets stay. Every item is cleaned against its
--- stored row before anything is written, and the writes run in one transaction.
+-- stored row before anything is written; reads, merges, and writes share one transaction.
 -- Re-importing an unchanged document writes nothing. A refused document returns
 -- (nil, err). A failure after commit returns the report with the error.
 function M.import(doc: any): (any?, any?)
@@ -446,8 +451,21 @@ function M.import(doc: any): (any?, any?)
     local doc_cards, cerr = import_list(doc.cards, "cards")
     if not doc_cards then return nil, cerr end
 
-    local snap, snap_err = M.reload()
-    if snap_err then return nil, snap_err end
+    local handle, derr = db()
+    if not handle then return nil, derr end
+    local dbh = handle :: sql.DB
+    local tx, txerr = dbh:begin()
+    if txerr or not tx then
+        dbh:release()
+        return nil, "import transaction failed: " .. tostring(txerr)
+    end
+    local function fail(err: any): (any?, any?)
+        tx:rollback()
+        dbh:release()
+        return nil, err
+    end
+    local snap, snap_err = read_snapshot(tx)
+    if snap_err then return fail(snap_err) end
     local stored_profiles: { [string]: any } = {}
     for _, profile in ipairs(snap.profiles or {}) do stored_profiles[tostring(profile.id)] = profile end
     local stored_cards: { [string]: any } = {}
@@ -466,13 +484,13 @@ function M.import(doc: any): (any?, any?)
     for index, item in ipairs(doc_profiles) do
         local id = type(item) == "table" and item.id or nil
         if type(id) ~= "string" or id == "" or models_types.slug(id) ~= id then
-            return nil, "profiles[" .. tostring(index) .. "]: id must be a slug"
+            return fail("profiles[" .. tostring(index) .. "]: id must be a slug")
         end
-        if seen_profiles[id] then return nil, "profile " .. id .. " appears twice" end
+        if seen_profiles[id] then return fail("profile " .. id .. " appears twice") end
         seen_profiles[id] = true
         local existing = stored_profiles[id]
         if existing and existing.error then
-            return nil, "profile " .. id .. " cannot be read: " .. tostring(existing.error)
+            return fail("profile " .. id .. " cannot be read: " .. tostring(existing.error))
         end
         local input = {}
         for key, value in pairs(item) do
@@ -484,10 +502,10 @@ function M.import(doc: any): (any?, any?)
         end
         local _, submitted_secrets = policy.split_config(input)
         if next(submitted_secrets) ~= nil then
-            return nil, "profile " .. id .. ": the import document carries no secrets; set them on the profile or use an *_env pointer"
+            return fail("profile " .. id .. ": the import document carries no secrets; set them on the profile or use an *_env pointer")
         end
         local cleaned, clean_err = policy.clean_profile_input(item, existing, existing and existing.secret_config or {})
-        if not cleaned then return nil, "profile " .. id .. ": " .. tostring(clean_err) end
+        if not cleaned then return fail("profile " .. id .. ": " .. tostring(clean_err)) end
         resulting_providers[id] = cleaned.provider_id
         if existing and policy.same_value(
             { cleaned.name, cleaned.provider_id, cleaned.config, cleaned.enabled },
@@ -503,20 +521,20 @@ function M.import(doc: any): (any?, any?)
     for index, item in ipairs(doc_cards) do
         local name = type(item) == "table" and item.name or nil
         if type(name) ~= "string" or name == "" then
-            return nil, "cards[" .. tostring(index) .. "]: name is required"
+            return fail("cards[" .. tostring(index) .. "]: name is required")
         end
-        if seen_cards[name] then return nil, "card " .. name .. " appears twice" end
+        if seen_cards[name] then return fail("card " .. name .. " appears twice") end
         seen_cards[name] = true
         local base = stored_cards[name]
         local card, clean_err = card_policy.clean_card_input(item, base)
-        if not card then return nil, "card " .. name .. ": " .. tostring(clean_err) end
+        if not card then return fail("card " .. name .. ": " .. tostring(clean_err)) end
         if card.provider_profile_id ~= nil then
             local profile_provider = resulting_providers[tostring(card.provider_profile_id)]
             if profile_provider == nil then
-                return nil, "card " .. name .. ": provider profile " .. tostring(card.provider_profile_id) .. " does not exist"
+                return fail("card " .. name .. ": provider profile " .. tostring(card.provider_profile_id) .. " does not exist")
             end
             if profile_provider ~= card.provider_id then
-                return nil, "card " .. name .. ": provider " .. tostring(card.provider_id) .. " does not match its profile's provider " .. profile_provider
+                return fail("card " .. name .. ": provider " .. tostring(card.provider_id) .. " does not match its profile's provider " .. profile_provider)
             end
         end
         if base and policy.same_value(card, card_policy.clean_card_input({ name = name }, base)) then
@@ -527,16 +545,6 @@ function M.import(doc: any): (any?, any?)
         end
     end
 
-    if #profile_writes == 0 and #card_writes == 0 then return report end
-
-    local handle, derr = db()
-    if not handle then return nil, derr end
-    local dbh = handle :: sql.DB
-    local tx, txerr = dbh:begin()
-    if txerr or not tx then
-        dbh:release()
-        return nil, "import transaction failed: " .. tostring(txerr)
-    end
     local ts = now()
     local write_err: any = nil
     for _, write in ipairs(profile_writes) do
@@ -553,11 +561,7 @@ function M.import(doc: any): (any?, any?)
             if write_err then break end
         end
     end
-    if write_err then
-        tx:rollback()
-        dbh:release()
-        return nil, write_err
-    end
+    if write_err then return fail(write_err) end
     local _, commit_err = tx:commit()
     dbh:release()
     if commit_err then return nil, "import commit failed: " .. tostring(commit_err) end
