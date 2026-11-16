@@ -2,6 +2,7 @@ local test = require("test")
 local sql = require("sql")
 local uuid = require("uuid")
 local wake = require("wake")
+local clock = require("clock")
 
 local function define_tests()
     test.describe("jobs wake timestamps", function()
@@ -106,15 +107,13 @@ local function define_tests()
             end
             local tx, begin_err = db:begin()
             test.is_nil(begin_err)
-            local woken, wake_err = wake.wake_job(tx, id, { control = true }, dbtype)
-            local rows, query_err
-            if dbtype == sql.type.POSTGRES then
-                rows, query_err = tx:query("SELECT ABS(EXTRACT(EPOCH FROM (scheduled_at - NOW()))) AS drift FROM kickside_job WHERE id = '" .. id .. "'")
-            else
-                rows, query_err = sql.builder.select("scheduled_at")
-                    :from("kickside_job"):where(sql.builder.eq({ id = id }))
-                    :run_with(tx):query()
-            end
+            local observed = clock.now(dbtype)
+            local original = clock.now
+            clock.now = function() return observed end
+            local ok, woken, wake_err = pcall(wake.wake_job, tx, id, { control = true }, dbtype)
+            clock.now = original
+            if not ok then error(woken) end
+            local rows, query_err = tx:query("SELECT scheduled_at=$1 AS runtime_clock FROM kickside_job WHERE id=$2", {observed,id})
             local _, cleanup_err = sql.builder.update("kickside_job")
                 :set("status", "cancelled")
                 :where(sql.builder.eq({ id = id }))
@@ -129,11 +128,7 @@ local function define_tests()
             test.is_nil(query_err)
             test.is_nil(cleanup_err)
             test.is_nil(commit_err)
-            if dbtype == sql.type.POSTGRES then
-                test.is_true(tonumber(rows[1].drift) < 5)
-            else
-                test.not_nil(rows[1].scheduled_at)
-            end
+            test.is_true(rows[1].runtime_clock == true or rows[1].runtime_clock == 1)
         end)
     end)
 end

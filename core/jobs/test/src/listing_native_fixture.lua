@@ -23,6 +23,7 @@ end
 function M.builder(): any
     local query = {}
     function query:from(...) return self end
+    function query:join(...) return self end
     function query:where(...) return self end
     function query:order_by(...) return self end
     function query:limit(value) self.limit_value = value; return self end
