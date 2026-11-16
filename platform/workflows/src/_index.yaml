@@ -467,6 +467,14 @@ entries:
           kind: { type: string, const: flow, required: true }
           id: { type: string, minLength: 1, required: true }
           version: { type: integer, minimum: 1, required: true }
+      correlation_fields:
+        type: array
+        title: Terminal correlation fields
+        description: Select top-level scalar Start fields for terminal events (4096 encoded bytes maximum).
+        minItems: 1
+        maxItems: 16
+        uniqueItems: true
+        items: { type: string, minLength: 1, maxLength: 128 }
 
   - name: flow_access_trait
     kind: registry.entry
