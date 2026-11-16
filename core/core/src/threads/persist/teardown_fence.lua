@@ -63,8 +63,12 @@ function M.fence_page(db: any, id: string): (boolean?, error?)
         return nil, response_error("state.cursor")
     end
     local cursor = state.teardown_fence_cursor :: string
+    -- A blocked projection's pin belongs to this thread and is removed with its
+    -- cursor during teardown; only surviving consumers need an external fence.
     local pins, pin_err = db:query("SELECT consumer_key FROM kickside_retention_pin"
-        .. " WHERE thread_id=$1 AND consumer_key>$2 ORDER BY consumer_key LIMIT 101", { id, cursor })
+        .. " WHERE thread_id=$1 AND consumer_key>$2 AND NOT EXISTS ("
+        .. " SELECT 1 FROM kickside_projection_cursor c WHERE c.thread_id=$1"
+        .. " AND consumer_key='projection:' || c.id) ORDER BY consumer_key LIMIT 101", { id, cursor })
     local page_err = rows_error(pins, pin_err, "thread consumer fence page failed", "pins.rows")
     if page_err then return nil, page_err end
     local limit = math.min(#pins, 100)

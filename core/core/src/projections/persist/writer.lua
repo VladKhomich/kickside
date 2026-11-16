@@ -114,19 +114,20 @@ function M.resume(db: sql.DB, thread_id: string, params: table): (table?, error?
         if (c :: table).status == "invalid" then
             return nil, failure("invalid projection needs a corrected declaration", errors.CONFLICT)
         end
-        if c.status == "active" then
-            return { cursor_id = c.id, projection_id = c.projection_id, status = "active", already_active = true }, nil
+        local already_active = c.status == "active"
+        if not already_active then
+            local _, update_err = tx:execute([[UPDATE kickside_projection_cursor
+                SET status='active',generation=generation+1,last_error=NULL,updated_at=$1 WHERE id=$2]],
+                { clock.now(dialect), c.id })
+            if update_err then return nil, (errors.wrap(update_err, "projection resume failed") :: error) end
         end
-        local _, update_err = tx:execute([[UPDATE kickside_projection_cursor
-            SET status='active',generation=generation+1,last_error=NULL,updated_at=$1 WHERE id=$2]],
-            { clock.now(dialect), c.id })
-        if update_err then return nil, (errors.wrap(update_err, "projection resume failed") :: error) end
         if type(c.job_id) ~= "string" or c.job_id == "" then
             return nil, failure("projection cursor has no jobs slot", errors.INTERNAL)
         end
         local _, wake_err = jobs_wake.wake_job(tx, c.job_id, { control = true }, dialect)
         if wake_err then return nil, wake_err end
-        return { cursor_id = c.id, projection_id = c.projection_id, job_id = c.job_id, status = "active" }, nil
+        return { cursor_id = c.id, projection_id = c.projection_id, job_id = c.job_id, status = "active",
+            already_active = already_active }, nil
     end)
     if err or not result then return result, err end
     local _, cursor_err = cursor_waiters.notify_cursor(tostring(result.cursor_id), nil, tostring(result.status))

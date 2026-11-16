@@ -8,6 +8,7 @@ local claim = require("claim")
 local invoke = require("invoke")
 local pin = require("pin")
 local prune = require("prune")
+local teardown = require("teardown")
 
 local function query(db: sql.DB, statement: string, params: table): table
     local rows, err = db:query(statement, params)
@@ -63,6 +64,15 @@ end
 
 return test.run_cases(function()
     test.describe("blocked projection retention", function()
+        test.it("deletes a thread that owns an invalid projection retention pin", function()
+            local thread, registered = fixture()
+            block(thread, registered)
+            local db = assert(sql.get("app:db"))
+            local result, err = teardown.purge_thread(db, thread, nil)
+            db:release()
+            test.is_nil(err, tostring(err))
+            test.is_true(result.purged)
+        end)
         test.it("retains unread events through a deterministic block and releases protection on correction", function()
             local thread, registered = fixture()
             block(thread, registered)
