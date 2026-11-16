@@ -394,7 +394,7 @@ local function define_tests()
             scenario(function()
                 local doc = export_document()
                 find(doc.profiles, "id", "io-keyed-gateway").config.timeout = 46
-                local rotated = assert(policy.encrypt_secret({ api_key = "synthetic-rotated-secret-0003" }))
+                local rotated = assert(policy.encrypt_secret({ api_key = "test-test-test-0003" }))
                 local reload = models_repo.reload
                 local injected = false
                 models_repo.reload = function()
@@ -420,7 +420,7 @@ local function define_tests()
                     test.is_nil(read_err)
                     test.eq(rows[1].secret_json, rotated, "config import rewrites rotated ciphertext")
                     local profile = models_repo.get_profile("io-keyed-gateway")
-                    test.eq(profile.secret_config.api_key, "synthetic-rotated-secret-0003")
+                    test.eq(profile.secret_config.api_key, "test-test-test-0003")
                     test.eq(profile.config.timeout, 46)
                 end)
                 models_repo.reload = reload
