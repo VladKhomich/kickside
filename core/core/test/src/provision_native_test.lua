@@ -129,6 +129,153 @@ return {run = test.run_cases(function()
             test.eq(fixture.grants, 1)
             test.eq(fixture.releases, 1)
         end)
+        for _, count in ipairs({1, 257, 1024, 10000}) do
+            test.it("checks unchanged declaration digests without reading bodies/" .. tostring(count), function()
+                fixture.reset("", nil)
+                fixture.unchanged_count = count
+                local summary, err = provision.converge({}, {})
+                test.is_nil(err)
+                test.eq(summary.checked, 0)
+                test.eq(summary.healed, 0)
+                test.eq(fixture.calls, 0)
+                test.eq(fixture.queries, 2, "one indexed boundary query and one bulk existence query; empty mismatch ranges do not scan")
+                test.eq(fixture.max_page, 0, "healthy rows never enter the mismatch window")
+            end)
+        end
+        test.it("examines a larger finite window without spending the repair budget", function()
+            fixture.reset("", nil)
+            fixture.unchanged_count = 10000
+            local continuation, turns = nil, 0
+            repeat
+                local page, err = provision.converge({}, {}, continuation)
+                test.is_nil(err)
+                test.eq(page.checked, 0)
+                continuation, turns = page.continuation, turns + 1
+            until not continuation
+            test.eq(turns, 1)
+            test.eq(fixture.queries, 2, "query count is independent of the healthy population")
+        end)
+        test.it("resumes after the last repair when a sparse window fills its repair budget", function()
+            fixture.reset("", nil)
+            fixture.changed_count, fixture.changed_stride = 10000, 2
+            local continuation = nil
+            repeat
+                local before = fixture.calls
+                local page, err = provision.converge({}, {}, continuation)
+                test.is_nil(err)
+                test.is_true(fixture.calls - before <= 256)
+                continuation = page.continuation
+            until not continuation
+            test.eq(#fixture.repair_ids, 5000)
+            for index, id in ipairs(fixture.repair_ids) do
+                test.eq(id, string.format("%06d", index * 2), "no divergent key is skipped or repeated")
+            end
+        end)
+        test.it("rejects a changed invalid declaration through its owning repair", function()
+            fixture.reset("", nil)
+            fixture.changed_count, fixture.invalid_declaration = 1, true
+            local page, err = provision.converge({}, {})
+            test.is_true(errors.is(err, errors.INVALID))
+            test.eq(page.checked, 0)
+            test.eq(fixture.calls, 0)
+        end)
+        test.it("prepares declaration definitions once per finite run", function()
+            fixture.reset("", nil)
+            fixture.unchanged_count = 10000
+            local continuation = nil
+            repeat
+                local page = assert(provision.converge({}, {}, continuation))
+                test.eq(fixture.kind_loads, 1, "windows reuse the run's prepared declarations")
+                continuation = page.continuation
+            until not continuation
+            assert(provision.converge({}, {}))
+            test.eq(fixture.kind_loads, 2, "a new run reloads current declarations")
+        end)
+        test.it("continues ten thousand changed declarations in bounded turns", function()
+            fixture.reset("", nil)
+            fixture.changed_count = 10000
+            local continuation, total, turns = nil, 0, 0
+            repeat
+                local before = fixture.calls
+                local summary, err = provision.converge({}, {}, continuation)
+                test.is_nil(err)
+                test.is_true(fixture.calls - before <= 256)
+                test.eq(summary.healed, fixture.calls - before)
+                total = total + summary.healed
+                turns = turns + 1
+                test.is_true(turns <= 40, "a finite changed population finishes in bounded turns")
+                continuation = summary.continuation
+            until not continuation
+            test.eq(total, 10000)
+            test.eq(turns, 40)
+            test.eq(fixture.queries, 42)
+            test.eq(fixture.max_page, 4096)
+        end)
+        test.it("reuses lifecycle existence materialization across repair turns", function()
+            fixture.reset("", nil)
+            fixture.lifecycle, fixture.lifecycle_missing, fixture.unchanged_count = true, 600, 10000
+            local continuation, total, turns = nil, 0, 0
+            repeat
+                local before = fixture.calls
+                local page = assert(provision.converge({}, {}, continuation))
+                test.is_true(fixture.calls - before <= 256)
+                total, turns = total + page.healed, turns + 1
+                continuation = page.continuation
+                test.is_true(turns <= 4)
+            until not continuation
+            test.eq(total, 600)
+            test.eq(turns, 3)
+            test.eq(fixture.lifecycle_scans, 1, "lifecycle existence is materialized once for the finite run")
+        end)
+        for _, changed in ipairs({false, true}) do
+            test.it("bounds ten thousand lifecycle digest checks/" .. tostring(changed), function()
+                fixture.reset("", nil)
+                fixture.lifecycle = true
+                if changed then fixture.changed_count = 10000 else fixture.unchanged_count = 10000 end
+                local continuation, total, turns = nil, 0, 0
+                repeat
+                    local before, queries, wakes = fixture.calls, fixture.queries, fixture.wakes
+                    local summary, err = provision.converge({}, {}, continuation)
+                    test.is_nil(err)
+                    test.is_true(fixture.calls - before <= 256)
+                    test.eq(fixture.queries - queries, turns == 0 and (changed and 3 or 2) or 1)
+                    test.eq(fixture.wakes - wakes, changed and 1 or 0, "committed repairs notify before the page returns")
+                    total = total + summary.healed
+                    turns = turns + 1
+                    continuation = summary.continuation
+                until not continuation
+                test.eq(total, changed and 10000 or 0)
+                test.eq(turns, changed and 40 or 1)
+                test.eq(fixture.max_page, changed and 4096 or 0)
+            end)
+        end
+        test.it("limits each declaration range before union and sorting", function()
+            fixture.reset("", nil)
+            fixture.require_window = true
+            local _, err = provision.converge({}, {})
+            test.is_nil(err)
+        end)
+        test.it("captures a finite boundary and rotates to another pending kind", function()
+            fixture.reset("", nil)
+            fixture.changed_count = 10000
+            fixture.two_kinds = true
+            local result, err = provision.converge({}, {})
+            test.is_nil(err)
+            test.not_nil(result.continuation)
+            test.eq(result.continuation.kind_index, 2)
+            test.eq(result.continuation.boundaries.upper, "010000")
+            local continuation, total, turns = result.continuation, result.healed, 1
+            -- New components beyond the captured boundary cannot extend this run.
+            fixture.changed_count = 20000
+            repeat
+                local page = assert(provision.converge({}, {}, continuation))
+                total = total + page.healed
+                continuation = page.continuation
+                turns = turns + 1
+                test.is_true(turns < 43, "the initial finite traversal completes despite ongoing creation")
+            until not continuation
+            test.eq(total, 10001)
+        end)
         test.it("valid convergence de-duplicates the divergence set", function()
             fixture.reset("", nil)
             local summary, err = provision.converge({}, {})

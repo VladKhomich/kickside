@@ -102,7 +102,7 @@ entries:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
@@ -120,7 +120,7 @@ entries:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
@@ -138,7 +138,7 @@ entries:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
@@ -156,7 +156,7 @@ entries:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
-      proj_writer: kickside.core.projections.persist:writer
+      proj_writer: kickside.core.projections.persist:register
       jobs_wake: kickside.core.jobs.persist:wake
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row

@@ -56,7 +56,7 @@ function M.thread_id(component_id: string): string
 end
 
 -- The lifecycle thread_class for a component class, clamped to the thread_class cap.
-local function class_for(component_class: string?): string
+function M.class_for(component_class: string?): string
     local c = (type(component_class) == "string" and (component_class :: string) ~= "")
         and (component_class :: string) or "component"
     local cls = CLASS_PREFIX .. c
@@ -106,7 +106,7 @@ function M.ensure(db: Executor, component_id: string, component_class: string?):
     local _, ins_err = sql.builder.insert("kickside_thread")
         :set_map({
             id = tid,
-            thread_class = class_for(component_class),
+            thread_class = M.class_for(component_class),
             component_id = "",
             state = masks.THREAD_STATE.OPEN,
             event_count = 0,
