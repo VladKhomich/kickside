@@ -3059,6 +3059,8 @@ entries:
   - name: projection_invoke_native_fixture
     kind: library.lua
     source: file://projection_invoke_native_fixture.lua
+    imports:
+      job_types: kickside.core.jobs:types
     modules: [sql, time]
 
   - name: projection_invoke_native_sql_adapter

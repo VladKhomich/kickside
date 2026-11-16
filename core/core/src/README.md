@@ -83,7 +83,9 @@ Once the slot's cursor is read, binding, stored-identity, worker and apply failu
 are recorded on that cursor through the same fenced failure transition.
 Deterministic failures invalidate the cursor and projection, preserve the error and failed run, and disable event
 wakes until a corrected declaration is registered. Infrastructure failures keep
-the cursor active with its error and use Jobs' existing slot retries.
+the cursor active with its error and use Jobs' existing slot retries. Lease loss
+returns without publishing a projection failure; infrastructure errors publish
+only while the attempt still owns the running slot's lease token.
 
 Resume sends a control wake even when the cursor is already active, so an active
 cursor with a disabled slot can recover without resetting or skipping events.

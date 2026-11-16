@@ -282,6 +282,7 @@ function M.run(input: any): (table?, error?)
     end
     local current = row :: table
     if not attempt_err then return result, nil end
+    if job_types.is_lease_lost_error(attempt_err) then return nil, attempt_err end
     -- Binding, identity, worker and apply failures share the cursor's failure
     -- transition before Jobs can park the slot. Its generation/position fence
     -- keeps stale attempts from invalidating a resumed or committed cursor.

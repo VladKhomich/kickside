@@ -1,6 +1,8 @@
 local sql = require("sql")
 local time = require("time")
+local job_types = require("job_types")
 local M: any = {WORKER_FAILED = "worker_failed"}
+M.is_lease_lost_error = job_types.is_lease_lost_error
 function M.reset(stage: string, source: any)
     M.stage, M.source, M.release_source, M.rollback_source = stage, source, nil, nil
     M.record_failure = false
