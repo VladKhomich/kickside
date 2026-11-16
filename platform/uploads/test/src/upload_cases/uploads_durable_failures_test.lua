@@ -889,6 +889,50 @@ local function define_tests()
         end
         end
 
+        test.it("records each retried processing job's dead outcome once", function()
+            local id, owner = uuid_v4(), "retry-outcome-" .. uuid_v4()
+            ensure_uploads_component(owner)
+            local upload = assert(upload_record_repo.create(id, owner, 1, "text/plain", "app:uploads", id,
+                "app:types.failing", upload_metadata(owner, "retry.txt"), "uploaded", nil, nil, true, 600000))
+            local first = assert(process_worker.enqueue_upload_job(upload, true))
+            local db = assert(sql.get("app:db"))
+            local dbtype = tostring(db:type())
+            local function fail_and_deliver(job_id: string, message: string): ()
+                local job = admit_job(db, job_id, 5)
+                test.is_nil(jobs_lifecycle.fail_job(db, job, dbtype, message, "deterministic"))
+                local settled, err = process_job.dead({payload = {job_id = job_id}})
+                test.is_nil(err, tostring(err))
+                test.is_true(settled.settled)
+            end
+            fail_and_deliver(first.job_id, "first execution ended")
+            test.eq(assert(upload_query_repo.get(id)).storage_state, "failed")
+            local retried, retry_err = upload_lib.retry_upload(id)
+            test.is_nil(retry_err, tostring(retry_err))
+            test.not_nil(retried)
+            local second = assert(upload_query_repo.get(id))
+            test.is_true(second.processing_job_id ~= first.job_id)
+            fail_and_deliver(second.processing_job_id, "retried execution ended")
+            local events = assert(db:query([[SELECT external_version,body FROM kickside_event
+                WHERE thread_id=$1 AND external_id=$2 AND type=$3 ORDER BY seq]],
+                {first.thread_id, id, uploads_events.TYPE.FAILED}))
+            test.eq(#events, 2)
+            test.eq(events[1].external_version, first.job_id)
+            test.eq(events[2].external_version, second.processing_job_id)
+            test.eq(assert(json.decode(events[2].body)).error, "retried execution ended")
+            local settled = assert(upload_query_repo.get(id))
+            test.eq(settled.storage_state, "failed")
+            for _, job_id in ipairs({first.job_id, second.processing_job_id}) do
+                local repeated, err = process_job.dead({payload = {job_id = job_id}})
+                test.is_nil(err, tostring(err))
+                test.is_false(repeated.settled == true)
+            end
+            test.eq(assert(upload_query_repo.get(id)).updated_at, settled.updated_at)
+            test.eq(#assert(db:query([[SELECT id FROM kickside_event
+                WHERE thread_id=$1 AND external_id=$2 AND type=$3]],
+                {first.thread_id, id, uploads_events.TYPE.FAILED})), 2)
+            db:release()
+        end)
+
 		test.it("settles an upload whose processing job dies without its handler", function()
 			local storage = fs.get("app:uploads")
 			local upload_id = "dead-job-" .. uuid_v4()
