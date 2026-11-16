@@ -163,6 +163,13 @@ local function emit_terminal_event(row: any): (any?, any?)
             correlation_key = row.dedup_key or row.trigger_id or row.run_id },
         trigger_id = row.trigger_id,
     }
+    if type(row.creation_payload_json) == "string" and row.creation_payload_json ~= "" then
+        local payload, payload_err = json.decode(row.creation_payload_json)
+        if payload_err or type(payload) ~= "table" then
+            return nil, payload_err or "workflow run creation payload is invalid"
+        end
+        body.correlation = payload.correlation
+    end
     if run.flow_ref then body.flow_ref = run.flow_ref else body.draft_ref = run.draft_ref end
     if run.automation_ref then body.automation_ref = run.automation_ref end
     if row.status ~= "completed" then

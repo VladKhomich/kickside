@@ -64,7 +64,7 @@ entries:
         - required: [flow_ref]
         - required: [draft_ref]
 
-  # Emit sites: platform/workflows/src/runs/completion.lua (COMPLETED terminal transition).
+  # Emit sites: platform/workflows/src/runs/maintenance.lua (COMPLETED terminal transition).
   - name: finished
     kind: registry.entry
     meta:
@@ -105,6 +105,13 @@ entries:
         invocation_id: { type: string }
         started_at: { type: string }
         ended_at: { type: string }
+        correlation:
+          type: object
+          description: Immutable selected Start fields, at most 4096 encoded JSON bytes; absent without a sink selection.
+          minProperties: 1
+          maxProperties: 16
+          propertyNames: { minLength: 1, maxLength: 128 }
+          additionalProperties: { type: [string, number, boolean] }
         duration_ms: { type: integer, minimum: 0 }
         output_ref:
           type: object
@@ -133,7 +140,7 @@ entries:
         - required: [flow_ref]
         - required: [draft_ref]
 
-  # Emit sites: platform/workflows/src/runs/completion.lua (FAILED/CANCELLED/TERMINATED terminal transition).
+  # Emit sites: platform/workflows/src/runs/maintenance.lua (FAILED/CANCELLED/TERMINATED terminal transition).
   - name: failed
     kind: registry.entry
     meta:
@@ -174,6 +181,13 @@ entries:
         invocation_id: { type: string }
         started_at: { type: string }
         ended_at: { type: string }
+        correlation:
+          type: object
+          description: Immutable selected Start fields, at most 4096 encoded JSON bytes; absent without a sink selection.
+          minProperties: 1
+          maxProperties: 16
+          propertyNames: { minLength: 1, maxLength: 128 }
+          additionalProperties: { type: [string, number, boolean] }
         duration_ms: { type: integer, minimum: 0 }
         error:
           type: object

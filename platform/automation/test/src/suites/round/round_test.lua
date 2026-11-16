@@ -10,6 +10,7 @@ local test = require("test")
 local json = require("json")
 local uuid = require("uuid")
 local time = require("time")
+local clock = require("clock")
 local drive = require("drive")
 local pin = require("retention_pin")
 local slot = require("slot")
@@ -28,16 +29,15 @@ local db, exec, query = h.db, h.exec, h.query
 local read_drive, new_drive, set_drive = h.read_drive, h.new_drive, h.set_drive
 local log_rows, ledger_row = h.log_rows, h.ledger_row
 
--- Jobs store timestamps in each database's native representation, so compare
--- against its clock rather than attempting to parse the driver's result.
+-- Jobs writes schedules and claims due work using the runtime clock. Bind that
+-- same clock in the dialect's timestamp shape; the database host may be skewed.
 local function dispatcher_state(dispatcher_id: string): Map?
     local opened = db()
     local dialect = tostring(opened:type())
     opened:release()
-    local due = dialect == "sqlite"
-        and "CASE WHEN scheduled_at IS NOT NULL AND julianday(scheduled_at) <= julianday('now') THEN 1 ELSE 0 END"
-        or "CASE WHEN scheduled_at IS NOT NULL AND scheduled_at <= CURRENT_TIMESTAMP THEN TRUE ELSE FALSE END"
-    return query("SELECT status,scheduled_at," .. due .. " AS is_due FROM kickside_job WHERE id=$1", { dispatcher_id })[1]
+    local due = "CASE WHEN scheduled_at IS NOT NULL AND scheduled_at <= $1 THEN TRUE ELSE FALSE END"
+    return query("SELECT status,scheduled_at," .. due .. " AS is_due FROM kickside_job WHERE id=$2",
+        { clock.now(dialect), dispatcher_id })[1]
 end
 
 local function dispatcher_is_due(dispatcher: Map): boolean
