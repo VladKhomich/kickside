@@ -32,9 +32,11 @@ end
 local function drain(db: any, instant: any): (table, integer)
     local totals: any = {}
     local passes = 0
-    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function()
-        local stats = required(retention.sweep(db, tostring(db:type())))
-        for key, value in pairs(stats) do totals[key] = (totals[key] or 0) + value end
+    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function(cursor)
+        local stats = required(retention.sweep(db, tostring(db:type()), cursor))
+        for key, value in pairs(stats) do
+            if key ~= "job_cursor" then totals[key] = (totals[key] or 0) + value end
+        end
         return stats, nil
     end})
     repeat
@@ -128,8 +130,9 @@ local function define_tests()
             local totals, passes = drain(probe, time.now())
             test.eq(totals.jobs, total)
             test.eq(totals.job_runs, total * 2)
-            test.eq(passes, math.ceil(total * 2 / policy.retention_batch))
-            test.eq(pages, passes * 2, "each sweep selects run and job pages")
+            test.eq(passes, math.floor(total * 2 / policy.retention_batch) + math.ceil(total / policy.retention_batch))
+            test.eq(pages, passes + math.ceil(total / policy.retention_batch),
+                "job pages start after the last full run page")
             test.is_true(transactions > 2, "backlog drains through multiple transactions")
             for _, table_name in ipairs({"kickside_job", "kickside_job_run"}) do
                 local rows = required(db:query("SELECT owner_id FROM " .. table_name .. " ORDER BY owner_id"))
@@ -139,6 +142,106 @@ local function define_tests()
                 test.eq(rows[3].owner_id, "running")
             end
             db:release()
+        end)
+
+        test.it("pages past blocked jobs with bounded selection at small and large backlogs", function()
+            for _, total in ipairs({1000, 100000}) do
+                local db = open_queue()
+                local dbtype = tostring(db:type())
+                local batch = required(config.policy()).retention_batch
+                local numbers = dbtype == sql.type.POSTGRES
+                    and "SELECT generate_series(1," .. tostring(total) .. ") AS n"
+                    or "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<"
+                        .. tostring(total) .. ") SELECT n FROM seq"
+                local id = dbtype == sql.type.POSTGRES and "md5(n::text)::uuid" or "CAST(n AS TEXT)"
+                required(db:execute([[INSERT INTO kickside_job
+                    (id,owner_kind,owner_id,job_type,status,job_identity,finished_at)
+                    SELECT ]] .. id .. ", 'component','blocked','kickside.component:delete_worker','done',CAST(n AS TEXT),"
+                    .. "'2000-01-01T00:00:00Z' FROM (" .. numbers .. ") numbered"))
+                required(db:execute([[INSERT INTO kickside_job_run
+                    (id,job_id,owner_kind,owner_id,job_type,attempt_no,execution_seq,status,lease_token,started_at)
+                    SELECT id,id,owner_kind,owner_id,job_type,1,1,'running','seed',finished_at FROM kickside_job]]))
+                required(db:execute("ANALYZE kickside_job"))
+                required(db:execute("ANALYZE kickside_job_run"))
+                local checked = 0
+                local probe = {
+                    type = function() return db:type() end,
+                    begin = function() return db:begin() end,
+                    execute = function(_, statement, params) return db:execute(statement, params) end,
+                    query = function(_, statement, params)
+                        local rows, err = db:query(statement, params)
+                        if string.find(statement, "SELECT id,owner_kind,owner_id", 1, true) == 1 then
+                            checked = checked + 1
+                            if dbtype == sql.type.POSTGRES then
+                                local plan = required(db:query("EXPLAIN (ANALYZE, BUFFERS) " .. statement, params))
+                                for _, row in ipairs(plan) do
+                                    local detail = tostring(row["QUERY PLAN"])
+                                    local examined, loops = string.match(detail, "actual time=[^ ]+ rows=(%d+) loops=(%d+)")
+                                    if examined then
+                                        test.is_true(tonumber(examined) * tonumber(loops) <= batch,
+                                            "candidate selection examines more than a batch: " .. detail)
+                                    end
+                                    local removed = string.match(detail, "Rows Removed by [%a ]+: (%d+)")
+                                    if removed then test.is_true(tonumber(removed) <= batch, detail) end
+                                end
+                            else
+                                local plan = required(db:query("EXPLAIN QUERY PLAN " .. statement, params))
+                                local seeks = 0
+                                for _, row in ipairs(plan) do
+                                    local detail = tostring(row.detail)
+                                    test.is_nil(string.find(detail, "SCAN ", 1, true), detail)
+                                    test.is_nil(string.find(detail, "TEMP B-TREE", 1, true), detail)
+                                    if string.find(detail, "SEARCH kickside_job USING INDEX idx_job_global_retention", 1, true) then
+                                        seeks = seeks + 1
+                                    end
+                                    if checked == 2 and string.find(detail, "finished_at=?", 1, true) then
+                                        test.not_nil(string.find(detail, "rowid>?", 1, true), "the seek skips earlier timestamp ties")
+                                    end
+                                end
+                                test.eq(seeks, checked == 2 and 2 or 1)
+                            end
+                            test.eq(#required(rows, err), batch, "blocked rows consume a bounded candidate page")
+                        end
+                        return rows, err
+                    end,
+                }
+                local stats = required(retention.sweep(probe, dbtype))
+                test.eq(stats.jobs, 0)
+                test.eq(stats.job_runs, 0)
+                test.not_nil(stats.job_cursor, "a full blocked page advances the round")
+                local key = dbtype == sql.type.SQLITE and "rowid" or "id"
+                local last = required(db:query("SELECT finished_at," .. key .. " AS key FROM kickside_job"
+                    .. " ORDER BY finished_at," .. key .. " LIMIT 1 OFFSET $1", {total-batch-1}))[1]
+                stats = required(retention.sweep(probe, dbtype, {finished_at=last.finished_at, key=last.key}))
+                test.eq(stats.jobs, 0)
+                test.not_nil(stats.job_cursor)
+                test.eq(checked, 2, "each sweep reads one bounded job page")
+                stats = required(retention.sweep(db, dbtype, stats.job_cursor))
+                test.is_nil(stats.job_cursor, "the round ends beyond its last blocked row")
+                local eligible = uuid.v7()
+                required(db:execute([[INSERT INTO kickside_job
+                    (id,owner_kind,owner_id,job_type,status,job_identity,finished_at)
+                    VALUES ($1,'service','eligible','test.retention','done','eligible','2000-01-02T00:00:00Z')]], {eligible}))
+                local instant = time.now()
+                local passes = 0
+                local driver = schedule.new({policy=config.policy, now=function() return instant end,
+                    sweep=function(cursor)
+                        passes = passes + 1
+                        test.is_true(passes <= math.ceil(total/batch)+1, "blocked rows repeat within a round")
+                        return retention.sweep(db, dbtype, cursor)
+                    end})
+                repeat driver.run(instant:unix_nano()) until driver.deadline() > instant:unix_nano()
+                test.eq(passes, math.ceil(total/batch)+1)
+                local rows = required(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE id=$1", {eligible}))
+                test.eq(tonumber(rows[1].n), 0, "eligible rows behind blocked pages drain before idling")
+                rows = required(db:query("SELECT COUNT(*) AS n FROM kickside_job_run"))
+                test.eq(tonumber(rows[1].n), total, "active runs and their jobs remain")
+                required(db:execute("UPDATE kickside_job_run SET status='completed',finished_at='2000-01-01T00:00:00Z'"))
+                local totals = drain(db, instant)
+                test.eq(totals.jobs, total)
+                test.eq(totals.job_runs, total)
+                db:release()
+            end
         end)
 
         test.it("bounds job selection when runs have a longer retention window", function()
@@ -176,7 +279,7 @@ local function define_tests()
                     begin = function() return db:begin() end,
                     execute = function(_, statement, params) return db:execute(statement, params) end,
                     query = function(_, statement, params)
-                        if string.find(statement, "SELECT id,owner_kind,owner_id FROM kickside_job ", 1, true) == 1 then
+                        if string.find(statement, "SELECT id,owner_kind,owner_id", 1, true) == 1 then
                             checked = checked + 1
                             if dbtype == sql.type.SQLITE then
                                 local plan = required(db:query("EXPLAIN QUERY PLAN " .. statement, params))
