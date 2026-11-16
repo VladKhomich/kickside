@@ -1,5 +1,8 @@
 local test = require("test")
-local worker_pool = require("worker_pool")
+local native_pool = require("worker_pool")
+local time = require("time")
+local fixed = assert(time.parse(time.RFC3339, "2026-10-10T00:00:00Z"))
+local worker_pool = native_pool.new({time = {now = function() return fixed end}})
 local sql = require("sql")
 local function executor(rows: any, source: error?): any
     return {query = function(_, query, args)
@@ -36,7 +39,7 @@ return {run = test.run_cases(function()
             end
             for _, row in ipairs({{ms = 12.1, kind = "due"}, {ms = 0, kind = "lease"}, {ms = -5, kind = "due"}}) do
                 test.it("successful exact deadline/" .. dialect .. "/" .. tostring(row.ms), function()
-                    local delay, kind, err = worker_pool.next_deadline(executor({row}, nil), dialect, "2026-10-10T00:00:00Z")
+                    local delay, kind, err = worker_pool.next_deadline(executor({{deadline = fixed:add(row.ms * time.MILLISECOND):format("2006-01-02T15:04:05.000000Z07:00"), kind = row.kind}}, nil), dialect, "2026-10-10T00:00:00Z")
                     test.is_nil(err)
                     test.eq(delay, math.max(1, math.ceil(row.ms)))
                     test.eq(kind, row.kind)
