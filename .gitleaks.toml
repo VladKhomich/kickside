@@ -97,3 +97,10 @@ condition = "AND"
 regexTarget = "secret"
 paths = ['''(^|/)platform/security/test/src/health_http_tests\.yaml$''']
 regexes = ['''^0123456789abcdef0123456789abcdef$''']
+
+[[allowlists]]
+description = "Bundled lodash function names in the source map names list of the renderers Mermaid chunk"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''(^|/)platform/renderers/static/cynefin-[^/]+\.js\.map$''']
+regexes = ['''^(?:isKeyable|keys|getAllKeys|isKey|toKey)_default\d*$''']
