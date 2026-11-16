@@ -6,6 +6,36 @@ namespace: app
 # from publish (see wippy.yaml exclude: app:**).
 
 entries:
+  - name: secret_key_cache_fixture
+    kind: library.lua
+    source: file://secret_key_cache_fixture.lua
+    imports:
+      secret_cipher: kickside.contract:secret_cipher
+  - name: secret_key_cache_env
+    kind: library.lua
+    source: file://secret_key_cache_env.lua
+    imports:
+      fixture: app:secret_key_cache_fixture
+  - name: secret_key_cache_source
+    kind: library.lua
+    source: file://secret_key_cache_source.lua
+    modules: [json, uuid]
+    imports:
+      env: app:secret_key_cache_env
+      secret_cipher: app:secret_key_cache_fixture
+      secrets_document: kickside.component:secrets_document
+      component_types: kickside.component:types
+      persisted_json: kickside.contract:persisted_json
+  - name: secret_key_cache_test
+    kind: function.lua
+    meta: {type: test, suite: component_secret_key_cache}
+    source: file://secret_key_cache_test.lua
+    method: run
+    modules: [uuid]
+    imports:
+      test: wippy.test:test
+      source: app:secret_key_cache_source
+      fixture: app:secret_key_cache_fixture
   - name: secret_declaration_cache_test
     kind: function.lua
     source: file://secret_declaration_cache_test.lua
