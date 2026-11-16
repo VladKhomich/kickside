@@ -3,7 +3,7 @@ import { defineComponent as F, ref as c, computed as G, onMounted as H, onBefore
 import { Icon as r } from "@iconify/vue";
 import { u as X, s as E } from "./constants-DA57EUYd.js";
 import { on as I } from "@wippy-fe/proxy";
-import { u as Y } from "./useSessionsApi-P7vRdJK6.js";
+import { u as Y } from "./useSessionsApi-BQAm970o.js";
 import { a as x, b as R } from "./artifactPresentation-Dgf5Fs_k.js";
 const Z = { class: "kx kx-artifacts-page" }, ee = { class: "kx-head" }, te = { class: "kx-head-actions" }, se = { class: "kx-search" }, ae = { class: "kx-select-label" }, le = { class: "kx-body kx-artifacts-body" }, ie = {
   key: 0,
@@ -275,4 +275,4 @@ const Z = { class: "kx kx-artifacts-page" }, ee = { class: "kx-head" }, te = { c
 export {
   qe as mountConfig
 };
-//# sourceMappingURL=artifacts-mount-DNZ5E_P0.js.map
+//# sourceMappingURL=artifacts-mount-C6QOQqrO.js.map

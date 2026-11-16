@@ -3,6 +3,7 @@ import { setWippyVisibility } from '@wippy-fe/shared'
 import { nextTick, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWippy } from '../composables/useWippy'
+import { useHostReturnRefresh } from './hostReturn'
 import { isComponentTag } from '../composables/useSurfaces'
 import { normalizePath, resolveNavTarget } from '../router/path'
 import {
@@ -123,11 +124,12 @@ async function mount() {
     // ownership; visibility never participates in the mount watcher below.
     setWippyVisibility(next, props.visible)
     next.setAttribute('route', subPath())
-    next.addEventListener('load', () => {
-      if (generation === mountGeneration && el === next) emit('ready')
+    next.addEventListener('load', (event) => {
+      if (event.composedPath()[0] === next && generation === mountGeneration && el === next) emit('ready')
     })
     next.addEventListener('error', (event) => {
-      if (generation !== mountGeneration || el !== next) return
+      // Shadow DOM retargets a nested control's event to the surface.
+      if (event.composedPath()[0] !== next || generation !== mountGeneration || el !== next) return
       const error = new Error(`Component <${tag}> failed to load.`)
       mountHost.replaceChildren()
       el = null
@@ -152,6 +154,7 @@ watch(() => [props.tag, props.basePath], mount)
 // Reflect external route changes (deep link, back/forward) into the element.
 watch(() => props.path, () => { if (el) el.setAttribute('route', subPath()) })
 watch(() => props.visible, visible => { if (el) setWippyVisibility(el, visible) })
+useHostReturnRefresh(() => el, () => props.visible)
 onBeforeUnmount(() => {
   // Invalidate unresolved `loadByTagName` calls before removing listeners so a
   // late result cannot recreate a component after this buffer is evicted.
