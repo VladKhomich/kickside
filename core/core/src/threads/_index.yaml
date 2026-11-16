@@ -236,6 +236,7 @@ entries:
       core_db: kickside.core:db
       execution_identity: kickside.execution:execution_identity
       proj_types: kickside.core.projections:types
+      projections_writer: kickside.core.projections.persist:writer
       component_identity: kickside.core.threads:component_identity
 
   - name: workspace_plugin

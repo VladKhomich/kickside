@@ -896,6 +896,7 @@ entries:
       core_db: kickside.core:db
       execution_identity: kickside.execution:execution_identity
       proj_types: kickside.core.projections:types
+      projections_writer: kickside.core.projections.persist:writer
       component_identity: kickside.core.threads:component_identity
 
   - name: thread_provision_race_test
@@ -2726,6 +2727,7 @@ entries:
       execution_identity: app:provision_native_execution_adapter
       core_db: kickside.core:db
       proj_types: kickside.core.projections:types
+      projections_writer: app:provision_native_fixture
       component_envelope: kickside.component:envelope
       error_envelope: kickside.contract:error_envelope
 
@@ -3497,7 +3499,7 @@ entries:
   - name: teardown_fence_native_source
     kind: library.lua
     source: file://teardown_fence_native_source.lua
-    modules: [sql, time]
+    modules: [sql, time, uuid]
     imports:
       contract: app:teardown_fence_native_fixture
 
@@ -4341,3 +4343,9 @@ entries:
     kind: library.lua
     source: file://retention_migration_clock.lua
     modules: [sql]
+
+  - name: disabled_slots_migration
+    kind: library.lua
+    source: file://disabled_slots_migration.lua
+    imports:
+      migration: wippy.migration:core

@@ -151,7 +151,7 @@ entries:
     meta:
       comment: Durable bounded fence of surviving retention consumers before thread reap.
     source: file://teardown_fence.lua
-    modules: [sql, time, contract]
+    modules: [sql, time, uuid, contract]
 
   - name: teardown_page
     kind: library.lua

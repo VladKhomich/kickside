@@ -88,7 +88,12 @@ the cursor active with its error and use Jobs' existing slot retries.
 Resume sends a control wake even when the cursor is already active, so an active
 cursor with a disabled slot can recover without resetting or skipping events.
 An already-active resume preserves the cursor generation and position. Invalid
-cursors still require a corrected declaration through registration.
+cursors still require a corrected declaration through registration. Boot and
+installation convergence also restore disabled active slots through bounded
+keyset pages of the Jobs disabled-slot index, without changing cursor progress.
+Paused and invalid cursors keep their existing state.
 
 Thread deletion removes its own projection cursors and their blocked-input pins;
-those local pins do not require a surviving consumer's deletion fence.
+those local pins do not require a surviving consumer's deletion fence. The fence
+pages raw pins before checking local cursor ownership by primary key, so pages
+advance through local pins with bounded work.

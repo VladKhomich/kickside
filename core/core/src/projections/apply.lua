@@ -50,7 +50,10 @@ function M.process_host(): (string?, error?)
     if err then return nil, errors.wrap(err, "jobs process host unavailable") end
     if type(entry) ~= "table" then return nil, response_error("process_config") end
     local host = entry.meta and entry.meta.host_id
-    if type(host) ~= "string" or host == "" then return nil, invalid("jobs process host is not configured") end
+    if type(host) ~= "string" or host == "" then
+        return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true,
+            message = "jobs process host is not configured"})
+    end
     return host, nil
 end
 

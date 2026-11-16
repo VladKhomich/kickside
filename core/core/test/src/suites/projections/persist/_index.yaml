@@ -115,13 +115,15 @@ entries:
       suite: kickside_core
       comment: A failing projection records its failure on its cursor and stops re-running.
     source: file://slot_failure_test.lua
-    modules: [sql, uuid, json]
+    modules: [sql, uuid, json, security]
     imports:
       writer: kickside.core.projections.persist:writer
       invoke: kickside.core.projections:invoke
       claim: kickside.core.jobs.persist:claim
       job_lifecycle: kickside.core.jobs.persist:lifecycle
       jobs: kickside.core.jobs:jobs
+      provision: kickside.core.threads:provision
+      disabled_slots_migration: app:disabled_slots_migration
       test: wippy.test:test
     method: run
 
@@ -160,3 +162,4 @@ entries:
       pin: kickside.core.retention:pin
       prune: kickside.core.retention:prune
       teardown: kickside.core.threads.persist:teardown
+      fence: kickside.core.threads.persist:teardown_fence

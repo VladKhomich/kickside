@@ -2,6 +2,7 @@ local M: any = {}
 function M.reset(stage: string, source: any, dialect: string)
     M.stage, M.source, M.dialect = stage, source, dialect
     M.missing, M.proof, M.calls, M.writes, M.more = false, nil, 0, 0, false
+    M.local_cursor = false
     M.pins = {{consumer_key = "drive:subscriber:source"}}
 end
 function M.result(stage: string, value: any): (any, error?)
@@ -19,6 +20,8 @@ function M.executor(): any
                 return M.result("mark_proof", {{deleting_at = "stamp"}})
             elseif statement:find("SELECT component_id", 1, true) then
                 return M.result("state", {{component_id = "source", teardown_fence_cursor = "", teardown_fence_done = 0}})
+            elseif statement:find("SELECT id FROM kickside_projection_cursor", 1, true) then
+                return M.result("cursor_owner", M.local_cursor and {{id = args[1]}} or {})
             elseif statement:find("SELECT consumer_key", 1, true) then
                 return M.result("pins", M.pins)
             end

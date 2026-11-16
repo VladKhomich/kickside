@@ -9,6 +9,7 @@ local invoke = require("invoke")
 local pin = require("pin")
 local prune = require("prune")
 local teardown = require("teardown")
+local fence = require("fence")
 
 local function query(db: sql.DB, statement: string, params: table): table
     local rows, err = db:query(statement, params)
@@ -63,6 +64,82 @@ local function sweep(db: sql.DB, thread: string): table
 end
 
 return test.run_cases(function()
+    test.describe("local projection pin paging", function()
+        for _, population in ipairs({201, 1201}) do
+            test.it("seeks bounded raw pin pages at " .. population .. " pins", function()
+                local thread, registered = fixture()
+                local db = assert(sql.get("app:db"))
+                local tx = assert(db:begin())
+                for i = 1, population do
+                    local cursor_id = uuid.v7()
+                    execute(tx, [[INSERT INTO kickside_projection_cursor
+                        (id,thread_id,projection_id,cursor_key,status) VALUES ($1,$2,$3,$4,'invalid')]],
+                        {cursor_id, thread, registered.projection_id, tostring(i)})
+                    execute(tx, [[INSERT INTO kickside_retention_pin
+                        (thread_id,consumer_key,cursor_seq,generation) VALUES ($1,$2,0,1)]],
+                        {thread, "projection:" .. cursor_id})
+                end
+                test.is_true(tx:commit())
+                test.is_nil(fence.mark(db, thread))
+                local pages: integer = 0
+                local examined: integer = 0
+                local lookups: integer = 0
+                local counted = {
+                    type = function(self) return db:type() end,
+                    execute = function(self, statement, args) return db:execute(statement, args) end,
+                    query = function(self, statement, args)
+                        local rows, err = db:query(statement, args)
+                        if statement:find("SELECT consumer_key", 1, true) then
+                            pages = pages + 1
+                            test.is_nil((statement:find("NOT EXISTS", 1, true)))
+                            test.is_true(#rows <= 101)
+                            examined = examined + #rows
+                        elseif statement:find("kickside_projection_cursor", 1, true) then
+                            lookups = lookups + 1
+                            test.is_true(#rows <= 1)
+                            if lookups == 1 then
+                                local explain = tostring(db:type()) == sql.type.SQLITE and "EXPLAIN QUERY PLAN " or "EXPLAIN ANALYZE "
+                                local plan_rows, plan_err = db:query(explain .. statement, args)
+                                test.is_nil(plan_err)
+                                local parts = {}
+                                for _, step in ipairs(plan_rows) do
+                                    for _, value in pairs(step) do parts[#parts + 1] = tostring(value) end
+                                end
+                                local plan = table.concat(parts, " "):lower()
+                                test.not_nil((plan:find("index", 1, true)))
+                                test.is_nil((plan:find("seq scan", 1, true)))
+                                test.is_nil((plan:find("scan kickside_projection_cursor", 1, true)))
+                            end
+                        end
+                        return rows, err
+                    end,
+                }
+                for _ = 1, math.ceil(population / 100) do
+                    local done, err = fence.fence_page(counted, thread)
+                    if err then
+                        test.is_true(err:details().needs_continue)
+                    else test.is_true(done) end
+                end
+                test.eq(pages, math.ceil(population / 100))
+                test.eq(lookups, population)
+                test.eq(examined, population + pages - 1)
+                local done = query(db, "SELECT teardown_fence_done AS done FROM kickside_thread WHERE id=$1", {thread})[1].done
+                test.is_true(done == true or done == 1)
+                local removed = false
+                for _ = 1, population + 10 do
+                    local result, err = teardown.purge_thread(db, thread)
+                    if err then test.is_true(err:details().needs_continue)
+                    else
+                        test.is_true(result.purged)
+                        removed = true
+                        break
+                    end
+                end
+                test.is_true(removed)
+                db:release()
+            end)
+        end
+    end)
     test.describe("blocked projection retention", function()
         test.it("deletes a thread that owns an invalid projection retention pin", function()
             local thread, registered = fixture()

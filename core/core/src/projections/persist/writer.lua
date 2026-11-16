@@ -39,12 +39,11 @@ local function in_tx(db: sql.DB, fn: (sql.Transaction, string) -> (any?, error?)
         return fn(tx, raw :: string)
     end, "projection", transaction_response)
 end
-local function lock_thread(tx: sql.Transaction, dialect: string, thread_id: string): error?
+local function lock_thread(tx: sql.Transaction, dialect: string, thread_id: string): (boolean?, error?)
     local suffix = dialect == sql.type.POSTGRES and " FOR UPDATE" or ""
     local rows, err = tx:query("SELECT id FROM kickside_thread WHERE id=$1" .. suffix, { thread_id })
-    if err then return (errors.wrap(err, "projection thread lock failed") :: error) end
-    if not rows or not rows[1] then return failure("thread not found", errors.NOT_FOUND) end
-    return nil
+    if err then return nil, (errors.wrap(err, "projection thread lock failed") :: error) end
+    return rows ~= nil and rows[1] ~= nil, nil
 end
 local function cursor(tx: sql.Transaction, dialect: string, thread_id: string, params: table): (table?, error?)
     local query = [[SELECT c.id,c.projection_id,c.status,c.generation,c.job_id
@@ -82,8 +81,9 @@ end
 
 function M.pause(db: sql.DB, thread_id: string, params: table): (table?, error?)
     local result, err = in_tx(db, function(tx: sql.Transaction, dialect: string): (table?, error?)
-        local lock_err = lock_thread(tx, dialect, thread_id)
+        local locked, lock_err = lock_thread(tx, dialect, thread_id)
         if lock_err then return nil, lock_err end
+        if not locked then return nil, failure("thread not found", errors.NOT_FOUND) end
         local c, find_err = cursor(tx, dialect, thread_id, params)
         if find_err then return nil, find_err end
         if (c :: table).status == "paused" then
@@ -105,10 +105,19 @@ function M.pause(db: sql.DB, thread_id: string, params: table): (table?, error?)
     return result, nil
 end
 
+local function control_wake(tx: sql.Transaction, dialect: string, c: table): error?
+    if type(c.job_id) ~= "string" or c.job_id == "" then
+        return failure("projection cursor has no jobs slot", errors.INTERNAL)
+    end
+    local _, wake_err = jobs_wake.wake_job(tx, c.job_id, {control = true}, dialect)
+    return wake_err
+end
+
 function M.resume(db: sql.DB, thread_id: string, params: table): (table?, error?)
     local result, err = in_tx(db, function(tx: sql.Transaction, dialect: string): (table?, error?)
-        local lock_err = lock_thread(tx, dialect, thread_id)
+        local locked, lock_err = lock_thread(tx, dialect, thread_id)
         if lock_err then return nil, lock_err end
+        if not locked then return nil, failure("thread not found", errors.NOT_FOUND) end
         local c, find_err = cursor(tx, dialect, thread_id, params)
         if find_err then return nil, find_err end
         if (c :: table).status == "invalid" then
@@ -121,10 +130,7 @@ function M.resume(db: sql.DB, thread_id: string, params: table): (table?, error?
                 { clock.now(dialect), c.id })
             if update_err then return nil, (errors.wrap(update_err, "projection resume failed") :: error) end
         end
-        if type(c.job_id) ~= "string" or c.job_id == "" then
-            return nil, failure("projection cursor has no jobs slot", errors.INTERNAL)
-        end
-        local _, wake_err = jobs_wake.wake_job(tx, c.job_id, { control = true }, dialect)
+        local wake_err = control_wake(tx, dialect, c)
         if wake_err then return nil, wake_err end
         return { cursor_id = c.id, projection_id = c.projection_id, job_id = c.job_id, status = "active",
             already_active = already_active }, nil
@@ -140,10 +146,66 @@ function M.resume(db: sql.DB, thread_id: string, params: table): (table?, error?
     return result, nil
 end
 
+-- Boot pages the disabled slot index before looking up cursor owners. A page
+-- advances over paused, invalid and removed cursors as well as active cursors.
+function M.converge(db: sql.DB, skipped: {any}): (integer?, error?)
+    local after = "00000000-0000-0000-0000-000000000000"
+    local healed = 0
+    while true do
+        local rows, read_err = db:query([[SELECT j.id AS job_id,c.id AS cursor_id,c.thread_id,c.status
+            FROM (SELECT id FROM kickside_job
+                WHERE job_type='kickside.core.projections:advance' AND slot=TRUE AND wake_enabled=FALSE
+                    AND status IN ('pending','running') AND id>$1 ORDER BY id LIMIT 100) j
+            LEFT JOIN kickside_projection_cursor c ON c.job_id=j.id ORDER BY j.id]], {after})
+        rows, read_err = sql_boundary.bounded_rows(rows, read_err,
+            "projection wake convergence page failed", "wake.rows", 0, 100, transaction_response)
+        if read_err then return nil, read_err end
+        if #rows == 0 then break end
+        for _, row in ipairs(rows) do
+            after = tostring(row.job_id)
+            if row.status == "active" then
+                local restored, restore_err = in_tx(db, function(tx: sql.Transaction, dialect: string): (any?, error?)
+                    local locked, lock_err = lock_thread(tx, dialect, tostring(row.thread_id))
+                    if lock_err then return nil, lock_err end
+                    if not locked then return false, nil end
+                    local suffix = dialect == sql.type.POSTGRES and " FOR UPDATE OF j" or ""
+                    local current, current_err = tx:query([[SELECT c.job_id
+                        FROM kickside_projection_cursor c JOIN kickside_job j ON j.id=c.job_id
+                        WHERE c.id=$1 AND c.status='active' AND j.id=$2 AND j.wake_enabled=FALSE
+                            AND j.status IN ('pending','running')]] .. suffix, {row.cursor_id, row.job_id})
+                    current, current_err = sql_boundary.bounded_rows(current, current_err,
+                        "projection wake convergence cursor failed", "wake.cursor", 0, 1, transaction_response)
+                    if current_err then return nil, current_err end
+                    if #current == 0 then
+                        return false, nil
+                    end
+                    local wake_err = control_wake(tx, dialect, current[1])
+                    if wake_err then return nil, wake_err end
+                    return true, nil
+                end)
+                if restore_err then
+                    skipped[#skipped + 1] = {component_id = row.thread_id, cursor_id = row.cursor_id,
+                        reason = restore_err:message(), error = error_envelope.encode(restore_err)}
+                elseif restored then
+                    healed = healed + 1
+                end
+            end
+        end
+    end
+    if healed > 0 then
+        local dialect, dialect_err = db:type()
+        if dialect_err then return nil, dialect_err end
+        local _, nudge_err = jobs_wake.nudge_workers(db, dialect)
+        if nudge_err then return nil, nudge_err end
+    end
+    return healed, nil
+end
+
 function M.remove_projection(db: sql.DB, thread_id: string, params: table): (table?, error?)
     local result, remove_err = in_tx(db, function(tx: sql.Transaction, dialect: string): (table?, error?)
-        local lock_err = lock_thread(tx, dialect, thread_id)
+        local locked, lock_err = lock_thread(tx, dialect, thread_id)
         if lock_err then return nil, lock_err end
+        if not locked then return nil, failure("thread not found", errors.NOT_FOUND) end
         local query = "SELECT id,kind,projection_key FROM kickside_projection WHERE thread_id=$1"
         local args: { any } = { thread_id }
         if trim(params.projection_id) ~= "" then
