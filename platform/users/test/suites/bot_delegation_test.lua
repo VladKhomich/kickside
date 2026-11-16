@@ -558,6 +558,58 @@ local function define_delegation_cases()
             allowed(false, {principal = {kind = "user", id = operator}})
             allowed(true, {principal = {kind = "user", id = operator}})
         end)
+        test.it("denies a deleted stored execution root despite intact ADMIN on the consuming component", function()
+            local source, descriptor = component_root()
+            root_access(source, "user", operator, 15)
+            local captured = {version = 2, principal = {kind = "user", id = operator},
+                authorized_by = {kind = "user", id = operator}, component_id = source,
+                captured_at = "2026-11-16T00:49:06Z"}
+            local actor = security.new_actor(operator, {principal = captured.principal, execution_identity = captured})
+            local registered, register_err = funcs.new():with_actor(actor)
+                :with_scope(assert(security.new_scope({assert(security.policy("app:test_runtime"))})))
+                :call("kickside.component.binding:register_component_func", {impl_id = "app:bot_test_root"})
+            test.is_nil(register_err)
+            test.is_true(registered.success, tostring(registered.error))
+            local consumer = registered.component_id
+            components[#components + 1] = consumer
+            local context = assert(component.get_private_context(consumer))
+            local stored = context._execution_identity
+            test.eq(stored.component_id, source)
+            test.eq(stored.authorized_by.id, operator)
+            local request = {principal = stored.principal, execution_root = descriptor}
+            allowed(true, request)
+            -- Registration preserves the initiating frame's root. Its consumer
+            -- grant cannot substitute for that root at deferred resolution.
+            execute("DELETE FROM kickside_component_access WHERE component_id=$1", {source})
+            execute("DELETE FROM kickside_components WHERE component_id=$1", {source})
+            local intact, access_err = component.validate_identity_authorizer_admin(consumer,
+                {kind = "user", id = operator}, {})
+            test.is_nil(access_err)
+            test.is_true(intact)
+            local err = denied(true, request)
+            test.contains(tostring(err), "recorded authorizer no longer has root ADMIN")
+            test.contains(tostring(err), source)
+            test.is_false(err:retryable())
+            local selected, selection_err = select_identity(consumer, {kind = "user", id = operator},
+                "recover-deleted-root", 0, operator)
+            test.is_nil(selection_err)
+            test.eq(selected.identity_generation, 1)
+            local corrected = assert(component.get_private_context(consumer))._execution_identity
+            test.eq(corrected.component_id, consumer)
+            allowed(true, {principal = corrected.principal,
+                execution_root = {owner_id = "kickside.component", record_id = consumer}})
+            denied(true, request)
+            -- Registration wrote lifecycle and audit rows. Use the owner delete
+            -- path so this case leaves no pending consumer work behind.
+            local removed, remove_err = funcs.new():with_actor(security.new_actor(operator, {}))
+                :with_scope(assert(security.new_scope({assert(security.policy("app:test_runtime"))})))
+                :call("kickside.component.binding:delete_component_func", {component_id = consumer})
+            test.is_nil(remove_err)
+            test.is_true(removed.success, tostring(removed.error))
+            local cleaned, cleanup_err = funcs.call("kickside.component:delete_worker", {payload = {component_id = consumer}})
+            test.is_nil(cleanup_err)
+            test.is_true(cleaned.deleted)
+        end)
         test.it("RA-H08 immediate caller cannot forge the recorded authorizer through arguments or actor metadata", function()
             grant(bot, root, {operator_group})
             test.not_nil((groups.set_user_groups(operator, {baseline, operator_group})))

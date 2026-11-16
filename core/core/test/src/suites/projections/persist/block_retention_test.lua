@@ -106,7 +106,7 @@ return test.run_cases(function()
                                     for _, value in pairs(step) do parts[#parts + 1] = tostring(value) end
                                 end
                                 local plan = table.concat(parts, " "):lower()
-                                test.not_nil((plan:find("index", 1, true)))
+                                test.not_nil((plan:find("index", 1, true)), plan)
                                 test.is_nil((plan:find("seq scan", 1, true)))
                                 test.is_nil((plan:find("scan kickside_projection_cursor", 1, true)))
                             end
