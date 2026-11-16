@@ -312,8 +312,8 @@ local function define_tests()
             test.eq(tostring(payload.node_type), consts.NODE_TYPE.FUNC)
             local cfg = payload.config :: Map
             test.eq(cfg.func_id, "app:tool_count_files")
-            test.eq((cfg.args :: Map).pattern, "*.csv")
-            test.is_nil(cfg.input_transform)
+            test.is_nil(cfg.args)
+            test.not_nil((cfg.input_transform :: Map).default)
             local tools = (res :: Map).allowlist.tools :: { any }
             test.eq(#tools, 2)
             test.eq(tools[1], "app:engine_linear")
