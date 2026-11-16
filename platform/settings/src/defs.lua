@@ -41,6 +41,7 @@ function M.all(): settings_types.DefinitionMap
                 owner = (type(e.owner) == "string" and (e.owner :: string) ~= "") and (e.owner :: string) or nil,
                 order = tonumber(e.order),
                 control = e.control,
+                confirm_decrease = e.confirm_decrease,
                 ui = (type(e.ui) == "string" and (e.ui :: string) ~= "") and (e.ui :: string) or nil,
             }
         end

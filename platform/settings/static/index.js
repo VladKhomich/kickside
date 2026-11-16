@@ -17,7 +17,7 @@ class t extends s {
   static get vueConfig() {
     return {
       lazyConfig: i(
-        () => import("./lazy-mount-Pt1wsnO_.js").then((e) => e.mountConfig),
+        () => import("./lazy-mount-BGpLWWKs.js").then((e) => e.mountConfig),
         "Could not load Settings. Reload the page to try again.",
         o
       )
