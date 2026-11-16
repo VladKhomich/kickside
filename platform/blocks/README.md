@@ -46,6 +46,12 @@ variables in the harness configuration for your test server.
 
 Discover exact Block declarations through `kickside.blocks:blocks`. A Block lowers to one native function, agent, or wait node; the composing caller owns edges and the graph. Public tools appear as virtual Blocks from their authoritative schemas. Headless composition does not require visual Workflows.
 
+Tool Blocks receive the connected input object's fields as tool arguments. Instance
+`config` fixes arguments and takes precedence on overlapping keys (a shallow merge).
+Lowering composes this object through the native FUNC input transform; FUNC base
+`args` alone exclude the default input. Function Blocks keep their separate ABI:
+`{ input = <connected payload>, config = <instance config> }`.
+
 ### External wait arms (`arm_id`)
 
 A wait Block can declare `execution.arm_id`, the function invoked after
