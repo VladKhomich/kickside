@@ -47,7 +47,7 @@ function schedule.new(dependencies: any): any
         end
         retry_count = 0
         job_cursor = stats.job_cursor
-        local full = job_cursor ~= nil or stats.jobs >= policy.retention_batch or stats.job_runs >= policy.retention_batch
+        local full = job_cursor ~= nil or stats.jobs >= policy.retention_batch or stats.job_runs > 0
             or stats.workers >= policy.retention_batch or stats.worker_pulses >= policy.retention_batch
             or stats.wake_rows >= policy.retention_batch
             or stats.thread_cleanup_receipts >= policy.retention_batch

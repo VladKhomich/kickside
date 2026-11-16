@@ -131,8 +131,9 @@ local function define_tests()
             test.eq(totals.jobs, total)
             test.eq(totals.job_runs, total * 2)
             test.eq(passes, math.floor(total * 2 / policy.retention_batch) + math.ceil(total / policy.retention_batch))
-            test.eq(pages, passes + math.ceil(total / policy.retention_batch),
-                "job pages start after the last full run page")
+            test.eq(pages, math.ceil(total * 2 / policy.retention_batch)
+                + math.ceil(total / policy.retention_batch) + 1,
+                "run pages bracket complete job rounds")
             test.is_true(transactions > 2, "backlog drains through multiple transactions")
             for _, table_name in ipairs({"kickside_job", "kickside_job_run"}) do
                 local rows = required(db:query("SELECT owner_id FROM " .. table_name .. " ORDER BY owner_id"))
@@ -227,11 +228,24 @@ local function define_tests()
                 local driver = schedule.new({policy=config.policy, now=function() return instant end,
                     sweep=function(cursor)
                         passes = passes + 1
-                        test.is_true(passes <= math.ceil(total/batch)+1, "blocked rows repeat within a round")
-                        return retention.sweep(db, dbtype, cursor)
+                        local round = math.ceil(total/batch)+1
+                        test.is_true(passes <= round * (total == 1000 and 2 or 1), "blocked rows repeat within a round")
+                        if total == 1000 and passes == 2 then
+                            required(db:execute([[INSERT INTO kickside_job_run
+                                (id,job_id,owner_kind,owner_id,job_type,attempt_no,execution_seq,status,lease_token,started_at,finished_at)
+                                SELECT $1,id,owner_kind,owner_id,job_type,1,2,'completed','seed',finished_at,finished_at
+                                FROM kickside_job WHERE owner_id='blocked' ORDER BY id LIMIT 1]], {uuid.v7()}))
+                        end
+                        local stats, err = retention.sweep(db, dbtype, cursor)
+                        if total == 1000 and passes == round then
+                            local rows = required(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE id=$1", {eligible}))
+                            test.eq(tonumber(rows[1].n), 0, "new expired runs never restart a progressing job round")
+                            test.eq(required(stats, err).job_runs, 1, "new run history drains at the round boundary")
+                        end
+                        return stats, err
                     end})
                 repeat driver.run(instant:unix_nano()) until driver.deadline() > instant:unix_nano()
-                test.eq(passes, math.ceil(total/batch)+1)
+                test.eq(passes, (math.ceil(total/batch)+1) * (total == 1000 and 2 or 1))
                 local rows = required(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE id=$1", {eligible}))
                 test.eq(tonumber(rows[1].n), 0, "eligible rows behind blocked pages drain before idling")
                 rows = required(db:query("SELECT COUNT(*) AS n FROM kickside_job_run"))

@@ -326,17 +326,25 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
     -- either window before checking for remaining runs.
     local job_candidate_cutoff = job_cutoff < run_cutoff and job_cutoff or run_cutoff
     local receipt_cutoff = days_before(dbtype, (policy :: any).retention_thread_cleanup_receipts_ms)
-    local runs, runs_err = M.prune_runs(db, nil, run_cutoff, batch, true)
-    if runs_err then return nil, runs_err end
+    local runs: integer? = 0
+    if not cursor then
+        local runs_err: error?
+        runs, runs_err = M.prune_runs(db, nil, run_cutoff, batch, true)
+        if runs_err then return nil, runs_err end
+    end
     local jobs: integer? = 0
     local job_cursor: table? = nil
     if runs < batch then
-        -- Finish the expired run backlog before paging jobs. A removed run
-        -- can unblock a job behind the previous cursor.
-        if runs > 0 then cursor = nil end
         local jobs_err: error?
         jobs, jobs_err, job_cursor = M.prune_jobs(db, nil, job_candidate_cutoff, batch, true, cursor)
         if jobs_err then return nil, jobs_err end
+    end
+    -- Keep run deletion between complete job rounds: unblocking an earlier
+    -- job cannot restart a round that still has later candidates to examine.
+    if cursor and not job_cursor then
+        local runs_err: error?
+        runs, runs_err = M.prune_runs(db, nil, run_cutoff, batch, true)
+        if runs_err then return nil, runs_err end
     end
     local workers, workers_err = M.prune_workers(db, job_cutoff, batch)
     if workers_err then return nil, workers_err end
