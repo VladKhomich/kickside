@@ -1,11 +1,15 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Component holds the Workflow row lock throughout this read and delete mark.
+-- Run storage uses Workflows' configured database, independently of Component.
 -- The predicate matches idx_workflow_delete_blockers; LIMIT 1 seeks only blockers.
+local store = require("store")
 local M = {}
 function M.validate(payload: table): error?
     local p = payload :: any
-    local rows, err = p.tx:query("SELECT run_id FROM workflow_runs WHERE workflow_id=$1"
+    local db, db_err = store.open_db()
+    if not db then return errors.wrap(db_err, "workflow deletion admission database unavailable") end
+    local rows, err = db:query("SELECT run_id FROM workflow_runs WHERE workflow_id=$1"
         .. " AND (status IN ('pending','running') OR terminal_event_pending) ORDER BY run_id LIMIT 1", {p.component_id})
+    db:release()
     if err then return errors.wrap(err, "workflow deletion admission read failed") end
     if type(rows) ~= "table" then
         return errors.new({kind=errors.INTERNAL, retryable=false,

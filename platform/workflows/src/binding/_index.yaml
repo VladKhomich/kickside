@@ -9,6 +9,8 @@ entries:
     source: file://delete_admission.lua
     meta:
       comment: Refuse Component deletion while a Workflow run or terminal publication is outstanding.
+    imports:
+      store: kickside.workflows.store:store
 
   - name: delete_admission_library
     kind: ns.requirement

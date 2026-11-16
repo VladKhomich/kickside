@@ -176,12 +176,18 @@ after runs finish and their terminal events are acknowledged.
 
 Migration `08_delete_admission_index` adds one partial index on `(workflow_id, run_id)`
 containing only pending/running runs and runs with unpublished terminal events.
+Apply this migration in a maintenance window: PostgreSQL briefly blocks run writes while the index builds (measured on test-2 at 0.057 s for 100,000 retained runs plus 1,000 active runs and 0.349 s for 1,000,000 retained runs plus 10,000 active runs; build plus commit took 0.060 s and 0.544 s respectively), and holds the lock until migration commit; allow extra time for lock waits and larger installations.
 The delete-time existence check orders by `run_id` and stops at the first
 matching index entry, so it does not scan retained, acknowledged terminal history
-under the placement lock.
+before Component opens its delete transaction.
 
 This rule is enforced at Component deletion admission, including direct Component
-and trusted owner deletion. Run admission keeps its existing behavior: a run
+and trusted owner deletion, reading Workflows' configured database even when
+Component uses a separate database. Run admission keeps its existing behavior: a run
 starting at the same instant as deletion may pass the check before its reservation
 is visible. This rare race retains today's deletion behavior; admission and
 deletion are not serialized against each other.
+
+The separate-database regression uses fresh databases and the existing test profile:
+`cd test && wippy test --config .wippy.yaml --config .split-db.yaml test app:delete_admission_storage_test`
+(add `--profile postgres` and dedicated `pg_database` / `pg_upgrade_database` values for PostgreSQL).
