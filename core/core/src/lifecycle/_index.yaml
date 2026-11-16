@@ -276,7 +276,9 @@ entries:
         id: kickside.core.lifecycle:migrations_applied
       policies:
         - kickside.core.lifecycle:migrations_applied_transport
+        - kickside.core.retention:notify_access
     imports:
+      retention_notifier: kickside.core.retention:notifier
       lifecycle_consts: kickside.core.lifecycle:consts
 
   - name: boot.service

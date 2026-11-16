@@ -4341,3 +4341,29 @@ entries:
     kind: library.lua
     source: file://retention_migration_clock.lua
     modules: [sql]
+
+  - name: migration_wake_fixture
+    kind: library.lua
+    source: file://migration_wake_fixture.lua
+  - name: migration_wake_source
+    kind: library.lua
+    source: file://migration_wake_source.lua
+    imports:
+      process: app:migration_wake_fixture
+      retention_notifier: app:migration_wake_notifier
+      lifecycle_consts: kickside.core.lifecycle:consts
+  - name: migration_wake_test
+    kind: function.lua
+    meta: {type: test, suite: migration_retention_wake}
+    source: file://migration_wake_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      source: app:migration_wake_source
+      fixture: app:migration_wake_fixture
+
+  - name: migration_wake_notifier
+    kind: library.lua
+    source: file://migration_wake_notifier.lua
+    imports:
+      fixture: app:migration_wake_fixture
