@@ -42,6 +42,7 @@ class KicksideWorkflowBuilderElement extends WippyVueElement<Props, Events> {
     return {
       propsSchema: PROPS_SCHEMA,
       hostCssKeys: ['themeConfigUrl', 'iframeCssUrl', 'primeVueCssUrl'] as const,
+      containerClasses: ['wf-builder-mount'],
       inlineCss: SHADOW_CSS,
     }
   }

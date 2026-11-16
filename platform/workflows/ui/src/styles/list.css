@@ -2,9 +2,7 @@
 @import "@kickside/ui-kit/kx-modal-head.css";
 @import "@kickside/ui-kit/kx-state.css";
 /* ══ LIST ════════════════════════════════════════════════════════════════ */
-.wf-list { position: absolute; inset: 0; overflow: auto; background: var(--p-content-background); color: var(--p-text-color); }
-/* Workflow-list composition. PrimeVue owns all standard controls and overlays. */
-.kx { font-family: inherit; color: var(--p-text-color); background: var(--p-content-background); height: 100%; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+.wf-list { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; font-family: inherit; background: var(--p-content-background); color: var(--p-text-color); }
 .kx-count { font-size: 12.5px; color: var(--p-text-muted-color); display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 
 .kx-search { display: flex; align-items: center; }
@@ -62,10 +60,8 @@
   grid-template-columns: minmax(190px, 1.7fr) minmax(130px, 1.1fr) minmax(96px, .85fr) minmax(104px, .7fr) minmax(104px, .7fr) minmax(80px, .5fr) 36px;
   align-items: center; gap: 12px; min-width: 900px;
 }
-/* The bordered table card is the scroll region: the list mount is pinned to a definite
-   height by the canvas frame, so the rows scroll inside the card while the column header
-   stays put — rather than clipping under a body that can never overflow. */
-.wf-table { overflow: auto; }
+/* Keep the table header in the same scroll box as its rows. */
+.wf-table { min-height: 0; overflow: auto; }
 .wf-table-head {
   position: sticky; top: 0; z-index: var(--wf-layer-list-header);
   padding: 9px 12px; color: var(--p-text-muted-color); font-size: 11px; font-weight: 750;
@@ -166,7 +162,7 @@
    not a horizontally-scrolled desktop table. Every secondary value keeps its label and
    the action menu remains in the same predictable top-right position. */
 @container (max-width: 860px) {
-  .wf-table { overflow: hidden; }
+  .wf-table { overflow-x: hidden; }
   .wf-table-head { display: none; }
   .wf-row {
     min-width: 0; padding: 12px;
