@@ -346,6 +346,7 @@ entries:
   modules: [json, uuid, time]
   imports:
     test: wippy.test:test
+    clock: kickside.core.jobs:clock
     automation_test_engine: kickside.automation:automation_test_engine
     drive: kickside.automation:drive
     retention_pin: kickside.core.retention:pin
@@ -364,6 +365,7 @@ entries:
   modules: [json, uuid, time]
   imports:
     test: wippy.test:test
+    clock: kickside.core.jobs:clock
     automation_test_engine: kickside.automation:automation_test_engine
     drive: kickside.automation:drive
     retention_pin: kickside.core.retention:pin
