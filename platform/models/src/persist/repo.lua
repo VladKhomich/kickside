@@ -474,11 +474,20 @@ function M.import(doc: any): (any?, any?)
         if existing and existing.error then
             return nil, "profile " .. id .. " cannot be read: " .. tostring(existing.error)
         end
-        local cleaned, clean_err = policy.clean_profile_input(item, existing)
-        if not cleaned then return nil, "profile " .. id .. ": " .. tostring(clean_err) end
-        if not policy.same_value(cleaned.secret_config, existing and existing.secret_config or {}) then
+        local input = {}
+        for key, value in pairs(item) do
+            if key ~= "secret_fields" then
+                input[key] = value
+                local cleared_key = tostring(key):match("^clear_(.+)$")
+                if cleared_key and value == true then input[cleared_key] = value end
+            end
+        end
+        local _, submitted_secrets = policy.split_config(input)
+        if next(submitted_secrets) ~= nil then
             return nil, "profile " .. id .. ": the import document carries no secrets; set them on the profile or use an *_env pointer"
         end
+        local cleaned, clean_err = policy.clean_profile_input(item, existing, existing and existing.secret_config or {})
+        if not cleaned then return nil, "profile " .. id .. ": " .. tostring(clean_err) end
         resulting_providers[id] = cleaned.provider_id
         if existing and policy.same_value(
             { cleaned.name, cleaned.provider_id, cleaned.config, cleaned.enabled },

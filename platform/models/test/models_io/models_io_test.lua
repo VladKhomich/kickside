@@ -200,7 +200,8 @@ local function define_tests()
                 test.eq(env_profile.config.api_key_env, "IO_GATEWAY_API_KEY")
                 test.eq(env_profile.config.base_url, "https://gateway.example.invalid/v1")
                 test.eq(env_profile.config.retry.attempts, 2)
-                test.is_nil(env_profile.secret_fields)
+                test.eq(#env_profile.secret_fields, 1)
+                test.eq(env_profile.secret_fields[1], "extra")
                 test.is_nil(env_profile.status)
                 test.is_nil(env_profile.created_at)
 
@@ -362,6 +363,33 @@ local function define_tests()
             end)
         end)
 
+        test.it("keeps nested credentials and their ciphertext while importing public configuration", function()
+            scenario(function()
+                local doc = export_document()
+                local profile = find(doc.profiles, "id", "io-env-gateway")
+                profile.config.extra.label = "updated edge"
+                local db = assert(sql.get("app:db"))
+                local before = assert(db:query("SELECT secret_json FROM kickside_model_provider_profiles WHERE id = $1",
+                    { profile.id }))[1].secret_json
+                db:release()
+                local status, result = post_import(doc)
+                test.eq(status, 200, tostring(result and result.error))
+                test.is_true(has(result.profiles.updated, profile.id))
+                local stored = assert(models_repo.get_profile(profile.id))
+                test.eq(stored.config.extra.label, "updated edge")
+                test.eq(stored.secret_config.extra.password, NESTED_SECRET)
+                db = assert(sql.get("app:db"))
+                local after = assert(db:query("SELECT secret_json FROM kickside_model_provider_profiles WHERE id = $1",
+                    { profile.id }))[1].secret_json
+                db:release()
+                test.eq(after, before, "public import rewrites nested credential ciphertext")
+                profile.config.extra.password = "synthetic-imported-password"
+                local rejected = post_import(doc)
+                test.eq(rejected, 400, "import accepts a nested credential")
+                test.eq(assert(models_repo.get_profile(profile.id)).secret_config.extra.password, NESTED_SECRET)
+            end)
+        end)
+
         test.it("preserves exact ciphertext when importing profile configuration after a credential rotation", function()
             scenario(function()
                 local doc = export_document()
@@ -470,6 +498,9 @@ local function define_tests()
                     } }, cards = {} },
                     clears_secret = { version = 1, profiles = { {
                         id = "io-keyed-gateway", name = "IO Keyed Gateway", provider_id = COMPAT, clear_api_key = true,
+                    } }, cards = {} },
+                    clears_access_key = { version = 1, profiles = { {
+                        id = "io-keyed-gateway", name = "IO Keyed Gateway", provider_id = COMPAT, clear_access_key = true,
                     } }, cards = {} },
                     provider_mismatch = { version = 1, profiles = { valid_profile }, cards = { {
                         name = "io-fresh-gateway/other", provider_id = "wippy.llm.openai:provider", provider_profile_id = "io-fresh-gateway",

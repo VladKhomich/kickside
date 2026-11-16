@@ -159,9 +159,10 @@ export function useModelsApi() {
       }
       return { ok: true, message: data?.message || 'Connection test succeeded' }
     } catch (e) {
-      error.value = messageOf(e, 'connection test failed')
-      await load().catch(() => {})
-      return { ok: false, message: error.value }
+      const message = messageOf(e, 'connection test failed')
+      await load()
+      error.value = message
+      return { ok: false, message }
     }
   }
 

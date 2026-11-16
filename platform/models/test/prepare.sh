@@ -11,3 +11,9 @@ cp "$models_test_dir/../src/api/admin/export_models.lua" "$models_test_dir/fixtu
 cp "$models_test_dir/../src/api/admin/import_models.lua" "$models_test_dir/fixtures/import_models.lua"
 
 cp "$models_test_dir/../src/discovery/reference_openrouter.lua" "$models_test_dir/fixtures/reference_openrouter.lua"
+for provider in openai_like anthropic google_genai bedrock; do
+    cp "$models_test_dir/../src/discovery/providers/$provider.lua" "$models_test_dir/fixtures/$provider.lua"
+done
+for handler in discover_profile test_profile; do
+    cp "$models_test_dir/../src/api/admin/$handler.lua" "$models_test_dir/fixtures/$handler.lua"
+done
