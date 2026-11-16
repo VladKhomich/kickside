@@ -70,6 +70,14 @@ return test.run_cases(function()
                 local thread, registered = fixture()
                 local db = assert(sql.get("app:db"))
                 local tx = assert(db:begin())
+                -- A tiny table can legitimately make a sequential scan cheaper.
+                -- Qualify point lookups against background cursors without pins;
+                -- those rows must not increase the fence's paging/lookup counts.
+                for i = 1, 1000 do
+                    execute(tx, [[INSERT INTO kickside_projection_cursor
+                        (id,thread_id,projection_id,cursor_key,status) VALUES ($1,$2,$3,$4,'invalid')]],
+                        {uuid.v7(), thread, registered.projection_id, "background:" .. tostring(i)})
+                end
                 for i = 1, population do
                     local cursor_id = uuid.v7()
                     execute(tx, [[INSERT INTO kickside_projection_cursor
@@ -80,6 +88,7 @@ return test.run_cases(function()
                         {thread, "projection:" .. cursor_id})
                 end
                 test.is_true(tx:commit())
+                execute(db, "ANALYZE kickside_projection_cursor", {})
                 test.is_nil(fence.mark(db, thread))
                 local pages: integer = 0
                 local examined: integer = 0
