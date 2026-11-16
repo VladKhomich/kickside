@@ -1140,7 +1140,7 @@ var le = { regex: { rules: { class: { pattern: /^\.([a-zA-Z][\w-]*)$/, resolve(e
   var i, a, l, s, d, c, u;
   let { preset: p, options: f } = t, m, y, b, k, _, S, h;
   if (A(p) && f.transform !== "strict") {
-    let { primitive: g, semantic: C, extend: w } = p, x = C || {}, { colorScheme: V } = x, W = xe(x, ["colorScheme"]), M = w || {}, { colorScheme: U } = M, ee = xe(M, ["colorScheme"]), te = V || {}, { dark: G } = te, Z = xe(te, ["dark"]), re = U || {}, { dark: $e } = re, pe = xe(re, ["dark"]), oe = A(g) ? this._toVariables({ primitive: g }, f) : {}, he = A(W) ? this._toVariables({ semantic: W }, f) : {}, Ie = A(Z) ? this._toVariables({ light: Z }, f) : {}, ht = A(G) ? this._toVariables({ dark: G }, f) : {}, Me = A(ee) ? this._toVariables({ semantic: ee }, f) : {}, dn = A(pe) ? this._toVariables({ light: pe }, f) : {}, cn = A($e) ? this._toVariables({ dark: $e }, f) : {}, [Jr, Zr] = [(i = oe.declarations) != null ? i : "", oe.tokens], [Qr, Xr] = [(a = he.declarations) != null ? a : "", he.tokens || []], [eo, to] = [(l = Ie.declarations) != null ? l : "", Ie.tokens || []], [no, ro] = [(s = ht.declarations) != null ? s : "", ht.tokens || []], [oo, io] = [(d = Me.declarations) != null ? d : "", Me.tokens || []], [ao, so] = [(c = dn.declarations) != null ? c : "", dn.tokens || []], [lo, co] = [(u = cn.declarations) != null ? u : "", cn.tokens || []];
+    let { primitive: g, semantic: C, extend: w } = p, x = C || {}, { colorScheme: z } = x, W = xe(x, ["colorScheme"]), M = w || {}, { colorScheme: U } = M, ee = xe(M, ["colorScheme"]), te = z || {}, { dark: G } = te, Z = xe(te, ["dark"]), re = U || {}, { dark: $e } = re, pe = xe(re, ["dark"]), oe = A(g) ? this._toVariables({ primitive: g }, f) : {}, he = A(W) ? this._toVariables({ semantic: W }, f) : {}, Ie = A(Z) ? this._toVariables({ light: Z }, f) : {}, ht = A(G) ? this._toVariables({ dark: G }, f) : {}, Me = A(ee) ? this._toVariables({ semantic: ee }, f) : {}, dn = A(pe) ? this._toVariables({ light: pe }, f) : {}, cn = A($e) ? this._toVariables({ dark: $e }, f) : {}, [Jr, Zr] = [(i = oe.declarations) != null ? i : "", oe.tokens], [Qr, Xr] = [(a = he.declarations) != null ? a : "", he.tokens || []], [eo, to] = [(l = Ie.declarations) != null ? l : "", Ie.tokens || []], [no, ro] = [(s = ht.declarations) != null ? s : "", ht.tokens || []], [oo, io] = [(d = Me.declarations) != null ? d : "", Me.tokens || []], [ao, so] = [(c = dn.declarations) != null ? c : "", dn.tokens || []], [lo, co] = [(u = cn.declarations) != null ? u : "", cn.tokens || []];
     m = this.transformCSS(e, Jr, "light", "variable", f, r, o), y = Zr;
     let uo = this.transformCSS(e, `${Qr}${eo}`, "light", "variable", f, r, o), po = this.transformCSS(e, `${no}`, "dark", "variable", f, r, o);
     b = `${uo}${po}`, k = [.../* @__PURE__ */ new Set([...Xr, ...to, ...ro])];
@@ -1152,7 +1152,7 @@ var le = { regex: { rules: { class: { pattern: /^\.([a-zA-Z][\w-]*)$/, resolve(e
   var l, s, d;
   let c, u, p;
   if (A(t) && n.transform !== "strict") {
-    let f = e.replace("-directive", ""), m = t, { colorScheme: y, extend: b, css: k } = m, _ = xe(m, ["colorScheme", "extend", "css"]), S = b || {}, { colorScheme: h } = S, g = xe(S, ["colorScheme"]), C = y || {}, { dark: w } = C, x = xe(C, ["dark"]), V = h || {}, { dark: W } = V, M = xe(V, ["dark"]), U = A(_) ? this._toVariables({ [f]: de(de({}, _), g) }, n) : {}, ee = A(x) ? this._toVariables({ [f]: de(de({}, x), M) }, n) : {}, te = A(w) ? this._toVariables({ [f]: de(de({}, w), W) }, n) : {}, [G, Z] = [(l = U.declarations) != null ? l : "", U.tokens || []], [re, $e] = [(s = ee.declarations) != null ? s : "", ee.tokens || []], [pe, oe] = [(d = te.declarations) != null ? d : "", te.tokens || []], he = this.transformCSS(f, `${G}${re}`, "light", "variable", n, o, i, a), Ie = this.transformCSS(f, pe, "dark", "variable", n, o, i, a);
+    let f = e.replace("-directive", ""), m = t, { colorScheme: y, extend: b, css: k } = m, _ = xe(m, ["colorScheme", "extend", "css"]), S = b || {}, { colorScheme: h } = S, g = xe(S, ["colorScheme"]), C = y || {}, { dark: w } = C, x = xe(C, ["dark"]), z = h || {}, { dark: W } = z, M = xe(z, ["dark"]), U = A(_) ? this._toVariables({ [f]: de(de({}, _), g) }, n) : {}, ee = A(x) ? this._toVariables({ [f]: de(de({}, x), M) }, n) : {}, te = A(w) ? this._toVariables({ [f]: de(de({}, w), W) }, n) : {}, [G, Z] = [(l = U.declarations) != null ? l : "", U.tokens || []], [re, $e] = [(s = ee.declarations) != null ? s : "", ee.tokens || []], [pe, oe] = [(d = te.declarations) != null ? d : "", te.tokens || []], he = this.transformCSS(f, `${G}${re}`, "light", "variable", n, o, i, a), Ie = this.transformCSS(f, pe, "dark", "variable", n, o, i, a);
     c = `${he}${Ie}`, u = [.../* @__PURE__ */ new Set([...Z, ...$e, ...oe])], p = ne(k, { dt: je });
   }
   return { css: c, tokens: u, style: p };
@@ -1645,7 +1645,7 @@ function ta(e) {
 }
 var na = 0;
 function ra(e) {
-  var t = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {}, n = B(!1), r = B(e), o = B(null), i = vr() ? window.document : void 0, a = t.document, l = a === void 0 ? i : a, s = t.immediate, d = s === void 0 ? !0 : s, c = t.manual, u = c === void 0 ? !1 : c, p = t.name, f = p === void 0 ? "style_".concat(++na) : p, m = t.id, y = m === void 0 ? void 0 : m, b = t.media, k = b === void 0 ? void 0 : b, _ = t.nonce, S = _ === void 0 ? void 0 : _, h = t.first, g = h === void 0 ? !1 : h, C = t.onMounted, w = C === void 0 ? void 0 : C, x = t.onUpdated, V = x === void 0 ? void 0 : x, W = t.onLoad, M = W === void 0 ? void 0 : W, U = t.props, ee = U === void 0 ? {} : U, te = function() {
+  var t = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {}, n = B(!1), r = B(e), o = B(null), i = vr() ? window.document : void 0, a = t.document, l = a === void 0 ? i : a, s = t.immediate, d = s === void 0 ? !0 : s, c = t.manual, u = c === void 0 ? !1 : c, p = t.name, f = p === void 0 ? "style_".concat(++na) : p, m = t.id, y = m === void 0 ? void 0 : m, b = t.media, k = b === void 0 ? void 0 : b, _ = t.nonce, S = _ === void 0 ? void 0 : _, h = t.first, g = h === void 0 ? !1 : h, C = t.onMounted, w = C === void 0 ? void 0 : C, x = t.onUpdated, z = x === void 0 ? void 0 : x, W = t.onLoad, M = W === void 0 ? void 0 : W, U = t.props, ee = U === void 0 ? {} : U, te = function() {
   }, G = function($e) {
     var pe = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
     if (l) {
@@ -1660,7 +1660,7 @@ function ra(e) {
           name: he
         });
       }, w?.(he)), !n.value && (te = ke(r, function(Me) {
-        o.value.textContent = Me, V?.(he);
+        o.value.textContent = Me, z?.(he);
       }, {
         immediate: !0
       }), n.value = !0);
@@ -1790,7 +1790,7 @@ var ua = function(t) {
     padding-right: `.concat(n("scrollbar.width"), `;
 }
 `);
-}, pa = {}, ha = {}, z = {
+}, pa = {}, ha = {}, V = {
   name: "base",
   css: ua,
   style: Zi,
@@ -2076,16 +2076,16 @@ function wa(e, t) {
   var n = B(!1), r = function() {
     var d;
     if (((d = t.config) === null || d === void 0 ? void 0 : d.theme) !== "none" && !F.isStyleNameLoaded("common")) {
-      var c, u, p = ((c = z.getCommonTheme) === null || c === void 0 ? void 0 : c.call(z)) || {}, f = p.primitive, m = p.semantic, y = p.global, b = p.style, k = {
+      var c, u, p = ((c = V.getCommonTheme) === null || c === void 0 ? void 0 : c.call(V)) || {}, f = p.primitive, m = p.semantic, y = p.global, b = p.style, k = {
         nonce: (u = t.config) === null || u === void 0 || (u = u.csp) === null || u === void 0 ? void 0 : u.nonce
       };
-      z.load(f?.css, vt({
+      V.load(f?.css, vt({
         name: "primitive-variables"
-      }, k)), z.load(m?.css, vt({
+      }, k)), V.load(m?.css, vt({
         name: "semantic-variables"
-      }, k)), z.load(y?.css, vt({
+      }, k)), V.load(y?.css, vt({
         name: "global-variables"
-      }, k)), z.loadStyle(vt({
+      }, k)), V.loadStyle(vt({
         name: "global-style"
       }, k), b), F.setLoadedStyleName("common");
     }
@@ -2196,7 +2196,7 @@ function $a() {
   var e = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : "pc", t = ko();
   return "".concat(e).concat(t.replace("v-", "").replaceAll("-", "_"));
 }
-var An = z.extend({
+var An = V.extend({
   name: "common"
 });
 function nt(e) {
@@ -2384,7 +2384,7 @@ var Ce = {
       return Ot(t) ? t.apply(void 0, r) : $.apply(void 0, r);
     },
     _load: function() {
-      Oe.isStyleNameLoaded("base") || (z.loadCSS(this.$styleOptions), this._loadGlobalStyles(), Oe.setLoadedStyleName("base")), this._loadThemeStyles();
+      Oe.isStyleNameLoaded("base") || (V.loadCSS(this.$styleOptions), this._loadGlobalStyles(), Oe.setLoadedStyleName("base")), this._loadThemeStyles();
     },
     _loadStyles: function() {
       this._load(), this._themeChangeListener(this._load);
@@ -2395,7 +2395,7 @@ var Ce = {
     },
     _loadGlobalStyles: function() {
       var t = this._useGlobalPT(this._getOptionValue, "global.css", this.$params);
-      A(t) && z.load(t, T({
+      A(t) && V.load(t, T({
         name: "global"
       }, this.$styleOptions));
     },
@@ -2404,13 +2404,13 @@ var Ce = {
       if (!(this.isUnstyled || this.$theme === "none")) {
         if (!F.isStyleNameLoaded("common")) {
           var r, o, i = ((r = this.$style) === null || r === void 0 || (o = r.getCommonTheme) === null || o === void 0 ? void 0 : o.call(r)) || {}, a = i.primitive, l = i.semantic, s = i.global, d = i.style;
-          z.load(a?.css, T({
+          V.load(a?.css, T({
             name: "primitive-variables"
-          }, this.$styleOptions)), z.load(l?.css, T({
+          }, this.$styleOptions)), V.load(l?.css, T({
             name: "semantic-variables"
-          }, this.$styleOptions)), z.load(s?.css, T({
+          }, this.$styleOptions)), V.load(s?.css, T({
             name: "global-variables"
-          }, this.$styleOptions)), z.loadStyle(T({
+          }, this.$styleOptions)), V.loadStyle(T({
             name: "global-style"
           }, this.$styleOptions), d), F.setLoadedStyleName("common");
         }
@@ -2424,7 +2424,7 @@ var Ce = {
         }
         if (!F.isStyleNameLoaded("layer-order")) {
           var k, _, S = (k = this.$style) === null || k === void 0 || (_ = k.getLayerOrderThemeCSS) === null || _ === void 0 ? void 0 : _.call(k);
-          z.load(S, T({
+          V.load(S, T({
             name: "layer-order",
             first: !0
           }, this.$styleOptions)), F.setLoadedStyleName("layer-order");
@@ -2666,7 +2666,7 @@ var Ce = {
         transform: rotate(359deg);
     }
 }
-`, La = z.extend({
+`, La = V.extend({
   name: "baseicon",
   css: Ta
 });
@@ -2898,7 +2898,7 @@ var P = {
     var t, n, r = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : {}, o = arguments.length > 1 ? arguments[1] : void 0;
     if (!Oe.isStyleNameLoaded((t = r.$style) === null || t === void 0 ? void 0 : t.name) && (n = r.$style) !== null && n !== void 0 && n.name) {
       var i;
-      z.loadCSS(o), (i = r.$style) === null || i === void 0 || i.loadCSS(o), Oe.setLoadedStyleName(r.$style.name);
+      V.loadCSS(o), (i = r.$style) === null || i === void 0 || i.loadCSS(o), Oe.setLoadedStyleName(r.$style.name);
     }
   },
   _loadThemeStyles: function() {
@@ -2906,13 +2906,13 @@ var P = {
     if (!(o != null && o.isUnstyled() || (o == null || (t = o.theme) === null || t === void 0 ? void 0 : t.call(o)) === "none")) {
       if (!F.isStyleNameLoaded("common")) {
         var a, l, s = ((a = o.$style) === null || a === void 0 || (l = a.getCommonTheme) === null || l === void 0 ? void 0 : l.call(a)) || {}, d = s.primitive, c = s.semantic, u = s.global, p = s.style;
-        z.load(d?.css, L({
+        V.load(d?.css, L({
           name: "primitive-variables"
-        }, i)), z.load(c?.css, L({
+        }, i)), V.load(c?.css, L({
           name: "semantic-variables"
-        }, i)), z.load(u?.css, L({
+        }, i)), V.load(u?.css, L({
           name: "global-variables"
-        }, i)), z.loadStyle(L({
+        }, i)), V.loadStyle(L({
           name: "global-style"
         }, i), p), F.setLoadedStyleName("common");
       }
@@ -2926,7 +2926,7 @@ var P = {
       }
       if (!F.isStyleNameLoaded("layer-order")) {
         var h, g, C = (h = o.$style) === null || h === void 0 || (g = h.getLayerOrderThemeCSS) === null || g === void 0 ? void 0 : g.call(h);
-        z.load(C, L({
+        V.load(C, L({
           name: "layer-order",
           first: !0
         }, i)), F.setLoadedStyleName("layer-order");
@@ -3110,7 +3110,7 @@ var P = {
     }
 `, Ba = {
   root: "p-ink"
-}, Ha = z.extend({
+}, Ha = V.extend({
   name: "ripple-directive",
   style: Da,
   classes: Ba
@@ -3552,7 +3552,7 @@ var xs = `
       "p-badge-contrast": n.severity === "contrast"
     }];
   }
-}, ks = z.extend({
+}, ks = V.extend({
   name: "badge",
   style: xs,
   classes: ws
@@ -4320,7 +4320,7 @@ var Ls = {
     return ["p-button-icon", fe({}, "p-button-icon-".concat(n.iconPos), n.label)];
   },
   label: "p-button-label"
-}, As = z.extend({
+}, As = V.extend({
   name: "button",
   style: Is,
   classes: Ls
@@ -4863,7 +4863,7 @@ var ml = `
     }
 `, gl = {
   root: "p-iconfield"
-}, bl = z.extend({
+}, bl = V.extend({
   name: "iconfield",
   style: ml,
   classes: gl
@@ -4890,7 +4890,7 @@ function yl(e, t, n, r, o, i) {
 Mr.render = yl;
 var xl = {
   root: "p-inputicon"
-}, wl = z.extend({
+}, wl = V.extend({
   name: "inputicon",
   classes: xl
 }), kl = {
@@ -5189,7 +5189,7 @@ var Dr = {
       "p-inputtext-fluid": n.$fluid
     }];
   }
-}, _l = z.extend({
+}, _l = V.extend({
   name: "inputtext",
   style: $l,
   classes: Ol
@@ -5340,7 +5340,7 @@ var El = `
     inset-block-start: 0;
     inset-inline-start: 0;
 }
-`, Gn = z.extend({
+`, Gn = V.extend({
   name: "virtualscroller",
   css: zl,
   style: El
@@ -5604,15 +5604,15 @@ var Kr = {
       }) : t > -1;
       if (a) {
         var l = this.first, s = this.element, d = s.scrollTop, c = d === void 0 ? 0 : d, u = s.scrollLeft, p = u === void 0 ? 0 : u, f = this.calculateNumItems(), m = f.numToleratedItems, y = this.getContentPosition(), b = this.itemSize, k = function() {
-          var x = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, V = arguments.length > 1 ? arguments[1] : void 0;
-          return x <= V ? 0 : x;
-        }, _ = function(x, V, W) {
-          return x * V + W;
+          var x = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, z = arguments.length > 1 ? arguments[1] : void 0;
+          return x <= z ? 0 : x;
+        }, _ = function(x, z, W) {
+          return x * z + W;
         }, S = function() {
-          var x = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, V = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : 0;
+          var x = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, z = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : 0;
           return n.scrollTo({
             left: x,
-            top: V,
+            top: z,
             behavior: r
           });
         }, h = o ? {
@@ -5844,8 +5844,8 @@ var Kr = {
       } else {
         var C = i ? f : p, w = this.lastScrollPos <= C;
         if (!this.appendOnly || this.appendOnly && w) {
-          var x = s(C, this.itemSize), V = d(x, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, w);
-          m = c(x, V, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, w), y = u(x, m, this.last, this.numItemsInViewport, this.d_numToleratedItems), b = m !== this.first || y !== this.last || this.isRangeChanged, k = C;
+          var x = s(C, this.itemSize), z = d(x, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, w);
+          m = c(x, z, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, w), y = u(x, m, this.last, this.numItemsInViewport, this.d_numToleratedItems), b = m !== this.first || y !== this.last || this.isRangeChanged, k = C;
         }
       }
       return {
@@ -6337,7 +6337,7 @@ var Rl = `
   optionCheckIcon: "p-select-option-check-icon",
   optionBlankIcon: "p-select-option-blank-icon",
   emptyMessage: "p-select-empty-message"
-}, Bl = z.extend({
+}, Bl = V.extend({
   name: "select",
   style: Rl,
   classes: Dl
@@ -7803,7 +7803,7 @@ var dd = `
   input: "p-toggleswitch-input",
   slider: "p-toggleswitch-slider",
   handle: "p-toggleswitch-handle"
-}, pd = z.extend({
+}, pd = V.extend({
   name: "toggleswitch",
   style: dd,
   classes: ud,
@@ -8078,7 +8078,7 @@ var kd = `
   root: "p-progressspinner",
   spin: "p-progressspinner-spin",
   circle: "p-progressspinner-circle"
-}, $d = z.extend({
+}, $d = V.extend({
   name: "progressspinner",
   style: kd,
   classes: Sd
@@ -8740,15 +8740,15 @@ function Tc() {
     a.value = !0, d.value = "";
     try {
       return await w(), await p(), !0;
-    } catch (V) {
-      return d.value = qe(V, x), !1;
+    } catch (z) {
+      return d.value = qe(z, x), !1;
     } finally {
       a.value = !1;
     }
   }
-  function y(w, x, V) {
+  function y(w, x, z) {
     return m(async () => {
-      w === "edit" ? await se.put(`/api/v1/models/provider-profiles/${encodeURIComponent(x)}`, V) : await se.post("/api/v1/models/provider-profiles", V);
+      w === "edit" ? await se.put(`/api/v1/models/provider-profiles/${encodeURIComponent(x)}`, z) : await se.post("/api/v1/models/provider-profiles", z);
     }, "failed to save profile");
   }
   function b(w) {
@@ -8785,8 +8785,8 @@ function Tc() {
       const { data: x } = await se.post(`/api/v1/models/provider-profiles/${encodeURIComponent(w)}/test`, {});
       return await p(), x && x.success === !1 ? (d.value = x.error || "connection test failed", { ok: !1, message: d.value }) : { ok: !0, message: x?.message || "Connection test succeeded" };
     } catch (x) {
-      return d.value = qe(x, "connection test failed"), await p().catch(() => {
-      }), { ok: !1, message: d.value };
+      const z = qe(x, "connection test failed");
+      return await p(), d.value = z, { ok: !1, message: z };
     }
   }
   async function C(w) {
@@ -8794,13 +8794,13 @@ function Tc() {
     try {
       const { data: x } = await se.post("/api/v1/models/cards/test", { name: w });
       if (x && x.success === !1) {
-        const V = x.error || x.message || "model probe failed";
-        return { ok: !1, message: V, data: { ...x, error: x.error || x.message || V } };
+        const z = x.error || x.message || "model probe failed";
+        return { ok: !1, message: z, data: { ...x, error: x.error || x.message || z } };
       }
       return { ok: !0, message: "Model works", data: x };
     } catch (x) {
-      const V = qe(x, "model probe failed");
-      return { ok: !1, message: V, data: { success: !1, model: w, error: V } };
+      const z = qe(x, "model probe failed");
+      return { ok: !1, message: z, data: { success: !1, model: w, error: z } };
     } finally {
       s.value = "";
     }
@@ -8832,7 +8832,7 @@ const Lc = ':root{--p-form-field-padding-x: .75rem;--p-form-field-padding-y: .5r
 export {
   Ic as $,
   bc as A,
-  z as B,
+  V as B,
   Ei as C,
   xc as D,
   vc as E,
@@ -8893,4 +8893,4 @@ export {
   gc as y,
   _t as z
 };
-//# sourceMappingURL=styles-JC72EvCc.js.map
+//# sourceMappingURL=styles-DhaLqvOt.js.map

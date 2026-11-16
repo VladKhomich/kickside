@@ -151,3 +151,26 @@ entries:
       blocks: kickside.blocks:blocks
       lower: kickside.blocks:lower
       retry: userspace.dataflow:retry
+
+  - name: argument_composition_test
+    kind: function.lua
+    meta: { type: test, suite: blocks, group: KickSide Blocks }
+    source: file://argument_composition_test.lua
+    method: run
+    modules: [uuid, json]
+    imports:
+      test: wippy.test:test
+      blocks: kickside.blocks:blocks
+      client: userspace.dataflow:client
+      consts: userspace.dataflow:consts
+      lower: kickside.blocks:lower
+
+  - name: argument_tool
+    kind: function.lua
+    meta:
+      type: tool
+      public: true
+      input_schema: { type: object, additionalProperties: true }
+      output_schema: { type: object, additionalProperties: true }
+    source: file://../tool_fixture.lua
+    method: invoke

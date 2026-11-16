@@ -51,7 +51,8 @@ local function ensure_running(job: any): (boolean, any?)
     return true, nil
 end
 
-local function upload_event(upload: any, etype: string, body: any, trace_context: any?): table
+-- Lifecycle events dedupe per processing attempt: the job that emits them.
+local function upload_event(job_id: string, upload: any, etype: string, body: any, trace_context: any?): table
     return {
         type = etype,
         body = body,
@@ -59,13 +60,13 @@ local function upload_event(upload: any, etype: string, body: any, trace_context
         external = {
             external_source = upload_types.EVENT_SOURCE,
             external_id = tostring(upload.uuid),
-            external_version = etype,
+            external_version = job_id,
         },
     }
 end
 
-local function completed_event(upload: any, trace_context: any?): table
-    return upload_event(upload, upload_types.EVENT.COMPLETED, {
+local function completed_event(job_id: string, upload: any, trace_context: any?): table
+    return upload_event(job_id, upload, upload_types.EVENT.COMPLETED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -74,8 +75,8 @@ local function completed_event(upload: any, trace_context: any?): table
     }, trace_context)
 end
 
-local function failed_event(upload: any, error_text: string, trace_context: any?): table
-    return upload_event(upload, upload_types.EVENT.FAILED, {
+local function failed_event(job_id: string, upload: any, error_text: string, trace_context: any?): table
+    return upload_event(job_id, upload, upload_types.EVENT.FAILED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -98,8 +99,9 @@ local function settle(job: any, upload: any, outcome: table, failed_processing: 
         prepared_hooks, prepare_err = processing_hooks.prepare(outcome.output)
         if prepare_err then return false, prepare_err end
     end
-    local event = success and completed_event(upload, upload.trace_context)
-        or failed_event(upload, tostring(outcome.error_text), upload.trace_context)
+    local job_id = failed_processing and failed_processing.dead_job_id or tostring(job.id)
+    local event = success and completed_event(job_id, upload, upload.trace_context)
+        or failed_event(job_id, upload, tostring(outcome.error_text), upload.trace_context)
     local body_json, encode_err = json.encode(event.body)
     if encode_err then return false, encode_err end
     event.body, event.body_json = nil, body_json

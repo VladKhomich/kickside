@@ -2,17 +2,22 @@
 -- their request body from here and report status and payload back to it.
 local M = { CONTENT = { JSON = "application/json" }, STATUS = { OK = 200, BAD_REQUEST = 400 } }
 local raw_body: any = nil
+local params: any = {}
 local last_status: number = 200
 local last_payload: any = nil
 
-function M.prepare(raw: any): ()
+function M.prepare(raw: any, request_params: any?): ()
     raw_body = raw
+    params = request_params or {}
     last_status = 200
     last_payload = nil
 end
 
 function M.request(): any
-    return { body = function(_self: any): (any, any) return raw_body, nil end }
+    return {
+        body = function(_self: any): (any, any) return raw_body, nil end,
+        param = function(_self: any, key: string): any return params[key] end,
+    }
 end
 
 function M.response(): any
