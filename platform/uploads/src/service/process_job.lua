@@ -50,7 +50,8 @@ local function ensure_running(job: any): (boolean, string?)
     return true, nil
 end
 
-local function upload_event(upload: any, etype: string, body: any, trace_context: any?): table
+-- Lifecycle events dedupe per processing attempt: the job that emits them.
+local function upload_event(job_id: string, upload: any, etype: string, body: any, trace_context: any?): table
     return {
         type = etype,
         body = body,
@@ -58,13 +59,13 @@ local function upload_event(upload: any, etype: string, body: any, trace_context
         external = {
             external_source = upload_types.EVENT_SOURCE,
             external_id = tostring(upload.uuid),
-            external_version = etype,
+            external_version = job_id,
         },
     }
 end
 
-local function completed_event(upload: any, trace_context: any?): table
-    return upload_event(upload, upload_types.EVENT.COMPLETED, {
+local function completed_event(job_id: string, upload: any, trace_context: any?): table
+    return upload_event(job_id, upload, upload_types.EVENT.COMPLETED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -73,8 +74,8 @@ local function completed_event(upload: any, trace_context: any?): table
     }, trace_context)
 end
 
-local function failed_event(upload: any, error_text: string, trace_context: any?): table
-    return upload_event(upload, upload_types.EVENT.FAILED, {
+local function failed_event(job_id: string, upload: any, error_text: string, trace_context: any?): table
+    return upload_event(job_id, upload, upload_types.EVENT.FAILED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -192,7 +193,7 @@ local function run(input: any): (any, any?)
                 log:warn("failed to enqueue upload error callback", { upload_id = upload_id, error = tostring(callback_err) })
                 return nil, callback_err
             end
-            local output, publish_err = publish_output(job, failed_event(upload, error_text, upload.trace_context), {
+            local output, publish_err = publish_output(job, failed_event(tostring(job.id), upload, error_text, upload.trace_context), {
                 upload_id = upload_id, job_error = error_text,
             })
             if publish_err then return nil, publish_err end
@@ -214,7 +215,7 @@ local function run(input: any): (any, any?)
 
     local final_trace_context = type(final_upload) == "table" and final_upload.trace_context or nil
 
-    return publish_output(job, completed_event(final_upload, final_trace_context), {
+    return publish_output(job, completed_event(tostring(job.id), final_upload, final_trace_context), {
         success = true, upload_id = upload_id, owner_actor_id = final_upload.actor_id,
     })
 end
