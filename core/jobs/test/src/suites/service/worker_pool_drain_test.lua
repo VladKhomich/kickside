@@ -25,7 +25,7 @@ local function run_drain(stop_kind: string, timeout: boolean, stop_during_drain:
         retention_schedule = job_fixture.no_retention_schedule,
         sql_get = function() return {
             type = function() return sql.type.SQLITE end,
-            query = function() return { {} }, nil end,
+            query = function() return {}, nil end,
             release = function() end,
         }, nil end,
         policy = function() return job_fixture.pool_policy({ worker_count_sqlite = desired,
@@ -124,7 +124,7 @@ local function pool_driver(script: any, options: table?): (any, table)
         retention_schedule = job_fixture.no_retention_schedule,
         sql_get = function() return {
             type = function() return sql.type.SQLITE end,
-            query = function() return { {} }, nil end,
+            query = function() return {}, nil end,
             release = function() end,
         }, nil end,
         policy = function() return job_fixture.pool_policy({ worker_count_sqlite = outcome.desired,
