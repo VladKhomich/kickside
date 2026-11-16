@@ -1,5 +1,6 @@
 -- Controlled message ordering and durable marker fences for pool assignments.
 local test = require("test")
+local time = require("time")
 local sql = require("sql")
 local uuid = require("uuid")
 local process = require("process")
@@ -46,6 +47,7 @@ local function define_tests()
             local registry_ch = { case_receive = function(self) return self end }
             local idle_ch = { case_receive = function(self) return self end }
             local timer_ch = { case_receive = function(self) return self end }
+            local clock_base = time.now()
             local now_ns, selection = 0, 0
             local sends: table[] = {}
             local root = worker_pool.new({
@@ -71,7 +73,7 @@ local function define_tests()
                     cancel = function() end,
                 },
                 time = {
-                    now = function() return { unix_nano = function() return now_ns end } end,
+                    now = function() return clock_base:add(now_ns) end,
                     after = function() return timer_ch end,
                 },
                 channel = { select = function(cases)

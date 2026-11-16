@@ -357,22 +357,22 @@ function jobs.health(): (table?, error?)
         local fresh_seconds = (policy :: any).lease_timeout_seconds
         local now = clock.now(dbtype)
         local fresh_predicate = dbtype == sql.type.POSTGRES
-            and "p.last_seen_at > NOW() - ($1 * INTERVAL '1 second')"
-            or "p.last_seen_at > datetime('now', '-' || ? || ' seconds')"
+            and "p.last_seen_at > CAST($1 AS TIMESTAMPTZ) - ($2 * INTERVAL '1 second')"
+            or "p.last_seen_at > datetime($1, '-' || $2 || ' seconds') || substr($1, 20)"
         local pulse_join = dbtype == sql.type.POSTGRES
             and " JOIN LATERAL (SELECT registry_version,last_seen_at FROM kickside_job_worker_pulse WHERE worker_id=w.id LIMIT 1) p ON TRUE"
             or " JOIN kickside_job_worker_pulse p ON p.worker_id=w.id"
         local workers, worker_err = db:query([[SELECT w.id,p.registry_version,w.current_job_id,p.last_seen_at,]]
             .. fresh_predicate .. [[ AS healthy
             FROM (SELECT id,current_job_id FROM kickside_job_worker ORDER BY id ASC LIMIT 256) w]]
-            .. pulse_join .. " ORDER BY w.id ASC LIMIT 256", {fresh_seconds})
+            .. pulse_join .. " ORDER BY w.id ASC LIMIT 256", {now, fresh_seconds})
         workers, worker_err = sql_boundary.rows(workers, worker_err, "worker health query failed", "health.workers", response_error)
         if worker_err then return nil, worker_err end
         for _, row in ipairs(workers) do row.healthy = row.healthy == true or row.healthy == 1 end
         local fresh_sql = dbtype == sql.type.POSTGRES
-            and "SELECT last_seen_at FROM kickside_job_worker_pulse WHERE last_seen_at > NOW() - ($1 * INTERVAL '1 second') ORDER BY last_seen_at DESC LIMIT 1001"
-            or "SELECT last_seen_at FROM kickside_job_worker_pulse WHERE last_seen_at > datetime('now', '-' || ? || ' seconds') ORDER BY last_seen_at DESC LIMIT 1001"
-        local fresh, fresh_err = db:query(fresh_sql, { fresh_seconds })
+            and "SELECT last_seen_at FROM kickside_job_worker_pulse WHERE last_seen_at > CAST($1 AS TIMESTAMPTZ) - ($2 * INTERVAL '1 second') ORDER BY last_seen_at DESC LIMIT 1001"
+            or "SELECT last_seen_at FROM kickside_job_worker_pulse WHERE last_seen_at > (datetime($1, '-' || $2 || ' seconds') || substr($1, 20)) ORDER BY last_seen_at DESC LIMIT 1001"
+        local fresh, fresh_err = db:query(fresh_sql, { now, fresh_seconds })
         fresh, fresh_err = sql_boundary.rows(fresh, fresh_err, "fresh worker query failed", "health.fresh", response_error)
         if fresh_err then return nil, fresh_err end
         local function count_matches(source: string, ordered: string, field: string, params: table?): (number?, boolean?, error?)

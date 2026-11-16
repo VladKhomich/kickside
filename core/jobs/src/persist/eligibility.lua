@@ -2,6 +2,7 @@
 local sql = require("sql")
 local capacity = require("capacity")
 local boundary = require("sql_boundary")
+local clock = require("clock")
 
 local M = {}
 
@@ -55,13 +56,10 @@ function M.pending(db: sql.DB, dbtype: string, at: string?, snapshot: table, job
         params[#params + 1] = value
         return "$" .. tostring(#params)
     end
-    local prefix = ""
-    local now = dbtype == sql.type.POSTGRES and "NOW()" or "datetime('now')"
-    if at then
-        local observed = dbtype == sql.type.POSTGRES and "CAST(" .. bind(at) .. " AS TIMESTAMPTZ)" or bind(at)
-        prefix = "WITH capacity_clock(observed_at) AS (VALUES (" .. observed .. "))"
-        now = "(SELECT observed_at FROM capacity_clock)"
-    end
+    local observed = dbtype == sql.type.POSTGRES and "CAST(" .. bind(at or clock.now(dbtype)) .. " AS TIMESTAMPTZ)"
+        or bind(at or clock.now(dbtype))
+    local prefix = "WITH capacity_clock(observed_at) AS (VALUES (" .. observed .. "))"
+    local now = "(SELECT observed_at FROM capacity_clock)"
     local workers: { string } = {}
     for worker in pairs(catalog) do workers[#workers + 1] = worker end
     table.sort(workers)
@@ -160,8 +158,8 @@ function M.due_backlog(db: sql.DB, dbtype: string, grace_seconds: integer, at: s
     local grace = "$" .. tostring(#params)
     local age = dbtype == sql.type.POSTGRES
         and "EXTRACT(EPOCH FROM (" .. now .. " - MIN(j.scheduled_at))) * 1000"
-        or "(julianday(" .. (at and now or "'now'") .. ") - julianday(MIN(j.scheduled_at))) * 86400000"
-    if at and dbtype ~= sql.type.POSTGRES then age = "ROUND(" .. age .. ")" end
+        or "(julianday(" .. now .. ") - julianday(MIN(j.scheduled_at))) * 86400000"
+    if dbtype ~= sql.type.POSTGRES then age = "ROUND(" .. age .. ")" end
     local overdue = dbtype == sql.type.POSTGRES
         and "j.scheduled_at <= " .. now .. " - (" .. grace .. " * INTERVAL '1 second')"
         or "j.scheduled_at <= datetime(" .. now .. ", '-' || " .. grace .. " || ' seconds') || substr(" .. now .. ", 20)"
