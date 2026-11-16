@@ -197,6 +197,105 @@ local function define_tests()
             test.eq(calls.start, 1)
         end)
 
+        for _, status in ipairs({ "completed", "failed", "cancelled", "terminated" }) do
+            test.it("preserves selected Start correlation on " .. status .. " and recovered publication", function()
+                local engine, _, _, cli = new_engine()
+                local events = {}
+                install(cli, function(_id, event)
+                    events[#events + 1] = event
+                    return nil, "crash between terminal state and publication receipt"
+                end)
+                local trigger, flow = "automation-" .. uuid.v4(), "flow-" .. uuid.v4()
+                local req = build_request(trigger, flow, "selected-" .. status)
+                req.config.correlation_fields = { "board_id", "item", "visit", "attempt", "flag", "run_id", "status" }
+                req.input = { board_id = "board-1", item = "item-1", visit = 3, attempt = 2, flag = false,
+                    run_id = "untrusted", status = "untrusted", secret = "never publish" }
+                -- Failure may already be terminal when start returns, before any node executes.
+                local start = cli.start
+                if status == "failed" then
+                    function cli:start(id, options)
+                        local result, err = start(self, id, options)
+                        engine[id].status = "failed"
+                        return result, err
+                    end
+                end
+                local result = writable.write(req)
+                test.is_true(result.success, tostring(result.error and result.error.message))
+                local run_id = result.dest_ref.run_id
+                engine[dataflow_of(run_id)].status = status
+                force_due(trigger)
+                local crashed, crash_err = maintenance.tick(1, run_id)
+                test.is_nil(crash_err)
+                test.eq(crashed.failures, 1)
+                test.eq(query_row("SELECT status FROM workflow_runs WHERE run_id=$1", {run_id}).status, status)
+                test.eq(pending_count(trigger), 1)
+                -- No original input/config is available to the recovering publisher.
+                req.input.item = "changed"
+                req.config.correlation_fields = { "secret" }
+                force_due(trigger)
+                local recovered = maintenance_module.new({ client_new = function() return cli, nil end,
+                    append_event = function(_id, event)
+                    events[#events + 1] = event
+                    return { success = true }, nil
+                end })
+                local tick, tick_err = recovered.tick(1, run_id)
+                test.is_nil(tick_err)
+                test.eq(tick.failures, 0, tostring(tick.last_error))
+                test.eq(tick.published, 1)
+                test.eq(#events, 2)
+                for _, event in ipairs(events) do
+                    test.eq(event.body.run_id, run_id)
+                    test.eq(event.body.status, status)
+                    test.eq(event.type, status == "completed" and "kickside.workflows.runs.events:finished"
+                        or "kickside.workflows.runs.events:failed")
+                    local correlation = event.body.correlation
+                    test.not_nil(correlation)
+                    test.eq(correlation.board_id, "board-1")
+                    test.eq(correlation.item, "item-1")
+                    test.eq(correlation.visit, 3)
+                    test.eq(correlation.attempt, 2)
+                    test.eq(correlation.flag, false)
+                    test.eq(correlation.run_id, "untrusted")
+                    test.eq(correlation.status, "untrusted")
+                    test.is_nil(correlation.secret)
+                    test.is_nil(event.body.input)
+                end
+                test.eq(pending_count(trigger), 0)
+            end)
+        end
+
+        test.it("omits correlation without a selection even when input carries correlation", function()
+            local engine, _, _, cli = new_engine()
+            local emitted
+            install(cli, function(_id, event) emitted = event; return { success = true }, nil end)
+            local trigger = "automation-" .. uuid.v4()
+            local req = build_request(trigger, "flow-" .. uuid.v4(), "no-selection")
+            req.input.correlation = { secret = "private" }
+            local result = writable.write(req)
+            test.is_true(result.success)
+            mark_terminal(engine, result.dest_ref.run_id)
+            force_due(trigger)
+            local tick, tick_err = maintenance.tick(1, result.dest_ref.run_id)
+            test.is_nil(tick_err)
+            test.eq(tick.failures, 0, tostring(tick.last_error))
+            test.is_nil(emitted.body.correlation)
+        end)
+
+        test.it("refuses missing composite and oversized correlation values before reservation", function()
+            local _, _, _, cli = new_engine()
+            install(cli, function() error("invalid correlation published") end)
+            for _, input in ipairs({ {}, { item = { secret = true } }, { item = string.rep("x", 4096) } }) do
+                local trigger = "automation-" .. uuid.v4()
+                local req = build_request(trigger, "flow-" .. uuid.v4(), "invalid-value")
+                req.config.correlation_fields = { "item" }
+                req.input = input
+                local result = writable.write(req)
+                test.is_false(result.success)
+                test.eq(result.error.code, "invalid_request")
+                test.is_nil(query_row("SELECT * FROM workflow_runs WHERE trigger_id=$1", {trigger}))
+            end
+        end)
+
         test.it("completion publication crash retries one durable event", function()
             local engine, _, _, cli = new_engine()
             local appender, append = new_appender()
