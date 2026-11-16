@@ -35,6 +35,15 @@ Jobs can initialize its database without Core migrations. Migration 23 rebinds
 legacy installations to that function without changing Core's function. Undoing
 23 retains the Jobs trigger; undoing 04 removes its tables and function.
 
+## Scheduling clock
+
+Jobs owns scheduling time through `clock`, backed by runtime `time.now()`.
+Claims, lease checks, pool deadline delays, listing `due`, backlog ages and worker
+freshness all compare against that runtime clock. SQL binds the runtime instant;
+pool delays subtract runtime time from the earliest stored deadline. Database
+host time and transaction-start time do not determine eligibility. SQLite keeps
+microsecond timestamp comparisons, including the worker freshness boundary.
+
 ## Dependency interface
 
 The host must supply `target_db`; it is injected into both the jobs migration and the

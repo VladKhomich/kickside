@@ -53,7 +53,7 @@ local function run_pool(claim_batch: (integer) -> (table[]?, error?), queued_wak
             outcome.db_acquisitions = outcome.db_acquisitions + 1
             return {
             type = function() return sql.type.SQLITE end,
-            query = function() outcome.trace[#outcome.trace + 1] = "deadline"; return { {} }, nil end,
+            query = function() outcome.trace[#outcome.trace + 1] = "deadline"; return {}, nil end,
             release = function() end,
         }, nil end,
         policy = function() return job_fixture.pool_policy({ worker_count_sqlite = 1,

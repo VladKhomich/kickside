@@ -57,35 +57,29 @@ end
 
 local function construct(dependencies: any): any
 local pool = {}
+local pool_time = dependencies.time or time
 
 -- There is no idle re-scan. The only job timer is the earliest durable deadline
 -- after the dispatch instant: the instant its reclaim and claim already judged.
 -- A row that becomes due or expires after that instant arms the timer, so work
 -- the claim could not yet see is never left without a dispatch.
 local function next_deadline(db: sql.DB, dbtype: string, dispatch_at: string): (number?, string?, error?)
-    local due_sql: string
-    local lease_sql: string
-    if dbtype == sql.type.POSTGRES then
-        due_sql = [[SELECT EXTRACT(EPOCH FROM (MIN(scheduled_at) - NOW())) * 1000 AS ms
-            FROM kickside_job WHERE status='pending' AND scheduled_at > CAST($1 AS TIMESTAMPTZ)]]
-        lease_sql = [[SELECT EXTRACT(EPOCH FROM (MIN(lease_until) - NOW())) * 1000 AS ms
-            FROM kickside_job WHERE status='running' AND lease_until IS NOT NULL
-            AND lease_until > CAST($2 AS TIMESTAMPTZ)]]
-    else
-        due_sql = [[SELECT (julianday(MIN(scheduled_at)) - julianday('now')) * 86400000 AS ms
-            FROM kickside_job WHERE status='pending' AND scheduled_at > $1]]
-        lease_sql = [[SELECT (julianday(MIN(lease_until)) - julianday('now')) * 86400000 AS ms
-            FROM kickside_job WHERE status='running' AND lease_until IS NOT NULL
-            AND lease_until > $2]]
-    end
-    local rows, err = db:query("SELECT kind, ms FROM (SELECT 'due' AS kind, ms FROM ("
-        .. due_sql .. ") AS due UNION ALL SELECT 'lease' AS kind, ms FROM ("
-        .. lease_sql .. ") AS lease) AS deadlines WHERE ms IS NOT NULL ORDER BY ms ASC, kind DESC LIMIT 1",
+    local observed = dbtype == sql.type.POSTGRES and "CAST($1 AS TIMESTAMPTZ)" or "$1"
+    local lease_observed = dbtype == sql.type.POSTGRES and "CAST($2 AS TIMESTAMPTZ)" or "$2"
+    local rows, err = db:query([[SELECT kind, deadline FROM (
+        SELECT 'due' AS kind, MIN(scheduled_at) AS deadline FROM kickside_job
+            WHERE status='pending' AND scheduled_at > ]] .. observed .. [[
+        UNION ALL
+        SELECT 'lease' AS kind, MIN(lease_until) AS deadline FROM kickside_job
+            WHERE status='running' AND lease_until IS NOT NULL AND lease_until > ]] .. lease_observed .. [[
+        ) AS deadlines WHERE deadline IS NOT NULL ORDER BY deadline ASC, kind DESC LIMIT 1]],
         { dispatch_at, dispatch_at })
     if err then return nil, nil, errors.wrap(err, "worker deadline lookup failed") end
     local row = rows and rows[1]
-    local ms = tonumber(row and row.ms)
-    if ms == nil then return nil, nil, nil end
+    if not row then return nil, nil, nil end
+    local deadline, parse_err = clock.parse(row.deadline)
+    if parse_err then return nil, nil, errors.wrap(parse_err, "worker deadline is invalid") end
+    local ms = (tonumber(deadline:sub(pool_time.now()):nanoseconds()) :: number) / 1000000
     return math.max(1, math.ceil(ms)), tostring(row.kind), nil
 end
 pool.next_deadline = next_deadline
@@ -93,7 +87,6 @@ pool.next_deadline = next_deadline
 local sql_get = dependencies.sql_get
 local policy_read = dependencies.policy
 local pool_process = dependencies.process or process
-local pool_time = dependencies.time or time
 local pool_channel = dependencies.channel or channel
 local pool_events = dependencies.events or events
 local pool_registry = dependencies.registry or registry
