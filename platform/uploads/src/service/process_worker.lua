@@ -121,11 +121,6 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
             size = upload.size,
             type_id = upload.type_id,
         },
-        external = {
-            external_source = upload_types.EVENT_SOURCE,
-            external_id = tostring(upload.uuid),
-            external_version = upload_types.EVENT.QUEUED,
-        },
     }
     local body_json, encode_err = json.encode(event.body)
     if encode_err then return nil, encode_err end
@@ -160,6 +155,12 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
     local enqueued, enqueue_err = jobs.enqueue_tx(tx, dbtype, params)
     if enqueue_err then return abort(enqueue_err) end
     if not enqueued.existing then
+        -- Each processing attempt is one job, so its lifecycle events dedupe per job.
+        event.external = {
+            external_source = upload_types.EVENT_SOURCE,
+            external_id = tostring(upload.uuid),
+            external_version = tostring(enqueued.id),
+        }
         local _, append_err = threads_writer.append_system_tx(tx, dbtype, component_id, { event })
         if append_err then return abort(append_err) end
     end

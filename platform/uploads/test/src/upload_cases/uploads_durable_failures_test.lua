@@ -878,6 +878,58 @@ local function define_tests()
 			end
 		end)
 
+		test.it("projects each processing attempt of a retried upload into the read model", function()
+			local upload_id = "retry-read-model-" .. uuid_v4()
+			local user_id = "retry-read-model-user-" .. uuid_v4()
+			ensure_uploads_component(user_id)
+			local upload = assert(upload_record_repo.create(upload_id, user_id, 4, "application/octet-stream",
+				"app:uploads", upload_id .. ".bin", "nonexistent-type-" .. uuid_v4(),
+				upload_metadata(user_id, "retry.bin"), "uploaded"))
+			local queued = assert(process_worker.enqueue_upload_job(upload, true))
+			local db = assert(sql.get("app:db"))
+
+			local function run_job(job_id: string)
+				local input, _, input_err = worker_dispatch.build_worker_input(admit_job(db, job_id, 5))
+				test.is_nil(input_err)
+				local result, run_err = process_job.run(input)
+				test.is_nil(run_err)
+				test.not_nil(result.job_error)
+			end
+			local function project(): any
+				local events = assert(db:query([[SELECT * FROM kickside_event
+					WHERE thread_id=$1 AND external_id=$2 ORDER BY seq]], { queued.thread_id, upload_id }))
+				local _, apply_err = upload_read_model.apply_events(queued.thread_id, events)
+				test.is_nil(apply_err)
+				return assert(db:query("SELECT status, error, failed_at FROM kickside_upload_read_model WHERE upload_id=$1",
+					{ upload_id }))[1]
+			end
+
+			run_job(queued.job_id)
+			local failed = project()
+			test.eq(failed.status, "error", "first attempt")
+			test.not_nil(failed.error)
+			test.not_nil(failed.failed_at)
+
+			local retried, retry_err = upload_lib.retry_upload(upload_id)
+			test.is_nil(retry_err)
+			test.not_nil(retried)
+			local retrying = project()
+			test.eq(retrying.status, "processing", "retry accepted")
+			test.is_nil(retrying.error)
+			test.is_nil(retrying.failed_at)
+
+			local retry_job = assert(db:query([[SELECT id FROM kickside_job
+				WHERE job_type = 'kickside.uploads.service:process_job_proc' AND CAST(payload AS TEXT) LIKE $1
+				AND status = 'pending']], { "%" .. upload_id .. "%" }))
+			test.eq(#retry_job, 1)
+			run_job(retry_job[1].id)
+			local refailed = project()
+			test.eq(refailed.status, "error", "retry attempt")
+			test.not_nil(refailed.error)
+			test.not_nil(refailed.failed_at)
+			db:release()
+		end)
+
 		test.it("retries a failed upload on its stored bytes", function()
 			local upload = create_transcription_upload("transcription-retry", {
 				transcription_error_test = "ocr_error",
