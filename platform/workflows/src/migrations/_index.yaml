@@ -81,3 +81,15 @@ entries:
     method: migration
     imports:
       migration: wippy.migration:migration
+
+  - name: 08_delete_admission_index
+    kind: function.lua
+    meta:
+      type: migration
+      comment: Bound Workflow deletion admission independently of retained run history.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-16T00:00:00Z"
+    source: file://08_delete_admission_index.lua
+    method: migration
+    imports:
+      migration: wippy.migration:migration

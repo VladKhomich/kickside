@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: '1.0'
+namespace: app
+entries:
+  - name: delete_admission_test
+    kind: function.lua
+    source: file://delete_admission_test.lua
+    method: run
+    meta: {type: test, suite: workflows_delete_admission}
+    modules: [uuid, security, funcs, json]
+    imports: &imports
+      reaper_consts: kickside.core.lifecycle:consts
+      users: kickside.users.persist:user_repo
+      test: wippy.test:test
+      repo: kickside.workflows.repo:repo
+      workflow: kickside.workflows:workflow
+      publish: kickside.workflows.repo:version_publish
+      automation: kickside.automation:automation
+      component: kickside.component:component
+      store: kickside.workflows.store:store
+      admission: kickside.workflows.runs:admission
+      delete_api: kickside.workflows.api:delete_workflow
+      worker: app:deletion_test_worker
+  - name: delete_admission_exercise
+    kind: function.lua
+    source: file://delete_admission_test.lua
+    method: exercise
+    modules: [uuid, security, funcs, json]
+    imports: *imports

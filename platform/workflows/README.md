@@ -165,3 +165,23 @@ policy and timeouts into the native commands; each run retains those values when
 it assigns fresh node ids. Existing published versions remain unchanged. An
 idempotent forward migration adds optional draft-node storage without rewriting
 existing definitions, publications, events, or runs.
+
+### Deleting a Workflow with runs
+
+Deletion returns HTTP 409 (`kind: Conflict`, `details.code: workflow_runs_active`,
+`retryable: false`) while any run is pending or running, or a terminal run's event
+has not been acknowledged as published. The Workflow, its Automations and runs
+remain intact; work stages and Inbox decisions continue normally. Delete again
+after runs finish and their terminal events are acknowledged.
+
+Migration `08_delete_admission_index` adds one partial index on `(workflow_id, run_id)`
+containing only pending/running runs and runs with unpublished terminal events.
+The delete-time existence check orders by `run_id` and stops at the first
+matching index entry, so it does not scan retained, acknowledged terminal history
+under the placement lock.
+
+This rule is enforced at Component deletion admission, including direct Component
+and trusted owner deletion. Run admission keeps its existing behavior: a run
+starting at the same instant as deletion may pass the check before its reservation
+is visible. This rare race retains today's deletion behavior; admission and
+deletion are not serialized against each other.
