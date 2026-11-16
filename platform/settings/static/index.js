@@ -1,4 +1,4 @@
-import { W as s, a as o } from "./wc-runtime-DjtZy7dL.js";
+import { W as s, a as o } from "./wc-runtime-56DLhE4T.js";
 import { l as i } from "./lazy-ZWC1tvFC.js";
 import { s as n } from "./styles-D9m6R71p.js";
 import "@iconify/vue";
@@ -17,7 +17,7 @@ class t extends s {
   static get vueConfig() {
     return {
       lazyConfig: i(
-        () => import("./lazy-mount-D6foRIAw.js").then((e) => e.mountConfig),
+        () => import("./lazy-mount-Pt1wsnO_.js").then((e) => e.mountConfig),
         "Could not load Settings. Reload the page to try again.",
         o
       )

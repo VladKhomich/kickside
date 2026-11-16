@@ -1,12 +1,11 @@
-import { W as t, u as o } from "./wc-runtime-KO3cNuNo.js";
-import { P as n } from "./primevue-plugin-CaP7wV_M.js";
+import { W as t, P as o, u as n } from "./wc-runtime-Bcuhsx-0.js";
 import { l as i, s as r } from "./styles-LyS_4lzj.js";
 import "@iconify/vue";
 import { define as s } from "@wippy-fe/proxy";
 const p = i(
-  () => import("./ConnectionTraitPicker-3eGysQg5.js"),
+  () => import("./ConnectionTraitPicker-BnSGkawT.js"),
   { loading: "Loading connection picker…", failed: "Could not load the connection picker. Reload the page to try again." },
-  o
+  n
 ), a = {
   type: "object",
   properties: {
@@ -26,7 +25,7 @@ class e extends t {
     };
   }
   static get vueConfig() {
-    return { rootComponent: p, plugins: [n] };
+    return { rootComponent: p, plugins: [o] };
   }
 }
 async function y() {

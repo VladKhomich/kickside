@@ -1,10 +1,9 @@
-import { u as pe, a as me, W as ve } from "./wc-runtime-h8e5VJvv.js";
-import { s as fe, P as ke } from "./styles-CemDhX8n.js";
-import { computed as y, watch as X, defineComponent as xe, ref as a, onMounted as ge, resolveComponent as P, openBlock as r, createElementBlock as u, withModifiers as B, createElementVNode as t, createVNode as d, unref as K, withDirectives as c, vModelText as k, createTextVNode as H, toDisplayString as x, createCommentVNode as g, Fragment as ye, renderList as be, vModelCheckbox as he } from "vue";
+import { u as pe, a as me, W as ve, P as fe } from "./wc-runtime-geqjOObz.js";
+import { computed as y, watch as X, defineComponent as ke, ref as a, onMounted as xe, resolveComponent as P, openBlock as r, createElementBlock as u, withModifiers as B, createElementVNode as t, createVNode as d, unref as K, withDirectives as c, vModelText as k, createTextVNode as H, toDisplayString as x, createCommentVNode as g, Fragment as ge, renderList as ye, vModelCheckbox as be } from "vue";
 import { Icon as Q } from "@iconify/vue";
-import we from "primevue/select";
-import { loadByTagName as z, api as G, define as _e } from "@wippy-fe/proxy";
-import { _ as Ce, e as Me } from "./errMsg-BJlMrW3g.js";
+import { s as he, _ as we, e as _e } from "./errMsg-UnAf9F-Q.js";
+import { loadByTagName as z, api as G, define as Ce } from "@wippy-fe/proxy";
+import { s as Me } from "./styles-Co3ikzd7.js";
 function Ae(w) {
   return y(() => {
     const p = w.value;
@@ -37,7 +36,7 @@ const Ne = { class: "kx-cr-head" }, Ve = { class: "kx-cr-ico" }, Ie = { class: "
 }, je = { class: "kx-field" }, We = { class: "kx-field-lbl" }, Be = {
   key: 0,
   class: "kx-id"
-}, Ke = { class: "kx-field" }, Ye = { class: "kx-check kx-check-control" }, $e = { class: "kx-field" }, Fe = { class: "kx-inline-control kx-inline-control-standalone" }, Je = "kickside.channel.responder:channel_responder", He = "You are responding in a channel. Keep responses concise and direct. No emojis. If you need external information, use available capabilities or tools before answering.", Qe = /* @__PURE__ */ xe({
+}, Ke = { class: "kx-field" }, Ye = { class: "kx-check kx-check-control" }, $e = { class: "kx-field" }, Fe = { class: "kx-inline-control kx-inline-control-standalone" }, Je = "kickside.channel.responder:channel_responder", He = "You are responding in a channel. Keep responses concise and direct. No emojis. If you need external information, use available capabilities or tools before answering.", Qe = /* @__PURE__ */ ke({
   __name: "ChannelResponderCreate",
   setup(w) {
     function p(n) {
@@ -91,7 +90,7 @@ const Ne = { class: "kx-cr-head" }, Ve = { class: "kx-cr-ico" }, Ie = { class: "
       }
       return n;
     }
-    ge(() => {
+    xe(() => {
       z("wc-channel-picker", { timeoutMs: 8e3 }).catch(() => {
       }), z("wc-agent-picker", { timeoutMs: 8e3 }).catch(() => {
       }), z("wc-model-picker", { timeoutMs: 8e3 }).catch(() => {
@@ -142,7 +141,7 @@ const Ne = { class: "kx-cr-head" }, Ve = { class: "kx-cr-ico" }, Ie = { class: "
         }
         i("automation-installed", { success: !0, id: o.id }), i("created", { id: o.id });
       } catch (n) {
-        const e = Me(n, "install failed");
+        const e = _e(n, "install failed");
         I.value = e, i("automation-installed", { success: !1, error: e });
       } finally {
         V.value = !1;
@@ -221,7 +220,7 @@ const Ne = { class: "kx-cr-head" }, Ve = { class: "kx-cr-ico" }, Ie = { class: "
           E.value ? (r(), u("div", Oe, [
             t("div", Re, [
               e[18] || (e[18] = t("span", { class: "kx-field-lbl" }, "Response mode", -1)),
-              d(K(we), {
+              d(K(he), {
                 modelValue: U.value,
                 "onUpdate:modelValue": e[3] || (e[3] = (l) => U.value = l),
                 class: "kx-select",
@@ -280,7 +279,7 @@ const Ne = { class: "kx-cr-head" }, Ve = { class: "kx-cr-ico" }, Ie = { class: "
                 onChange: oe
               }, null, 8, ["selected"])
             ]),
-            (r(!0), u(ye, null, be(te.value, (l) => (r(), u("div", {
+            (r(!0), u(ge, null, ye(te.value, (l) => (r(), u("div", {
               key: l.id,
               class: "kx-field kx-trait-cfg"
             }, [
@@ -288,7 +287,7 @@ const Ne = { class: "kx-cr-head" }, Ve = { class: "kx-cr-ico" }, Ie = { class: "
                 H(x(p(l)), 1),
                 l.title?.trim() ? g("", !0) : (r(), u("span", Be, x(l.id), 1))
               ]),
-              d(Ce, {
+              d(we, {
                 tag: l.web_component || "",
                 config: v.value[l.id] || {},
                 provider: l.provider,
@@ -311,7 +310,7 @@ const Ne = { class: "kx-cr-head" }, Ve = { class: "kx-cr-ico" }, Ie = { class: "
                 "onUpdate:modelValue": e[7] || (e[7] = (l) => h.value = l),
                 type: "checkbox"
               }, null, 512), [
-                [he, h.value]
+                [be, h.value]
               ]),
               t("span", null, [
                 e[26] || (e[26] = t("strong", null, "Start a new chat after quiet time", -1)),
@@ -380,18 +379,18 @@ class Z extends ve {
     return {
       propsSchema: Ge,
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: fe
+      inlineCss: Me
     };
   }
   static get vueConfig() {
-    return { rootComponent: Qe, plugins: [ke] };
+    return { rootComponent: Qe, plugins: [fe] };
   }
 }
-async function st() {
+async function at() {
   return Z;
 }
-_e(import.meta.url, Z);
+Ce(import.meta.url, Z);
 export {
-  st as webComponent
+  at as webComponent
 };
 //# sourceMappingURL=channel_responder_create.js.map

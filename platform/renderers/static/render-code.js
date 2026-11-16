@@ -1,4 +1,4 @@
-import { W as d, a as l } from "./wc-runtime-h8e5VJvv.js";
+import { W as d, a as l } from "./wc-runtime-C70m2Vvt.js";
 import { Icon as r } from "@iconify/vue";
 import { defineAsyncComponent as p, defineComponent as c, h as o, onMounted as u } from "vue";
 import { s as m } from "./styles-HTuIrRec.js";
@@ -39,7 +39,7 @@ function x(t, e, n) {
   });
 }
 const v = x(
-  () => import("./RenderCode-jlZ7UAwM.js"),
+  () => import("./RenderCode-Dt7jxeoT.js"),
   { loading: "Loading the code viewer…", failed: "Could not load the code viewer. Reload the page to try again." },
   l
 ), w = ":host > div:empty, :host > div:has(> [data-lazy-state]) { min-height: 96px; }", M = {

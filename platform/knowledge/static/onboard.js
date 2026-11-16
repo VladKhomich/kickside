@@ -1,10 +1,10 @@
-import { u as t, W as o } from "./wc-runtime-ClNbKZcC.js";
+import { u as t, W as o } from "./wc-runtime-Bmxpx-Ro.js";
 import { a as n } from "./lazy-ZWC1tvFC.js";
 import { s as r } from "./styles-BDRVQk7J.js";
 import "@iconify/vue";
 import { define as s } from "@wippy-fe/proxy";
 const i = n(
-  () => import("./Onboard-CEn_zJSv.js"),
+  () => import("./Onboard-BzlFGOl6.js"),
   { loading: "Loading the knowledge step…", failed: "Could not load the knowledge step. Reload the page to try again." },
   t
 );

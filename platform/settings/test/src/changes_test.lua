@@ -56,10 +56,31 @@ local function define_tests()
         test.before_all(function()
             revisions = process.listen("listener.revision")
             local ready = process.listen("listener.ready")
-            listener = assert(process.spawn_monitored("app:change_listener", "app:processes", process.pid()))
+            local pending = process.listen("listener.pending")
+            listener = assert(process.spawn_monitored("app:change_listener", "app:processes", process.pid(), true))
             test.not_nil(receive(ready, "5s"), "change listener joins the subscribers")
-            -- A preceding suite can leave a committed notification in flight.
-            process.send(listener, changes.TOPIC, { revision = assert(writer.stored_revision()) })
+            -- Joining does not drain commits left by earlier suites. Force an
+            -- announcement to remain in flight until setup has committed.
+            test.eq(open_settings():set({ namespace = NS, key = "max_items", value = 60 }).success, true)
+            local target = assert(writer.stored_revision())
+            local held = receive(pending, "5s")
+            test.not_nil(held, "listener holds a committed setup announcement")
+            test.is_true(held <= target)
+            assert(process.send(listener, "listener.resume", true))
+            -- The setup commit is the synchronization point: observing it also
+            -- consumes any earlier in-flight catch-up announcements. Do not
+            -- discard duplicates or revisions belonging to a later test.
+            local previous: number? = nil
+            while true do
+                local revision = receive(revisions, "5s")
+                test.not_nil(revision, "setup commit reaches the subscriber")
+                test.is_true(revision <= target, "setup cannot consume a later commit")
+                if previous ~= nil then
+                    test.is_true(revision > previous, "setup announcements are ordered and unique")
+                end
+                if revision == target then break end
+                previous = revision
+            end
         end)
 
         test.after_all(function()

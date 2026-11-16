@@ -1,7 +1,7 @@
-import { W as d, a as l } from "./wc-runtime-h8e5VJvv.js";
-import { s as p, P as c } from "./styles-Ce32aXEC.js";
+import { W as d, P as l, a as p } from "./wc-runtime-AHFoIAXw.js";
 import { Icon as r } from "@iconify/vue";
-import { defineAsyncComponent as m, defineComponent as u, h as n, onMounted as f } from "vue";
+import { defineAsyncComponent as c, defineComponent as m, h as n, onMounted as u } from "vue";
+import { s as f } from "./styles-CAHyBPNr.js";
 import { define as y } from "@wippy-fe/proxy";
 const g = 3e4, a = "display:flex;align-items:center;justify-content:center;min-height:2rem;font-size:.875rem;", h = "position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;";
 function C(t) {
@@ -9,10 +9,10 @@ function C(t) {
 }
 function x(t, e, o) {
   const i = o();
-  f(() => i("error", { message: t, error: e }));
+  u(() => i("error", { message: t, error: e }));
 }
 function v(t, e, o) {
-  return m({
+  return c({
     loader: t,
     loadingComponent: {
       render: () => n("span", {
@@ -22,7 +22,7 @@ function v(t, e, o) {
         style: `${a}color:var(--p-text-muted-color);`
       }, n("span", { style: "display:inline-flex;", onVnodeMounted: C }, n(r, { icon: "tabler:loader-2", "aria-hidden": "true" })))
     },
-    errorComponent: u({
+    errorComponent: m({
       props: { error: { type: Error, required: !0 } },
       setup(i) {
         return x(e.failed, i.error, o), () => n("span", {
@@ -39,9 +39,9 @@ function v(t, e, o) {
   });
 }
 const M = v(
-  () => import("./SyncManage-BnJBHHpV.js"),
+  () => import("./SyncManage-BUQhlR0F.js"),
   { loading: "Loading data sync…", failed: "Could not load the data sync. Reload the page to try again." },
-  l
+  p
 ), S = {
   type: "object",
   properties: {
@@ -55,11 +55,11 @@ class s extends d {
     return {
       propsSchema: S,
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: p
+      inlineCss: f
     };
   }
   static get vueConfig() {
-    return { rootComponent: M, plugins: [c] };
+    return { rootComponent: M, plugins: [l] };
   }
 }
 async function V() {

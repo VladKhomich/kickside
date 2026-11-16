@@ -1,4 +1,4 @@
-import { W as o, u as s } from "./wc-runtime-BMe_f3Uc.js";
+import { W as o, u as s } from "./wc-runtime-Bo_8bBDp.js";
 import { s as p, l as i } from "./styles-DWmFMkWO.js";
 import "@iconify/vue";
 import { define as n } from "@wippy-fe/proxy";
@@ -16,7 +16,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: i(
-        () => import("./lazy-mount-DYoT4zXb.js").then((t) => t.mountConfig),
+        () => import("./lazy-mount-DYrjZ79T.js").then((t) => t.mountConfig),
         "Could not load the Modules page. Reload the page to try again.",
         s
       )

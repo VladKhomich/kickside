@@ -1,17 +1,9 @@
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
 
-// Every document a component loads in serves the complete Host import map, so its
-// pinned keys stay external. Refresh the snapshot when the Host release changes.
-const hostImportMap = JSON.parse(readFileSync(resolve(__dirname, 'web-host.import-map.snapshot.json'), 'utf8')) as { imports: Record<string, string> }
-
-// The Host requests an entry with a ?declare-tag= query. A lazy chunk that imports the
-// entry back has no query, so it would load a second copy of the wrapper. Keeping the
-// wrapper in its own chunk leaves the entry with nothing a lazy chunk needs.
-const wcRuntimeChunk = (id: string) => (id.includes('/@wippy-fe/webcomponent-') ? 'wc-runtime' : undefined)
+import { hostExternals, wcRuntimeChunk } from './wc-build'
 
 export default defineConfig({
   plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }), wippyComponentPlugin()],
@@ -36,7 +28,7 @@ export default defineConfig({
     rollupOptions: {
       preserveEntrySignatures: 'strict',
       input: { index: resolve(__dirname, 'src/index.ts') },
-      external: Object.keys(hostImportMap.imports),
+      external: hostExternals,
       output: {
         manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',

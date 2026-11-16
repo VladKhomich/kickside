@@ -1,4 +1,4 @@
-import { W as c, u as n } from "./wc-runtime-BMe_f3Uc.js";
+import { W as c, u as n } from "./wc-runtime-ySS494Ib.js";
 import "@iconify/vue";
 import { defineComponent as s, h as l, onMounted as d } from "vue";
 import { define as x } from "@wippy-fe/proxy";
@@ -33,7 +33,7 @@ class i extends c {
   static get vueConfig() {
     return {
       lazyConfig: v(
-        () => import("./lazy-mount-DZsfxTVO.js").then((r) => r.mountConfig),
+        () => import("./lazy-mount-r6ihQh7n.js").then((r) => r.mountConfig),
         "Could not load the MCP credentials page. Reload the page to try again.",
         n
       )

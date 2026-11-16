@@ -5,7 +5,7 @@ local M = {}
 
 M.provider_ids = { common.PROVIDERS.GOOGLE_GENAI }
 
-function M.fetch(profile: any): ({ any }?, string?)
+function M.fetch(profile: any): ({ any }?, string?, any?)
     local api_key = common.resolve_value(profile, "api_key", "GEMINI_API_KEY")
     if not api_key then return nil, "Gemini API key is required" end
 
@@ -15,10 +15,10 @@ function M.fetch(profile: any): ({ any }?, string?)
         headers = { ["x-goog-api-key"] = api_key },
         timeout = common.timeout(profile, 30),
     })
-    if err then return nil, tostring(err) end
+    if err then return nil, common.transport_error(err) end
 
-    local parsed, perr = common.decode_response(response)
-    if not parsed then return nil, perr end
+    local parsed, perr, diagnostics = common.decode_response(response)
+    if not parsed then return nil, perr, diagnostics end
     if type(parsed.models) == "table" then return common.as_array(parsed.models) end
     return common.model_rows(parsed)
 end

@@ -1,5 +1,4 @@
-import { W as a, u as o } from "./wc-runtime-KO3cNuNo.js";
-import { P as p } from "./primevue-plugin-CaP7wV_M.js";
+import { W as a, P as o, u as p } from "./wc-runtime-C2f1ro5W.js";
 import { l as e } from "./lazy-Cfv2E3SG.js";
 import "@iconify/vue";
 import { define as c } from "@wippy-fe/proxy";
@@ -14,9 +13,9 @@ const i = ":root{--p-form-field-padding-x: .75rem;--p-form-field-padding-y: .5re
     "keep-menu-open-on-add": { type: "boolean", default: !1 }
   }
 }, t = e(
-  () => import("./AgentTraitPicker-xdCMGDnJ.js"),
+  () => import("./AgentTraitPicker-D1FDgtGV.js"),
   { loading: "Loading capability picker…", failed: "Could not load the capability picker. Reload the page to try again." },
-  o
+  p
 );
 class r extends a {
   static get wippyConfig() {
@@ -27,14 +26,14 @@ class r extends a {
     };
   }
   static get vueConfig() {
-    return { rootComponent: t, plugins: [p] };
+    return { rootComponent: t, plugins: [o] };
   }
 }
-async function f() {
+async function d() {
   return r;
 }
 c(import.meta.url, r);
 export {
-  f as webComponent
+  d as webComponent
 };
 //# sourceMappingURL=agent_trait_picker.js.map

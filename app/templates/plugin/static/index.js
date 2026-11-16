@@ -1,4 +1,4 @@
-import { W as n, u as s } from "./wc-runtime-DZZltuMO.js";
+import { W as n, u as s } from "./wc-runtime-zVEvbmap.js";
 import { defineComponent as t, onMounted as l, h as v } from "vue";
 import "@iconify/vue";
 import { define as m } from "@wippy-fe/proxy";

@@ -1,4 +1,4 @@
-import { W as o, u as s } from "./wc-runtime-KO3cNuNo.js";
+import { W as o, u as s } from "./wc-runtime-pqFrgqFa.js";
 import { s as i, a as r } from "./styles-CeBRcDSy.js";
 import { p as n } from "./package-CCTUAjDf.js";
 import "@iconify/vue";
@@ -14,7 +14,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: r(
-        () => import("./lazy-mount-BgKj8uq6.js").then((t) => t.mountConfig),
+        () => import("./lazy-mount-9rnhhM-P.js").then((t) => t.mountConfig),
         "Could not load the Webhooks page. Reload the page to try again.",
         s
       )

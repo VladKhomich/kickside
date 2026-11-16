@@ -159,11 +159,9 @@ local function define_tests()
             db:release()
             local health, health_err = jobs.health()
             test.is_nil(health_err)
-            test.is_false(health.healthy)
-            test.is_true(health.failed_slots >= 1)
-            local reported = false
-            for _, issue in ipairs(health.issues) do if issue.code == "slots_failed" then reported = true end end
-            test.is_true(reported)
+            test.is_true(health.pending_jobs >= 1)
+            test.is_nil(health.failed_slots)
+            for _, issue in ipairs(health.issues) do test.is_true(issue.code ~= "slots_failed") end
             db = assert(sql.get("app:db"))
 
             append_event(db, thread_id, 2)

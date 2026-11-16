@@ -1,4 +1,4 @@
-import { W as o, u as s } from "./wc-runtime-KO3cNuNo.js";
+import { W as o, u as s } from "./wc-runtime-C2f1ro5W.js";
 import { a as p } from "./lazy-Cfv2E3SG.js";
 import { s as n } from "./styles-C5MTfWEG.js";
 import "@iconify/vue";
@@ -17,7 +17,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: p(
-        () => import("./lazy-mount-j0rmr19q.js").then((t) => t.mountConfig),
+        () => import("./lazy-mount-B3qc7Ezg.js").then((t) => t.mountConfig),
         "Could not load Agents. Reload the page to try again.",
         s
       )

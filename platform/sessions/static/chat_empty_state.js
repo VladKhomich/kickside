@@ -1,4 +1,4 @@
-import { W as o, c as r } from "./wc-runtime-BJD-5iaH.js";
+import { W as o, m as r } from "./wc-runtime-DRNaOAbU.js";
 import { l as s } from "./lazy-DX8B4FNv.js";
 import { s as i } from "./styles-BfuGB-97.js";
 import "@iconify/vue";
@@ -14,18 +14,18 @@ class t extends o {
   static get vueConfig() {
     return {
       lazyConfig: s(
-        () => import("./chat_empty_state-mount-qlEp1gLJ.js").then((e) => e.mountConfig),
+        () => import("./chat_empty_state-mount-BimZKFKP.js").then((e) => e.mountConfig),
         "Could not load the chat start screen. Reload the page to try again.",
         r
       )
     };
   }
 }
-async function u() {
+async function C() {
   return t;
 }
 n(import.meta.url, t);
 export {
-  u as webComponent
+  C as webComponent
 };
 //# sourceMappingURL=chat_empty_state.js.map

@@ -74,10 +74,15 @@ function M.plan_descriptor(descriptor: any, instance: any): (Map?, string?)
         if not tool_adapter.visible(entry) then return nil, "entry is not a public registry tool" end
         plan.node_type = NODE_TYPE.FUNC
         plan.config = { func_id = tool_id }
-        -- Native FUNC semantics own argument composition: connected object fields
-        -- supply unset arguments and these fixed arguments take precedence. Blocks
-        -- only freezes the exact target and user-selected overrides.
-        if next(config :: Map) ~= nil then plan.config.args = copy(config) end
+        -- FUNC base args exclude the default input. Compose the tool argument
+        -- object before the call, with fixed config last so it wins overlaps.
+        if next(config :: Map) ~= nil then
+            -- Quote the JSON as an expr string literal so config stays data.
+            local fixed = json.encode(json.encode(config))
+            plan.config.input_transform = {
+                default = "fromPairs(concat(toPairs(input ?? {}), toPairs(fromJSON(" .. fixed .. "))))",
+            }
+        end
     elseif kind == "agent" then
         plan.node_type = NODE_TYPE.AGENT
         local native: Map = {}

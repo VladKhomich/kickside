@@ -1,4 +1,4 @@
-import { W as o, u as n } from "./wc-runtime-ClNbKZcC.js";
+import { W as o, u as n } from "./wc-runtime-Bmxpx-Ro.js";
 import { l as p } from "./lazy-ZWC1tvFC.js";
 import { s as i } from "./styles-BDRVQk7J.js";
 import "@iconify/vue";
@@ -17,7 +17,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: p(
-        () => import("./lazy-mount-mKVD1SzE.js").then((t) => t.mountConfig),
+        () => import("./lazy-mount-B5H7osXw.js").then((t) => t.mountConfig),
         "Could not load Knowledge. Reload the page to try again.",
         n
       )

@@ -1,4 +1,4 @@
-import { W as a, u as e } from "./wc-runtime-ClNbKZcC.js";
+import { W as a, u as e } from "./wc-runtime-DNkGTY_i.js";
 import { l as p } from "./lazy-ZWC1tvFC.js";
 import "@iconify/vue";
 import { define as i } from "@wippy-fe/proxy";
@@ -16,7 +16,7 @@ class r extends a {
   static get vueConfig() {
     return {
       lazyConfig: p(
-        () => import("./lazy-mount-BBwE6MVc.js").then((o) => o.mountConfig),
+        () => import("./lazy-mount-DZ7-h38G.js").then((o) => o.mountConfig),
         "Could not load the Skills page. Reload the page to try again.",
         e
       )

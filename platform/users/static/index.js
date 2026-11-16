@@ -1,4 +1,4 @@
-import { W as o, u as e } from "./wc-runtime-KO3cNuNo.js";
+import { W as o, u as e } from "./wc-runtime-BQFBheae.js";
 import { l as p } from "./lazy-ZWC1tvFC.js";
 import "@iconify/vue";
 import { define as i } from "@wippy-fe/proxy";
@@ -16,7 +16,7 @@ class r extends o {
   static get vueConfig() {
     return {
       lazyConfig: p(
-        () => import("./index-mount-CT8xILML.js").then((a) => a.mountConfig),
+        () => import("./index-mount-BTx4M2Od.js").then((a) => a.mountConfig),
         "Could not load Users. Reload the page to try again.",
         e
       )

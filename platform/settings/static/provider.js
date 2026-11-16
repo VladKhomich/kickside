@@ -1,13 +1,12 @@
-import { W as t, a as o } from "./wc-runtime-DjtZy7dL.js";
-import { P as r } from "./primevue-plugin-CaP7wV_M.js";
-import { a as i } from "./lazy-ZWC1tvFC.js";
+import { W as t, P as o, a as i } from "./wc-runtime-56DLhE4T.js";
+import { a as r } from "./lazy-ZWC1tvFC.js";
 import { s } from "./styles-D9m6R71p.js";
 import "@iconify/vue";
 import { define as n } from "@wippy-fe/proxy";
-const p = i(
-  () => import("./provider-CIIkcbCs.js"),
+const p = r(
+  () => import("./provider-CuHZAedJ.js"),
   { loading: "Loading provider settings…", failed: "Could not load the provider settings. Reload the page to try again." },
-  o
+  i
 ), a = { type: "object", properties: { config: { type: "object" } } };
 class e extends t {
   static get wippyConfig() {
@@ -18,14 +17,14 @@ class e extends t {
     };
   }
   static get vueConfig() {
-    return { rootComponent: p, plugins: [r] };
+    return { rootComponent: p, plugins: [o] };
   }
 }
-async function C() {
+async function f() {
   return e;
 }
 n(import.meta.url, e);
 export {
-  C as webComponent
+  f as webComponent
 };
 //# sourceMappingURL=provider.js.map

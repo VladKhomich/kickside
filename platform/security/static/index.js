@@ -1,4 +1,4 @@
-import { W as n, u as c } from "./wc-runtime-BMe_f3Uc.js";
+import { W as n, u as c } from "./wc-runtime-E4NYBaIN.js";
 import "@iconify/vue";
 import { defineComponent as s, h as l, onMounted as d } from "vue";
 import { define as x } from "@wippy-fe/proxy";
@@ -33,7 +33,7 @@ class p extends n {
   static get vueConfig() {
     return {
       lazyConfig: f(
-        () => import("./lazy-mount-Drm1HR5l.js").then((r) => r.mountConfig),
+        () => import("./lazy-mount-B5iLzLvg.js").then((r) => r.mountConfig),
         "Could not load Security. Reload the page to try again.",
         c
       )

@@ -32,7 +32,7 @@ export default defineConfig({
       },
       external: hostExternals,
       output: {
-        manualChunks: (id) => (id.endsWith('/providerTags.ts') ? 'provider-tags' : wcRuntimeChunk(id)),
+        manualChunks: (id, graph) => (id.endsWith('/providerTags.ts') ? 'provider-tags' : wcRuntimeChunk(id, graph)),
         entryFileNames: '[name].js',
         chunkFileNames: '[name]-[hash].js',
         assetFileNames: '[name]-[hash][extname]',

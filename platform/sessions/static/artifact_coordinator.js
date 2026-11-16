@@ -1,4 +1,4 @@
-import { u as M, a as C, W as E } from "./wc-runtime-BJD-5iaH.js";
+import { u as M, a as C, W as E } from "./wc-runtime-DRNaOAbU.js";
 import { defineComponent as D, ref as L, onMounted as B, onBeforeUnmount as x, openBlock as T, createElementBlock as H } from "vue";
 import { getLayoutManager as O, on as j, define as q } from "@wippy-fe/proxy";
 import { s as S, a as F, l as R, e as W, b as z, A as i } from "./hostRoute-CHFKAd6h.js";

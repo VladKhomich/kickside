@@ -1,5 +1,4 @@
-import { W as a, u as o } from "./wc-runtime-CNDpK4lj.js";
-import { P as e } from "./primevue-plugin-CaP7wV_M.js";
+import { W as a, P as o, u as e } from "./wc-runtime-BOOCbdbY.js";
 import { l as p } from "./lazy-BTFbj8TG.js";
 import "@iconify/vue";
 import { define as i } from "@wippy-fe/proxy";
@@ -11,13 +10,13 @@ const c = ':root{--p-form-field-padding-x: .75rem;--p-form-field-padding-y: .5re
     mode: { type: "string", default: "", description: '"classes" restricts the panel to model classes (portable "class:<name>" refs); empty lists classes and concrete models.' }
   }
 }, n = p(
-  () => import("./ModelPicker-BOt5pK5u.js"),
+  () => import("./ModelPicker-eiCsE9Ct.js"),
   {
     loading: "Loading model picker…",
     failed: "Could not load the model picker. Reload the page to try again.",
     iconOnly: !0
   },
-  o
+  e
 );
 class r extends a {
   static get wippyConfig() {
@@ -28,14 +27,14 @@ class r extends a {
     };
   }
   static get vueConfig() {
-    return { rootComponent: n, plugins: [e] };
+    return { rootComponent: n, plugins: [o] };
   }
 }
-async function d() {
+async function f() {
   return r;
 }
 i(import.meta.url, r);
 export {
-  d as webComponent
+  f as webComponent
 };
 //# sourceMappingURL=model_picker.js.map

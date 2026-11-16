@@ -1,4 +1,4 @@
-import { u as f, W as y } from "./wc-runtime-DjtZy7dL.js";
+import { u as f, W as y } from "./wc-runtime-56DLhE4T.js";
 import { defineComponent as k, ref as a, onMounted as g, openBlock as s, createElementBlock as r, createElementVNode as e, toDisplayString as l, Fragment as h, createTextVNode as _, createCommentVNode as c } from "vue";
 import { loadByTagName as b, api as w, define as C } from "@wippy-fe/proxy";
 import { s as E } from "./styles-D9m6R71p.js";

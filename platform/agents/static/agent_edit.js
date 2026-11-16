@@ -1,6 +1,5 @@
-import { W as e, u as o } from "./wc-runtime-KO3cNuNo.js";
-import { P as i } from "./primevue-plugin-CaP7wV_M.js";
-import { l as n } from "./lazy-Cfv2E3SG.js";
+import { W as e, P as o, u as n } from "./wc-runtime-C2f1ro5W.js";
+import { l as i } from "./lazy-Cfv2E3SG.js";
 import { s as r } from "./styles-C5MTfWEG.js";
 import "@iconify/vue";
 import { define as s } from "@wippy-fe/proxy";
@@ -13,10 +12,10 @@ const p = {
     "entry-id": { type: "string" },
     mode: { type: "string" }
   }
-}, m = n(
-  () => import("./AgentEdit-DbW3Doro.js"),
+}, a = i(
+  () => import("./AgentEdit-BBxEEwxc.js"),
   { loading: "Loading agent editor…", failed: "Could not load the agent editor. Reload the page to try again." },
-  o
+  n
 );
 class t extends e {
   static get wippyConfig() {
@@ -27,14 +26,14 @@ class t extends e {
     };
   }
   static get vueConfig() {
-    return { rootComponent: m, plugins: [i] };
+    return { rootComponent: a, plugins: [o] };
   }
 }
-async function f() {
+async function c() {
   return t;
 }
 s(import.meta.url, t);
 export {
-  f as webComponent
+  c as webComponent
 };
 //# sourceMappingURL=agent_edit.js.map
