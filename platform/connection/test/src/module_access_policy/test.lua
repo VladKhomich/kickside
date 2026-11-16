@@ -21,6 +21,7 @@ local function define_tests()
                 ["kickside.connection.api:delete_connection.endpoint"] = true,
                 ["kickside.connection.api:discover_providers.endpoint"] = true,
                 ["kickside.connection.api:discover_resources.endpoint"] = true,
+                ["kickside.connection.api:get_connection.endpoint"] = true,
                 ["kickside.connection.api:list_connections.endpoint"] = true,
                 ["kickside.connection.api:provider_badges.endpoint"] = true,
                 ["kickside.connection.api:update_connection.endpoint"] = true,
@@ -65,6 +66,7 @@ local function define_tests()
             local actor = security.new_actor("module-member", {})
             for _, id in ipairs({
                 "kickside.connection.api:list_connections.endpoint",
+                "kickside.connection.api:get_connection.endpoint",
                 "kickside.connection.api:create_connection.endpoint",
                 "kickside.connection.api:discover_providers.endpoint",
                 "kickside.connection.api:provider_badges.endpoint",

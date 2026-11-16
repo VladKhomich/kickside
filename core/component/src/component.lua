@@ -4,9 +4,11 @@
 -- errors are structured via the global errors module and never raised.
 
 local contract = require("contract")
+local funcs = require("funcs")
 local security = require("security")
 local sql = require("sql")
 local component_reader = require("component_reader")
+local system_query = require("system_query")
 local component_types = require("component_types")
 local access_policy = require("access_policy")
 local ops = require("component_ops")
@@ -89,10 +91,9 @@ local function open_private(component_id: string, target_contract_id: string?): 
         return nil, (errors.new({ message = "component ID is required", kind = errors.INVALID }) :: error)
     end
 
-    local result, read_err = component_reader.new()
-        :with_components(component_id)
-        :include_options({ private_context = true, meta = false })
-        :one()
+    local results, read_err = system_query.masked({component_ids = {component_id},
+        include = {private_context = true, meta = false}, limit = 1})
+    local result = results and results[1]
     if read_err then
         return nil, read_err
     end
@@ -146,57 +147,6 @@ local function count(filter: { [string]: any }?): (integer?, error?)
     end
 
     return result.count or 0, nil
-end
-
--- Trusted system read: list components without actor scoping, reading directly
--- from the database. Suitable for system-level / background workers that perform
--- reverse lookups across every user's components (mirrors get_private_context /
--- open_private — same trust tier, NOT a public access-checked path). `filter`
--- accepts impl_ids, component_ids, meta, parent_id, path_prefix, include
--- (meta / private_context), limit, offset, after_component_id, and order_by
--- ({field,direction}). Page by component_id ASC with after_component_id when
--- rows can disappear during traversal.
-local function list_system(filter: component_types.QueryFilter?): (component_types.ComponentRow[]?, error?)
-    local f: component_types.QueryFilter = filter or {}
-    local reader: any = component_reader.new()
-
-    if type(f.after_component_id) == "string" and f.after_component_id ~= "" then
-        reader = reader:after_component(f.after_component_id)
-    end
-
-    if type(f.component_ids) == "table" and #f.component_ids > 0 then
-        reader = reader:with_components(f.component_ids)
-    end
-    if type(f.impl_ids) == "table" and #f.impl_ids > 0 then
-        reader = reader:with_impl_ids(f.impl_ids)
-    end
-    if f.match_ids ~= nil then
-        local selected, match_err = reader:with_id_match(f.match_ids)
-        if match_err then return nil, match_err end
-        reader = selected
-    end
-    if type(f.meta) == "table" then
-        reader = reader:with_meta(f.meta)
-    end
-    if f.parent_id ~= nil then
-        reader = reader:with_parent(f.parent_id :: string)
-    end
-    if type(f.path_prefix) == "string" and f.path_prefix ~= "" then
-        reader = reader:with_path_prefix(f.path_prefix)
-    end
-    if type(f.include) == "table" then
-        local inc: any = f.include
-        reader = reader:include_options({ meta = inc.meta, private_context = inc.private_context })
-    end
-    if type(f.order_by) == "table" and type(f.order_by.field) == "string" then
-        reader = reader:order_by(f.order_by.field, f.order_by.direction)
-    end
-    if type(f.limit) == "number" and f.limit > 0 then
-        reader = reader:limit(f.limit, type(f.offset) == "number" and f.offset or 0)
-    end
-
-    local rows, err = reader:all()
-    return rows :: component_types.ComponentRow[]?, err
 end
 
 -- resolve_path_prefixes: a system read (no actor, no access filter) returning the
@@ -468,6 +418,16 @@ local function update(component_id: string, commands: { any }, opts: component_t
     return result :: component_types.UpdateResult, nil
 end
 
+local function runtime_context(request: component_types.RuntimeContextRequest): (component_types.JsonMap?, error?)
+    local result, call_err = funcs.call("kickside.component.system:read_runtime_context", request)
+    if call_err then return nil, call_err end
+    local result_err = envelope.error_of(result, "read_runtime_context")
+    if result_err then return nil, result_err end
+    local context = context_policy.redact_for_actor(result.context, result.access_level or 0)
+    context.component_id = result.id
+    return context, nil
+end
+
 return {
     ACCESS = ACCESS,
     open = open,
@@ -477,13 +437,39 @@ return {
     validate_identity_authorizer_admin = validate_identity_authorizer_admin,
     validate_principal_access = validate_principal_access,
     get_service = get_component_service,
+    get_secrets = function(request: component_types.SecretsRequest): (component_types.SecretsResult?, error?)
+        return funcs.call("kickside.component.binding:get_secrets_func", request)
+    end,
+    get_context_snapshot = resolve_access_context,
     get_context = get_context,
     get_context_by_meta = get_context_by_meta,
     get_private_context = get_private_context,
+    -- Explicit trusted reads cross the owning service boundary. Plain library
+    -- reads above retain their direct query and require no dispatch authority.
+    get_private_runtime_context = function(component_id: string): (component_types.JsonMap?, error?)
+        return funcs.call("kickside.component.system:read_private_context", {component_id = component_id})
+    end,
+    get_runtime_context = function(component_id: string, access_mask: integer): (component_types.JsonMap?, error?)
+        return runtime_context({component_id = component_id, access_mask = access_mask})
+    end,
+    get_runtime_context_by_meta = function(meta: component_types.MetadataMap, access_mask: integer): (component_types.JsonMap?, error?)
+        return runtime_context({meta = meta, access_mask = access_mask})
+    end,
+    list_runtime_context = function(filter: component_types.QueryFilter?): (component_types.ComponentRow[]?, error?)
+        return funcs.call("kickside.component.system:list_runtime_context", filter)
+    end,
     get_identity_receipt = get_identity_receipt,
     query = query,
     count = count,
-    list_system = list_system,
+    -- Trusted system read: list components without actor scoping, reading directly
+    -- from the database. Suitable for system-level / background workers that perform
+    -- reverse lookups across every user's components (mirrors get_private_context /
+    -- open_private — same trust tier, NOT a public access-checked path). `filter`
+    -- accepts impl_ids, component_ids, meta, parent_id, path_prefix, include
+    -- (meta / private_context), limit, offset, after_component_id, and order_by
+    -- ({field,direction}). Page by component_id ASC with after_component_id when
+    -- rows can disappear during traversal.
+    list_system = system_query.masked,
     resolve_path_prefixes = resolve_path_prefixes,
     list_for_subject = list_for_subject,
     list_access = list_access,
