@@ -1,7 +1,7 @@
 -- Placement tests: hierarchy registration, list_children ordering, re-parenting
 -- with path re-materialization, cycle rejection, lexorank reorder, explicit delete
--- child policy, subtree grant/revoke (including group resolution), and
--- plain register/list. Runs on SQLite and PostgreSQL.
+-- child policy, subtree grant/revoke (including group resolution), trusted
+-- list_system placement projection, and plain register/list. Runs on SQLite and PostgreSQL.
 
 local test = require("test")
 local sql = require("sql")
@@ -9,6 +9,7 @@ local uuid = require("uuid")
 local time = require("time")
 local contract = require("contract")
 local security = require("security")
+local component = require("component")
 
 local DB = "app:db"
 local COMPONENT_SERVICE = "kickside.component:component_service"
@@ -300,6 +301,37 @@ local function define_tests()
         end
 
 
+
+        test.it("list_system returns sibling placement when include.placement is set", function()
+            local parent_id = register(nil, nil)
+            local first = register(parent_id, nil)
+            local second = register(parent_id, nil)
+
+            local rows, err = component.list_system({ parent_id = parent_id,
+                include = { meta = false, placement = true } })
+            test.is_nil(err, tostring(err))
+            test.eq(#rows, 2)
+            local by_id = {}
+            for _, row in ipairs(rows) do
+                local stored = read_row(row.component_id)
+                test.eq(row.parent_id, parent_id)
+                test.eq(row.position, stored.position)
+                test.eq(row.path, stored.path)
+                by_id[row.component_id] = row
+            end
+            test.is_true(by_id[first].position < by_id[second].position)
+        end)
+
+        test.it("list_system leaves placement out unless include.placement is set", function()
+            local parent_id = register(nil, nil)
+            register(parent_id, nil)
+
+            local rows, err = component.list_system({ parent_id = parent_id, include = { meta = false } })
+            test.is_nil(err, tostring(err))
+            test.eq(#rows, 1)
+            test.is_nil(rows[1].position)
+            test.is_nil(rows[1].path)
+        end)
 
         test.it("backward compat: plain register (no placement) and list still work", function()
             local res, err = as_owner(REGISTER, { impl_id = impl, meta = { class = "compat" } })
