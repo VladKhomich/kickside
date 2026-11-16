@@ -95,18 +95,21 @@ validator `library.lua`. Kinds without the declaration retain their behavior. De
 existing trusted kind reader after deletion is authorized.
 The library exports `validate(payload) -> error?` (nil admits deletion).
 
-`begin_delete` calls the validator after locking the component row and validating
-access and child policy, before marking deletion or enrolling its job. The payload
-contains `tx`, `component_id`, `impl_id`, `child_policy` and `options`. The active
-transaction is passed by reference, following `component_lifecycle`; it must be
-used for read-only validation, never committed, rolled back or released by the
-validator. No cleanup or external side effect belongs here. A typed error rolls
-back admission and reaches both secured deletion and trusted owner deletion.
+`begin_delete` validates access and child policy, then calls the validator before
+opening its delete transaction. The payload contains `component_id`, `impl_id`,
+`child_policy` and `options`. The validator reads its implementation's configured
+database and releases its connection; no cleanup or external side effect belongs
+here. A typed error refuses admission before marking deletion or enrolling a job
+and reaches both secured deletion and trusted owner deletion. Component rechecks
+access and child policy under its existing placement lock before committing the
+delete intent. Implementation admission is not atomic with concurrent writes;
+opening an independent read before the transaction also supports colocated SQLite
+storage, whose application connection is serialized by the runtime.
 A declared but unwired or malformed validator fails closed. Already accepted
 deletions resume their original intent without rerunning admission.
 
-The seam runs only on deletion admission and validates the state visible to its
-transaction. It adds no locks or checks to implementation write paths; each
+The seam runs only on deletion admission and reads committed implementation state.
+It adds no locks or checks to implementation write paths; each
 implementation documents any race with concurrent writes. The seam admits one
 component at a time; a cascade can already have accepted parents or unrelated
 siblings when a child refuses.

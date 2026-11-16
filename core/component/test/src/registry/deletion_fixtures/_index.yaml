@@ -24,6 +24,9 @@ entries:
   - name: delete_admission_validator
     kind: library.lua
     source: file://../../delete_admission_validator.lua
+    modules: [sql]
+    imports:
+      component_types: kickside.component:types
 
   - name: delete_admission_library
     kind: ns.requirement

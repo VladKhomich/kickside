@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- Implementation validators run as libraries so the active SQL transaction is
--- passed by reference, just like component_lifecycle. They never perform cleanup.
+-- Implementation validators read their configured storage before Component opens
+-- its transaction. They never perform cleanup or other external side effects.
 local autoinit = require("autoinit")
 local M = {}
 
