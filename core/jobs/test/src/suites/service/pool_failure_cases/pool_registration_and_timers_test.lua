@@ -45,6 +45,7 @@ local function run_deadline_case(kind: string): (integer, integer, { string })
     local idle_ch = { case_receive = function(self) return self end }
     local wake_ch = { case_receive = function(self) return self end }
     local timer_ch = { case_receive = function(self) return self end }
+    local epoch = assert(time.parse(time.RFC3339, "1970-01-01T00:00:00Z"))
     local deadline_ms = 250
     local now_ms = 0
     local selections = 0
@@ -63,13 +64,13 @@ local function run_deadline_case(kind: string): (integer, integer, { string })
             test.not_nil((string.find(statement, "scheduled_at", 1, true)))
             test.not_nil((string.find(statement, "lease_until", 1, true)))
             if kind == "due" and not did_claim then
-                return { { ms = deadline_ms - now_ms, kind = "due" } }, nil
+                return { { deadline = epoch:add(deadline_ms * time.MILLISECOND):format("2006-01-02 15:04:05.000000"), kind = "due" } }, nil
             end
             if (kind == "lease" or kind == "renewed") and not did_claim then
-                if kind == "renewed" and now_ms >= deadline_ms then return { { ms = 45000, kind = "lease" } }, nil end
-                return { { ms = deadline_ms - now_ms, kind = "lease" } }, nil
+                if kind == "renewed" and now_ms >= deadline_ms then return { { deadline = epoch:add((now_ms + 45000) * time.MILLISECOND):format("2006-01-02 15:04:05.000000"), kind = "lease" } }, nil end
+                return { { deadline = epoch:add(deadline_ms * time.MILLISECOND):format("2006-01-02 15:04:05.000000"), kind = "lease" } }, nil
             end
-            if did_claim then return { { ms = 45000, kind = "lease" } }, nil end
+            if did_claim then return { { deadline = epoch:add((now_ms + 45000) * time.MILLISECOND):format("2006-01-02 15:04:05.000000"), kind = "lease" } }, nil end
             return {}, nil
         end,
     }
@@ -128,7 +129,7 @@ local function run_deadline_case(kind: string): (integer, integer, { string })
             cancel = function() end,
         },
         time = {
-            now = function() return { unix_nano = function() return now_ms * 1000000 end } end,
+            now = function() return epoch:add(now_ms * time.MILLISECOND) end,
             after = function(duration: string)
                 if duration == "5s" then return timer_ch end
                 timer_durations[#timer_durations + 1] = duration
@@ -252,6 +253,7 @@ local function define_tests()
             local registry_ch = { case_receive = function(self) return self end }
             local idle_ch = { case_receive = function(self) return self end }
             local timer_ch = { case_receive = function(self) return self end }
+            local clock_base = time.now()
             local now_ns, selections, sends = 0, 0, 0
             local root = worker_pool.new({
                 retention_schedule = job_fixture.no_retention_schedule,
@@ -279,7 +281,7 @@ local function define_tests()
                     cancel = function() end,
                 },
                 time = {
-                    now = function() return { unix_nano = function() return now_ns end } end,
+                    now = function() return clock_base:add(now_ns) end,
                     after = function() return timer_ch end,
                 },
                 channel = { select = function(cases)
@@ -323,6 +325,7 @@ local function define_tests()
             local idle_ch = { case_receive = function(self) return self end }
             local wake_ch = { case_receive = function(self) return self end }
             local timer_ch = { case_receive = function(self) return self end }
+            local clock_base = time.now()
             local now_ns, selections, sends, timer_count = 0, 0, 0, 0
             local job_id: string? = nil
             local enqueue_err: error? = nil
@@ -354,7 +357,7 @@ local function define_tests()
                     cancel = function() end,
                 },
                 time = {
-                    now = function() return { unix_nano = function() return now_ns end } end,
+                    now = function() return clock_base:add(now_ns) end,
                     after = function(duration)
                         if duration == "5s" then return timer_ch end
                         timer_count = timer_count + 1
@@ -433,7 +436,7 @@ local function define_tests()
                 retention_schedule = job_fixture.no_retention_schedule,
                 sql_get = function() return {
                     type = function() return sql.type.SQLITE end,
-                    query = function() return { {} }, nil end,
+                    query = function() return {}, nil end,
                     release = function() end,
                 }, nil end,
                 policy = function() return job_fixture.pool_policy({ worker_count_sqlite = 1,

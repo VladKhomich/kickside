@@ -3,6 +3,7 @@ local test = require("test")
 local sql = require("sql")
 local json = require("json")
 local time = require("time")
+local clock = require("clock")
 local cfg = require("config")
 local committed_policy = require("runtime_policy")
 local claim = require("claim")
@@ -26,9 +27,9 @@ local function row(job)
     return assert(db:query("SELECT * FROM kickside_job WHERE id=$1", {job.id}))[1]
 end
 local function remaining(job, field)
-    local expr = dialect == sql.type.POSTGRES and "EXTRACT(EPOCH FROM (" .. field .. "-NOW()))"
-        or "(julianday(" .. field .. ")-julianday('now'))*86400"
-    return tonumber(assert(db:query("SELECT " .. expr .. " AS seconds FROM kickside_job WHERE id=$1", {job.id}))[1].seconds)
+    local expr = dialect == sql.type.POSTGRES and "EXTRACT(EPOCH FROM (" .. field .. "-CAST($1 AS TIMESTAMPTZ)))"
+        or "(julianday(" .. field .. ")-julianday($1))*86400"
+    return tonumber(assert(db:query("SELECT " .. expr .. " AS seconds FROM kickside_job WHERE id=$2", {clock.now(dialect),job.id}))[1].seconds)
 end
 local function enqueue(key)
     return assert(lifecycle.enqueue_job(db, dialect, {
@@ -113,9 +114,9 @@ return {run = test.run_cases(function()
                 pid = assert(lease.start(job))
                 time.sleep("350ms")
                 after = assert(shared:query("SELECT heartbeat_at FROM kickside_job WHERE id=$1", {id}))[1].heartbeat_at
-                local expr = dialect == sql.type.POSTGRES and "EXTRACT(EPOCH FROM (lease_until-NOW()))"
-                    or "(julianday(lease_until)-julianday('now'))*86400"
-                seconds = tonumber(assert(shared:query("SELECT " .. expr .. " AS seconds FROM kickside_job WHERE id=$1", {id}))[1].seconds)
+                local expr = dialect == sql.type.POSTGRES and "EXTRACT(EPOCH FROM (lease_until-CAST($1 AS TIMESTAMPTZ)))"
+                    or "(julianday(lease_until)-julianday($1))*86400"
+                seconds = tonumber(assert(shared:query("SELECT " .. expr .. " AS seconds FROM kickside_job WHERE id=$2", {clock.now(dialect),id}))[1].seconds)
             end)
             local stop_err = pid and lease.stop(pid) or nil
             if id then assert(shared:execute("DELETE FROM kickside_job WHERE id=$1", {id})) end

@@ -1,4 +1,5 @@
 local test = require("test")
+local clock = require("clock")
 local sql = require("sql")
 local uuid = require("uuid")
 local json = require("json")
@@ -359,8 +360,8 @@ local function define_tests()
             local event_id = uuid.v7()
             local body = json.encode({ text = "debounce" })
             local _, event_err = (db :: sql.DB):execute(
-                "INSERT INTO kickside_event (id,thread_id,type,role,body,seq) VALUES ($1,$2,'test:event','user',$3,1)",
-                { event_id, thread_id, body })
+                "INSERT INTO kickside_event (id,thread_id,type,role,body,seq,created_at) VALUES ($1,$2,'test:event','user',$3,1,$4)",
+                { event_id, thread_id, body, clock.now(tostring((db :: sql.DB):type())) })
             test.is_nil(event_err)
             local registered, register_err = writer.register_projection(db :: sql.DB, thread_id, {
                 kind = "slot-debounce-test", worker_ref = "func://app:test_count_worker",
