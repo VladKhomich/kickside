@@ -225,6 +225,8 @@ entries:
       comment: Materializes provisioned component-kind declarations into component+thread+projections+retention (idempotent, convergent).
     source: file://provision.lua
     modules:
+      - security
+      - registry
       - contract
       - funcs
       - sql
@@ -237,6 +239,26 @@ entries:
       execution_identity: kickside.execution:execution_identity
       proj_types: kickside.core.projections:types
       component_identity: kickside.core.threads:component_identity
+
+  - name: provision_identity
+    kind: security.policy
+    meta: {private: true, service_only: true}
+    policy:
+      resources: '*'
+      actions: [security.actor.create, security.scope.create]
+      effect: allow
+
+  - name: provision_user
+    kind: function.lua
+    meta:
+      private: true
+      comment: Admit only the current user's declared singleton; writes retain the caller's scope.
+    source: file://provision_user.lua
+    method: run
+    imports:
+      provision: kickside.core.threads:provision
+    security:
+      policies: [kickside.core.threads:provision_identity]
 
   - name: workspace_plugin
     kind: process.lua
@@ -357,8 +379,9 @@ entries:
     meta:
       comment: kickside.core:threads resource methods (create/converge/ensure/emit/purge/find/upsert/update/delete/list).
     source: file://contract/resource.lua
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       contract_common: kickside.core.threads:contract_common
@@ -460,8 +483,9 @@ entries:
       comment: kickside.core:threads create — register component + write thread.
     source: file://contract/resource.lua
     method: create
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -480,8 +504,9 @@ entries:
       comment: kickside.core:threads ensure_thread — attach a thread to an existing component-first component (idempotent), auto-applying its declared projections/retention.
     source: file://contract/resource.lua
     method: ensure_thread
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -500,8 +525,9 @@ entries:
       comment: kickside.core:threads converge_thread — make a component's thread state match its kind's declaration (create if absent, apply missing projections/cursors if present). Boot/install convergence primitive, never a hot path.
     source: file://contract/resource.lua
     method: converge_thread
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -520,8 +546,9 @@ entries:
       comment: kickside.core:threads emit — append an event to a component's primary thread (thread_id == component_id), creating the thread with its declared projections on first touch.
     source: file://contract/resource.lua
     method: emit
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -540,8 +567,9 @@ entries:
       comment: kickside.core:threads purge — reap a component's primary thread + cascade (events/projections/cursors/retention/edges) without touching the component row; the component-driven delete cascade. Idempotent.
     source: file://contract/resource.lua
     method: purge
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -560,8 +588,9 @@ entries:
       comment: kickside.core:threads find — lookup by id, soft (nil when not accessible).
     source: file://contract/resource.lua
     method: find
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -580,8 +609,9 @@ entries:
       comment: kickside.core:threads upsert — idempotent get-or-create on a natural key.
     source: file://contract/resource.lua
     method: upsert
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope

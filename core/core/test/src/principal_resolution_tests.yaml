@@ -59,9 +59,11 @@ entries:
   kind: library.lua
   source: file://principal_resolution_resource_source.lua
   modules:
+  - security
   - crypto
   - sql
   imports:
+    provision: app:principal_resolution_fixture
     sql_boundary: kickside.core.jobs.persist:sql_boundary
     contract_common: app:principal_resolution_common
     contract_events: kickside.core.threads:contract_events

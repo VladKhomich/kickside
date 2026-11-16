@@ -44,6 +44,37 @@ local function define_tests()
             return tonumber(rows and rows[1] and rows[1].c) or 0
         end
 
+        test.it("keeps inherited authority on ordinary thread creation paths", function()
+            local owner_id = "ordinary-owner-" .. uuid.v4()
+            local inherited = {version = 2, principal = {kind = "user", id = owner_id},
+                authorized_by = {kind = "user", id = "original-authorizer"}, component_id = uuid.v7(),
+                credential_id = uuid.v7(), link_id = uuid.v7(), captured_at = "2026-11-16T00:00:00Z"}
+            local owner = assert(security.new_actor(owner_id, {principal = inherited.principal,
+                execution_identity = inherited}))
+            local threads = assert(assert(contract.get("kickside.core:threads"))
+                :with_actor(owner):with_scope(scope()):open())
+            local requests = {
+                {method = "create", args = {impl_id = "app:provision_test_decl", thread_class = "test_ws"}},
+                {method = "upsert", args = {thread_id = uuid.v7(), impl_id = "app:provision_test_decl", thread_class = "test_ws"}},
+                {method = "ensure_thread", args = {component_id = uuid.v7(), impl_id = "app:provision_test_decl", thread_class = "test_ws"}},
+                {method = "emit", args = {component_id = uuid.v7(), impl_id = "app:provision_test_decl",
+                    thread_class = "test_ws", type = "app:threads_ws_changed", body = {}}},
+            }
+            for _, request in ipairs(requests) do
+                local result, err = threads[request.method](threads, request.args)
+                test.is_nil(err, tostring(err))
+                local id = request.args.component_id or request.args.thread_id or result.component_id
+                local d = db()
+                local rows = assert(d:query("SELECT private_context FROM kickside_components WHERE component_id=$1", {id}))
+                assert(d:release())
+                local stored = assert(json.decode(rows[1].private_context))._execution_identity
+                test.eq(stored.component_id, inherited.component_id)
+                test.eq(stored.authorized_by.id, inherited.authorized_by.id)
+                test.eq(stored.credential_id, inherited.credential_id)
+                test.eq(stored.link_id, inherited.link_id)
+            end
+        end)
+
         test.it("privileged provisioning respects the owner's denied kind read", function()
             local owner = security.new_actor("provision-denied-" .. uuid.v4(), {})
             local deny, deny_err = security.policy("app:provision_kind_read_deny")

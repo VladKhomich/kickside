@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: inbox_execution_root_expectation
+    kind: function.lua
+    meta: {type: test, suite: kickside_inbox, group: KickSide Inbox}
+    source: file://execution_root_expectation.lua
+    method: run
+    modules: [funcs, contract, security, uuid]
+    imports:
+      test: wippy.test:test
+      test_identity: app:test_identity
+      component: kickside.component:component
+  - name: inbox_select_identity_probe
+    kind: function.lua
+    meta: {type: test_helper}
+    source: file://execution_root_selection.lua
+    method: run
+    modules: [contract, security]
+    imports:
+      provision: kickside.core.threads:provision
+  - name: inbox_provision_owner
+    kind: security.policy
+    policy:
+      resources: '*'
+      actions: '*'
+      effect: allow
+      conditions:
+        - field: action
+          operator: nin
+          value: [threads.output.publish, security.actor.create]

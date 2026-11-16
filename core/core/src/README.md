@@ -33,6 +33,18 @@ The `threads` slice additionally consumes the `kickside.component:component_serv
 contract (the component module is a sibling dependency) for ownership, access, and
 hierarchy.
 
+## Per-user provisioning
+
+A declared user singleton created by `provision.ensure_user` or first-touch
+singleton emission receives its own execution root, authorized by its owning
+user. Core selects that identity through its private provisioning function; its
+actor/scope construction capabilities are removed before registration and declared
+callbacks. Callers need no general actor-creation grant. Credential and link
+restrictions remain attached. The caller's frame and
+ordinary component registration retain their existing identity semantics.
+Provisioning is idempotent and does not replace existing singleton identities;
+existing installations use the normal owner-authorized identity recovery.
+
 ## Module-owned retention
 
 An installed module registers its maintenance function with
