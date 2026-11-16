@@ -76,3 +76,19 @@ The standalone application harness (`test/`) provisions an in-memory database,
 a process host, a permissive scope, and the component module, then runs its
 harness-owned suites. Suites also run against PostgreSQL by pointing
 `target_db` at a `db.sql.postgres` resource.
+
+## Projection failure and recovery
+
+Once the slot's cursor is read, binding, stored-identity, worker and apply failures
+are recorded on that cursor through the same fenced failure transition.
+Deterministic failures invalidate the cursor and projection, preserve the error and failed run, and disable event
+wakes until a corrected declaration is registered. Infrastructure failures keep
+the cursor active with its error and use Jobs' existing slot retries.
+
+Resume sends a control wake even when the cursor is already active, so an active
+cursor with a disabled slot can recover without resetting or skipping events.
+An already-active resume preserves the cursor generation and position. Invalid
+cursors still require a corrected declaration through registration.
+
+Thread deletion removes its own projection cursors and their blocked-input pins;
+those local pins do not require a surviving consumer's deletion fence.

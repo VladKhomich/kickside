@@ -159,3 +159,4 @@ entries:
       invoke: kickside.core.projections:invoke
       pin: kickside.core.retention:pin
       prune: kickside.core.retention:prune
+      teardown: kickside.core.threads.persist:teardown

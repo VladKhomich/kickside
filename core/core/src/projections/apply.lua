@@ -245,7 +245,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     return { self_completed = true, completion = done, last_seq = last }, nil
 end
 
--- Record a worker failure on the cursor that ran it, fenced on the snapshot's
+-- Record an attempt failure on its cursor, fenced on the snapshot's
 -- generation and head. A deterministic failure is the projection's verdict: the
 -- cursor and projection turn invalid with the error, and the slot completes
 -- with failed history and parks, so new events cannot re-run it until a
