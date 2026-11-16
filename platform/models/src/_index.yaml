@@ -31,6 +31,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.models.migrations:03_capability_ownership
         path: .meta.target_db
+      - entry: kickside.models.migrations:04_encrypt_legacy_headers
+        path: .meta.target_db
       - entry: kickside.models:db_config
         path: .meta.db_id
       - entry: kickside.models.catalog:catalog_database
@@ -40,6 +42,7 @@ entries:
     kind: ns.requirement
     default: wippy.bootloader.bootloaders:encryption_key_var
     meta:
+      value_kind: env.variable
       description: Environment variable holding the provider-profile encryption key.
     targets:
       - entry: kickside.models:db_config

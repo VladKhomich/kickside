@@ -77,7 +77,7 @@ local function redact_returns(context: any): (any) -> any
             seen[value] = out
             for key, child in pairs(value) do out[redact(key)] = redact(child) end
             return out
-        elseif type(value) == "userdata" and type(value.message) == "function" then
+        elseif type(value) == "userdata" then
             return errors.new({kind = value:kind(), retryable = value:retryable(),
                 message = redact(value:message()), details = redact(value:details())})
         end
