@@ -180,7 +180,9 @@ local function encoded(value: any): string
 end
 
 local function without_secret_fields(doc: any): any
-    local copy = json.decode(encoded(doc))
+    local text = encoded(doc)
+    local copy, decode_err = json.decode(text)
+    assert(copy, decode_err)
     for _, profile in ipairs(copy.profiles or {}) do profile.secret_fields = nil end
     return copy
 end
@@ -366,7 +368,9 @@ local function define_tests()
         test.it("keeps every omitted setting when importing only a profile timeout", function()
             scenario(function()
                 local before = assert(models_repo.get_profile("io-env-gateway"))
-                local expected = json.decode(encoded(before.config))
+                local config_text = encoded(before.config)
+                local expected, decode_err = json.decode(config_text)
+                assert(expected, decode_err)
                 expected.timeout = 47
                 local reload = models_repo.reload
                 local reloads = 0
