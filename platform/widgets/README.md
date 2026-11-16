@@ -45,6 +45,13 @@ commit regenerated tracked assets with the source.
 
 Reuse declared picker, form, and creation widgets from the installed view catalog. Pass their declared configuration and handle their emitted events. The owning server validates resource selection and authorization again on submission.
 
+### SPEC: Model picker field context
+
+`wc-model-picker` accepts optional `label` and `description` text attributes.
+The focused combobox uses them as its accessible name and help, including when
+mounted inside a settings form across a shadow boundary. Without `label`, it
+keeps the existing “Choose model” name.
+
 ### Host requirements
 
 Bind these exact requirement IDs through the module’s dependency declaration

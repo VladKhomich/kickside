@@ -4,7 +4,7 @@ import { s } from "./styles-D9m6R71p.js";
 import "@iconify/vue";
 import { define as n } from "@wippy-fe/proxy";
 const p = r(
-  () => import("./provider-CuHZAedJ.js"),
+  () => import("./provider-B9bfYYG6.js"),
   { loading: "Loading provider settings…", failed: "Could not load the provider settings. Reload the page to try again." },
   i
 ), a = { type: "object", properties: { config: { type: "object" } } };
