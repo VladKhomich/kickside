@@ -47,6 +47,100 @@ end
 
 local function define_tests()
     test.describe("retention keeps pace with expired writes", function()
+        test.it("drains finished deletion and other jobs with their runs in bounded pages", function()
+            local db = open_queue()
+            local policy = required(config.policy())
+            local total = policy.retention_batch * 3 + 1
+            local numbers = tostring(db:type()) == sql.type.POSTGRES
+                and "SELECT generate_series(1," .. tostring(total) .. ") AS n"
+                or "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<"
+                    .. tostring(total) .. ") SELECT n FROM seq"
+            local id = tostring(db:type()) == sql.type.POSTGRES and "md5(CAST(n AS TEXT))::uuid"
+                or "lower(hex(randomblob(16)))"
+            required(db:execute([[INSERT INTO kickside_job
+                (id,owner_kind,owner_id,job_type,status,job_identity,finished_at)
+                SELECT ]] .. id .. [[,
+                    CASE WHEN n%2=0 THEN 'component' ELSE 'service' END,
+                    'expired-' || CAST(n AS TEXT),
+                    CASE WHEN n%2=0 THEN 'kickside.component:delete_worker' ELSE 'test.retention' END,
+                    CASE WHEN n%3=0 THEN 'cancelled' WHEN n%3=1 THEN 'done' ELSE 'dead' END,
+                    'expired-' || CAST(n AS TEXT),'2000-01-01T00:00:00Z'
+                FROM (]] .. numbers .. ") numbered"))
+            for seq = 1, 2 do
+                required(db:execute([[INSERT INTO kickside_job_run
+                    (id,job_id,owner_kind,owner_id,job_type,attempt_no,execution_seq,status,lease_token,started_at,finished_at)
+                    SELECT ]] .. (tostring(db:type()) == sql.type.POSTGRES and "md5(CAST(id AS TEXT) || '" .. tostring(seq) .. "')::uuid"
+                        or "lower(hex(randomblob(16)))") .. [[,
+                        id,owner_kind,owner_id,job_type,1,]] .. tostring(seq) .. [[,
+                        CASE WHEN status='done' THEN 'completed' ELSE 'failed' END,
+                        'seed',finished_at,finished_at FROM kickside_job]]))
+            end
+            for _, status in ipairs({"pending", "running", "done"}) do
+                local job_id = uuid.v7()
+                local finished = status == "done" and "'2099-01-01T00:00:00Z'" or "NULL"
+                required(db:execute([[INSERT INTO kickside_job
+                    (id,owner_kind,owner_id,job_type,status,job_identity,finished_at)
+                    VALUES ($1,'component',$2,'kickside.component:delete_worker',$2,$2,]] .. finished .. ")",
+                    {job_id, status}))
+                required(db:execute([[INSERT INTO kickside_job_run
+                    (id,job_id,owner_kind,owner_id,job_type,attempt_no,execution_seq,status,lease_token,started_at,finished_at)
+                    VALUES ($1,$1,'component',$2,'kickside.component:delete_worker',1,1,$3,'seed','2000-01-01T00:00:00Z',]] .. finished .. ")",
+                    {job_id, status, status == "done" and "completed" or "running"}))
+            end
+            local pages, transactions = 0, 0
+            local probe = {
+                type = function() return db:type() end,
+                execute = function(_, statement, params) return db:execute(statement, params) end,
+                query = function(_, statement, params)
+                    local rows, err = db:query(statement, params)
+                    if string.find(statement, "SELECT id,", 1, true) == 1 then
+                        test.is_true(#required(rows, err) <= policy.retention_batch, "candidate page exceeds the batch")
+                        pages = pages + 1
+                    end
+                    return rows, err
+                end,
+                begin = function()
+                    local tx = required(db:begin())
+                    local deletes = 0
+                    return {
+                        query = function(_, statement, params) return tx:query(statement, params) end,
+                        execute = function(_, statement, params)
+                            local result, err = tx:execute(statement, params)
+                            if string.find(statement, "DELETE FROM kickside_job ", 1, true) == 1
+                                or string.find(statement, "DELETE FROM kickside_job_run ", 1, true) == 1 then
+                                deletes = deletes + 1
+                                test.is_true(tonumber(required(result, err).rows_affected) <= policy.retention_batch,
+                                    "transaction deletes more than one page")
+                            end
+                            return result, err
+                        end,
+                        commit = function()
+                            if deletes > 0 then
+                                test.eq(deletes, 1, "each retained page has its own transaction")
+                                transactions = transactions + 1
+                            end
+                            return tx:commit()
+                        end,
+                        rollback = function() return tx:rollback() end,
+                    }, nil
+                end,
+            }
+            local totals, passes = drain(probe, time.now())
+            test.eq(totals.jobs, total)
+            test.eq(totals.job_runs, total * 2)
+            test.eq(passes, math.ceil(total * 2 / policy.retention_batch))
+            test.eq(pages, passes * 2, "each sweep selects run and job pages")
+            test.is_true(transactions > 2, "backlog drains through multiple transactions")
+            for _, table_name in ipairs({"kickside_job", "kickside_job_run"}) do
+                local rows = required(db:query("SELECT owner_id FROM " .. table_name .. " ORDER BY owner_id"))
+                test.eq(#rows, 3)
+                test.eq(rows[1].owner_id, "done")
+                test.eq(rows[2].owner_id, "pending")
+                test.eq(rows[3].owner_id, "running")
+            end
+            db:release()
+        end)
+
         test.it("bounds job selection when runs have a longer retention window", function()
             local db = open_queue()
             local dbtype = tostring(db:type())
