@@ -23,6 +23,7 @@ entries:
   modules:
   - process
   - channel
+  - time
 - name: lifecycle_boot_native_exit
   kind: process.lua
   source: file://lifecycle_boot_native_exit.lua
