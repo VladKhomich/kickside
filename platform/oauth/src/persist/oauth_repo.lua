@@ -49,14 +49,14 @@ function oauth_repo.create_connection(component_id: string?, connection_data: an
     }) :: oauth_types.SecretPayload
 
     -- Encrypt sensitive data
-    local encrypted_data, err = encrypt_oauth_data(oauth_data, encryption_key)
+    local encrypted_data, err = encrypt_oauth_data(oauth_data, encryption_key :: string)
     if err then
         return nil, "Failed to encrypt OAuth data: " .. err
     end
 
     -- Encrypt access token separately for optimized access
     local create_tokens = connection_data.tokens :: oauth_types.TokenSet
-    local access_token_encrypted, err = encrypt_access_token(create_tokens.access_token, encryption_key)
+    local access_token_encrypted, err = encrypt_access_token(create_tokens.access_token, encryption_key :: string)
     if err then
         return nil, "Failed to encrypt access token: " .. err
     end
@@ -145,7 +145,7 @@ function oauth_repo.update_connection(component_id: string?, connection_data: an
     end
 
     -- Decrypt current OAuth data
-    local oauth_data, err = decrypt_oauth_data(connection.oauth_data_encrypted :: string, encryption_key)
+    local oauth_data, err = decrypt_oauth_data(connection.oauth_data_encrypted :: string, encryption_key :: string)
     if err then
         return nil, "Failed to decrypt OAuth data: " .. err
     end
@@ -178,7 +178,7 @@ function oauth_repo.update_connection(component_id: string?, connection_data: an
     end
 
     -- Re-encrypt OAuth data
-    local encrypted_data, err = encrypt_oauth_data(oauth_data :: oauth_types.SecretPayload, encryption_key)
+    local encrypted_data, err = encrypt_oauth_data(oauth_data :: oauth_types.SecretPayload, encryption_key :: string)
     if err then
         return nil, "Failed to encrypt updated OAuth data: " .. err
     end
@@ -187,7 +187,7 @@ function oauth_repo.update_connection(component_id: string?, connection_data: an
     local access_token_encrypted = nil
     if connection_data.tokens and connection_data.tokens.access_token then
         local update_tokens = connection_data.tokens :: oauth_types.TokenSet
-        access_token_encrypted, err = encrypt_access_token(update_tokens.access_token, encryption_key)
+        access_token_encrypted, err = encrypt_access_token(update_tokens.access_token, encryption_key :: string)
         if err then
                 return nil, "Failed to encrypt access token: " .. err
         end
