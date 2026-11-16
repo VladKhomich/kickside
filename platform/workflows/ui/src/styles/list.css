@@ -14,6 +14,8 @@
 .kx-seg { flex: none; }
 
 .kx-body { flex: 1; min-height: 0; padding: 6px 20px 20px; display: flex; flex-direction: column; gap: 14px; container-type: inline-size; }
+.kx-body--state { overflow: auto; padding-block: 20px; }
+.kx-body--state > .kx-empty { flex-shrink: 0; margin-block: auto; padding-block: 0; }
 
 .kx-list { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--p-content-border-color); border-radius: 14px; overflow: hidden; background: var(--p-content-background); box-shadow: var(--wf-elev-1); }
 .kx-row {

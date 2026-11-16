@@ -6,7 +6,7 @@ import "@iconify/vue";
 import { define as l } from "@wippy-fe/proxy";
 const a = [r, i, p].join(`
 `), m = n(
-  () => import("./EmbedWorkflow-DJzajW_c.js"),
+  () => import("./EmbedWorkflow-RizcBQVY.js"),
   { loading: "Loading the Workflow panel…", failed: "Could not load the Workflow panel. Reload the page to try again." },
   s
 ), u = {

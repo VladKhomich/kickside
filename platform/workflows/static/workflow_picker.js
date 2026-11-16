@@ -5,7 +5,7 @@ import { s as p } from "./workflow-embed-Cq35e5M9.js";
 import "@iconify/vue";
 import { define as a } from "@wippy-fe/proxy";
 const m = s(
-  () => import("./WorkflowPicker-DZKCKv2U.js"),
+  () => import("./WorkflowPicker-DfLjOy-L.js"),
   { loading: "Loading the Workflow picker…", failed: "Could not load the Workflow picker. Reload the page to try again." },
   r
 ), l = {

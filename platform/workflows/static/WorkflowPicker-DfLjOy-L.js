@@ -1,11 +1,11 @@
 import { defineComponent as R, ref as p, onUnmounted as W, computed as x, openBlock as c, createElementBlock as j, Fragment as B, createVNode as f, unref as s, createBlock as m, withCtx as i, createTextVNode as d, createCommentVNode as k, toDisplayString as U } from "vue";
-import { L as $, f as w, h as V } from "./WorkflowSearchList.vue_vue_type_script_setup_true_lang-CifdAiNs.js";
-import { s as T, g as A, c as I } from "./versions-BW024yDT.js";
+import { L as $, f as w, h as V } from "./WorkflowSearchList.vue_vue_type_script_setup_true_lang-BrsNr0R3.js";
+import { s as T, g as A, c as I } from "./versions-DSjCdSEm.js";
 import { s as J } from "./index-CSqVKKCx.js";
 import { on as P } from "@wippy-fe/proxy";
 import { a as z, u as D } from "./wc-runtime-Tr5oXE7R.js";
 import { _ as F } from "./WcMount.vue_vue_type_script_setup_true_lang-CNWT59Oh.js";
-import { _ as K } from "./EmbedWorkflowPicker.vue_vue_type_script_setup_true_lang-Buk9kei3.js";
+import { _ as K } from "./EmbedWorkflowPicker.vue_vue_type_script_setup_true_lang-CQ6-HFXn.js";
 const te = /* @__PURE__ */ R({
   __name: "WorkflowPicker",
   setup(L) {
