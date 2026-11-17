@@ -1,11 +1,11 @@
 import { W as t, P as o, u as r } from "./wc-runtime-Tr5oXE7R.js";
 import { l as s } from "./lazy-Cfv2E3SG.js";
 import { p as n, w as i } from "./wc-mount-N7h56Ydz.js";
-import { s as p } from "./workflow-embed-BX8EY-U_.js";
+import { s as p } from "./workflow-embed-Cq35e5M9.js";
 import "@iconify/vue";
 import { define as a } from "@wippy-fe/proxy";
 const m = s(
-  () => import("./WorkflowPicker-DZKCKv2U.js"),
+  () => import("./WorkflowPicker-DfLjOy-L.js"),
   { loading: "Loading the Workflow picker…", failed: "Could not load the Workflow picker. Reload the page to try again." },
   r
 ), l = {

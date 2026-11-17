@@ -29,6 +29,23 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
+it('reports an initial read failure until a successful retry returns an empty list', async () => {
+  vi.mocked(on).mockReturnValue(vi.fn())
+  vi.mocked(api.get)
+    .mockResolvedValueOnce({ data: { success: false, error: 'list unavailable' } } as never)
+    .mockResolvedValueOnce({ data: { success: true, workflows: [] } } as never)
+
+  wrapper = mount(WorkflowList)
+  await flushPromises()
+  expect(wrapper.get('.kx-body [role="alert"]').text()).toContain('list unavailable')
+  expect(wrapper.text()).not.toContain('No Workflows yet')
+
+  await wrapper.get('.kx-body [role="alert"] button').trigger('click')
+  await flushPromises()
+  expect(wrapper.text()).toContain('No Workflows yet')
+  expect(wrapper.find('.kx-body [role="alert"]').exists()).toBe(false)
+})
+
 it('clears a failed list read once a finished deletion is read back', async () => {
   const workflow = { id: 'workflow', title: 'Cleanup workflow' }
   const receivers: Array<(message: unknown) => void> = []

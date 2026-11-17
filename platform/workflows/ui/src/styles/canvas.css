@@ -1,5 +1,5 @@
 /* ══ CANVAS ══════════════════════════════════════════════════════════════ */
-.wf-canvas-root { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--p-content-background); outline: none; container-type: inline-size; }
+.wf-canvas-root { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--p-content-background); outline: none; container-type: inline-size; }
 .wf-top {
   display: flex; align-items: center; gap: 4px;
   height: 48px; padding: 0 12px; flex: none;
@@ -208,6 +208,7 @@
   .wf:has(.wf-canvas-root) {
     position: fixed;
     inset: 0;
+    height: auto;
     z-index: var(--wf-layer-immersive-shell);
   }
 }
@@ -243,8 +244,8 @@
 
 /* ── Workspace preview (frozen graph) ─────────────────────────────────── */
 .wfp {
-  position: absolute;
-  inset: 0;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   font-size: 13px;
