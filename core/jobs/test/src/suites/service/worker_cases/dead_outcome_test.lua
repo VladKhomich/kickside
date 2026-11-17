@@ -34,7 +34,7 @@ local function make_thread(db: sql.DB): string
     return id
 end
 
-local function leased_proc(db: sql.DB, dbtype: string, worker_ref: string, max_attempts: integer, payload: table): table
+local function leased_proc(db: sql.DB, dbtype: string, worker_ref: string, max_attempts: integer?, payload: table): table
     local job, err = job_fixture.enqueue_leased(db, dbtype, {
         thread_id = make_thread(db), job_type = "dead.outcome.test", worker_ref = worker_ref,
         priority = 10000, max_attempts = max_attempts, payload = payload,
@@ -93,7 +93,9 @@ local function define_tests()
                 test.eq(outcome.owner_kind, dead.owner_kind)
                 test.eq(outcome.owner_id, dead.owner_id)
                 test.eq(outcome.thread_id, dead.thread_id)
-                test.eq(tonumber(outcome.max_attempts), job_types.MAX_ATTEMPTS)
+                local ordinary = leased_proc(db, dbtype, SLEEP_PROC, nil, {})
+                local attempts = assert(db:query("SELECT max_attempts FROM kickside_job WHERE id=$1", {ordinary.id}))[1]
+                test.eq(tonumber(outcome.max_attempts), tonumber(attempts.max_attempts))
 
                 test.eq(deliver(db, dbtype, outcome.id), job_types.JOB_STATE.DONE)
                 test.eq(#outcomes_for(db, job.id), 1)

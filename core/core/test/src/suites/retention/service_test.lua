@@ -115,7 +115,7 @@ local function define_tests()
             end
             local ok, failure = pcall(function()
                 local changes: table[] = {}
-                for index = 1, 50 do changes[#changes + 1] = { kind = "events_appended", thread_id = "thread-" .. tostring(index) } end
+                for _ = 1, 50 do changes[#changes + 1] = { kind = "events_appended" } end
                 local pass, pass_err = runner.on_wakes(db, "retention-test", changes)
                 test.is_nil(pass_err)
                 test.not_nil(pass)
@@ -134,6 +134,25 @@ local function define_tests()
             sweeper.run, owner_hooks.run, sweeper.next_deadline_ms = original_sweep, original_owners, original_deadline
             db:release()
             if not ok then error(failure) end
+        end)
+
+        test.it("sweeps only the thread named in an event wake", function()
+            local db = assert(sql.get("app:db"))
+            local target, unrelated = make_thread(db), make_thread(db)
+            for _, id in ipairs({target, unrelated}) do
+                local _, policy_err = retention_repo.upsert(db, id, {
+                    event_hot_retention_days = 1, archive_mode = "tombstone_only", enabled = true,
+                })
+                test.is_nil(policy_err)
+                add_event(db, id, stamp(db, time.now():add(-48 * time.HOUR)))
+            end
+            local change = {kind = "events_appended", thread_id = target}
+            local pass, wake_err = runner.on_wakes(db, "retention-test", {change, change})
+            test.is_nil(wake_err)
+            test.eq(pass.stats.events, 1)
+            test.eq(count_events(db, target), 0)
+            test.eq(count_events(db, unrelated), 1)
+            db:release()
         end)
 
         test.it("wakes from an empty snapshot and arms the new event's exact stored deadline", function()

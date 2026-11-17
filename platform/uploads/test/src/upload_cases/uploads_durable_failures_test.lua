@@ -890,6 +890,50 @@ local function define_tests()
         end
         end
 
+        for _, has_intent in ipairs({true, false}) do
+            test.it("resumes a published completion checkpoint, intent=" .. tostring(has_intent), function()
+                local id, owner = uuid_v4(), "completion-checkpoint-" .. uuid_v4()
+                ensure_uploads_component(owner)
+                local metadata = upload_metadata(owner, "checkpoint.txt")
+                local identity = metadata[IDENTITY_META_KEY]
+                metadata.__upload_token = assert(upload_tokens.pack({upload_id = id, function_id = "app:callback_probe",
+                    actor_id = identity.actor_id, actor_context = identity.actor_context}))
+                local upload = assert(upload_record_repo.create(id, owner, 1, "text/plain", "app:uploads", id,
+                    "app:types.failing", metadata, "uploaded", nil, nil, has_intent, 600000))
+                local queued = assert(process_worker.enqueue_upload_job(upload, true))
+                local db = assert(sql.get("app:db"))
+                local job = admit_job(db, queued.job_id, 1)
+                local dbtype = tostring(db:type())
+
+                -- The published worker commits this write before callbacks and the completion event.
+                assert(upload_record_repo.mark_storage_completed(id))
+                test.is_nil(jobs_lifecycle.fail_job(db, job, dbtype, "interrupted before publication", "infrastructure"))
+                local function events(): { table }
+                    return assert(db:query([[SELECT type,body,created_at,external_version FROM kickside_event
+                        WHERE thread_id=$1 AND external_id=$2 AND type=$3]],
+                        {queued.thread_id, id, uploads_events.TYPE.COMPLETED}))
+                end
+                test.eq(#events(), 0)
+
+                local resumed = admit_job(db, job.id, 2)
+                local input = assert(worker_dispatch.build_worker_input(resumed))
+                local result, run_err = process_job.run(input)
+                test.is_nil(run_err, tostring(run_err))
+                test.is_true(result.success)
+                test.eq(assert(db:query("SELECT status FROM kickside_job WHERE id=$1", {job.id}))[1].status, "done")
+                local published = events()
+                test.eq(#published, 1)
+                test.eq(published[1].external_version, job.id)
+                test.eq(#assert(db:query("SELECT id FROM kickside_job WHERE thread_id=$1 AND job_type=$2",
+                    {queued.thread_id, "kickside.uploads.service:callback_job"})), 1)
+                published[1].body = assert(json.decode(published[1].body))
+                local _, apply_err = upload_read_model.apply_events(queued.thread_id, published)
+                test.is_nil(apply_err)
+                test.eq(assert(upload_read_model.get_for_actor(owner, id)).status, "completed")
+                db:release()
+            end)
+        end
+
         test.it("records each retried processing job's dead outcome once", function()
             local id, owner = uuid_v4(), "retry-outcome-" .. uuid_v4()
             ensure_uploads_component(owner)
