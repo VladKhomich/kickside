@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, useId } from 'vue'
 import { Icon } from '@iconify/vue'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
@@ -7,6 +7,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import { relativeTime } from '@widgets/app/datetime'
 import WcMount from '@widgets/app/WcMount.vue'
 import { api } from '@wippy-fe/proxy'
+import { confirmSettingChange, type DestructiveSetting } from './setting-change'
 
 // Generic per-namespace settings form. Fetches the declared settings for one
 // namespace and writes overrides back. Each setting renders a control chosen by
@@ -39,7 +40,7 @@ interface FieldSchema {
   description?: string
 }
 
-interface Setting {
+interface Setting extends DestructiveSetting {
   namespace: string
   key: string
   value: unknown
@@ -73,6 +74,16 @@ const drafts = ref<Record<string, string | number | boolean>>({})
 const fieldErrors = ref<Record<string, string>>({})
 
 const idOf = (s: Setting) => `${s.namespace} ${s.key}`
+const formId = useId()
+const fieldId = (s: Setting, part: string) => `${formId}-${encodeURIComponent(s.namespace)}-${encodeURIComponent(s.key)}-${part}`
+const describedBy = (s: Setting) => [
+  s.description && fieldId(s, 'description'), schemaHint(s.schema) && fieldId(s, 'hint'),
+  s.error && fieldId(s, 'error'), fieldErrors.value[idOf(s)] && fieldId(s, 'validation'),
+].filter(Boolean).join(' ') || undefined
+const controlAttrs = (s: Setting) => ({
+  'aria-labelledby': fieldId(s, 'title'), 'aria-describedby': describedBy(s),
+  'aria-invalid': !!(s.error || fieldErrors.value[idOf(s)]) || undefined,
+})
 
 // A readable label for a setting: its declared title, else a humanized key
 // (split on separators, capitalize the first word, lower-case acronyms kept).
@@ -288,10 +299,12 @@ async function save(s: Setting) {
   const id = idOf(s)
   // UI-level schema gate: block the save and show the inline error.
   if (revalidate(s)) return
+  if (savingKey.value) return
   savingKey.value = id
   error.value = ''
   try {
     const value = coerce(s, drafts.value[id])
+    if (!await confirmSettingChange(s, value, titleOf(s), 'Save')) return
     const { data } = await api.put('/api/v1/settings', { namespace: s.namespace, key: s.key, value })
     // The backend validate_func error (if any) surfaces inline on the field.
     if (!data?.success) { fieldErrors.value[id] = data?.error || 'save failed'; return }
@@ -307,10 +320,12 @@ async function save(s: Setting) {
 }
 
 async function reset(s: Setting) {
+  if (savingKey.value) return
   const id = idOf(s)
   savingKey.value = id
   error.value = ''
   try {
+    if (!await confirmSettingChange(s, s.default, titleOf(s), 'Reset to default')) return
     const { data } = await api.put('/api/v1/settings', { namespace: s.namespace, key: s.key, value: null })
     if (!data?.success) throw new Error(data?.error || 'reset failed')
     await load()
@@ -352,56 +367,57 @@ onMounted(load)
             <td v-if="all" class="ks-owner">{{ ownerOf(s) }}</td>
             <component :is="all ? 'td' : 'div'" class="ks-row-main">
               <div class="ks-row-head">
-                <span class="ks-title">{{ titleOf(s) }}</span>
+                <span :id="fieldId(s, 'title')" class="ks-title">{{ titleOf(s) }}</span>
                 <code class="ks-key">{{ s.key }}</code>
                 <span v-if="s.is_secret && s.has_value" class="ks-tag kx-tag-caps ks-tag-on">set</span>
                 <span v-else-if="!s.is_default && !s.is_secret" class="ks-tag kx-tag-caps ks-tag-on">overridden</span>
               </div>
-              <p v-if="s.error" class="ks-field-err" role="alert">{{ s.error }}</p>
-              <p v-if="s.description" class="ks-desc">{{ s.description }}</p>
-              <p v-if="schemaHint(s.schema)" class="ks-hint">{{ schemaHint(s.schema) }}</p>
+              <p :id="fieldId(s, 'error')" v-if="s.error" class="ks-field-err" role="alert">{{ s.error }}</p>
+              <p :id="fieldId(s, 'description')" v-if="s.description" class="ks-desc">{{ s.description }}</p>
+              <p :id="fieldId(s, 'hint')" v-if="schemaHint(s.schema)" class="ks-hint">{{ schemaHint(s.schema) }}</p>
               <p v-if="!s.is_default && s.updated_by" class="ks-prov">by {{ s.updated_by }}<span v-if="s.updated_at"> · {{ relativeTime(s.updated_at) }}</span></p>
             </component>
 
             <!-- Bespoke per-setting editor: it owns its own control + save. -->
             <component :is="all ? 'td' : 'div'" v-if="s.ui" class="ks-wc-slot">
-              <WcMount :key="idOf(s)" :tag="s.ui" :config="uiConfig(s)" @change="onUiChange" />
+              <WcMount :key="idOf(s)" :tag="s.ui" :config="uiConfig(s)" :label="titleOf(s)" :attrs="{ role: 'group', ...controlAttrs(s) }" @change="onUiChange" />
             </component>
 
             <component :is="all ? 'td' : 'div'" v-else class="ks-control">
               <div class="ks-field">
                 <span v-if="s.editable === false" class="ks-static">{{ s.value }}</span>
                 <template v-else>
-                  <WcMount v-if="s.control" :tag="s.control.tag"
-                    :attrs="{ ...s.control.props, value: coerce(s, drafts[idOf(s)]) }"
+                  <WcMount v-if="s.control" :tag="s.control.tag" :label="titleOf(s)"
+                    :attrs="{ ...s.control.props, role: 'group', description: s.description, ...controlAttrs(s), value: coerce(s, drafts[idOf(s)]) }"
                     @select="onControlSelect(s, $event)" />
                   <ToggleSwitch v-else-if="s.value_type === 'bool'"
+                    :pt="{ input: controlAttrs(s) }"
                     :model-value="!!drafts[idOf(s)]"
-                    :aria-label="titleOf(s)"
                     @update:model-value="drafts[idOf(s)] = $event" />
 
                   <!-- enum: a select -->
                   <Select v-else-if="enumOptions(s)" class="ks-select"
+                    :pt="{ label: controlAttrs(s) }"
                     :class="{ 'ks-select-invalid': fieldErrors[idOf(s)] }"
                     :model-value="drafts[idOf(s)]"
                     :options="enumOptions(s) as unknown[]"
                     @update:model-value="drafts[idOf(s)] = $event; revalidate(s)" />
 
-                  <input v-else-if="s.value_type === 'int'" type="number" class="ks-input"
+                  <input v-bind="controlAttrs(s)" v-else-if="s.value_type === 'int'" type="number" class="ks-input"
                     :class="{ 'ks-input-invalid': fieldErrors[idOf(s)] }"
                     :min="s.schema?.minimum" :max="s.schema?.maximum"
                     :value="drafts[idOf(s)]"
                     @input="drafts[idOf(s)] = Number(($event.target as HTMLInputElement).value); revalidate(s)" />
-                  <textarea v-else-if="s.value_type === 'json'" rows="4" class="ks-input"
+                  <textarea v-bind="controlAttrs(s)" v-else-if="s.value_type === 'json'" rows="4" class="ks-input"
                     :class="{ 'ks-input-invalid': fieldErrors[idOf(s)] }"
                     :value="drafts[idOf(s)] as string"
                     @input="drafts[idOf(s)] = ($event.target as HTMLTextAreaElement).value; revalidate(s)"></textarea>
-                  <input v-else-if="s.value_type === 'secret'" type="password" autocomplete="off" class="ks-input"
+                  <input v-bind="controlAttrs(s)" v-else-if="s.value_type === 'secret'" type="password" autocomplete="off" class="ks-input"
                     :class="{ 'ks-input-invalid': fieldErrors[idOf(s)] }"
                     :placeholder="s.has_value ? '•••••••• set — type to replace' : 'Not set'"
                     :value="drafts[idOf(s)]"
                     @input="drafts[idOf(s)] = ($event.target as HTMLInputElement).value; revalidate(s)" />
-                  <input v-else type="text" class="ks-input"
+                  <input v-bind="controlAttrs(s)" v-else type="text" class="ks-input"
                     :class="{ 'ks-input-invalid': fieldErrors[idOf(s)] }"
                     :minlength="s.schema?.minLength" :maxlength="s.schema?.maxLength"
                     :value="drafts[idOf(s)]"
@@ -411,6 +427,7 @@ onMounted(load)
                   <Button
                     type="button"
                     :label="savingKey === idOf(s) ? 'Saving…' : 'Save'"
+                    :aria-label="`Save ${titleOf(s)}`" :aria-describedby="describedBy(s)"
                     :loading="savingKey === idOf(s)"
                     :disabled="savingKey === idOf(s) || !!fieldErrors[idOf(s)] || (s.value_type !== 'bool' && !dirty(s))"
                     @click="save(s)" />
@@ -422,7 +439,7 @@ onMounted(load)
                     rounded
                     :disabled="savingKey === idOf(s)"
                     title="Reset to default"
-                    aria-label="Reset to default"
+                    :aria-label="`Reset ${titleOf(s)} to default`" :aria-describedby="describedBy(s)"
                     @click="reset(s)">
                     <template #icon>
                       <Icon icon="tabler:rotate" aria-hidden="true" />
@@ -430,7 +447,7 @@ onMounted(load)
                   </Button>
                 </template>
               </div>
-              <p v-if="fieldErrors[idOf(s)]" class="ks-field-err">{{ fieldErrors[idOf(s)] }}</p>
+              <p :id="fieldId(s, 'validation')" role="alert" v-if="fieldErrors[idOf(s)]" class="ks-field-err">{{ fieldErrors[idOf(s)] }}</p>
             </component>
           </component>
           </component>

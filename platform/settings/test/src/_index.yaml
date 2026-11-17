@@ -333,6 +333,7 @@ entries:
       comment: Plain int setting with a default, used for override/unset/provenance assertions.
     namespace: kickside.settings.test
     key: max_items
+    confirm_decrease: true
     title: Page size
     category: Rendering
     order: 7

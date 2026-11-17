@@ -179,6 +179,7 @@ local function define_tests()
                 if row.key == "max_items" then found = row end
             end
             test.not_nil(found)
+            test.eq(found.confirm_decrease, true)
             test.eq(found.title, "Page size")
             test.eq(found.category, "Rendering")
             test.eq(found.order, 7)
