@@ -52,9 +52,9 @@ local function fixture(): any
         actor_key = function(principal: any) return principal.id end,
         run_as = function(identity: any, fn: string, args: any): (any?, any?)
             test.eq(identity.principal.id, sc.TEST_IDENTITY.principal.id)
-            test.eq(fn, "kickside.workflows.runs:maintenance_row")
+            test.eq(fn, "kickside.workflows.runs:maintenance_complete")
             if not state.live then return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "live authority revoked" }) end
-            return sc.maintenance.row_action(args)
+            return sc.maintenance.complete(args)
         end,
     }
     local req = sc.build_request("automation-" .. uuid.v4(), uuid.v4(), uuid.v4())
@@ -127,6 +127,33 @@ local cases = test.run_cases(function()
                 local encoded, encode_err = json.encode(f.state.callbacks[1].error)
                 test.is_nil(encode_err)
                 test.is_true(#encoded <= 4096, "encoded error bytes: " .. tostring(#encoded))
+            end
+        end)
+        for _, message in ipairs({"é", "失败", "failure 🌱"}) do
+            test.it("preserves complete UTF-8 error text: " .. message, function()
+                local f = fixture()
+                local result = f.sc.writable.write(f.req)
+                local id = result.dest_ref.run_id
+                local _, err = admission.merge(f.row(id), {status = "failed", error = message})
+                test.is_nil(err)
+                test.eq(f.tick(id).failures, 0)
+                test.eq(f.state.callbacks[1].error.message, message)
+            end)
+        end
+        test.it("trims only a multibyte sequence cut by the encoded error limit", function()
+            local overhead = #json.encode({code = "failed", message = ""})
+            for _, character in ipairs({"é", "败", "🌱"}) do
+                for remaining = 1, #character do
+                    local f = fixture()
+                    local result = f.sc.writable.write(f.req)
+                    local id = result.dest_ref.run_id
+                    local prefix = "é" .. string.rep("x", 4096 - overhead - #"é" - remaining)
+                    local _, err = admission.merge(f.row(id), {status = "failed", error = prefix .. character .. "x"})
+                    test.is_nil(err)
+                    test.eq(f.tick(id).failures, 0)
+                    test.eq(f.state.callbacks[1].error.message,
+                        prefix .. (remaining == #character and character or ""))
+                end
             end
         end)
         test.it("an immediate start failure is completed by existing recovery", function()

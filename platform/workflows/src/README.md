@@ -23,10 +23,14 @@ the resolved scalar token (1–16 distinct names of 1–128 bytes, finite values
 4096 encoded bytes total) is private in the existing creation payload.
 
 The existing terminal publisher appends its deduplicated audit event, delivers
-completion under the stored identity with live authorization, and clears
-`terminal_event_pending` only after `{acknowledged: true}`. Every terminal status
+completion under the stored identity with live authorization through a function
+with no added policies, and clears `terminal_event_pending` only after
+`{acknowledged: true}`. Every terminal status
 is delivered at least once, including immediate failures and recovered runs.
-Failures remain pending; an unfiltered point lookup proving target deletion is
+Claim, audit append, and acknowledgement stay outside the receiver frame.
+Error byte cuts preserve complete UTF-8 characters and trim only an incomplete
+final sequence. Failures remain pending; an unfiltered point lookup proving
+target deletion is
 an acknowledged no-op. Receivers fence duplicates and validate domain token
 fields. No new persistence, service, or reservation path is introduced. See the
 module README for the exact callback envelope and deletion release prerequisite.

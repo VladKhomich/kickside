@@ -119,12 +119,16 @@ positive integer visit/attempt).
 
 For every terminal status (`completed`, `failed`, `cancelled`, `terminated`), the
 existing publisher appends the deduplicated audit event, calls `complete` under
-the stored run identity with live authorization, and then clears the existing
-publication flag. The callback receives `token`, authoritative `run_id`,
+the stored run identity with live authorization in a function with no added
+maintenance policies, and then clears the existing publication flag. The callback
+receives `token`, authoritative `run_id`,
 `dataflow_id`, exact `flow_ref`, `status`, optional `started_at`, `ended_at`, and
 an error bounded to 4096 encoded JSON bytes for non-success outcomes. It never
 receives full Start input, progress, or outputs; outputs continue through report.
-The receiver returns `{acknowledged: true}` or a typed native error.
+Claim, append, and acknowledgement bookkeeping stay outside the callback frame.
+Complete UTF-8 error characters are preserved; byte cuts discard only an
+incomplete final sequence. The receiver returns `{acknowledged: true}` or a typed
+native error.
 
 Completion is one logical outcome delivered at least once. Receivers must fence
 repeated tokens, including a crash after their commit but before acknowledgement.

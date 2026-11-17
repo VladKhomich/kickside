@@ -197,7 +197,22 @@ local function completion_of(row: any): (any?, any?)
     return payload.completion, nil
 end
 
-local function publish(row: any): (any?, any?)
+-- Preserve complete UTF-8 code points; only a byte cut can leave an
+-- incomplete final sequence. JSON escaping can require a second byte cut.
+local function byte_prefix(message: string, limit: integer): string
+    if #message <= limit then return message end
+    local cut = message:sub(1, limit)
+    local start = #cut
+    while start > 0 and cut:byte(start) >= 128 and cut:byte(start) < 192 do start = start - 1 end
+    local lead = cut:byte(start)
+    local width = lead and (lead >= 240 and 4 or lead >= 224 and 3 or lead >= 192 and 2 or 1) or 1
+    if #cut - start + 1 < width then return cut:sub(1, start - 1) end
+    return cut
+end
+
+-- Called through a policy-free function boundary under the live run scope.
+-- Claiming, audit publication and acknowledgement stay in the publisher frame.
+function M.complete(row: any): (any?, any?)
     local completion, payload_err = completion_of(row)
     if payload_err then return nil, payload_err end
     if completion then
@@ -208,16 +223,12 @@ local function publish(row: any): (any?, any?)
             flow_ref = { kind = "flow", id = row.workflow_id, version = tonumber(row.version) },
             status = row.status, started_at = row.started_at, ended_at = row.finished_at }
         if row.status ~= "completed" then
-            local message = tostring(row.error or row.status):sub(1, 4096)
-            -- Leave room for JSON escaping and the error object's keys. Drop
-            -- the trailing UTF-8 code point when cutting a byte prefix.
-            message = message:gsub("[\194-\244][\128-\191]*$", "")
+            local message = byte_prefix(tostring(row.error or row.status), 4096)
             envelope.error = { code = row.status, message = message }
             local encoded, encode_err = json.encode(envelope.error)
             if encode_err or not encoded then return nil, encode_err or "completion error encoding failed" end
             while #encoded > 4096 do
-                message = message:sub(1, math.max(0, #message - (#encoded - 4096)))
-                    :gsub("[\194-\244][\128-\191]*$", "")
+                message = byte_prefix(message, math.max(0, #message - (#encoded - 4096)))
                 envelope.error.message = message
                 encoded, encode_err = json.encode(envelope.error)
                 if encode_err or not encoded then return nil, encode_err or "completion error encoding failed" end
@@ -227,7 +238,7 @@ local function publish(row: any): (any?, any?)
         if callback_err then return nil, callback_err end
         if type(ack) ~= "table" or ack.acknowledged ~= true then return nil, "completion was not acknowledged" end
     end
-    return acknowledge_event(row)
+    return true, nil
 end
 
 -- Only maintenance_publish calls this after validating the claimed publication
@@ -273,8 +284,7 @@ end
 
 -- The claimed token fences each row action across the publisher and run frames.
 function M.row_action(args: any): (any?, any?)
-    if type(args) ~= "table" or (args.phase ~= "observe" and args.phase ~= "publish"
-        and args.phase ~= "publish_event")
+    if type(args) ~= "table" or (args.phase ~= "observe" and args.phase ~= "publish_event")
         or type(args.run_id) ~= "string" or type(args.token) ~= "string" then
         return nil, errors.new({ kind = errors.INVALID, message = "invalid maintenance row action" })
     end
@@ -299,7 +309,6 @@ function M.row_action(args: any): (any?, any?)
         if emit_err or not emitted then return nil, emit_err end
         return refresh_public_meta(row)
     end
-    if args.phase == "publish" then return publish(row) end
     local cli, client_err = client_new()
     if client_err or not cli then return nil, client_err or "dataflow client unavailable" end
     local supported, support_err = engine_api.require_methods(cli)
@@ -326,7 +335,7 @@ local function run_row_action(row: any, phase: string, local_client: any?): (any
         end
         local completion, payload_err = completion_of(row)
         if payload_err then return nil, payload_err end
-        if not completion then return publish(row) end
+        if not completion then return acknowledge_event(row) end
         -- An unfiltered component point read proves deletion; an ACL-filtered
         -- miss cannot distinguish deletion from revoked access.
         local _, target_err = selected_component.get_private_context(completion.component_id)
@@ -344,10 +353,18 @@ local function run_row_action(row: any, phase: string, local_client: any?): (any
     if phase == "observe" and actor and actor:id() == selected_identity.actor_key(identity.principal) then
         return M.row_action(args)
     end
-    return selected_identity.run_as(identity, "kickside.workflows.runs:maintenance_row", args, {
+    local result, run_err = selected_identity.run_as(identity,
+        phase == "publish" and "kickside.workflows.runs:maintenance_complete" or "kickside.workflows.runs:maintenance_row",
+        phase == "publish" and row or args, {
         deferred_owner = "kickside.workflows.runs:maintenance_tick_worker",
         execution_root = identity.component_id,
     })
+    if run_err then return nil, run_err end
+    if phase == "publish" then
+        if result ~= true then return nil, "completion returned no success result" end
+        return acknowledge_event(row)
+    end
+    return result, nil
 end
 
 function M.tick(limit: number?, run_id: string?, recover: boolean?): (any?, any?)

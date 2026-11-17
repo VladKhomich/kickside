@@ -1,7 +1,7 @@
 local maintenance = require("maintenance")
 
 local function run(args: any): (any?, any?)
-    if type(args) ~= "table" or (args.phase ~= "observe" and args.phase ~= "publish") then
+    if type(args) ~= "table" or args.phase ~= "observe" then
         return nil, errors.new({ kind = errors.INVALID, message = "maintenance run phase required" })
     end
     return maintenance.row_action(args)
