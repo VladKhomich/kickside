@@ -2449,6 +2449,17 @@ entries:
       reclaim: app:reclaim_native_source
       fixture: app:reclaim_native_fixture
 
+  - name: reclaim_native_test_finish
+    kind: function.lua
+    modules: [sql]
+    meta: {type: test, suite: jobs_reclaim_native}
+    source: file://reclaim_native_test.lua
+    method: finish
+    imports:
+      test: wippy.test:test
+      reclaim: app:reclaim_native_source
+      fixture: app:reclaim_native_fixture
+
   - name: reclaim_native_lease_release
     kind: library.lua
     source: file://reclaim_native_lease_release.lua
@@ -2508,6 +2519,7 @@ entries:
       config: app:scope_native_config
       lifecycle: app:scope_native_lifecycle
       lifecycle_cancel: app:scope_native_lifecycle_cancel
+      reclaim: app:scope_native_reclaim
       lifecycle_enqueue: app:scope_native_lifecycle_enqueue
       lease_status: app:scope_native_lease_status
       wake: app:wake_native_source
@@ -2533,6 +2545,13 @@ entries:
       lifecycle_types: kickside.core.jobs.persist:lifecycle
 
   - name: scope_native_lifecycle
+    kind: library.lua
+    source: file://scope_native_dependency.lua
+    imports:
+      fixture: app:scope_native_fixture
+      lifecycle_types: kickside.core.jobs.persist:lifecycle
+
+  - name: scope_native_reclaim
     kind: library.lua
     source: file://scope_native_dependency.lua
     imports:
@@ -2694,6 +2713,14 @@ entries:
       fixture: app:transaction_native_fixture
       lifecycle_types: kickside.core.jobs.persist:lifecycle
 
+  - name: transaction_native_reclaim
+    kind: library.lua
+    source: file://transaction_native_dependency.lua
+    modules: [sql]
+    imports:
+      fixture: app:transaction_native_fixture
+      lifecycle_types: kickside.core.jobs.persist:lifecycle
+
   - name: transaction_native_lifecycle_cancel
     kind: library.lua
     source: file://transaction_native_dependency.lua
@@ -2789,6 +2816,7 @@ entries:
       config: app:transaction_native_config
       lifecycle: app:transaction_native_lifecycle
       lifecycle_cancel: app:transaction_native_lifecycle_cancel
+      reclaim: app:transaction_native_reclaim
       lifecycle_enqueue: app:transaction_native_lifecycle_enqueue
       wake: app:transaction_native_wake
       slot_purge: kickside.core.jobs.persist:slot_purge
@@ -2857,6 +2885,14 @@ entries:
       lifecycle_types: kickside.core.jobs.persist:lifecycle
 
   - name: health_native_lifecycle
+    kind: library.lua
+    source: file://health_native_dependency.lua
+    modules: [sql]
+    imports:
+      fixture: app:health_native_fixture
+      lifecycle_types: kickside.core.jobs.persist:lifecycle
+
+  - name: health_native_reclaim
     kind: library.lua
     source: file://health_native_dependency.lua
     modules: [sql]
@@ -2959,6 +2995,7 @@ entries:
       config: app:health_native_config
       lifecycle: app:health_native_lifecycle
       lifecycle_cancel: app:health_native_lifecycle_cancel
+      reclaim: app:health_native_reclaim
       lifecycle_enqueue: app:health_native_lifecycle_enqueue
       wake: app:health_native_wake
       slot_purge: kickside.core.jobs.persist:slot_purge
@@ -3140,8 +3177,6 @@ entries:
       job_types: kickside.core.jobs:types
       row_mutations: kickside.core.jobs.persist:row_mutations
       worker_marker: kickside.core.jobs.persist:worker_marker
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
-      proc_supervisor: kickside.core.jobs:proc_supervisor
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       dead_outcome: kickside.core.jobs.persist:dead_outcome
   - name: run_history_native_test
@@ -3256,8 +3291,6 @@ entries:
       row_mutations: app:transition_native_row_mutations
       worker_marker: app:transition_native_worker_marker
       job_types: kickside.core.jobs:types
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
-      proc_supervisor: kickside.core.jobs:proc_supervisor
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       dead_outcome: kickside.core.jobs.persist:dead_outcome
   - name: transition_native_test
@@ -3568,7 +3601,7 @@ entries:
     source: file://child_native_dependency.lua
     imports:
       fixture: app:child_native_fixture
-  - name: child_native_lifecycle_cancel
+  - name: child_native_reclaim
     kind: library.lua
     source: file://child_native_dependency.lua
     imports:
@@ -3601,7 +3634,7 @@ entries:
       sql: app:child_native_sql
       config: app:child_native_config
       lease_status: app:child_native_lease_status
-      lifecycle_cancel: app:child_native_lifecycle_cancel
+      reclaim: app:child_native_reclaim
       worker_fence: app:child_native_worker_fence
       proc_supervisor: app:child_native_proc_supervisor
       worker_dispatch: app:child_native_worker_dispatch
@@ -3922,7 +3955,6 @@ entries:
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
       lifecycle: kickside.core.jobs.persist:lifecycle
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       claim_execution: kickside.core.jobs.persist:claim_execution
       reclaim: kickside.core.jobs.persist:reclaim
       proc_supervisor: kickside.core.jobs:proc_supervisor
@@ -4363,6 +4395,7 @@ entries:
       config: app:health_bounded_config
       lifecycle: kickside.core.jobs.persist:lifecycle
       lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
+      reclaim: kickside.core.jobs.persist:reclaim
       lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
       lease_status: kickside.core.jobs.persist:lease_status
       proc_supervisor: kickside.core.jobs:proc_supervisor

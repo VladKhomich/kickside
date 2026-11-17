@@ -10,7 +10,7 @@ local job_types = require("job_types")
 local cfg = require("config")
 local execution_policy = require("execution_policy")
 local lease_status = require("lease_status")
-local lifecycle_cancel = require("lifecycle_cancel")
+local reclaim = require("reclaim")
 local worker_fence = require("worker_fence")
 local proc_supervisor = require("proc_supervisor")
 local worker_dispatch = require("worker_dispatch")
@@ -87,7 +87,7 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
         local settle_type, settle_type_err = settle_db:type()
         local settled, finish_err = false, nil
         if not settle_type_err then
-            settled, finish_err = lifecycle_cancel.finish_cancellation(settle_db, tostring(settle_type), {
+            settled, finish_err = reclaim.finish_cancellation(settle_db, tostring(settle_type), {
                 id = job.id, token = job.lease_token, execution_seq = job.execution_seq,
             })
         end

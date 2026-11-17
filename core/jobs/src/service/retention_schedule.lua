@@ -13,8 +13,8 @@ function schedule.new(dependencies: any): any
     local deadline_ns: number? = now():unix_nano()
     local retry_count = 0
     local active_policy: any = nil
-    local state = {}
     local driver = {}
+    local job_cursor: table? = nil
 
     local function retry_delay_ms(policy: any): number
         retry_count = retry_count + 1
@@ -39,14 +39,15 @@ function schedule.new(dependencies: any): any
         end
         active_policy = policy
 
-        local stats, sweep_err = sweep(state)
+        local stats, sweep_err = sweep(job_cursor)
         if sweep_err then
             log:error("job_worker retention sweep failed: " .. tostring(sweep_err))
             deadline_ns = now_ns + retry_delay_ms(policy) * 1000000
             return
         end
         retry_count = 0
-        local full = state.jobs_cursor ~= nil or stats.jobs >= policy.retention_batch or stats.job_runs >= policy.retention_batch
+        job_cursor = stats.job_cursor
+        local full = job_cursor ~= nil or stats.jobs >= policy.retention_batch or stats.job_runs > 0
             or stats.workers >= policy.retention_batch or stats.worker_pulses >= policy.retention_batch
             or stats.wake_rows >= policy.retention_batch
             or stats.thread_cleanup_receipts >= policy.retention_batch

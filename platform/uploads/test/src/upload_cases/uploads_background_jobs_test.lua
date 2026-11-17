@@ -369,7 +369,7 @@ local function define_tests()
             test.eq(event_body.upload_id, upload_id)
             test.eq(event_rows[1].external_source, "uploads")
             test.eq(event_rows[1].external_id, upload_id)
-            test.eq(event_rows[1].external_version, uploads_events.TYPE.QUEUED)
+            test.eq(event_rows[1].external_version, first.job_id)
         end)
 
         test.it("provisions the uploads component on first ingest by a non-interactive actor", function()

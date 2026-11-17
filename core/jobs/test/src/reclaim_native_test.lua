@@ -9,6 +9,7 @@ local routes: {{name: string, stages: {string}}} = {
     {name = "confirmed", stages = {"begin", "lookup", "size", "update", "marker", "history", "finalize", "commit", "notify"}},
     {name = "one", stages = {"policy", "history", "size", "history_update"}},
     {name = "many", stages = {"policy", "begin", "lookup", "history", "size", "history_update", "commit"}},
+    {name = "finish", stages = {"policy", "begin", "size", "update", "marker", "history", "finalize", "commit"}},
 }
 local function dialect(): string
     local db, err = sql.get("app:db")
@@ -25,6 +26,7 @@ local function invoke(route): error?
     if route == "many" then local _, err = reclaim.close_lost_runs(db, fixture.dialect, 1); return err end
     if route == "expired" then local _, err = reclaim.reclaim_expired(db, fixture.dialect, 1); return err end
     if route == "confirmed" then local _, err = reclaim.settle_confirmed(db, fixture.dialect, {id = "job", token = "token", execution_seq = 1}); return err end
+    if route == "finish" then local _, err = reclaim.finish_cancellation(db, fixture.dialect, {id = "job", token = "token", execution_seq = 1}); return err end
     local _, err = reclaim.reclaim_terminated(db, fixture.dialect, 1, fixture.child_alive); return err
 end
 local function required(err: error?): error
@@ -79,6 +81,7 @@ local function group(index: integer)
             local proofs = route.name == "one" and {"policy", "history", "history_update"}
                 or route.name == "many" and {"policy", "begin", "lookup", "history", "history_update"}
                 or route.name == "live" and {"policy", "begin", "lookup", "alive", "update"}
+                or route.name == "finish" and {"policy", "begin", "update", "history"}
                 or {"policy", "begin", "lookup", "update", "history"}
             if route.name == "terminated" then proofs[#proofs + 1] = "alive" end
             if route.name == "terminated" or route.name == "live" then proofs[#proofs + 1] = "locked" end
@@ -101,4 +104,4 @@ local function group(index: integer)
         end)
     end)
 end
-return {run = group(1), terminated = group(2), live = group(3), confirmed = group(4), one = group(5), many = group(6)}
+return {run = group(1), terminated = group(2), live = group(3), confirmed = group(4), one = group(5), many = group(6), finish = group(7)}

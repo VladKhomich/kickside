@@ -106,8 +106,10 @@ local UPSERT_SQL = [[
         size = CASE WHEN excluded.size > 0 THEN excluded.size ELSE kickside_upload_read_model.size END,
         error = excluded.error,
         queued_at = COALESCE(excluded.queued_at, kickside_upload_read_model.queued_at),
-        completed_at = COALESCE(excluded.completed_at, kickside_upload_read_model.completed_at),
-        failed_at = COALESCE(excluded.failed_at, kickside_upload_read_model.failed_at),
+        completed_at = CASE WHEN excluded.status = 'processing' THEN NULL
+            ELSE COALESCE(excluded.completed_at, kickside_upload_read_model.completed_at) END,
+        failed_at = CASE WHEN excluded.status = 'processing' THEN NULL
+            ELSE COALESCE(excluded.failed_at, kickside_upload_read_model.failed_at) END,
         deleted_at = COALESCE(excluded.deleted_at, kickside_upload_read_model.deleted_at),
         last_event_id = COALESCE(excluded.last_event_id, kickside_upload_read_model.last_event_id),
         last_event_seq = excluded.last_event_seq,
