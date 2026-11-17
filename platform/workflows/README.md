@@ -100,6 +100,41 @@ node executes and recovered or repeated publication after a crash. The event
 contains only the selected values; the complete Start input is never copied
 into the terminal event. `flow_run_started` retains its existing event shape.
 
+The run sink also accepts optional private completion configuration:
+
+```yaml
+completion:
+  component_id: <target component UUID>
+  token_fields: [board_id, item, visit, attempt]
+```
+
+The target binding must implement `kickside.workflows:run_completion.complete`.
+Workflows checks the launch principal's WRITE access and target capability before
+reservation. Only `component_id` and `token_fields` are accepted. Token selection
+uses the correlation limits above, independently of `correlation_fields`, and is
+included in admission identity. The resolved target and immutable token stay in
+the existing private creation payload, outside engine metadata and audit events.
+The receiver owns domain validation of its token (for Work: board/item UUIDs and
+positive integer visit/attempt).
+
+For every terminal status (`completed`, `failed`, `cancelled`, `terminated`), the
+existing publisher appends the deduplicated audit event, calls `complete` under
+the stored run identity with live authorization, and then clears the existing
+publication flag. The callback receives `token`, authoritative `run_id`,
+`dataflow_id`, exact `flow_ref`, `status`, optional `started_at`, `ended_at`, and
+an error bounded to 4096 encoded JSON bytes for non-success outcomes. It never
+receives full Start input, progress, or outputs; outputs continue through report.
+The receiver returns `{acknowledged: true}` or a typed native error.
+
+Completion is one logical outcome delivered at least once. Receivers must fence
+repeated tokens, including a crash after their commit but before acknowledgement.
+Any callback or authorization failure remains pending for existing maintenance
+retry until repaired. Only an unfiltered point lookup proving target deletion
+acknowledges a no-op; a denied or unavailable lookup remains pending. Idle Flow
+references are not deletion pins. Deletion protection for unpublished terminal
+rows is a release prerequisite (PR #512); the concurrent admission/delete race
+remains known. Callers omitting completion retain their existing behavior.
+
 Binding assist accepts optional `source_root` to lower its expression for the
 consumer's environment, such as `payload` for Data Sync. Omitting it preserves
 the Workflow authoring expression contract.
