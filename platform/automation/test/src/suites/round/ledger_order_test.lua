@@ -17,7 +17,7 @@ local function define_tests()
             local captured = "2020-01-01T00:00:00Z"
             local db, db_err = sql.get(DB)
             test.is_nil(db_err)
-            local tx, tx_err = db:begin()
+            local tx, tx_err = assert(db):begin()
             test.is_nil(tx_err)
             local _, record_err = round_ledger.record_tx(tx, owner, "fixture:ready", {
                 { item = { item_key = "ready", dedup_key = "ready" }, state = "parked" },

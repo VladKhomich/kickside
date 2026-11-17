@@ -52,7 +52,7 @@ local function define_tests()
         local append_output: (string?) -> (any?, any?) = function(_actor_id: string?): (any?, any?) return nil, nil end
         local run: (string, string, any?, any?, any?) -> (Map?, any) = function(_: string, _k: string, _run_as: any?, _recover: any?, _check: any?): (Map?, any) return nil, nil end
         local last_completion: () -> Map = function(): Map return {} end
-        test.before_all(function()
+        test.before_each(function()
             env = h.setup("round_owner")
             automation_id, thread_id = env.automation_id, env.thread_id
             append, append_output, run, last_completion = env.append, env.append_output, env.run, env.last_completion
@@ -127,7 +127,7 @@ local function define_tests()
 
             local _, round_err = run(automation_id, key)
             test.is_nil(round_err, tostring(round_err))
-            local dispatcher = dispatcher_state(dispatcher_id)
+            local dispatcher = dispatcher_state(assert(dispatcher_id))
             test.not_nil(dispatcher)
             test.is_true(dispatcher.status == "running" or
                 (type(dispatcher.scheduled_at) == "string" and dispatcher_is_due(dispatcher)),
@@ -151,7 +151,7 @@ local function define_tests()
             test.eq(err, expected)
             test.eq(read_drive(automation_id, key).phase, "active")
             test.eq(#env.completions, before)
-            local dispatcher = dispatcher_state(dispatcher_id)
+            local dispatcher = dispatcher_state(assert(dispatcher_id))
             test.not_nil(dispatcher)
             test.is_true(dispatcher.status == "running" or
                 (type(dispatcher.scheduled_at) == "string" and dispatcher_is_due(dispatcher)),
@@ -210,6 +210,8 @@ local function define_tests()
         end)
 
         test.it("delivers a page's completed record once while another record of the page retries", function()
+            test.eq(#query("SELECT identity_key FROM kickside_trigger_item_ledger WHERE owner_id=$1", {automation_id}),
+                0, "each case starts without another case's delivery revisions")
             local key, port = "page_retry", "kickside.automation.round.fixture:records"
             new_drive({ automation_id = automation_id, drive_key = key, source_kind = "collection",
                 action = { source_ref = port, config = { items = {
@@ -323,7 +325,6 @@ local function define_tests()
         test.it("records failures in the ledger, redelivers a due retry and counts unresolved items on the drive", function()
             new_drive({ automation_id = automation_id, drive_key = "ledger", source_kind = "event", source_thread_id = thread_id,
                 action = { source_ref = "fixture:ledger", event_type = EVENT_TYPE } })
-            set_drive(automation_id, "ledger", "event_seq = (SELECT event_seq FROM kickside_automation_drive WHERE automation_id = $1 AND drive_key = 'feed')", { automation_id })
             append("fail_retry")
             append("fail_dead")
             append("wait")
@@ -457,7 +458,7 @@ local function define_more_tests()
         local append: (string) -> () = function(_: string) end
         local run: (string, string, any?, any?, any?) -> (Map?, any) = function(_: string, _k: string, _run_as: any?, _recover: any?, _check: any?): (Map?, any) return nil, nil end
         local last_completion: () -> Map = function(): Map return {} end
-        test.before_all(function()
+        test.before_each(function()
             env = h.setup("round_owner_2")
             automation_id, thread_id = env.automation_id, env.thread_id
             append, run, last_completion = env.append, env.run, env.last_completion
