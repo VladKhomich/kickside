@@ -7,8 +7,13 @@
 
 local process = require("process")
 local consts = require("lifecycle_consts")
+local retention_notifier = require("retention_notifier")
 
 local function run(_: any?): any
+    local _, notify_err = retention_notifier.notify({kind = "migrations_applied"})
+    if notify_err then
+        return {status = "error", message = "retention migration wake failed: " .. tostring(notify_err)}
+    end
     local pid, lookup_err = process.registry.lookup(consts.BOOT_NAME, process.registry.CONSISTENT)
     if lookup_err and not errors.is(lookup_err, errors.NOT_FOUND) then
         return { status = "error", message = "lifecycle boot lookup failed: " .. tostring(lookup_err) }
