@@ -14,6 +14,15 @@ local function native(actual: error?, source: error)
 end
 return {run = test.run_cases(function()
     test.describe("native teardown transaction cleanup", function()
+        test.it("preserves a preflight read failure and releases before opening a transaction", function()
+            local source = errors.new({kind=errors.UNAVAILABLE, retryable=true, message="admission read failed",
+                details={code="tx_cleanup", nested={marker="kept"}}})
+            fixture.reset("begin", "admission_read", source)
+            local ok, step, err = teardown.begin_delete("component", "actor", nil)
+            test.is_false(ok); test.eq(step, "delete"); native(err, source)
+            test.eq(fixture.releases, 1); test.eq(fixture.rollbacks, 0); test.eq(fixture.commits, 0)
+            test.eq(fixture.row_locks, 0); test.eq(fixture.effects, 0)
+        end)
         test.it("classifies confirmed absence without hiding transaction cleanup errors", function()
             fixture.reset("begin", "", nil); fixture.absent = true
             local ok, step, err = teardown.begin_delete("component", nil, nil)

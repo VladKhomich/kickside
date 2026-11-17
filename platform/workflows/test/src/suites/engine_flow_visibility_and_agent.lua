@@ -123,11 +123,8 @@ local function define_tests()
             test.is_true(read_only.success, tostring(read_only.error))
 
             local blocked = select(1, call_as(owner, { op = "agent_tool_delete", workflow_id = id })) :: Map
-            test.is_true(blocked.success)
-            local pending, pending_err = deletion_worker.run(id)
-            test.is_nil(pending)
-            test.contains(tostring(pending_err), "active run or unpublished terminal event")
-            test.is_true(errors.is(pending_err, errors.CONFLICT))
+            test.is_false(blocked.success)
+            test.contains(tostring(blocked.error), "active runs or unpublished terminal events")
             local d, db_err = sql.get("app:db")
             test.is_nil(db_err)
             if not d then error("test database unavailable") end

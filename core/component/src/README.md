@@ -33,6 +33,14 @@ Supplying a subject snapshot does not waive implementation visibility. Trusted
 callers own principal resolution and admission; an authority result grants no
 ambient registry access.
 
+Registration retains the creator's captured execution root, authorizer and
+credential/link restrictions. A component created from another component's
+execution can therefore have a stored execution root different from its own ID.
+Deferred execution checks ADMIN on that stored root; a direct grant on the
+consuming component does not substitute for a deleted or revoked root. Changing
+the component's stored execution identity requires the existing authenticated
+`set_execution_identity` command and its ADMIN and delegation checks.
+
 ## Kind mutation admission (SPEC)
 
 A component kind binding declares `meta.mutation: open` or `closed`. An absent
@@ -110,9 +118,10 @@ service, including each kind's deletable teardown. It observes existing deletion
 jobs within a 30-second request deadline that starts before traversal and is
 checked before each read and delete. Iterative traversal handles at most 1,000
 descendants per request; larger trees return a conflict asking to delete in parts
-before any deletion. An access refusal, teardown failure or incomplete deletion
-returns a conflict with `deleted_count`. It names a blocker only when the caller
-can read it; hidden access blockers return a generic conflict without an id.
+before any deletion. An access refusal or incomplete deletion returns a conflict
+with `deleted_count`; a visible typed teardown refusal retains its error kind and
+details. It names a blocker only when the caller can read it; hidden access
+blockers return a generic conflict without an id.
 The parent remains untouched; successfully deleted children stay deleted if
 later cleanup fails. Pending or running jobs retain historical errors without
 stopping the wait; terminal dead or cancelled jobs stop deletion.
@@ -124,3 +133,18 @@ checks it under the component row lock, in the same transaction as declaration,
 state, public metadata and fence updates. A stale revision returns the native
 nonretryable `CONFLICT`; an already-applied command replays its receipt before
 this check. Omitting the field preserves unconditional declaration writes.
+
+## Implementation deletion admission (SPEC)
+
+`meta.delete_admission` on a kind names a declaratively wired library import on
+`kickside.component:delete_admission`. Its `validate(payload) -> error?` receives
+`tx`, `component_id`, `impl_id`, `child_policy`, and `options` by reference after
+Component locks the row and validates access/child policy. It performs read-only
+validation in that transaction. A typed refusal rolls back before the delete
+mark, intent, job or cleanup; malformed/unwired declarations fail closed. Declaration lookup uses the existing trusted kind reader. Kinds
+without a declaration and replays of accepted intents retain their behavior.
+The seam runs only on deletion admission and does not serialize implementation
+writes against validation. Implementations document races with concurrent writes.
+Parent and owner cascades use the same per-component admission. Visible child refusals
+retain their kind, retryability and details alongside `deleted_count`; hidden
+blockers remain concealed. An entire multi-component cascade is not atomic.

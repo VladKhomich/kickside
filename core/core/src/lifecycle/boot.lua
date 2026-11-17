@@ -52,10 +52,7 @@ local function converge_state(): (integer?, error?)
     -- core-database schema is current: on start or upgrade, or on the
     -- install's migrations-applied message. No hot-path check or poller drives it.
     local converged, converge_err = provision.converge(actor, scope)
-    if converge_err then
-        return nil, converge_err
-    end
-    if type(converged) ~= "table" then return nil, response_error("converge") end
+    if type(converged) ~= "table" then return nil, converge_err or response_error("converge") end
     do
         local skipped = type(converged.skipped) == "table" and #(converged.skipped :: { any }) or 0
         if (tonumber(converged.healed) or 0) > 0 or skipped > 0 then
@@ -67,6 +64,7 @@ local function converge_state(): (integer?, error?)
             end
         end
     end
+    if converge_err then return nil, converge_err end
     return #ids, nil
 end
 

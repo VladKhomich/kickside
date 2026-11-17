@@ -69,6 +69,34 @@ local function releases(first: integer, last: integer)
 end
 
 local function outcomes()
+    for _, stage in ipairs({"identity", "parse", "validate", "post_binding", "run", "proc", "advance"}) do
+        test.it("records a deterministic attempt refusal as a visible invalid projection/" .. stage, function()
+            local source = errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "recorded authorizer no longer has root ADMIN", details = {error_kind = "subject"}})
+            fixture.reset(stage, source)
+            fixture.record_failure = true
+            local result, err = invoke.run(input)
+            test.is_nil(err)
+            test.not_nil(result)
+            test.is_true(result.invalid)
+            test.eq(fixture.failures, 1)
+            test.is_true(fixture.deterministic)
+        end)
+    end
+    test.it("records a transient identity lookup failure and returns it for Jobs retry", function()
+        local source = errors.new({kind = errors.UNAVAILABLE, retryable = true,
+            message = "live authorizer lookup unavailable", details = {error_kind = "infrastructure"}})
+        fixture.reset("run", source)
+        fixture.record_failure = true
+        local result, err = invoke.run(input)
+        test.is_nil(result)
+        test.eq(err:kind(), source:kind())
+        test.is_true(err:retryable())
+        test.eq(err:details().error_kind, "infrastructure")
+        test.eq(fixture.failures, 1)
+        test.is_false(fixture.deterministic)
+        test.eq(fixture.advances, 0)
+    end)
     for _, kind in ipairs(kinds) do
         for _, options in ipairs({{}, {retryable = false}, {retryable = true}}) do
             test.it("rollback retains completion refusal/" .. kind .. "/" .. tostring(options.retryable), function()

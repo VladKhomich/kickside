@@ -19,6 +19,7 @@ local PLAIN_IMPL = "app:deletable_ok_binding"
 local FENCED_IMPL = "app:deletable_fenced_binding"
 local FAILING_IMPL = "app:deletable_failing_binding"
 local PAGED_IMPL = "app:deletable_paged_binding"
+local REFUSING_IMPL = "app:deletable_admission_binding"
 
 local function define_tests()
     test.describe("component fence", function()
@@ -65,6 +66,76 @@ local function define_tests()
 
         test.it("admits a write to a live component", function()
             test.is_nil(fence(register(PLAIN_IMPL)))
+        end)
+
+        for _, route in ipairs({"component", "owner"}) do
+            test.it("rolls back implementation admission refusal through " .. route, function()
+                local cid = register(REFUSING_IMPL)
+                local refusal
+                if route == "component" then
+                    local result, err = service():delete({component_id = cid})
+                    test.is_nil(err)
+                    test.is_false(result.success)
+                    test.eq(result.kind, errors.CONFLICT)
+                    test.eq(result.details.code, "fixture_delete_refused")
+                    test.is_false(result.retryable)
+                else
+                    local ok, err = component.system_delete(cid, "reparent_root")
+                    test.is_false(ok)
+                    refusal = err
+                    test.is_true(errors.is(refusal, errors.CONFLICT), tostring(refusal))
+                    test.eq(refusal:details().code, "fixture_delete_refused")
+                end
+                local db = assert(sql.get(DB))
+                local rows = assert(db:query("SELECT deleting_at,delete_intent,context_revision FROM kickside_components WHERE component_id=$1", {cid}))
+                local jobs = assert(db:query("SELECT id FROM kickside_job WHERE owner_kind='component' AND owner_id=$1", {cid}))
+                db:release()
+                test.eq(#jobs, 0)
+                test.eq(#rows, 1)
+                test.is_nil(rows[1].deleting_at)
+                test.is_nil(rows[1].delete_intent)
+                test.is_nil(fence(cid))
+            end)
+        end
+
+        for _, name in ipairs({"missing", "unloadable"}) do
+            test.it("refuses a declared " .. name .. " admission validator before deletion", function()
+                local cid = register("app:deletable_" .. name .. "_admission_binding")
+                if name == "missing" then
+                    local ok, err = component.system_delete(cid, "reparent_root")
+                    test.is_false(ok)
+                    test.is_true(errors.is(err, errors.INTERNAL), tostring(err))
+                    test.eq(err:details().code, "component_delete_admission_invalid")
+                else
+                    -- The runtime eagerly binds imports before entering begin_delete.
+                    local result, err = funcs.call("app:unloadable_admission_probe", {id=cid})
+                    test.is_nil(result)
+                    test.not_nil(err)
+                end
+                local db = assert(sql.get(DB))
+                local rows = assert(db:query("SELECT deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", {cid}))
+                local jobs = assert(db:query("SELECT id FROM kickside_job WHERE owner_kind='component' AND owner_id=$1", {cid}))
+                db:release()
+                test.eq(#jobs, 0)
+                test.eq(#rows, 1)
+                test.is_nil(rows[1].deleting_at)
+                test.is_nil(rows[1].delete_intent)
+                test.is_nil(fence(cid))
+            end)
+        end
+
+        test.it("trusted admission reads policy independently of the caller's kind visibility", function()
+            local scope = assert(security.new_scope({assert(security.policy("app:test_scope_policy")),
+                assert(security.policy("app:delete_kind_read_denied"))}))
+            local caller = funcs.new():with_actor(assert(security.new_actor(owner_id, {}))):with_scope(scope)
+            local plain = register(PLAIN_IMPL)
+            local accepted, err = caller:call("app:delete_admission_restricted", {id=plain})
+            test.is_nil(err, tostring(err)); test.is_true(accepted.ok, tostring(accepted.error))
+            local refusing = register(REFUSING_IMPL)
+            local refused, refusal_err = caller:call("app:delete_admission_restricted", {id=refusing})
+            test.is_nil(refusal_err, tostring(refusal_err)); test.is_false(refused.ok)
+            test.eq(refused.error:kind(), errors.CONFLICT)
+            test.eq(refused.error:details().code, "fixture_delete_refused")
         end)
 
         test.it("refuses a write to a component that does not exist as NOT_FOUND", function()

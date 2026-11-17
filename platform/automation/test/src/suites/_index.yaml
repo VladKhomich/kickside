@@ -571,6 +571,17 @@ entries:
   imports:
     worker_pool: kickside.core.jobs.service:worker_pool
     config: kickside.core.jobs:config
+
+- name: round_harness_test
+  kind: function.lua
+  meta: {type: test, suite: kickside_automation_round}
+  source: file://round/harness_test.lua
+  method: run
+  modules: [uuid]
+  imports:
+    test: wippy.test:test
+    round_harness: kickside.automation:round_harness
+
 - name: round_live_probe
   kind: function.lua
   meta:

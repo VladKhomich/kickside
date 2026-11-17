@@ -7,6 +7,7 @@ M.actor = M.new_actor("user", {})
 M.scope = {evaluate = function(self: any, actor: any, action: string, resource: string): string
     return M.scope_decision or "allow"
 end}
+function M.converge(db: any, skipped: {any}): (integer?, error?) return 0, nil end
 function M.reset(stage: string, source: any)
     M.stage, M.source, M.release_source, M.grant_result = stage, source, nil, nil
     M.scope_decision = nil

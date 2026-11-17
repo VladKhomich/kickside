@@ -25,6 +25,7 @@ local autoinit = require("autoinit")
 local retention_repo = require("retention_repo")
 local core_db = require("core_db")
 local proj_types = require("proj_types")
+local projections_writer = require("projections_writer")
 local execution_identity = require("execution_identity")
 local component_identity = require("component_identity")
 local component_envelope = require("component_envelope")
@@ -351,9 +352,15 @@ function M.converge(opener_actor: any, opener_scope: any): ({ [string]: any }, e
         end
     end
 
+    local _, wake_err = projections_writer.converge(_db, summary.skipped :: {any})
     local _, release_err = _db:release()
-    if release_err then return summary, (errors.wrap(release_err, "converge: database release failed") :: error) end
-    return summary, nil
+    if release_err then
+        if wake_err then
+            return summary, error_envelope.wrap_secondary(release_err, wake_err, "converge: database release failed")
+        end
+        return summary, (errors.wrap(release_err, "converge: database release failed") :: error)
+    end
+    return summary, wake_err
 end
 
 -- ensure_user materializes every user-scope declaration for the actor. Two owners
