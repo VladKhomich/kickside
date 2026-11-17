@@ -359,10 +359,10 @@ entries:
 
   - name: profile_reload_fixture
     kind: library.lua
-    source: file://fixtures/profile_reload.lua
-    modules: [sql]
+    source: file://fixtures/profile_repo.lua
+    modules: [sql, uuid, funcs, process]
     imports:
-      models_repo: kickside.models.persist:repo
+      models_types: kickside.models:models_types
       models_cache: kickside.models.service:models_cache
       catalog_policy: kickside.models.catalog:policy
       catalog_card_policy: kickside.models.catalog:card_policy

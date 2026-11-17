@@ -15,7 +15,7 @@ local function run(args)
             if selected.channel ~= resume then error("older reload was never resumed") end
             replace(snapshot)
         end
-        local ok, result = pcall(profile_reload.run)
+        local ok, result = pcall(profile_reload.reload_catalog)
         models_cache.replace = replace
         process.unlisten(resume)
         if not ok then error(result, 0) end
