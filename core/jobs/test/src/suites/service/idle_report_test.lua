@@ -156,7 +156,7 @@ local function define_tests()
             test.is_nil(cancel_err)
             test.is_true(cancelled)
             test.eq(#executions, 1)
-            local settled, settle_err = lifecycle_cancel.finish_cancellation(db, dbtype, executions[1])
+            local settled, settle_err = reclaim.finish_cancellation(db, dbtype, executions[1])
             test.is_nil(settle_err)
             test.is_true(settled)
             local third, enqueue_err = lifecycle.enqueue_job(db, dbtype, {

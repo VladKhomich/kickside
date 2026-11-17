@@ -18,7 +18,6 @@ entries:
     job_types: kickside.core.jobs:types
     config: kickside.core.jobs:config
     lifecycle: kickside.core.jobs.persist:lifecycle
-    lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
     claim_execution: kickside.core.jobs.persist:claim_execution
     reclaim: kickside.core.jobs.persist:reclaim
     proc_supervisor: kickside.core.jobs:proc_supervisor
@@ -48,7 +47,6 @@ entries:
     job_types: kickside.core.jobs:types
     config: kickside.core.jobs:config
     lifecycle: kickside.core.jobs.persist:lifecycle
-    lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
     claim_execution: kickside.core.jobs.persist:claim_execution
     reclaim: kickside.core.jobs.persist:reclaim
     proc_supervisor: kickside.core.jobs:proc_supervisor

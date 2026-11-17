@@ -1,7 +1,8 @@
 -- Lease and termination-fence recovery of running jobs. reclaim_expired
 -- fences running jobs whose lease elapsed before checking child termination;
 -- reclaim_terminated settles termination fences whose execution child has
--- ended; settle_confirmed settles one fence whose supervisor observed the exit.
+-- ended; settle_confirmed settles one fence whose supervisor observed the exit;
+-- finish_cancellation settles one cancelled execution and closes its run.
 
 local sql = require("sql")
 
@@ -413,6 +414,74 @@ function M.settle_confirmed(db: sql.DB, dbtype: string, execution: table): (bool
     local n, err = reclaim(db, dbtype, 1, { scope = CONFIRMED,
         execution = { id = execution.id, token = token, execution_seq = sequence, failure = execution.failure } })
     return n == 1, err
+end
+
+-- Complete cancellation only after the registered supervisor confirms child
+-- exit, or when no supervisor was registered at commit time. The job row, its
+-- worker marker and the execution's run settle in one transaction.
+function M.finish_cancellation(db: sql.DB, dbtype: string, execution: table): (boolean, error?)
+    local id = tostring(execution.id or "")
+    local token = tostring(execution.token or "")
+    local sequence = tonumber(execution.execution_seq)
+    if id == "" or token == "" or sequence == nil then
+        return false, (errors.new({ message = "cancel completion requires a fenced execution", kind = errors.INVALID }) :: error)
+    end
+    local policy, policy_err = cfg.policy()
+    if policy_err then return false, policy_err end
+    if type(policy) ~= "table" then return false, response_error("policy") end
+    local tx, begin_err = sql_boundary.begin(db, "cancel completion begin failed", "transaction", response_error)
+    if begin_err then return false, begin_err end
+    if not tx then return false, response_error("transaction") end
+    local marker = PREFIX .. token
+    local reason = tostring(execution.reason or "cancelled")
+    local now = lifecycle.now_string(dbtype)
+    local size_err = row_bytes.check_update(tx, "kickside_job", id, {
+        status = job_types.JOB_STATE.CANCELLED,
+        lease_token = row_bytes.NULL, lease_until = row_bytes.NULL, heartbeat_at = row_bytes.NULL,
+        last_error = reason, finished_at = now,
+    }, (policy :: any).max_row_bytes, "finish_cancellation")
+    if size_err then return false, sql_boundary.rollback(tx, size_err, "cancel completion rollback failed") end
+    local result, update_err = sql.builder.update("kickside_job")
+        :set("status", job_types.JOB_STATE.CANCELLED)
+        :set("lease_token", nil):set("lease_until", nil):set("heartbeat_at", nil)
+        :set("last_error", reason)
+        :set("finished_at", now)
+        :where(sql.builder.eq({ id = id, status = job_types.JOB_STATE.RUNNING,
+            lease_token = token, execution_seq = sequence, last_error = marker }))
+        :where("heartbeat_at IS NULL")
+        :run_with(tx):exec()
+    local count, count_err = sql_boundary.single_row_count(result, update_err,
+        "cancel completion update failed", "update.count", response_error)
+    if count_err then return false, sql_boundary.rollback(tx, count_err, "cancel completion rollback failed") end
+    local changed = count == 1
+    if changed then
+        local marker_err = worker_marker.clear(tx, id)
+        if marker_err then return false, sql_boundary.rollback(tx, marker_err, "cancel completion rollback failed") end
+        local history_err = finalize_fenced_run(tx, dbtype, { id = id, execution_seq = sequence, last_error = marker })
+        if history_err then return false, sql_boundary.rollback(tx, history_err, "cancel completion rollback failed") end
+    end
+    local _, commit_err = tx:commit()
+    if commit_err then return false, errors.wrap(commit_err, "cancel completion commit failed") end
+    return changed, nil
+end
+
+-- Deliver committed execution revocations to their token-qualified owners.
+-- When no supervisor is registered, its register-before-read fence guarantees
+-- that a late execution will fail validation, so the caller can settle now.
+function M.notify_cancellations(db: sql.DB, dbtype: string, executions: table[]): error?
+    for _, execution in ipairs(executions) do
+        local sequence = tonumber(execution.execution_seq)
+        if sequence then
+            local sent, send_err = proc_supervisor.notify(tostring(execution.id),
+                tostring(execution.token), sequence, "revoked", nil)
+            if send_err then return send_err end
+            if not sent then
+                local _, finish_err = M.finish_cancellation(db, dbtype, execution)
+                if finish_err then return finish_err end
+            end
+        end
+    end
+    return nil
 end
 
 return M

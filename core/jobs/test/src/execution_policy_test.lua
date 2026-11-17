@@ -170,7 +170,7 @@ return {run = test.run_cases(function()
             local snapshot = row(job).lease_policy
             test.is_true(assert(cancel.cancel_job(db, dialect, {id = job.id})))
             test.eq(row(job).lease_policy, snapshot)
-            test.is_true(assert(cancel.finish_cancellation(db, dialect,
+            test.is_true(assert(reclaim.finish_cancellation(db, dialect,
                 {id = job.id, token = job.lease_token, execution_seq = job.execution_seq})))
             test.eq(row(job).status, "cancelled")
         end)
