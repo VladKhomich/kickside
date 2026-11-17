@@ -255,7 +255,7 @@ function sweeper.run(db: DB, events_deleted: integer?): (RunStats?, error?)
     local now = time.now()
     local agg: RunStats = { events = 0, write_receipts = 0, needs_continue = false }
 
-    local batch_events = (policy :: table).batch_events - (events_deleted or 0)
+    local batch_events = math.floor((policy :: table).batch_events) - (events_deleted or 0)
     local threads, thread_err = load_event_threads(db, dbtype, policy :: table, now)
     if thread_err then return nil, thread_err end
     for _, row in ipairs(threads :: { table }) do
