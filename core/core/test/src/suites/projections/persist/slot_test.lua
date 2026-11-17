@@ -204,10 +204,6 @@ local function define_tests()
                     calls[#calls + 1] = tostring(params.id)
                     return job_lifecycle_cancel.cancel_jobs_tx(tx, dialect, params)
                 end,
-                notify_cancellations = function(db: any, dialect: string, executions: table[]): error?
-                    test.eq(#executions, 0)
-                    return job_lifecycle.notify_cancellations(db, dialect, executions)
-                end,
             }
             local removed, remove_err = writer.remove_projection(db :: sql.DB, thread_id,
                 { projection_id = (first :: table).projection_id })

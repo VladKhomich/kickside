@@ -1,4 +1,5 @@
--- Cancel a job and release its worker marker under the same job-row lock.
+-- Cancel a job and release its worker marker under the same job-row lock. A
+-- running job keeps its execution fenced until reclaim.finish_cancellation settles it.
 local sql = require("sql")
 local clock = require("clock")
 local job_types = require("job_types")
@@ -151,49 +152,6 @@ function cancel.cancel_jobs(db: sql.DB, dbtype: string, params: any): (integer, 
     local canceled, err, revoked = cancel.cancel_job(db, dbtype, cancel_params)
     if err then return 0, err, revoked end
     return canceled and 1 or 0, nil, revoked
-end
-
--- Complete cancellation only after the registered supervisor confirms child
--- exit, or when no supervisor was registered at commit time.
-function cancel.finish_cancellation(db: sql.DB, dbtype: string, execution: table): (boolean, error?)
-    local id = tostring(execution.id or "")
-    local token = tostring(execution.token or "")
-    local sequence = tonumber(execution.execution_seq)
-    if id == "" or token == "" or sequence == nil then
-        return false, (errors.new({ message = "cancel completion requires a fenced execution", kind = errors.INVALID }) :: error)
-    end
-    local policy, policy_err = cfg.policy()
-    if policy_err or not policy then return false, policy_err end
-    local tx, begin_err = sql_boundary.begin(db, "cancel completion begin failed", "transaction", response_error)
-    if begin_err then return false, begin_err end
-    if not tx then return false, response_error("transaction") end
-    local marker = job_types.TERMINATION_PENDING_PREFIX .. token
-    local size_err = row_bytes.check_update(tx, "kickside_job", id, {
-        status = job_types.JOB_STATE.CANCELLED,
-        lease_token = row_bytes.NULL, lease_until = row_bytes.NULL, heartbeat_at = row_bytes.NULL,
-        last_error = tostring(execution.reason or "cancelled"), finished_at = clock.now(dbtype),
-    }, (policy :: any).max_row_bytes, "finish_cancellation")
-    if size_err then return false, sql_boundary.rollback(tx, size_err, "cancel completion rollback failed") end
-    local result, update_err = sql.builder.update("kickside_job")
-        :set("status", job_types.JOB_STATE.CANCELLED)
-        :set("lease_token", nil):set("lease_until", nil):set("heartbeat_at", nil)
-        :set("last_error", tostring(execution.reason or "cancelled"))
-        :set("finished_at", clock.now(dbtype))
-        :where(sql.builder.eq({ id = id, status = job_types.JOB_STATE.RUNNING,
-            lease_token = token, execution_seq = sequence, last_error = marker }))
-        :where("heartbeat_at IS NULL")
-        :run_with(tx):exec()
-    local count, count_err = sql_boundary.single_row_count(result, update_err,
-        "cancel completion update failed", "update.count", response_error)
-    if count_err then return false, sql_boundary.rollback(tx, count_err, "cancel completion rollback failed") end
-    local changed = count == 1
-    if changed then
-        local marker_err = worker_marker.clear(tx, id)
-        if marker_err then return false, sql_boundary.rollback(tx, marker_err, "cancel completion rollback failed") end
-    end
-    local _, commit_err = tx:commit()
-    if commit_err then return false, errors.wrap(commit_err, "cancel completion commit failed") end
-    return changed, nil
 end
 
 return cancel

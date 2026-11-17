@@ -6,7 +6,7 @@ local error_envelope = require("error_envelope")
 local committed_error = require("committed_error")
 local clock = require("clock")
 local register = require("register")
-local job_lifecycle = require("job_lifecycle")
+local job_reclaim = require("job_reclaim")
 local job_lifecycle_cancel = require("job_lifecycle_cancel")
 local jobs_wake = require("jobs_wake")
 local cursor_waiters = require("cursor_waiters")
@@ -247,7 +247,7 @@ function M.remove_projection(db: sql.DB, thread_id: string, params: table): (tab
     if remove_err or not result then return result, remove_err end
     local raw_type, type_err = sql_boundary.database_type(db, "projection dialect unavailable after removal", "database.type", transaction_response)
     if type_err then return nil, committed_error.new(type_err) end
-    local revocation = M._modules.job_lifecycle or job_lifecycle
+    local revocation = M._modules.job_reclaim or job_reclaim
     local cursor_notify_err: error? = nil
     for _, cursor_id in ipairs(result.cursor_ids or {}) do
         cursor_notify_err = error_envelope.cleanup(function(): (any, error?)

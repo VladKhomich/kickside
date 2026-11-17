@@ -9,8 +9,6 @@ local enqueue = require("lifecycle_enqueue")
 local row_bytes = require("row_bytes")
 local row_mutations = require("row_mutations")
 local worker_marker = require("worker_marker")
-local lifecycle_cancel = require("lifecycle_cancel")
-local proc_supervisor = require("proc_supervisor")
 local sql_boundary = require("sql_boundary")
 
 local lifecycle = {}
@@ -384,24 +382,6 @@ lifecycle.fail_job = fail_job
 -- the lease-fenced failure inside it.
 lifecycle.fail_tx = fail_in_tx
 
--- Deliver committed execution revocations to their token-qualified owners.
--- When no supervisor is registered, its register-before-read fence guarantees
--- that a late execution will fail validation, so the caller can settle now.
-function lifecycle.notify_cancellations(db: sql.DB, dbtype: string, executions: table[]): error?
-    for _, execution in ipairs(executions) do
-        local sequence = tonumber(execution.execution_seq)
-        if sequence then
-            local sent, send_err = proc_supervisor.notify(tostring(execution.id),
-                tostring(execution.token), sequence, "revoked", nil)
-            if send_err then return send_err end
-            if not sent then
-                local _, finish_err = lifecycle_cancel.finish_cancellation(db, dbtype, execution)
-                if finish_err then return finish_err end
-            end
-        end
-    end
-    return nil
-end
 type EnqueueParams = enqueue.EnqueueParams
 type IdentityParams = enqueue.IdentityParams
 lifecycle.EnqueueParams = EnqueueParams
