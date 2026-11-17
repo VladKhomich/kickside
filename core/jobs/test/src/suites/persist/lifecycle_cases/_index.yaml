@@ -81,6 +81,7 @@ entries:
     config: kickside.core.jobs:config
     lifecycle: kickside.core.jobs.persist:lifecycle
     lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
+    reclaim: kickside.core.jobs.persist:reclaim
     lease_status: kickside.core.jobs.persist:lease_status
     claim: kickside.core.jobs.persist:claim
     jobs: kickside.core.jobs:jobs

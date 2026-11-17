@@ -3,6 +3,7 @@ local sql = require("sql")
 local cfg = require("config")
 local lifecycle = require("lifecycle")
 local lifecycle_cancel = require("lifecycle_cancel")
+local reclaim = require("reclaim")
 local enqueue = require("lifecycle_enqueue")
 local wake = require("wake")
 local slot_purge = require("slot_purge")
@@ -205,7 +206,7 @@ function jobs.cancel(id: string, expected_lease_token: string?): (table?, error?
         if cancel_err then return nil, sql_boundary.rollback(tx, cancel_err, "cancel rollback failed") end
         local _, commit_err = tx:commit()
         if commit_err then return nil, errors.wrap(commit_err, "cancel commit failed") end
-        local notify_err = lifecycle.notify_cancellations(db, dbtype, revoked or {})
+        local notify_err = reclaim.notify_cancellations(db, dbtype, revoked or {})
         if notify_err then return nil, notify_err end
         return { canceled = canceled, job_id = id }, nil
     end, true)

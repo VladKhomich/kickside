@@ -4150,7 +4150,7 @@ entries:
     imports:
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
-      job_lifecycle: kickside.core.jobs.persist:lifecycle
+      job_reclaim: kickside.core.jobs.persist:reclaim
       job_lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       jobs_wake: kickside.core.jobs.persist:wake
       cursor_waiters: app:projection_transaction_fixture
@@ -4191,7 +4191,7 @@ entries:
     source: file://projection_postcommit_fixture.lua
     modules: [sql]
 
-  - name: projection_postcommit_job_lifecycle
+  - name: projection_postcommit_job_reclaim
     kind: library.lua
     source: file://projection_postcommit_adapter.lua
     imports:
@@ -4228,7 +4228,7 @@ entries:
     imports:
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
-      job_lifecycle: app:projection_postcommit_job_lifecycle
+      job_reclaim: app:projection_postcommit_job_reclaim
       job_lifecycle_cancel: app:projection_postcommit_job_lifecycle_cancel
       jobs_wake: app:projection_postcommit_jobs_wake
       cursor_waiters: app:projection_postcommit_cursor_waiters

@@ -26,14 +26,12 @@ entries:
       row_bytes: kickside.core.jobs.persist:row_bytes
       row_mutations: kickside.core.jobs.persist:row_mutations
       worker_marker: kickside.core.jobs.persist:worker_marker
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
-      proc_supervisor: kickside.core.jobs:proc_supervisor
       sql_boundary: kickside.core.jobs.persist:sql_boundary
 
   - name: lifecycle_cancel
     kind: library.lua
     meta:
-      comment: Atomic cancellation and worker marker release.
+      comment: Atomic cancellation requests and worker marker release.
     source: file://lifecycle_cancel.lua
     modules: [sql]
     imports:

@@ -12,7 +12,6 @@ local job_types = require("job_types")
 local registry_version = require("registry_version")
 local cfg = require("config")
 local lifecycle = require("lifecycle")
-local lifecycle_cancel = require("lifecycle_cancel")
 local claim_execution = require("claim_execution")
 local reclaim = require("reclaim")
 local proc_supervisor = require("proc_supervisor")
@@ -85,7 +84,7 @@ local function settle_child_exit(db: sql.DB, dbtype: string, job: table, run_ctx
                 job_types.RUN_STATE.LEASE_LOST, {}, {}, tostring(child_err))
             if history_err then return history_err end
         end
-        local changed, finish_err = lifecycle_cancel.finish_cancellation(db, dbtype, {
+        local changed, finish_err = reclaim.finish_cancellation(db, dbtype, {
             id = job.id, token = job.lease_token, execution_seq = job.execution_seq,
         })
         if finish_err then return finish_err end
@@ -98,9 +97,6 @@ local function settle_child_exit(db: sql.DB, dbtype: string, job: table, run_ctx
             if settle_err then return settle_err end
             return nil
         end
-        local history_err = lifecycle.finalize_job_run(db, dbtype, run_ctx,
-            job_types.RUN_STATE.FAILED, {}, {}, "job execution revoked")
-        if history_err then return history_err end
         return lease_release.notify(tostring(job.id), tonumber(job.execution_seq),
             { kind = job.owner_kind, id = job.owner_id })
     elseif control == "shutdown" and not child_err then
