@@ -249,6 +249,81 @@ return {run = test.run_cases(function()
             check(value.error, errors.NOT_FOUND, "artifact_read_failed")
             test.eq(value.error:message(), "extracted text is not available: primary content artifact not found")
         end)
+        for _, backing in ipairs({"blob", "locator"}) do
+            test.describe(backing .. " artifact reads", function()
+                local id, artifact, path
+                local bytes = "artifact bytes"
+
+                local function set_location(storage_id, storage_path)
+                    if artifact.blob_id then
+                        local db = assert(sql.get("app:db"))
+                        local _, err = db:execute([[UPDATE kickside_upload_artifact_blobs
+                            SET storage_id=$1, storage_path=$2 WHERE blob_id=$3]],
+                            {storage_id, storage_path, artifact.blob_id})
+                        db:release()
+                        test.is_nil(err, tostring(err))
+                    else
+                        update(id, "storage_id", storage_id)
+                        update(id, "storage_path", storage_path)
+                    end
+                end
+
+                test.before_each(function()
+                    seed(backing .. " read")
+                    id = uploads[backing .. " read"]
+                    artifact = assert(artifacts.create_artifact({
+                        upload_id = id, kind = "text", role = "primary", mime_type = "text/plain",
+                        content = backing == "blob" and bytes or nil,
+                        locator = {type = "upload.original"},
+                    }))
+                    if artifact.blob_id then
+                        path = assert(artifacts.get_blob(artifact.blob_id)).storage_path
+                    else
+                        path = id
+                        assert(volume:writefile(path, bytes))
+                    end
+                end)
+
+                test.after_each(function()
+                    local db = assert(sql.get("app:db"))
+                    assert(db:execute("DELETE FROM kickside_upload_artifacts WHERE artifact_id=$1", {artifact.artifact_id}))
+                    if artifact.blob_id then
+                        assert(db:execute("DELETE FROM kickside_upload_artifact_blobs WHERE blob_id=$1", {artifact.blob_id}))
+                    end
+                    db:release()
+                    assert(volume:remove(path))
+                end)
+
+                test.it("preserves the storage fault and reads the bytes after it clears", function()
+                    set_location("app.upload_errors:unreadable_storage", path)
+                    local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    set_location("app:uploads", path)
+                    local recovered, recovery_err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    test.is_nil(recovery_err, tostring(recovery_err))
+                    test.eq(recovered, bytes)
+                    test.is_nil(content)
+                    check(err, errors.UNAVAILABLE)
+                    test.is_true(err:retryable())
+                    test.contains(tostring(err), "upload test storage unavailable")
+                end)
+
+                test.it("reports missing backing bytes as not found", function()
+                    set_location("app:uploads", path .. ".missing")
+                    local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    test.is_nil(content)
+                    check(err, errors.NOT_FOUND)
+                    test.is_false(err:retryable() == true)
+                end)
+
+                test.it("reports malformed stored locations as invalid", function()
+                    set_location("app:uploads", backing == "blob" and "fs://" or "")
+                    local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    test.is_nil(content)
+                    check(err, errors.INVALID)
+                    test.is_false(err:retryable() == true)
+                end)
+            end)
+        end
         for _, fixture in ipairs({
             { name = "blob", content = "derived bytes", metadata = {size = 101, original_size = 102, file_size = 103} },
             { name = "empty blob", content = "", metadata = {size = 101} },
