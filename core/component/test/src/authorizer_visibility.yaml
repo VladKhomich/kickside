@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: authorizer_visibility_test
+    kind: function.lua
+    meta: {type: test, suite: component_authorizer_visibility}
+    source: file://authorizer_visibility_test.lua
+    method: run
+    modules: [sql, uuid]
+    imports:
+      test: wippy.test:test
+      component: kickside.component:component
+      ops: kickside.component.persist:component_ops
+      placement: kickside.component.persist:placement

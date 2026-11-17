@@ -31,6 +31,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.models.migrations:03_capability_ownership
         path: .meta.target_db
+      - entry: kickside.models.migrations:04_encrypt_legacy_headers
+        path: .meta.target_db
       - entry: kickside.models:db_config
         path: .meta.db_id
 

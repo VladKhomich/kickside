@@ -265,7 +265,7 @@ local function define_tests()
             local progress = entry("kickside.uploads:setting.process_heartbeat_timeout_ms")
             test.eq(tonumber(value(ceiling, "default")), 7200000)
             test.eq(tonumber(value(progress, "default")), 600000)
-            test.is_true(tonumber(value(converter, "limits").max_execution_ms) >= tonumber(value(progress, "default")))
+            test.is_true(tonumber(value(converter, "options").limits.max_execution_ms) >= tonumber(value(progress, "default")))
         end)
 
         test.it("does not publish a module-local processing queue", function()

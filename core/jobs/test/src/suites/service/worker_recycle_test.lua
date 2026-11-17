@@ -1,5 +1,6 @@
 -- Deterministic pool assignment and registry-version fences on a private queue.
 local test = require("test")
+local time = require("time")
 local sql = require("sql")
 local uuid = require("uuid")
 local process = require("process")
@@ -106,9 +107,10 @@ local function define_tests()
             local registry_ch = { case_receive = function(self) return self end }
             local idle_ch = { case_receive = function(self) return self end }
             local timer_ch = { case_receive = function(self) return self end }
+            local clock_base = time.now()
             local now_ns, selection, sends, stale_sends = 0, 0, 0, 0
             local fake_time = {
-                now = function() return { unix_nano = function() return now_ns end } end,
+                now = function() return clock_base:add(now_ns) end,
                 after = function() return timer_ch end,
             }
             local fake_channel = { select = function(cases: any)

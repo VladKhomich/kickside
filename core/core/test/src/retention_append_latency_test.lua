@@ -17,6 +17,7 @@ return {run = test.run_cases(function()
             local db = fixture.open_db()
             local done = channel.new(1)
             local finished = false
+            local phases = {begin_max_ms = 0, append_max_ms = 0, commit_max_ms = 0}
             coroutine.spawn(function()
                 local success, value = pcall(function()
                     local writer = fixture.open_db()
@@ -25,12 +26,18 @@ return {run = test.run_cases(function()
                         -- Time subtraction retains the monotonic clock across wall-clock adjustments.
                         local start = time.now()
                         local tx = assert(writer:begin())
+                        local begun = time.now()
                         local result, err = append.append_events_tx(tx, thread,
                             {{type = "test:load", body_json = "{}"}})
                         if err then tx:rollback(); error(err) end
+                        local appended = time.now()
                         assert(tx:commit())
+                        local committed = time.now()
                         test.eq(result.inserted, 1)
                         durations[#durations + 1] = time.now():sub(start):nanoseconds() / 1000000
+                        phases.begin_max_ms = math.max(phases.begin_max_ms, begun:sub(start):nanoseconds() / 1000000)
+                        phases.append_max_ms = math.max(phases.append_max_ms, appended:sub(begun):nanoseconds() / 1000000)
+                        phases.commit_max_ms = math.max(phases.commit_max_ms, committed:sub(appended):nanoseconds() / 1000000)
                         time.sleep("2ms")
                     until finished
                     writer:release()
@@ -63,6 +70,7 @@ return {run = test.run_cases(function()
                 append_p50_ms = latencies[math.ceil(#latencies * .5)],
                 append_p99_ms = latencies[math.ceil(#latencies * .99)],
                 append_max_ms = latencies[#latencies], engine = db:type(),
+                phases = phases,
             }
             db:release()
             test.is_true(metric.append_max_ms < 1000,

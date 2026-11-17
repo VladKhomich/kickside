@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: '1.0'
+namespace: app
+entries:
+  - name: dep.kickside.inbox
+    kind: ns.dependency
+    component: kickside/inbox
+    version: '*'
+  - name: automation_delete_admission_test
+    kind: function.lua
+    source: file://automation_delete_admission_test.lua
+    method: run
+    meta: {type: test, suite: workflows_automation_delete_admission}
+    modules: [uuid, security, funcs, json, time, sql]
+    imports: &imports
+      reaper_consts: kickside.core.lifecycle:consts
+      users: kickside.users.persist:user_repo
+      groups: kickside.users.persist:user_groups_repo
+      jobs_claim: kickside.core.jobs.persist:claim
+      lifecycle: kickside.core.jobs.persist:lifecycle
+      test: wippy.test:test
+      repo: kickside.workflows.repo:repo
+      workflow: kickside.workflows:workflow
+      publish: kickside.workflows.repo:version_publish
+      automation: kickside.automation:automation
+      component: kickside.component:component
+      store: kickside.workflows.store:store
+      writable: kickside.workflows.runs:run_writable
+      inbox_reader: kickside.inbox.persist:inbox_reader
+      inbox_resolve: kickside.inbox:inbox_resolve
+      maintenance: kickside.workflows.runs:maintenance
+      delete_api: kickside.automation.api:delete
+      worker: app:deletion_test_worker
+  - name: automation_delete_admission_exercise
+    kind: function.lua
+    source: file://automation_delete_admission_test.lua
+    method: exercise
+    modules: [uuid, security, funcs, json, time, sql]
+    imports: *imports

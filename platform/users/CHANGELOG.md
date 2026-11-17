@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.24](https://github.com/kicksideai/kickside/compare/users-v0.2.23...users-v0.2.24) (2026-11-17)
+
+
+### Bug Fixes
+
+* **core:** expose projection failures and restore active slot wakes ([#505](https://github.com/kicksideai/kickside/issues/505)) ([e44a75f](https://github.com/kicksideai/kickside/commit/e44a75f6edcbde07a5f4e9ed21aa1bc56b77baba))
+
+## [0.2.23](https://github.com/kicksideai/kickside/compare/users-v0.2.22...users-v0.2.23) (2026-11-16)
+
+
+### Bug Fixes
+
+* preserve web component host contracts and eager bundles ([8bfd86d](https://github.com/kicksideai/kickside/commit/8bfd86dded87eea2c40294be136af1a66ab25765))
+* preserve web component host contracts and eager bundles ([b68bfa0](https://github.com/kicksideai/kickside/commit/b68bfa020b6f8ba97a0c37c9b5a955030617d37a))
+
 ## [0.2.22](https://github.com/kicksideai/kickside/compare/users-v0.2.21...users-v0.2.22) (2026-11-13)
 
 

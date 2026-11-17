@@ -14,9 +14,11 @@ entries:
   kind: library.lua
   source: file://purge_cleanup_source.lua
   modules:
+  - security
   - sql
   - crypto
   imports:
+    provision: kickside.core.threads:provision
     sql_boundary: kickside.core.jobs.persist:sql_boundary
     contract_common: app:purge_cleanup_common
     contract_events: kickside.core.threads:contract_events

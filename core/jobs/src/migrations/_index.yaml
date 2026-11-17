@@ -153,3 +153,15 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 27_disabled_slots
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-15T00:00:27Z"
+    source: file://27_disabled_slots.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

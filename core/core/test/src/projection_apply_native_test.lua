@@ -54,6 +54,16 @@ local function native(first: integer, last: integer)
     end
 end
 local function outcomes()
+    test.it("an absent process host remains a retryable dependency failure", function()
+        for _, config in ipairs({{}, {meta = {}}, {meta = {host_id = ""}}, {meta = {host_id = false}}}) do
+            fixture.reset("registry", nil, "host")
+            fixture.missing, fixture.proof = true, config
+            local value, err = apply.process_host()
+            test.is_nil(value)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.is_true(err:retryable())
+        end
+    end)
     test.it("defers output demand until all appends and prelocks the completing job", function()
         fixture.reset("", nil, "advance")
         local value, err = apply.advance("app:db", {id = "job", lease_token = "token", execution_seq = 1},

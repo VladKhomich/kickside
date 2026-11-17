@@ -342,7 +342,7 @@ entries:
     meta: {type: test, suite: kickside_models}
     source: file://secret_headers_test.lua
     method: run
-    modules: [sql, json, funcs]
+    modules: [sql, json, funcs, registry]
     imports:
       test: wippy.test:test
       policy: kickside.models.catalog:policy

@@ -14,6 +14,9 @@ local contract = require("contract")
 local json = require("json")
 local time = require("time")
 local sql = require("sql")
+local process = require("process")
+local channel = require("channel")
+local proc_supervisor = require("proc_supervisor")
 
 local STORAGE_ID = "app:uploads"
 -- Synthetic image-only PDF (no text layer, no embedded fonts): doc2md extracts no
@@ -424,25 +427,36 @@ local function define_tests()
             end
         end)
 
-        test.it("heartbeats the processing job after each rendered batch", function()
+        test.it("heartbeats the processing job after each rendered batch without rewriting it", function()
             local job_id = uuid_v4()
             local db = assert(sql.get("app:db"))
             assert(sql.builder.insert("kickside_job"):set_map({ id = job_id, job_type = "raster.fixture",
                 job_identity = job_id, owner_kind = "installation", owner_id = "raster-fixture", status = "running",
                 lease_token = "raster-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00" })
                 :run_with(db):exec())
-            local function heartbeat_at(): any
-                return assert(db:query("SELECT heartbeat_at FROM kickside_job WHERE id=$1", { job_id }))[1].heartbeat_at
-            end
+            local controls = assert(process.listen(proc_supervisor.CONTROL_TOPIC))
+            local name = proc_supervisor.execution_name(job_id, "raster-lease")
+            assert(process.registry.register(name, nil, process.registry.CONSISTENT))
+            local path = scripted_document({total = 16})
             local rendered, err = executor("user-raster"):call(RASTERIZE_STAGE, {
-                upload_id = seed_document("application/pdf", ""), mime_type = "application/pdf",
-                storage_id = STORAGE_ID, storage_path = FIXTURE_PATH, size = FIXTURE_SIZE,
+                upload_id = seed_document(SCRIPTED_MIME, ""), mime_type = SCRIPTED_MIME,
+                storage_id = STORAGE_ID, storage_path = path, size = FIXTURE_SIZE,
                 cancel_ref = { job_id = job_id, lease_token = "raster-lease", execution_seq = 1 },
             })
             test.is_nil(err)
             test.is_true(rendered.success, json.encode(rendered))
-            test.eq(rendered.metadata.rendered_page_count, FIXTURE_PAGES)
-            test.not_nil(heartbeat_at())
+            test.eq(rendered.metadata.rendered_page_count, 16)
+            for _ = 1, 2 do
+                local signal = channel.select({controls:case_receive(), time.after("5s"):case_receive()})
+                test.eq(signal.channel, controls)
+                test.eq(signal.value.kind, "heartbeat")
+                test.eq(signal.value.job_id, job_id)
+                test.eq(signal.value.lease_token, "raster-lease")
+                test.eq(signal.value.execution_seq, 1)
+            end
+            test.is_true(channel.select({controls:case_receive(), default = true}).default)
+            test.is_nil(assert(db:query("SELECT heartbeat_at FROM kickside_job WHERE id=$1", {job_id}))[1].heartbeat_at)
+            assert(process.registry.unregister(name, process.registry.CONSISTENT))
             assert(sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec())
             db:release()
         end)

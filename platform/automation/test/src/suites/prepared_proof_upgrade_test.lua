@@ -100,7 +100,7 @@ return test.run_cases(function()
             test.eq(entry.meta.target_db,"app:db","the migration must follow Automation's configured database")
             local live, live_err = sql.get("app:db")
             test.is_nil(live_err)
-            local _, column_err = live:query("SELECT declaration_hash FROM kickside_automation_prepared LIMIT 1")
+            local _, column_err = assert(live):query("SELECT declaration_hash FROM kickside_automation_prepared LIMIT 1")
             live:release()
             test.is_nil(column_err, tostring(column_err))
 

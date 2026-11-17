@@ -3,6 +3,7 @@
 -- per call and asks each surviving owner to block before events are removed.
 local sql = require("sql")
 local time = require("time")
+local uuid = require("uuid")
 local contract = require("contract")
 
 local M = {}
@@ -74,8 +75,17 @@ function M.fence_page(db: any, id: string): (boolean?, error?)
             return nil, response_error("pins.consumer_key")
         end
         local key = pins[i].consumer_key :: string
+        local local_cursor = false
+        local cursor_id = key:match("^projection:(.+)$")
+        if cursor_id and uuid.validate(cursor_id) then
+            local owned, owned_err = db:query("SELECT id FROM kickside_projection_cursor WHERE id=$1 AND thread_id=$2",
+                {cursor_id, id})
+            local lookup_err = rows_error(owned, owned_err, "thread local cursor lookup failed", "cursor_owner.rows")
+            if lookup_err then return nil, lookup_err end
+            local_cursor = #owned > 0
+        end
         local owner = key:match("^drive:([^:]+):.+$")
-        if key ~= "self:" .. id and owner ~= id and owner ~= tostring(state.component_id) then
+        if not local_cursor and key ~= "self:" .. id and owner ~= id and owner ~= tostring(state.component_id) then
             if not owner then return nil, pending("retention consumer has no owner locator: " .. key) end
             if not fence then
                 local definition, def_err = contract.get("kickside.core:source_delete_fence")

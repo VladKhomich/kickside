@@ -4,6 +4,18 @@ namespace: kickside.workflows.migrations
 # target_db is injected by the root kickside.workflows:target_db requirement.
 
 entries:
+  - name: 09_automation_delete_admission_index
+    kind: function.lua
+    meta:
+      type: migration
+      comment: Bound Automation deletion admission independently of retained run history.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-17T00:00:00Z"
+    source: file://09_automation_delete_admission_index.lua
+    method: migration
+    imports:
+      migration: wippy.migration:migration
+
   - name: 01_workflows
     kind: function.lua
     meta:
@@ -78,6 +90,18 @@ entries:
       depends_on: [ns:wippy.migration]
       timestamp: "2026-10-28T00:00:00Z"
     source: file://07_retry_policy.lua
+    method: migration
+    imports:
+      migration: wippy.migration:migration
+
+  - name: 08_delete_admission_index
+    kind: function.lua
+    meta:
+      type: migration
+      comment: Bound Workflow deletion admission independently of retained run history.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-16T00:00:00Z"
+    source: file://08_delete_admission_index.lua
     method: migration
     imports:
       migration: wippy.migration:migration

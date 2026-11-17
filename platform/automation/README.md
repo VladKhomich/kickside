@@ -41,6 +41,10 @@ make test
 Create a dedicated PostgreSQL database before the profile run and drop it
 afterward. Set the `pg_host`, `pg_port`, `pg_username`, and `pg_password`
 variables in the harness configuration for your test server.
+The `round_test` and `round_more_test` cases allocate their own automation owner
+and source thread so unresolved deliveries cannot enter another case's page.
+Ledger fixture reads select the first admitted revision by delivery order and
+identity, independently of row insertion order or the database's query plan.
 Edit frontend source under `ui/` and run `make -C ../../ build MOD=automation` from this directory;
 commit regenerated tracked assets with the source.
 

@@ -24,6 +24,13 @@ drain of an in-flight execution is bounded by that execution's own declared
 `proc.max_execution`); past it the ordinary timeout termination and retry policy
 apply. An upgrade never terminates or re-runs an execution.
 
+The pool reads its next pending and lease deadlines in one query. Each branch
+seeks the first timestamp after the dispatch snapshot through the existing
+deadline index and stops after one row. SQLite explicitly selects the partial
+lease index, as Jobs health does, so this bound also holds without statistics.
+Equal deadlines prefer lease reclamation; a deadline that became due after the
+dispatch snapshot arms an immediate timer.
+
 A job carries no execution identity: a `worker_ref` target runs under the worker frame and
 resolves the identity held by its own owner record.
 
@@ -34,6 +41,15 @@ PostgreSQL migration 04 creates the Jobs-owned `updated_at` trigger function, so
 Jobs can initialize its database without Core migrations. Migration 23 rebinds
 legacy installations to that function without changing Core's function. Undoing
 23 retains the Jobs trigger; undoing 04 removes its tables and function.
+
+## Scheduling clock
+
+Jobs owns scheduling time through `clock`, backed by runtime `time.now()`.
+Claims, lease checks, pool deadline delays, listing `due`, backlog ages and worker
+freshness all compare against that runtime clock. SQL binds the runtime instant;
+pool delays subtract runtime time from the earliest stored deadline. Database
+host time and transaction-start time do not determine eligibility. SQLite keeps
+microsecond timestamp comparisons, including the worker freshness boundary.
 
 ## Dependency interface
 

@@ -12,6 +12,10 @@ override:
       methods: {resolve: "app:scope_resolver_stub"}
   "app:history_upgrade_db:file": "${sqlite_path}.history-upgrade"
   "app:db:file": "${sqlite_path}"
+  # The scale fixture owns explicit checkpoints between deletes and assertions.
+  # Keep automatic maintenance outside the 30-minute CI run so it cannot make
+  # the fixture's forced TRUNCATE checkpoint busy. Production keeps its cadence.
+  "app:db:checkpoint.interval": 1h
   "kickside.core.jobs.service:worker.service:lifecycle.auto_start": false
   "kickside.core.retention.service:sweeper.service:lifecycle.auto_start": false
 registry:
