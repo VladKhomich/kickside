@@ -98,6 +98,7 @@ entries:
       execution_identity: kickside.execution:execution_identity
       automation_ref: kickside.automation:automation_ref
       run_identity: kickside.workflows.runs:run_identity
+      component: kickside.component:component
 
   - name: resume
     kind: function.lua
@@ -134,6 +135,7 @@ entries:
       execution_identity: kickside.execution:execution_identity
       automation_ref: kickside.automation:automation_ref
       run_identity: kickside.workflows.runs:run_identity
+      component: kickside.component:component
 
   - name: maintenance
     kind: library.lua
@@ -176,6 +178,23 @@ entries:
     imports:
       maintenance: kickside.workflows.runs:maintenance
 
+  - name: maintenance_complete
+    kind: function.lua
+    meta: { private: true, comment: "Deliver completion with only the live run principal scope." }
+    source: file://maintenance.lua
+    method: complete
+    modules: [time, sql, logger, uuid, json, funcs, security]
+    imports:
+      admission: kickside.workflows.runs:admission
+      engine_api: kickside.workflows.runs:engine_api
+      client: userspace.dataflow:client
+      runs_read: kickside.workflows.runs:runs_read
+      runs_state: kickside.workflows.runs:runs_state
+      execution_identity: kickside.execution:execution_identity
+      component: kickside.component:component
+      policy: kickside.workflows:policy_config
+      run_time: kickside.workflows.runs:run_time
+
   - name: maintenance_publish
     kind: function.lua
     meta: { private: true, comment: "Publish one claimed terminal audit event as workflow maintenance." }
@@ -206,6 +225,7 @@ entries:
       policies:
         - kickside.workflows.security:maintenance_defer
         - kickside.workflows.security:maintenance_actor
+        - kickside.workflows.security:maintenance_component_exists
         - kickside.workflows.security:maintenance_store
         - kickside.workflows.security:maintenance_db
     imports:
