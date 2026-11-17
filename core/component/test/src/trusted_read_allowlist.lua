@@ -1,6 +1,6 @@
 -- Explicit roster of every module-qualified call into the component trusted-read tier.
 --
--- component.lua exports six reads that skip the actor access gate (the trusted tier,
+-- component.lua exports trusted reads that skip the actor access gate (the trusted tier,
 -- distinct from the access-checked public tier): list_system, open_private,
 -- list_for_subject, get_private_context, system_delete, resolve_path_prefixes.
 -- The two tiers stay separate on purpose; the risk is a new caller silently reaching
@@ -30,6 +30,8 @@ M.METHODS = {
     "open_private",
     "list_for_subject",
     "get_private_context",
+    "get_private_runtime_context",
+    "list_runtime_context",
     "system_delete",
     "resolve_path_prefixes",
     "component_owner",

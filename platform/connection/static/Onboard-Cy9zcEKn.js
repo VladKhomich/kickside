@@ -2,7 +2,7 @@ import { defineComponent as D, ref as l, computed as $, onMounted as M, openBloc
 import { Icon as u } from "@iconify/vue";
 import { api as w } from "@wippy-fe/proxy";
 import { u as U, r as G, a as H } from "./status-vqwfu--5.js";
-import { _ as J } from "./ConnectionPicker.vue_vue_type_script_setup_true_lang-Bjb0l3Et.js";
+import { _ as J } from "./ConnectionPicker.vue_vue_type_script_setup_true_lang-rHrj-MJk.js";
 const Q = { class: "conn-page oc" }, R = {
   key: 0,
   class: "oc-loading"
@@ -190,4 +190,4 @@ const Q = { class: "conn-page oc" }, R = {
 export {
   ge as default
 };
-//# sourceMappingURL=Onboard-Cc03efhu.js.map
+//# sourceMappingURL=Onboard-Cy9zcEKn.js.map

@@ -72,7 +72,7 @@ function upload_query_repo.find_by_content_hash(actor_id, content_sha256, dedup_
 end
 
 -- Get an upload by ID
-function upload_query_repo.get(uuid)
+local function get_upload(uuid, query)
     if not uuid or uuid == "" then
         return nil, errors.new({kind = errors.INVALID, message = "Upload ID is required",
             retryable = false, details = {code = "upload_id_required"}})
@@ -84,8 +84,7 @@ function upload_query_repo.get(uuid)
     end
 
     -- Build the SELECT query
-    local query = select_upload_columns()
-        :from("kickside_uploads")
+    query = query:from("kickside_uploads")
         :where("uuid = ?", uuid)
         :limit(1)
 
@@ -104,8 +103,12 @@ function upload_query_repo.get(uuid)
             retryable = false, details = {code = "upload_not_found"} })
     end
 
-    local upload = uploads[1]
+    return uploads[1], nil
+end
 
+function upload_query_repo.get(uuid)
+    local upload, err = get_upload(uuid, select_upload_columns())
+    if err then return nil, err end
     return parse_upload_row(upload)
 end
 
@@ -134,6 +137,11 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
     end
     if #rows == 0 then return nil, nil end
     return parse_upload_row(rows[1])
+end
+
+-- Authorization needs the stored owner, without loading content metadata.
+function upload_query_repo.get_read_ref(uuid)
+    return get_upload(uuid, sql.builder.select("uuid", "actor_id"))
 end
 
 -- Intent is committed on the upload record before enqueue. The jobs enqueue
