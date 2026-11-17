@@ -11,6 +11,8 @@ type JsonSchema = any
 
 type ValueControl = { tag: string, props: { [string]: any }? }
 
+type DecreaseConfirmation = boolean | { zero: number }
+
 type Definition = {
     namespace: string,
     key: string,
@@ -33,6 +35,7 @@ type Definition = {
     ui: string?,
     control: ValueControl?,
     owner: string?,
+    confirm_decrease: DecreaseConfirmation?,
 }
 
 type DefinitionMap = { [string]: { [string]: Definition } }
@@ -80,6 +83,7 @@ type SettingListRow = {
     ui: string?,
     control: ValueControl?,
     owner: string?,
+    confirm_decrease: DecreaseConfirmation?,
 }
 
 type ListResponse = { success: boolean, settings: { SettingListRow }?, error: string? }

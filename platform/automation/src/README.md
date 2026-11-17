@@ -73,6 +73,19 @@ that ID conflicts. `set_execution_identity` is an ADMIN control for changing the
 execution principal and also requires a caller ID and expected identity
 generation.
 
+Selected installation retains the authenticated caller's inherited execution
+root, just as component registration does. A caller without a root installs an
+Automation rooted at its new component. When a rooted caller selects itself,
+creation already stores that identity; the installer verifies its generation,
+root, principal and credential/link restrictions through the component receipt
+without issuing a redundant identity change. A rooted caller selecting another
+principal receives a non-retryable `PERMISSION_DENIED` before preparation or
+reservation, even with delegation on the inherited root or `*`; no component,
+drive or command is created. Declaration authority is still
+checked before the drives become enabled. Child placement follows `parent_id`
+for the existing component child teardown path. Repeating an unchanged
+selected request returns its recorded outcome; changed input conflicts.
+
 ## Reconfiguration revisions
 
 `automations.reconfigure(id, input, {expected_revision = revision})` accepts an

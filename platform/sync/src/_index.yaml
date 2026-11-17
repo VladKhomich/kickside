@@ -159,6 +159,18 @@ entries:
       round_plan: kickside.sync:round_plan
       transform_gate: kickside.transform:generator
 
+  - name: sync_prepare_install
+    kind: function.lua
+    meta: { comment: prepared_installable.prepare_install returns the existing pure Sync install plan without creating resources. }
+    source: file://sync.lua
+    method: install
+    modules: [ctx, time]
+    imports:
+      automations_lib: kickside.automation:automation
+      destination_map: kickside.sync:destination_map
+      round_plan: kickside.sync:round_plan
+      transform_gate: kickside.transform:generator
+
   - name: sync_reconfigure
     kind: function.lua
     meta: { comment: Re-declares the sync through the automation's declaration command with its main source. }
@@ -362,6 +374,9 @@ entries:
       - contract: kickside.contract:installable
         methods:
           install: kickside.sync:sync_install
+      - contract: kickside.automation:prepared_installable
+        methods:
+          prepare_install: kickside.sync:sync_prepare_install
       - contract: kickside.sync:sync_contract
         methods:
           reconfigure: kickside.sync:sync_reconfigure
