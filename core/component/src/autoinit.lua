@@ -44,7 +44,7 @@ function M.read_kind(impl_id: string?): (unknown?, error?)
     if not entry then return nil end
     local meta = entry.meta or {}
     return {meta = {mutation = meta.mutation, projections = meta.projections,
-        thread = meta.thread, retention = meta.retention,
+        thread = meta.thread, retention = meta.retention, delete_admission = meta.delete_admission,
         secret_fields = meta.secret_fields, credential_schema = meta.credential_schema}}, nil
 end
 

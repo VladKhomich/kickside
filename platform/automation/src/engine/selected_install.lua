@@ -50,12 +50,22 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 command_id = pending.request_id, generation = pending.generation, declaration_hash = pending.digest})
             if receipt_err then return defer(receipt_err) end
         end
-        local selected, selection_err = executor:call(IDENTITY, {
-            component_id = pending.automation_id, operator_id = input.operator_id, principal = input.principal,
-            request_id = pending.request_id, expected_identity_generation = input.expected_identity_generation,
-            command_generation = pending.generation,
-        })
-        if selection_err or not selected then return defer(selection_err or unavailable("selected install identity returns no proof")) end
+        local captured = input.operator_identity
+        local subject = input.subject_identity
+        local keeps_creation_identity = captured.component_id ~= nil and captured.component_id ~= pending.automation_id
+            and subject.principal.kind == captured.principal.kind and subject.principal.id == captured.principal.id
+        -- Creation already stores a rooted caller's own identity. Verify that
+        -- receipt below; SET_EXECUTION_IDENTITY would root it at the child.
+        local identity_generation = input.expected_identity_generation
+        if not keeps_creation_identity then
+            local selected, selection_err = executor:call(IDENTITY, {
+                component_id = pending.automation_id, operator_id = input.operator_id, principal = input.principal,
+                request_id = pending.request_id, expected_identity_generation = input.expected_identity_generation,
+                command_generation = pending.generation,
+            })
+            if selection_err or not selected then return defer(selection_err or unavailable("selected install identity returns no proof")) end
+            identity_generation = selected.identity_generation
+        end
         local declared, declaration_err = executor:call(APPLY, {
             component_id = pending.automation_id, automation_id = pending.automation_id,
             command_id = pending.request_id, generation = pending.generation, declaration_hash = pending.digest,
@@ -63,14 +73,13 @@ function part.attach(M: any, dependencies: any, P: any): ()
         if declaration_err or not declared then return defer(declaration_err or unavailable("selected install declaration returns no proof")) end
         local target, target_err = (dependencies.component :: any).get_identity_receipt(pending.automation_id)
         if target_err or not target then return defer(target_err or unavailable("selected install target receipt is unavailable")) end
-        local captured = input.operator_identity
         local stored = target.execution_identity
         if type(stored) ~= "table" or type(stored.authorized_by) ~= "table"
             or stored.authorized_by.kind ~= captured.authorized_by.kind or stored.authorized_by.id ~= captured.authorized_by.id
-            or stored.component_id ~= pending.automation_id or type(stored.principal) ~= "table"
+            or stored.component_id ~= subject.component_id or type(stored.principal) ~= "table"
             or stored.principal.kind ~= input.principal.kind or stored.principal.id ~= input.principal.id
             or stored.credential_id ~= captured.credential_id or stored.link_id ~= captured.link_id
-            or target.component_id ~= pending.automation_id or target.identity_generation ~= selected.identity_generation
+            or target.component_id ~= pending.automation_id or target.identity_generation ~= identity_generation
             or type(target.identity_hash) ~= "string" or target.identity_hash == ""
             or target.declaration_hash ~= pending.digest or target.declaration_command_id ~= pending.request_id
             or target.declaration_command_generation ~= pending.generation or type(target.principal) ~= "table"
@@ -122,7 +131,12 @@ function part.attach(M: any, dependencies: any, P: any): ()
         if principal.kind ~= "user" then
             return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false, message = "selected installation requires a user principal"})
         end
-        local subject, subject_err = (dependencies.execution_identity :: any).capture({principal = principal, component_id = a.component_id})
+        if identity.component_id ~= nil and principal.id ~= identity.principal.id then
+            return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "rooted selected installation requires the caller's principal"})
+        end
+        local subject, subject_err = (dependencies.execution_identity :: any).capture({
+            principal = principal, component_id = identity.component_id or a.component_id})
         if subject_err or not subject then return nil, subject_err end
         local fingerprint, fingerprint_err = (dependencies.canonical_json :: any).hash({type = type_id, input = input,
             parent_id = a.parent_id, operator_id = operator_id, principal = principal,

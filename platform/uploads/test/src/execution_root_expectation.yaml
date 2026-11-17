@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: uploads_execution_root_expectation
+    kind: function.lua
+    meta: {type: test, suite: kickside_uploads, group: KickSide Uploads}
+    source: file://execution_root_expectation.lua
+    method: run
+    modules: [funcs, contract, security, uuid, sql, process, channel]
+    imports:
+      test: wippy.test:test
+      component: kickside.component:component
+  - name: uploads_select_identity_probe
+    kind: function.lua
+    meta: {type: test_helper}
+    source: file://execution_root_selection.lua
+    method: run
+    modules: [contract, security]
+    imports:
+      provision: kickside.core.threads:provision
+      events: kickside.uploads.persist:uploads_events

@@ -9,6 +9,8 @@ import stylesText from './styles.css?inline'
 const PROPS_SCHEMA: WippyPropsSchema = {
   type: 'object',
   properties: {
+    label: { type: 'string', default: '', description: 'Accessible name supplied by the containing form.' },
+    description: { type: 'string', default: '', description: 'Accessible help supplied by the containing form.' },
     value: { type: 'string', default: '', description: 'Currently selected model name, or a "class:<name>" reference (e.g. class:fast).' },
     capability: { type: 'string', default: 'generate', description: 'Which models to list: "generate" (default — chat/tool-use + class shortcuts) or "embed" (embedding models, no classes).' },
     mode: { type: 'string', default: '', description: '"classes" restricts the panel to model classes (portable "class:<name>" refs); empty lists classes and concrete models.' },

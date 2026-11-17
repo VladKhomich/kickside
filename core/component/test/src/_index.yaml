@@ -1399,6 +1399,7 @@ entries:
       error_envelope: kickside.contract:error_envelope
       sql: app:teardown_cause_sql
       contract: app:teardown_cause_contract
+      delete_admission: kickside.component:delete_admission
       component_ops: app:teardown_cause_fixture
       placement: kickside.component.persist:placement
       component_lifecycle: kickside.component:component_lifecycle
@@ -1481,6 +1482,7 @@ entries:
       security: app:cleanup_setup_security
       contract: app:cleanup_setup_contract
       registry: app:cleanup_setup_fixture
+      delete_admission: kickside.component:delete_admission
       component_ops: kickside.component.persist:component_ops
       placement: kickside.component.persist:placement
       component_lifecycle: kickside.component:component_lifecycle
@@ -1837,6 +1839,7 @@ entries:
       component_ops: app:teardown_tx_cleanup_fixture
       placement: app:teardown_tx_cleanup_placement
       component_lifecycle: app:teardown_tx_cleanup_lifecycle
+      delete_admission: app:teardown_admission_stub
 
   - name: teardown_tx_cleanup_test
     kind: function.lua
@@ -3222,3 +3225,7 @@ entries:
     kind: library.lua
     source: file://delete_children_dependency.lua
     imports: {fixture: 'app:delete_children_fixture'}
+
+  - name: teardown_admission_stub
+    kind: library.lua
+    source: file://teardown_admission_stub.lua

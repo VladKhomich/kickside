@@ -48,6 +48,12 @@ commit regenerated tracked assets with the source.
 
 **System → Settings** edits registry-declared application settings. The database stores overrides; resetting a value restores its declared default. Secret fields expose presence metadata in lists and remain encrypted at rest. Runtime addresses and database selection belong to deployment profiles.
 
+Retention declarations can opt into confirmation before an administrator saves
+or resets to a shorter window with `confirm_decrease: true`. Integer settings
+whose zero selects a finite window use `confirm_decrease: { zero: 365 }` (with
+their actual zero value). See the [declaration rules and UI SPEC](src/README.md).
+This metadata affects the existing host dialog only; backend writes are unchanged.
+
 ## Reference
 
 - [Module reference](src/README.md)

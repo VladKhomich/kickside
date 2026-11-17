@@ -257,6 +257,7 @@ entries:
     kind: contract.binding
     meta:
       type: kickside.automation
+      delete_admission: automation_delete_admission
       title: Channel Responder
       comment: Reply in a channel with one of your agents.
       icon: tabler:message-2-bolt

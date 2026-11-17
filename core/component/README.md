@@ -182,3 +182,31 @@ entries and require their exact dispatch authority plus owning-kind secret autho
 `get_private_context`, `list_system` and `open_private` reads stay in the caller's frame, return
 masked migrated fields, and perform no credential-dispatch permission check. Non-secret rows
 retain the existing JSON decode path without declaration lookup, environment access or decryption.
+
+### Implementation deletion admission
+
+A component kind may declare `meta.delete_admission`, naming a library import on
+`kickside.component:delete_admission`. Its module wires that import declaratively
+with an `ns.requirement` targeting `.imports.<alias>`, whose default is its
+validator `library.lua`. Kinds without the declaration retain their behavior. Declaration lookup uses the
+existing trusted kind reader after deletion is authorized.
+The library exports `validate(payload) -> error?` (nil admits deletion).
+
+`begin_delete` validates access and child policy, then calls the validator before
+opening its delete transaction. The payload contains `component_id`, `impl_id`,
+`child_policy` and `options`. The validator reads its implementation's configured
+database and releases its connection; no cleanup or external side effect belongs
+here. A typed error refuses admission before marking deletion or enrolling a job
+and reaches both secured deletion and trusted owner deletion. Component rechecks
+access and child policy under its existing placement lock before committing the
+delete intent. Implementation admission is not atomic with concurrent writes;
+opening an independent read before the transaction also supports colocated SQLite
+storage, whose application connection is serialized by the runtime.
+A declared but unwired or malformed validator fails closed. Already accepted
+deletions resume their original intent without rerunning admission.
+
+The seam runs only on deletion admission and reads committed implementation state.
+It adds no locks or checks to implementation write paths; each
+implementation documents any race with concurrent writes. The seam admits one
+component at a time; a cascade can already have accepted parents or unrelated
+siblings when a child refuses.

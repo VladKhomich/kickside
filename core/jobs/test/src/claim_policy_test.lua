@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local sql = require("sql")
+local clock = require("clock")
 local claim = require("claim")
 local lease = require("lease")
 local cfg = require("config")
@@ -27,9 +28,9 @@ return {run = test.run_cases(function()
             test.is_true(active)
             local rows
             if dialect == sql.type.POSTGRES then
-                rows = assert(db:query("SELECT EXTRACT(EPOCH FROM (lease_until-NOW())) AS seconds FROM kickside_job WHERE id=$1", {id}))
+                rows = assert(db:query("SELECT EXTRACT(EPOCH FROM (lease_until-CAST($1 AS TIMESTAMPTZ))) AS seconds FROM kickside_job WHERE id=$2", {clock.now(dialect),id}))
             else
-                rows = assert(db:query("SELECT (julianday(lease_until)-julianday('now'))*86400 AS seconds FROM kickside_job WHERE id=$1", {id}))
+                rows = assert(db:query("SELECT (julianday(lease_until)-julianday($1))*86400 AS seconds FROM kickside_job WHERE id=$2", {clock.now(dialect),id}))
             end
             test.is_true(tonumber(rows[1].seconds) > 55, "dispatch renewal retains the 60s lease for its 40s heartbeat")
             test.eq(job.lease_policy.lease_heartbeat_ms, 40000)

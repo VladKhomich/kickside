@@ -629,6 +629,13 @@ entries:
       provision: kickside.core.threads:provision
       autoinit: kickside.component:autoinit
 
+  - name: provision_user_call_deny
+    kind: security.policy
+    policy:
+      resources: kickside.core.threads:provision_user
+      actions: funcs.call
+      effect: deny
+
   - name: provision_kind_read_deny
     kind: security.policy
     policy:
@@ -837,8 +844,9 @@ entries:
   - name: thread_resource_race
     kind: library.lua
     source: file://src_link/threads/contract/resource.lua
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -886,7 +894,7 @@ entries:
   - name: provision_conflict_fixture
     kind: library.lua
     source: file://src_link/threads/provision.lua
-    modules: [funcs, sql]
+    modules: [funcs, sql, security, registry]
     imports:
       component_envelope: kickside.component:envelope
       error_envelope: kickside.contract:error_envelope
@@ -896,6 +904,7 @@ entries:
       core_db: kickside.core:db
       execution_identity: kickside.execution:execution_identity
       proj_types: kickside.core.projections:types
+      projections_writer: kickside.core.projections.persist:writer
       component_identity: kickside.core.threads:component_identity
 
   - name: thread_provision_race_test
@@ -1069,8 +1078,9 @@ entries:
   - name: first_touch_race_resource
     kind: library.lua
     source: file://src_link/threads/contract/resource.lua
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -1103,8 +1113,9 @@ entries:
   - name: thread_visibility_resource
     kind: library.lua
     source: file://src_link/threads/contract/resource.lua
-    modules: [crypto]
+    modules: [crypto, security]
     imports:
+      provision: kickside.core.threads:provision
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
@@ -2712,10 +2723,12 @@ entries:
     source: file://provision_native_execution_adapter.lua
     imports:
       fixture: app:provision_native_fixture
+      identity: kickside.execution:execution_identity
 
   - name: provision_native_source
     kind: library.lua
     source: file://provision_native_source.lua
+    modules: [registry, security]
     imports:
       contract: app:provision_native_contract_adapter
       funcs: app:provision_native_funcs_adapter
@@ -2726,6 +2739,7 @@ entries:
       execution_identity: app:provision_native_execution_adapter
       core_db: kickside.core:db
       proj_types: kickside.core.projections:types
+      projections_writer: app:provision_native_fixture
       component_envelope: kickside.component:envelope
       error_envelope: kickside.contract:error_envelope
 
@@ -3057,6 +3071,8 @@ entries:
   - name: projection_invoke_native_fixture
     kind: library.lua
     source: file://projection_invoke_native_fixture.lua
+    imports:
+      job_types: kickside.core.jobs:types
     modules: [sql, time]
 
   - name: projection_invoke_native_sql_adapter
@@ -3497,7 +3513,7 @@ entries:
   - name: teardown_fence_native_source
     kind: library.lua
     source: file://teardown_fence_native_source.lua
-    modules: [sql, time]
+    modules: [sql, time, uuid]
     imports:
       contract: app:teardown_fence_native_fixture
 
@@ -4367,3 +4383,9 @@ entries:
     source: file://migration_wake_notifier.lua
     imports:
       fixture: app:migration_wake_fixture
+
+  - name: disabled_slots_migration
+    kind: library.lua
+    source: file://disabled_slots_migration.lua
+    imports:
+      migration: wippy.migration:core

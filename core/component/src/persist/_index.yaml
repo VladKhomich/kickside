@@ -333,3 +333,4 @@ entries:
       component_ops: kickside.component.persist:component_ops
       placement: kickside.component.persist:placement
       component_lifecycle: kickside.component:component_lifecycle
+      delete_admission: kickside.component:delete_admission

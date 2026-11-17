@@ -25,7 +25,8 @@ local function new(dependencies: any): any
         local ok, err, receipt = workflows.delete(id)
         if not ok then
             res:set_status((http_errors.classify(err)))
-            res:write_json({ success = false, error = tostring(err or "delete failed") })
+            res:write_json({ success = false, error = tostring(err or "delete failed"),
+                kind = err and err:kind(), retryable = err and err:retryable(), details = err and err:details() })
             return
         end
         local deletion = receipt :: { [string]: any }

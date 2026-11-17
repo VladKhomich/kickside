@@ -115,6 +115,10 @@ entries:
         path: .meta.target_db
       - entry: kickside.workflows.migrations:07_retry_policy
         path: .meta.target_db
+      - entry: kickside.workflows.migrations:08_delete_admission_index
+        path: .meta.target_db
+      - entry: kickside.workflows.migrations:09_automation_delete_admission_index
+        path: .meta.target_db
       - entry: kickside.workflows:db_config
         path: .meta.db_id
 
@@ -433,6 +437,46 @@ entries:
       types: kickside.workflows:types
       component: kickside.component:component
 
+  - name: run_completion
+    kind: contract.definition
+    meta:
+      comment: At-least-once terminal completion under the stored launch identity; receivers fence duplicate tokens.
+    methods:
+      - name: complete
+        description: Acknowledge an immutable run completion or return a typed native error. Outputs remain available through report.
+        input_schemas:
+          - format: application/schema+json
+            definition: |
+              {
+                "type": "object", "additionalProperties": false,
+                "required": ["token", "run_id", "dataflow_id", "flow_ref", "status", "ended_at"],
+                "properties": {
+                  "token": {
+                    "type": "object", "minProperties": 1, "maxProperties": 16,
+                    "propertyNames": {"minLength": 1, "maxLength": 128},
+                    "additionalProperties": {"type": ["string", "number", "boolean"]}
+                  },
+                  "run_id": {"type": "string", "format": "uuid"},
+                  "dataflow_id": {"type": "string", "format": "uuid"},
+                  "flow_ref": {
+                    "type": "object", "additionalProperties": false, "required": ["kind", "id", "version"],
+                    "properties": {
+                      "kind": {"const": "flow"}, "id": {"type": "string", "minLength": 1},
+                      "version": {"type": "integer", "minimum": 1}
+                    }
+                  },
+                  "status": {"enum": ["completed", "failed", "cancelled", "terminated"]},
+                  "started_at": {"type": "string"}, "ended_at": {"type": "string"},
+                  "error": {
+                    "type": "object", "additionalProperties": false, "required": ["code", "message"],
+                    "properties": {"code": {"type": "string"}, "message": {"type": "string", "maxLength": 4096}}
+                  }
+                }
+              }
+        output_schemas:
+          - format: application/schema+json
+            definition: '{"type":"object","additionalProperties":false,"required":["acknowledged"],"properties":{"acknowledged":{"const":true}}}'
+
   - name: run
     kind: contract.binding
     meta:
@@ -467,6 +511,20 @@ entries:
           kind: { type: string, const: flow, required: true }
           id: { type: string, minLength: 1, required: true }
           version: { type: integer, minimum: 1, required: true }
+      completion:
+        type: object
+        title: Run completion
+        description: Private callback target and selected scalar Start fields (4096 encoded token bytes maximum).
+        additionalProperties: false
+        properties:
+          component_id: { type: string, format: uuid, required: true }
+          token_fields:
+            type: array
+            required: true
+            minItems: 1
+            maxItems: 16
+            uniqueItems: true
+            items: { type: string, minLength: 1, maxLength: 128 }
       correlation_fields:
         type: array
         title: Terminal correlation fields

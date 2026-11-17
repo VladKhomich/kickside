@@ -7,7 +7,7 @@ return {run = test.run_cases(function()
             test.it("refuses a malformed verdict/" .. type(value.success), function()
                 fixture.reset("grant_proof", nil)
                 fixture.grant_result = value
-                local result, err = provision.ensure_user({}, fixture.scope, "user")
+                local result, err = provision.ensure_user(fixture.actor, fixture.scope, "user")
                 test.is_nil(result)
                 test.is_true(errors.is(err, errors.INTERNAL))
                 test.eq(err:retryable(), false)

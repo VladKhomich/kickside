@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local sql = require("sql")
+local clock = require("clock")
 local jobs = require("jobs")
 local fixture = require("fixture")
 local query_jobs = require("query_jobs")
@@ -165,6 +166,11 @@ return {run = test.run_cases(function()
         end)
         test.it("seeks expired leases with 100k future running jobs before and after planner statistics",function()
             queue(function(db,dbtype)
+                -- Keep the first plan genuinely unanalyzed: autoanalyze can
+                -- otherwise sample the pending seed before its running update.
+                if dbtype == sql.type.POSTGRES then
+                    assert(db:execute("ALTER TABLE kickside_job SET (autovacuum_enabled=false)"))
+                end
                 seed(db,dbtype,100000)
                 assert(db:execute("UPDATE kickside_job SET status='running',lease_until='2099-01-01 00:00:00'"))
                 for _, analyzed in ipairs({false,true}) do
@@ -231,11 +237,16 @@ return {run = test.run_cases(function()
                 seed(db,dbtype,1002)
                 assert(db:execute("UPDATE kickside_job SET last_error=NULL,scheduled_at='2001-01-01 00:00:00',priority=1"))
                 assert(db:execute("UPDATE kickside_job SET scheduled_at='2000-01-01 00:00:00',priority=0 WHERE job_identity='1002'"))
-                local health=assert(jobs.health())
+                local observed = clock.now(dbtype)
+                local original = clock.now
+                clock.now = function() return observed end
+                local ok, health = pcall(jobs.health)
+                clock.now = original
+                if not ok then error(health) end
                 local expected=assert(db:query(dbtype==sql.type.POSTGRES
-                    and "SELECT EXTRACT(EPOCH FROM (NOW()-'2000-01-01'::timestamptz))*1000 AS age"
-                    or "SELECT (julianday('now')-julianday('2000-01-01'))*86400000 AS age"))[1].age
-                test.is_true(math.abs(health.due_unclaimed_oldest_age_ms-assert(tonumber(expected)))<1000)
+                    and "SELECT EXTRACT(EPOCH FROM (CAST($1 AS TIMESTAMPTZ)-'2000-01-01'::timestamptz))*1000 AS age"
+                    or "SELECT (julianday($1)-julianday('2000-01-01'))*86400000 AS age", {observed}))[1].age
+                test.eq(health.due_unclaimed_oldest_age_ms,math.floor(assert(tonumber(expected))))
                 test.eq(health.due_unclaimed_count,1000)
                 test.is_true(health.due_unclaimed_count_capped)
             end)

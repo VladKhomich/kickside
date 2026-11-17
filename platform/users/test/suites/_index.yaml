@@ -230,6 +230,7 @@ entries:
     method: run
     modules: [contract, registry]
     imports:
+      trigger_reconcile: kickside.security:trigger_reconcile
       default_groups: kickside.users:default_groups
       user_consts: kickside.users:consts
       test: wippy.test:test
