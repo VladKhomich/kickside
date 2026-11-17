@@ -69,7 +69,7 @@ entries:
     imports:
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
-      job_lifecycle: kickside.core.jobs.persist:lifecycle
+      job_reclaim: kickside.core.jobs.persist:reclaim
       job_lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       jobs_wake: kickside.core.jobs.persist:wake
       cursor_waiters: kickside.core.threads:cursor_waiters

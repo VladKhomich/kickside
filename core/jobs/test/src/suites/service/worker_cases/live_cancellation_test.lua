@@ -127,15 +127,15 @@ return { run = function(options)
                     if intent == "cancel" then test.is_true(assert(lifecycle_cancel.cancel_job(db, dbtype, {id = leased.id}))) end
                     local recovered = false
                     local recovery_err: error? = nil
-                    local finish = lifecycle_cancel.finish_cancellation
-                    lifecycle_cancel.finish_cancellation = function(...)
+                    local finish = reclaim.finish_cancellation
+                    reclaim.finish_cancellation = function(...)
                         recovered = true
                         local _, err = reclaim.reclaim_terminated(db, dbtype, job_types.MAX_WORKERS)
                         recovery_err = err
                         return finish(...)
                     end
                     local settle_err = worker.settle_child_exit(db, dbtype, leased, run, child_err, control)
-                    lifecycle_cancel.finish_cancellation = finish
+                    reclaim.finish_cancellation = finish
                     local row = assert(db:query("SELECT status,lease_token FROM kickside_job WHERE id=$1", {leased.id}))[1]
                     local history = assert(db:query("SELECT status FROM kickside_job_run WHERE id=$1", {run.id}))[1]
                     assert(db:release())
