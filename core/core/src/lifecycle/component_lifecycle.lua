@@ -47,7 +47,7 @@ local function merged_worker_config(p: table, parent_id: string, parent_impl_id:
     return cfg
 end
 
-local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, attach_parent: boolean): error?
+local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, attach_parent: boolean, prepared: table?): error?
     local parent_id = trim(args.parent_id)
     local parent_impl_id = trim(args.parent_impl_id)
     local child_id = trim(args.component_id)
@@ -59,7 +59,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
     end
 
     local function attach(impl_id: string, on: string): error?
-        for _, p in ipairs(autoinit.projections_for_impl(impl_id)) do
+        for _, p in ipairs(prepared or autoinit.projections_for_impl(impl_id)) do
             if p.on == on then
                 local own = on == autoinit.PROJECTION_ON.LIFECYCLE
                 local key = p.projection_key
@@ -81,7 +81,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
                     system_identity = true,
                     ensure = own,
                 }
-                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params)
+                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params, own and (p :: table).declaration or nil, own and "lifecycle" or nil)
                 if reg_err then return reg_err end
             end
         end
@@ -194,6 +194,21 @@ end
 
 function M.deleted(args: any): (any?, error?)
     return handle(lifecycle_log.KIND.DELETED, args)
+end
+
+-- converge_own registers the component's own lifecycle projections (`on: lifecycle`)
+-- on its lifecycle thread, the registration every lifecycle event runs, for a
+-- component whose declared lifecycle projection is absent since its last event.
+-- Registration is an ensure: surviving projections and cursors keep their progress.
+-- Returns the lifecycle thread id, or nil for a component exempt from one.
+function M.converge_own(tx: sql.Transaction, dbtype: string, component_id: string, impl_id: string, prepared: table?): (string?, error?)
+    if lifecycle_log.is_exempt(impl_id) then return nil, nil end
+    local lifecycle_thread_id, ensure_err = lifecycle_log.ensure_tx(tx, component_id, impl_id)
+    if ensure_err or not lifecycle_thread_id then return nil, ensure_err end
+    local attach_err = attach_lifecycle_projections({ tx = tx, dbtype = dbtype,
+        component_id = component_id, impl_id = impl_id }, lifecycle_thread_id :: string, false, prepared)
+    if attach_err then return nil, attach_err end
+    return lifecycle_thread_id, nil
 end
 
 -- Lifecycle appends and projection attachment publish durable wake demand in

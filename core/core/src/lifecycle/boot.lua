@@ -26,6 +26,10 @@ local function response_error(field: string): error
         details = {code = "lifecycle_boot_response", field = field}})
 end
 
+local continuation: table? = nil
+local convergence_actor: any = nil
+local convergence_scope: any = nil
+
 local function converge_state(): (integer?, error?)
     local actor = security.new_actor(consts.SYSTEM_ACTOR, {
         system = true,
@@ -47,25 +51,23 @@ local function converge_state(): (integer?, error?)
     if type(ids) ~= "table" then return nil, response_error("provision") end
     logger:info("system lifecycle provisioned", { count = #ids })
 
-    -- Converge every component whose kind declares a primary thread but whose
-    -- thread row is missing or has the wrong declared class. It runs once the
-    -- core-database schema is current: on start or upgrade, or on the
-    -- install's migrations-applied message. No hot-path check or poller drives it.
-    local converged, converge_err = provision.converge(actor, scope)
-    if type(converged) ~= "table" then return nil, converge_err or response_error("converge") end
-    do
-        local skipped = type(converged.skipped) == "table" and #(converged.skipped :: { any }) or 0
-        if (tonumber(converged.healed) or 0) > 0 or skipped > 0 then
-            logger:info("declared-thread convergence", {
-                checked = converged.checked, healed = converged.healed, skipped = skipped,
-            })
-            for _, s in ipairs((converged.skipped :: { any }) or {}) do
-                logger:error("declared thread not convergeable", s :: { [string]: any })
-            end
-        end
-    end
-    if converge_err then return nil, converge_err end
+    convergence_actor, convergence_scope = actor, scope
+    continuation = {}
     return #ids, nil
+end
+
+local function continue_convergence(): error?
+    local actor, scope = convergence_actor, convergence_scope
+    local converged, converge_err = provision.converge(actor, scope, continuation)
+    if converge_err then return converge_err end
+    if type(converged) ~= "table" then return response_error("converge") end
+    continuation = converged.continuation
+    local skipped = type(converged.skipped) == "table" and #converged.skipped or 0
+    if (tonumber(converged.checked) or 0) > 0 or skipped > 0 then
+        logger:info("declared-thread convergence", {checked = converged.checked, healed = converged.healed, skipped = skipped})
+        for _, entry in ipairs(converged.skipped or {}) do logger:error("declared thread not convergeable", entry) end
+    end
+    return nil
 end
 
 local function converge_reported(): (integer?, error?)
@@ -162,7 +164,9 @@ local function main(_args: any): any
         -- land without that message: an install whose changed modules exclude
         -- core, or migrations applied after an install that ran none.
         local cases = { events:case_receive(), applied:case_receive() }
-        local retry = parked and time.after(tostring(consts.SCHEMA_RETRY_MS) .. "ms") or nil
+        local advance = continuation and not parked and not converge_err and time.after("1ms") or nil
+        if advance then cases[#cases + 1] = advance:case_receive() end
+        local retry = (parked or (continuation and converge_err)) and time.after(tostring(consts.SCHEMA_RETRY_MS) .. "ms") or nil
         if retry then cases[#cases + 1] = retry:case_receive() end
         local selected = channel.select(cases)
         local ev = selected.value
@@ -170,7 +174,14 @@ local function main(_args: any): any
             if converge_err then error(converge_err) end
             return { ok = true, count = count }
         end
-        if selected.channel == applied or selected.channel == retry then
+        if (selected.channel == advance and advance) or (selected.channel == retry and retry and continuation and not parked) then
+            local advance_err = continue_convergence()
+            converge_err = advance_err
+            if advance_err then
+                logger:error("system lifecycle convergence failed", {reason = tostring(advance_err), error_native = error_envelope.encode(advance_err)})
+                if not advance_err:retryable() then error(advance_err) end
+            end
+        elseif selected.channel == applied or selected.channel == retry then
             local next_state, next_count, next_err, next_ledger_failed = converge_when_ready(ledger_failed)
             ledger_failed = next_ledger_failed
             if next_state == CONVERGED then

@@ -238,8 +238,11 @@ entries:
       core_db: kickside.core:db
       execution_identity: kickside.execution:execution_identity
       proj_types: kickside.core.projections:types
+      proj_register: kickside.core.projections.persist:register
       projections_writer: kickside.core.projections.persist:writer
       component_identity: kickside.core.threads:component_identity
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      component_lifecycle: kickside.core.lifecycle:component_lifecycle_impl
 
   - name: provision_identity
     kind: security.policy
