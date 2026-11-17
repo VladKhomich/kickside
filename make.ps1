@@ -131,6 +131,11 @@ function Do-Build {
         if ($LASTEXITCODE -ne 0) { throw 'Application bundle check fails' }
         node --test (Join-Path $PSScriptRoot 'app/scripts/check-app-bundle.test.mjs')
         if ($LASTEXITCODE -ne 0) { throw 'Application bundle checker tests fail' }
+        $vendorTest = Join-Path $PSScriptRoot 'app/scripts/check-shell-vendor.test.mjs'
+        if (Test-Path -LiteralPath $vendorTest -PathType Leaf) {
+            node --test $vendorTest
+            if ($LASTEXITCODE -ne 0) { throw 'Shell vendor tests fail' }
+        }
     }
 }
 
