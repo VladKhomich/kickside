@@ -205,18 +205,19 @@ local function define_tests()
             test.eq(tonumber(h.query("SELECT COUNT(*) AS n FROM kickside_trigger_item_ledger WHERE owner_id=$1",{ledger_owner})[1].n),before_ledger_rows)
             local drain={}
             for _,batch in ipairs({100,100,100,100,100,1000,1000,1000,1000,1000}) do
-                if not postgres then h.query("PRAGMA wal_checkpoint(TRUNCATE)") end
                 local started=time.now():unix_nano()
                 local statements: {Map}={}
                 local count,err=automation_db.in_tx(function(tx)
                     local executor={query=function(_,statement,params) return tx:query(statement,params) end,
                         execute=function(_,statement,params)
-                            statements[#statements+1]={sql=statement,params=params}
-                            return tx:execute(statement,params)
+                            local deleted,delete_err=tx:execute(statement,params)
+                            statements[#statements+1]={sql=statement,params=params,
+                                rows_affected=deleted and tonumber(deleted.rows_affected)}
+                            return deleted,delete_err
                         end}
                     return history.prune_tx(executor,NOW,batch)
                 end)
-                test.is_nil(err,tostring(err));test.eq(count,batch)
+                test.is_nil(err,tostring(err))
                 local elapsed=(time.now():unix_nano()-started)/1000000
                 for _,call in ipairs(statements) do
                     local _,plan_err=automation_db.in_tx(function(tx)
@@ -227,16 +228,33 @@ local function define_tests()
                     end)
                     test.not_nil(call.plan,tostring(plan_err))
                 end
-                local wal: Map?=nil
                 if not postgres then
-                    local checkpoint=h.query("PRAGMA wal_checkpoint(PASSIVE)")[1]
-                    local frames=assert(tonumber(checkpoint.log))
-                    test.is_true(frames>0,"the measured delete emits WAL frames")
-                    local page_size=assert(tonumber(h.query("PRAGMA page_size")[1].page_size))
-                    wal={frames=frames,bytes=32+frames*(page_size+24)}
+                    -- Force maintenance between the committed delete and its work
+                    -- assertions: affected rows and indexed plans survive WAL truncation.
+                    local checkpoint=h.query("PRAGMA wal_checkpoint(TRUNCATE)")[1]
+                    test.eq(tonumber(checkpoint.busy),0,"the fixture checkpoint completes")
+                    test.eq(tonumber(checkpoint.log),0,"the fixture checkpoint truncates the WAL")
                 end
+                local affected=0
+                for _,call in ipairs(statements) do
+                    local rows=assert(tonumber(call.rows_affected))
+                    test.is_true(rows>0 and rows<=batch,"each measured delete does bounded real work")
+                    affected=affected+rows
+                    if postgres then
+                        test.is_true(postgres_rows(call.plan)<=1000,"history prune examines no more than its page bound")
+                    else
+                        test.is_true(runs(call.plan,"automation_id=? AND round_at<?"),"history prune uses its indexed age range")
+                        -- Seeded history has one row per indexed round-key prefix.
+                        test.is_true(runs(call.plan,"sqlite_autoindex_kickside_automation_delivery_history_1 (automation_id=? AND drive_key=? AND round_token=?"),
+                            "history deletes use indexed round-key probes: " .. h.encoded(call.plan))
+                        test.is_false(runs(call.plan,"SCAN"),"history prune does not scan retained rows")
+                        test.is_false(runs(call.plan,"TEMP B-TREE FOR ORDER BY"),"history prune does not sort the retained window")
+                    end
+                end
+                test.eq(affected,batch,"the statements delete exactly the requested batch")
+                test.eq(count,batch)
                 local round_ms=round()
-                drain[#drain+1]={rows=count,ms=elapsed,round_ms=round_ms,statements=statements,wal=wal}
+                drain[#drain+1]={rows=count,ms=elapsed,round_ms=round_ms,statements=statements}
             end
             h.exec("UPDATE kickside_trigger_item_ledger SET state='dead',next_attempt_at=NULL WHERE owner_id=$1 AND state='retrying'",{ledger_owner})
             -- Keep the million-row fixture within its budget: 100,000 dead items

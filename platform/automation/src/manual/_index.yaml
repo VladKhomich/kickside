@@ -11,6 +11,7 @@ entries:
   kind: contract.binding
   meta:
     type: kickside.automation
+    delete_admission: automation_delete_admission
     title: Manual task
     comment: Run a published workflow, agent prompt or declared writable action on explicit request.
     icon: tabler:player-play

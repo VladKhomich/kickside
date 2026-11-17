@@ -95,6 +95,129 @@ local function define_tests()
         test.eq(err:details().field, "trigger.config.thread_id")
     end)
 
+    test.describe("prepared selected installation", function()
+        local PREPARE = "kickside.sync:sync_prepare_install"
+        local CREATE = "kickside.automation:declaration_writer_create_selected"
+
+        local function query(statement: string, params: {any}?): any
+            local db, db_err = sql.get(DB)
+            if db_err or not db then error(tostring(db_err or "sync test database unavailable")) end
+            local rows, err = db:query(statement, params or {})
+            db:release()
+            if err then error(tostring(err)) end
+            return rows
+        end
+
+        local function fixture(failure: string?): (any, Map, Map)
+            local id = uuid.v4()
+            local args: Map = {component_id = id, request_id = "sync-selected:" .. id,
+                principal = {kind = "user", id = security.actor():id()}}
+            local observed: Map = {prepares = 0, creates = 0, failure = failure}
+            local function wrap(real: any): any
+                return {
+                    with_context = function(_: any, context: Map): (any, any)
+                        local contextual, err = real:with_context(context)
+                        if err then return nil, err end
+                        return wrap(contextual), nil
+                    end,
+                    call = function(_: any, target: string, input: any): (any, any)
+                        if target == PREPARE then observed.prepares = observed.prepares + 1 end
+                        if target == CREATE then observed.creates = observed.creates + 1 end
+                        local result, err = real:call(target, input)
+                        if not err and target == observed.failure then
+                            observed.failure = nil
+                            return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true,
+                                message = "test loses acknowledgement after target commit"})
+                        end
+                        return result, err
+                    end,
+                }
+            end
+            local engine = upgrade_engine.new({funcs = {new = function(): (any, any)
+                local real, err = funcs.new()
+                if err then return nil, err end
+                return wrap(real), nil
+            end}})
+            return engine, args, observed
+        end
+
+        local function assert_installed(id: string): ()
+            local row = read_drive(id, "main") :: Map
+            test.not_nil(row)
+            test.eq(row.applied.declaration.title, "Records to store")
+            test.is_true(row.enabled)
+            test.eq(#query("SELECT automation_id FROM kickside_automation_command WHERE automation_id=$1 AND pending_request_id IS NOT NULL", {id}), 0)
+            local receipt, err = component_lib.get_identity_receipt(id)
+            test.is_nil(err, tostring(err))
+            test.eq(receipt.principal.id, security.actor():id())
+            test.eq(receipt.identity_generation, 1)
+        end
+
+        test.it("prepares the existing install plan without writes, jobs or delivery", function()
+            local entry = registry.get("kickside.sync:sync") :: any
+            local prepared: any = nil
+            for _, binding in ipairs(entry.data.contracts) do
+                if binding.contract == "kickside.automation:prepared_installable" then prepared = binding.methods.prepare_install end
+            end
+            test.eq(prepared, PREPARE)
+            local tables = {"kickside_components", "kickside_automation_drive", "kickside_automation_command",
+                "kickside_automation_op", "kickside_job", "kickside_event"}
+            local before: Map = {}
+            for _, name in ipairs(tables) do before[name] = query("SELECT COUNT(*) AS n FROM " .. name)[1].n end
+            local result, err = funcs.call(PREPARE, declaration())
+            test.is_nil(err, tostring(err))
+            test.eq(result.state.title, "Records to store")
+            test.eq(result.source.source_kind, "collection")
+            test.eq(result.source.schedule.expression, "1h")
+            test.is_true(result.enabled)
+            for _, name in ipairs(tables) do test.eq(query("SELECT COUNT(*) AS n FROM " .. name)[1].n, before[name], name) end
+            local refused, refusal = funcs.call(PREPARE, declaration({enabled = "yes"}))
+            test.is_nil(refused)
+            test.is_true(errors.is(refusal, errors.INVALID), tostring(refusal))
+        end)
+
+        test.it("replays a selected Sync install without preparation or another creation", function()
+            local engine, args, observed = fixture()
+            local first, err = engine.install_type_selected("kickside.sync:sync", declaration(), args)
+            test.is_nil(err, tostring(err))
+            test.eq(first.id, args.component_id)
+            local again, replay_err = engine.install_type_selected("kickside.sync:sync", declaration(), args)
+            test.is_nil(replay_err, tostring(replay_err))
+            test.eq(again.id, first.id)
+            test.eq(observed.prepares, 1)
+            test.eq(observed.creates, 1)
+            assert_installed(first.id)
+        end)
+
+        test.it("refuses changed input on the same selected Sync request", function()
+            local engine, args, observed = fixture()
+            local first, err = engine.install_type_selected("kickside.sync:sync", declaration(), args)
+            test.is_nil(err, tostring(err))
+            test.not_nil(first)
+            local changed, conflict = engine.install_type_selected("kickside.sync:sync", declaration({title = "Changed"}), args)
+            test.is_nil(changed)
+            test.is_true(errors.is(conflict, errors.CONFLICT), tostring(conflict))
+            test.eq(observed.prepares, 1)
+            test.eq(observed.creates, 1)
+            assert_installed(args.component_id)
+        end)
+
+        test.it("recovers a selected Sync after creation commits without replaying preparation", function()
+            local engine, args, observed = fixture(CREATE)
+            local result, err = engine.install_type_selected("kickside.sync:sync", declaration(), args)
+            test.is_nil(result)
+            test.not_nil(err)
+            test.eq(observed.prepares, 1)
+            test.eq(observed.creates, 1)
+            test.is_false((read_drive(args.component_id, "main") :: Map).enabled)
+            local recovered, recovery_err = upgrade_engine.new().recover_command(args.component_id)
+            test.is_nil(recovery_err, tostring(recovery_err))
+            test.eq(recovered.state, "succeeded")
+            test.eq(observed.prepares, 1)
+            assert_installed(args.component_id)
+        end)
+    end)
+
     test.describe("kickside.sync declarations", function()
         test.it("remains a native Data Sync Automation with its own create surface", function()
             local entry = registry.get("kickside.sync:sync") :: any

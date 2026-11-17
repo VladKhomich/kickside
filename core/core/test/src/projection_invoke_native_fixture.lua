@@ -1,10 +1,14 @@
 local sql = require("sql")
 local time = require("time")
+local job_types = require("job_types")
 local M: any = {WORKER_FAILED = "worker_failed"}
+M.is_lease_lost_error = job_types.is_lease_lost_error
 function M.reset(stage: string, source: any)
     M.stage, M.source, M.release_source, M.rollback_source = stage, source, nil, nil
+    M.record_failure = false
     M.proof, M.missing = nil, false
     M.releases, M.rollbacks, M.commits, M.calls, M.advances = 0, 0, 0, 0, 0
+    M.failures, M.deterministic = 0, nil
     M.debounce = stage == "first" or stage == "latest" or stage == "type" or stage == "begin"
         or stage == "complete" or stage == "commit" or stage == "time"
     M.proc = stage == "process_host" or stage == "proc"
@@ -42,8 +46,15 @@ function M.run(_binding: any, _input: any): (any, error?)
 end
 function M.run_proc_supervised(...: any): (any, error?) return M.outcome("proc", {}) end
 function M.process_host(): (any, error?) return M.outcome("process_host", "app:host") end
-function M.is_deterministic_kind(_kind: any): boolean return true end
-function M.fail(...: any): (any, error?) return M.outcome("failure", {}) end
+function M.is_deterministic_kind(kind: any): boolean
+    return kind == errors.INVALID or kind == errors.PERMISSION_DENIED
+        or kind == errors.NOT_FOUND or kind == errors.ALREADY_EXISTS
+end
+function M.fail(_db: any, _job: any, _snapshot: any, _failure: any, deterministic: boolean): (any, error?)
+    M.failures, M.deterministic = M.failures + 1, deterministic
+    if M.record_failure then return deterministic and {self_completed = true, invalid = true} or nil, nil end
+    return M.outcome("failure", nil)
+end
 function M.advance(...: any): (any, error?)
     M.advances = M.advances + 1
     return M.outcome("advance", {last_seq = 1})

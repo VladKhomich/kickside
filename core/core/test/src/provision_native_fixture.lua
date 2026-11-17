@@ -1,8 +1,13 @@
 local M = {stage = "", source = nil, gets = 0, queries = 0, releases = 0,
     upserts = 0, retentions = 0, grants = 0, calls = 0, contract_gets = 0, opens = 0}
+function M.new_actor(id: string, meta: any): any
+    return {id = function(): string return id end, meta = function(): any return meta end}
+end
+M.actor = M.new_actor("user", {})
 M.scope = {evaluate = function(self: any, actor: any, action: string, resource: string): string
     return M.scope_decision or "allow"
 end}
+function M.converge(db: any, skipped: {any}): (integer?, error?) return 0, nil end
 function M.reset(stage: string, source: any)
     M.stage, M.source, M.release_source, M.grant_result = stage, source, nil, nil
     M.scope_decision, M.unchanged_count, M.changed_count, M.max_page = nil, nil, nil, 0

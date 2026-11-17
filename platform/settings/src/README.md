@@ -25,6 +25,7 @@ settings are edited by an admin at runtime and persist in the database.
     category: Paging
     order: 10
     owner: My module
+    confirm_decrease: true    # int/duration retention: confirm reductions in the admin UI
     ui: my-setting-editor
     read_access: admin        # optional: only admins can read this value
     schema:                  # JSON-schema; the UI renders + validates the field from it
@@ -42,6 +43,20 @@ settings are edited by an admin at runtime and persist in the database.
     and PUT API but is excluded from `list` so the settings page never renders it.
   - `schema` — a JSON-schema for the value; `list` returns it per setting and the
     UI renders the field + validates against it (inline errors) before a save.
+  - `confirm_decrease: true` — opt an integer or duration retention window into
+    destructive-change confirmation in the generic form and provider card.
+    `list` carries this field unchanged. Save compares the current effective
+    value with the typed draft; Reset compares it with the declared default.
+    A reduction opens the existing host confirmation dialog, naming the setting,
+    old/new windows and the risk of permanent deletion of existing data. Cancel
+    sends no write. Equal or larger windows save normally. Durations compare Go
+    duration quantities (`1h30m`, `90m`), not strings. Zero is finite, never
+    treated as unlimited. If a numeric setting uses zero to select a finite
+    window, declare that meaning in this same field, e.g.
+    `confirm_decrease: { zero: 365 }`; the dialog shows both zero and its effective
+    value. Use the owner's actual zero semantics, not an inferred default.
+    This is a UI confirmation hint: API/contract writes and retention behavior
+    are unchanged. A bespoke self-saving `ui` editor owns its save confirmation.
   - `validate_func` — a func id (`ns:name`) the writer calls
     (`funcs.call(validate_func, { key, value, old_value, definition })`) before
     persisting any change; it returns `(ok, err)` or `{ valid, error }` and can
@@ -128,3 +143,21 @@ An unset owner displays the block title for its namespace, or the namespace.
 
 - `target_db` — required database backing `kickside_settings`.
 - `api_router` — required firewall-protected router for the admin API.
+
+### SPEC: Accessible setting controls and destructive changes
+
+Namespace, All settings and provider forms associate each generic control with
+its title (or humanized key) and description. Generic schema hints and inline
+errors are described by the input; invalid fields expose `aria-invalid`.
+PrimeVue switches and selects receive these attributes on their focusable
+control. Row Save and Reset actions include the setting title and reference
+its help. A declared `control` receives a named group, label/description text and ARIA
+attributes through its web-component attributes. The control uses the text on
+its focused input because ID references cannot cross its shadow boundary. Bespoke `ui` editors receive a named group and
+label/config; they own accessible controls and actions within their shadow DOM.
+
+Only a declaration's `confirm_decrease` opts into the confirmation described
+above; names/keys never identify destructive settings. Provider Save confirms
+all reductions before writing any changes. A confirmation applies to the values
+shown when it opened. Concurrent administrator edits are a known limitation of
+the existing list/write API; this UI hint adds no locking or backend enforcement.

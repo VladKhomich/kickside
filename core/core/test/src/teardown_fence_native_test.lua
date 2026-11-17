@@ -2,11 +2,15 @@ local test = require("test")
 local fence = require("fence")
 local fixture = require("fixture")
 local sql = require("sql")
-local routes = {"mark", "mark_proof", "state", "pins", "contract", "binding", "fence", "dialect", "stamp", "stamp_proof"}
+local routes = {"mark", "mark_proof", "state", "pins", "contract", "binding", "fence", "dialect", "stamp", "stamp_proof", "cursor_owner"}
 local function call(stage: string): (any, error?)
     if stage == "mark" or stage == "mark_proof" then
         local err = fence.mark(fixture.executor(), "source")
         return nil, err
+    end
+    if stage == "cursor_owner" then
+        fixture.pins = {{consumer_key = "projection:00000000-0000-0000-0000-000000000001"}}
+        fixture.local_cursor = true
     end
     return fence.fence_page(fixture.executor(), "source")
 end
@@ -44,7 +48,7 @@ end
 local function proofs()
     local fields = {mark = "mark.write", mark_proof = "mark.rows", state = "state.rows", pins = "pins.rows",
         contract = "fence.contract", binding = "fence.binding", fence = "fence.outcome", dialect = "database.type",
-        stamp = "cursor.write", stamp_proof = "cursor.rows"}
+        stamp = "cursor.write", stamp_proof = "cursor.rows", cursor_owner = "cursor_owner.rows"}
     for _, dialect in ipairs({sql.type.SQLITE, sql.type.POSTGRES}) do
         for _, stage in ipairs(routes) do
             for _, proof in ipairs({{name = "missing"}, {name = "false", value = false}, {name = "number", value = 7}}) do
@@ -151,6 +155,26 @@ local function proofs()
             test.is_false(err:details().needs_continue)
             test.eq(fixture.writes, 0)
         end)
+        test.it("local cursor pins advance without a foreign fence/" .. dialect, function()
+            fixture.reset("", nil, dialect)
+            fixture.pins = {{consumer_key = "projection:00000000-0000-0000-0000-000000000001"}}
+            fixture.local_cursor = true
+            local done, err = call("")
+            test.is_nil(err)
+            test.is_true(done)
+            test.eq(fixture.calls, 0)
+            test.eq(fixture.writes, 1)
+        end)
+        for _, key in ipairs({"projection:00000000-0000-0000-0000-000000000001", "projection:invalid"}) do
+            test.it("unproven projection pin stays pending/" .. dialect .. "/" .. key, function()
+                fixture.reset("", nil, dialect)
+                fixture.pins = {{consumer_key = key}}
+                local done, err = call("")
+                test.is_nil(done)
+                test.is_true(err:details().cleanup_pending)
+                test.eq(fixture.writes, 0)
+            end)
+        end
         test.it("empty consumer page stays complete/" .. dialect, function()
             fixture.reset("", nil, dialect)
             fixture.pins = {}
@@ -176,6 +200,6 @@ end
 return {
     run = group("native thread teardown fence dependencies 1", function() dependencies(1, 3) end),
     run_dependencies_2 = group("native thread teardown fence dependencies 2", function() dependencies(4, 6) end),
-    run_dependencies_3 = group("native thread teardown fence dependencies 3", function() dependencies(7, 10) end),
+    run_dependencies_3 = group("native thread teardown fence dependencies 3", function() dependencies(7, #routes) end),
     run_proofs = group("native thread teardown fence proofs", proofs),
 }

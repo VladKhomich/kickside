@@ -7,6 +7,9 @@ local invoke = require("invoke")
 local claim = require("claim")
 local job_lifecycle = require("job_lifecycle")
 local jobs = require("jobs")
+local provision = require("provision")
+local security = require("security")
+local disabled_slots_migration = require("disabled_slots_migration")
 
 -- A thread with `events` stored events and no projection.
 local function thread_with_events(db: sql.DB, events: integer, body: string?): string
@@ -61,6 +64,200 @@ end
 
 local function define_tests()
     test.describe("projection slot failures", function()
+        test.it("boot convergence drains disabled active slots without changing cursor progress", function()
+            local db = assert(sql.get("app:db"))
+            local thread_id = thread_with_events(db, 3)
+            local cursors = {}
+            for i = 1, 207 do
+                local registered, err = writer.register_projection(db, thread_id, {
+                    kind = "wake-convergence", projection_key = tostring(i),
+                    worker_ref = "func://app:test_count_worker", system_identity = true,
+                })
+                test.is_nil(err)
+                test.not_nil(registered)
+                cursors[i] = registered
+                local status = i == 206 and "paused" or (i == 207 and "invalid" or "active")
+                test.is_nil(select(2, db:execute("UPDATE kickside_projection_cursor SET last_seq=1,status=$1 WHERE id=$2",
+                    {status, registered.cursor_id})))
+                test.is_nil(select(2, db:execute([[UPDATE kickside_job SET wake_enabled=FALSE,scheduled_at=NULL
+                    WHERE id=$1]], {registered.job_id})))
+            end
+            local migration = disabled_slots_migration[1].database_implementations[tostring(db:type())]
+            migration.down(db)
+            migration.up(db)
+            migration.up(db)
+            db:release()
+            local scope = assert(security.named_scope("wippy.security:process"))
+            local actor = security.new_actor("system:lifecycle", {system = true, security_groups = {}})
+            local summary, err = provision.converge(actor, scope)
+            test.is_nil(err)
+            test.eq(#summary.skipped, 0)
+            db = assert(sql.get("app:db"))
+            for i, registered in ipairs(cursors) do
+                local row = read(db, [[SELECT c.last_seq,c.generation,c.status,j.wake_enabled,j.scheduled_at
+                    FROM kickside_projection_cursor c JOIN kickside_job j ON j.id=c.job_id WHERE c.id=$1]],
+                    {registered.cursor_id})
+                test.eq(tonumber(row.last_seq), 1)
+                test.eq(tonumber(row.generation), registered.generation)
+                if i <= 205 then
+                    test.eq(row.status, "active")
+                    test.eq(row.wake_enabled == true or tonumber(row.wake_enabled) == 1, true)
+                    test.not_nil(row.scheduled_at)
+                else
+                    test.eq(row.status, i == 206 and "paused" or "invalid")
+                    test.eq(row.wake_enabled == true or tonumber(row.wake_enabled) == 1, false)
+                    test.is_nil(row.scheduled_at)
+                end
+            end
+            test.is_nil(select(2, db:execute("UPDATE kickside_job SET attempts=3 WHERE id=$1", {cursors[1].job_id})))
+            db:release()
+            test.is_nil(select(2, provision.converge(actor, scope)))
+            db = assert(sql.get("app:db"))
+            test.eq(tonumber(read(db, "SELECT attempts FROM kickside_job WHERE id=$1", {cursors[1].job_id}).attempts), 3)
+            for _, registered in ipairs(cursors) do
+                test.is_nil(select(2, writer.remove_projection(db, thread_id, {projection_id = registered.projection_id})))
+            end
+            db:release()
+        end)
+
+        test.it("convergence preserves a pause or restored wake that wins after candidate selection", function()
+            for _, change in ipairs({"pause", "wake"}) do
+                local db = assert(sql.get("app:db"))
+                local thread_id = thread_with_events(db, 1)
+                local registered = assert(writer.register_projection(db, thread_id, {
+                    kind = "wake-race", worker_ref = "func://app:test_count_worker", system_identity = true,
+                }))
+                test.is_nil(select(2, db:execute("UPDATE kickside_job SET wake_enabled=FALSE,scheduled_at=NULL WHERE id=$1",
+                    {registered.job_id})))
+                local changed = false
+                local during_selection: any = {
+                    type = function(self) return db:type() end,
+                    begin = function(self) return db:begin() end,
+                    execute = function(self, statement, args) return db:execute(statement, args) end,
+                    query = function(self, statement, args)
+                        local rows, err = db:query(statement, args)
+                        if not changed and statement:find("SELECT j.id AS job_id", 1, true) then
+                            changed = true
+                            if change == "pause" then
+                                test.is_nil(select(2, writer.pause(db, thread_id, {cursor_id = registered.cursor_id})))
+                            else
+                                test.is_nil(select(2, writer.resume(db, thread_id, {cursor_id = registered.cursor_id})))
+                                test.is_nil(select(2, db:execute("UPDATE kickside_job SET attempts=3 WHERE id=$1",
+                                    {registered.job_id})))
+                            end
+                        end
+                        return rows, err
+                    end,
+                }
+                local skipped = {}
+                local healed, err = writer.converge(during_selection, skipped)
+                test.eq(#skipped, 0)
+                test.is_nil(err)
+                test.eq(healed, 0)
+                test.is_true(changed)
+                local cursor = read(db, "SELECT status,generation,last_seq FROM kickside_projection_cursor WHERE id=$1",
+                    {registered.cursor_id})
+                local job = read(db, "SELECT wake_enabled,attempts,scheduled_at FROM kickside_job WHERE id=$1", {registered.job_id})
+                test.eq(cursor.status, change == "pause" and "paused" or "active")
+                test.eq(tonumber(cursor.last_seq), 0)
+                test.eq(tonumber(cursor.generation), registered.generation + (change == "pause" and 1 or 0))
+                if change == "pause" then
+                    test.is_nil(job.scheduled_at)
+                    test.eq(job.wake_enabled == true or tonumber(job.wake_enabled) == 1, false)
+                else
+                    test.eq(tonumber(job.attempts), 3)
+                end
+                test.is_nil(select(2, writer.remove_projection(db, thread_id, {projection_id = registered.projection_id})))
+                db:release()
+            end
+        end)
+
+        test.it("convergence advances past a deleted thread to the next disabled slot", function()
+            local db = assert(sql.get("app:db"))
+            local registered = {}
+            for i = 1, 2 do
+                local thread_id = thread_with_events(db, 1)
+                local row = assert(writer.register_projection(db, thread_id, {
+                    kind = "deleted-wake-candidate", worker_ref = "func://app:test_count_worker", system_identity = true,
+                }))
+                row.thread_id = thread_id
+                registered[i] = row
+                test.is_nil(select(2, db:execute("UPDATE kickside_job SET wake_enabled=FALSE,scheduled_at=NULL WHERE id=$1",
+                    {row.job_id})))
+            end
+            table.sort(registered, function(a, b) return a.job_id < b.job_id end)
+            local removed = false
+            local during_selection: any = {
+                type = function(self) return db:type() end,
+                begin = function(self) return db:begin() end,
+                execute = function(self, statement, args) return db:execute(statement, args) end,
+                query = function(self, statement, args)
+                    local rows, err = db:query(statement, args)
+                    if not removed and statement:find("SELECT j.id AS job_id", 1, true) then
+                        removed = true
+                        test.is_nil(select(2, writer.remove_projection(db, registered[1].thread_id,
+                            {projection_id = registered[1].projection_id})))
+                        test.is_nil(select(2, db:execute("DELETE FROM kickside_thread WHERE id=$1", {registered[1].thread_id})))
+                    end
+                    return rows, err
+                end,
+            }
+            local skipped = {}
+            local healed, err = writer.converge(during_selection, skipped)
+            test.eq(#skipped, 0)
+            test.is_nil(err)
+            test.is_true(healed >= 1)
+            test.is_true(removed)
+            local job = read(db, "SELECT wake_enabled,scheduled_at FROM kickside_job WHERE id=$1", {registered[2].job_id})
+            test.eq(job.wake_enabled == true or tonumber(job.wake_enabled) == 1, true)
+            test.not_nil(job.scheduled_at)
+            test.is_nil(select(2, writer.remove_projection(db, registered[2].thread_id,
+                {projection_id = registered[2].projection_id})))
+            db:release()
+        end)
+
+        test.it("convergence reports a failed slot and continues to the next candidate", function()
+            local db = assert(sql.get("app:db"))
+            local thread_id = thread_with_events(db, 1)
+            local registered = {}
+            for i = 1, 2 do
+                registered[i] = assert(writer.register_projection(db, thread_id, {
+                    kind = "wake-row-failure", projection_key = tostring(i),
+                    worker_ref = "func://app:test_count_worker", system_identity = true,
+                }))
+                test.is_nil(select(2, db:execute("UPDATE kickside_job SET wake_enabled=FALSE,scheduled_at=NULL WHERE id=$1",
+                    {registered[i].job_id})))
+            end
+            table.sort(registered, function(a, b) return a.job_id < b.job_id end)
+            local cause = errors.new({kind = errors.UNAVAILABLE, message = "slot transaction refused", retryable = false,
+                details = {code = "wake_transaction_refused", nested = {preserved = true}}})
+            local first = true
+            local failing_slot: any = {
+                type = function(self) return db:type() end,
+                query = function(self, statement, args) return db:query(statement, args) end,
+                execute = function(self, statement, args) return db:execute(statement, args) end,
+                begin = function(self)
+                    if first then first = false; return nil, cause end
+                    return db:begin()
+                end,
+            }
+            local skipped = {}
+            local healed, err = writer.converge(failing_slot, skipped)
+            test.is_nil(err)
+            test.is_true(healed >= 1)
+            test.eq(#skipped, 1)
+            test.eq(skipped[1].cursor_id, registered[1].cursor_id)
+            test.eq(skipped[1].error.kind, cause:kind())
+            test.eq(skipped[1].error.retryable, false)
+            test.eq(skipped[1].error.details.code, "wake_transaction_refused")
+            test.is_true(skipped[1].error.details.nested.preserved)
+            test.not_nil(read(db, "SELECT scheduled_at FROM kickside_job WHERE id=$1", {registered[2].job_id}).scheduled_at)
+            for _, row in ipairs(registered) do
+                test.is_nil(select(2, writer.remove_projection(db, thread_id, {projection_id = row.projection_id})))
+            end
+            db:release()
+        end)
+
         test.it("refuses a corrupt stored projection body with native metadata and preserves its durable state", function()
             for _, raw in ipairs({"false", "7", '"text"', "null"}) do
                 local db = assert(sql.get("app:db"))
@@ -198,6 +395,48 @@ local function define_tests()
             local rows, query_err = db:query("SELECT id FROM kickside_projection WHERE id=$1", { registered.projection_id })
             test.is_nil(query_err)
             test.eq(#rows, 0)
+            db:release()
+        end)
+
+        test.it("resumes an active cursor whose identity refusal disabled its slot", function()
+            local db = assert(sql.get("app:db"))
+            local thread_id = thread_with_events(db, 1)
+            local registered = assert(writer.register_projection(db, thread_id, {
+                kind = "identity-refusal-recovery", worker_ref = "func://app:test_count_worker",
+                worker_input_mode = "prefetch_events", system_identity = true,
+            }))
+            db:release()
+            local job = claim_slot(registered.job_id)
+            db = assert(sql.get("app:db"))
+            -- Drive exactly the Jobs transition used by an identity refusal.
+            test.is_nil(job_lifecycle.fail_job(db, job, tostring(db:type()),
+                "recorded authorizer no longer has root ADMIN", "deterministic"))
+            append_event(db, thread_id, 2)
+            local parked = read(db, "SELECT scheduled_at,wake_enabled FROM kickside_job WHERE id=$1", {job.id})
+            test.is_nil(parked.scheduled_at)
+            test.is_false(parked.wake_enabled == true or tonumber(parked.wake_enabled) == 1)
+            local before = read(db, "SELECT generation,last_seq FROM kickside_projection_cursor WHERE id=$1", {registered.cursor_id})
+            local resumed, resume_err = writer.resume(db, thread_id, {cursor_id = registered.cursor_id})
+            test.is_nil(resume_err)
+            test.eq(resumed.status, "active")
+            local slot = read(db, "SELECT scheduled_at,wake_enabled,attempts FROM kickside_job WHERE id=$1", {job.id})
+            local after = read(db, "SELECT generation,last_seq FROM kickside_projection_cursor WHERE id=$1", {registered.cursor_id})
+            db:release()
+            test.not_nil(slot.scheduled_at)
+            test.is_true(slot.wake_enabled == true or tonumber(slot.wake_enabled) == 1)
+            test.eq(tonumber(slot.attempts), 0)
+            test.eq(tonumber(after.generation), tonumber(before.generation))
+            test.eq(tonumber(after.last_seq), tonumber(before.last_seq))
+            local repaired = claim_slot(job.id)
+            local result, run_err = invoke.run(input_for(repaired, registered.cursor_id))
+            test.is_nil(run_err)
+            test.eq(result.last_seq, 2)
+            db = assert(sql.get("app:db"))
+            local model = read(db, "SELECT body FROM kickside_projection WHERE id=$1", {registered.projection_id})
+            test.eq(json.decode(model.body).stats.count, 2)
+            local removed, remove_err = writer.remove_projection(db, thread_id, {projection_id = registered.projection_id})
+            test.is_nil(remove_err)
+            test.not_nil(removed)
             db:release()
         end)
 

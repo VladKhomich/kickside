@@ -3,6 +3,7 @@ local test = require("test")
 local sql = require("sql")
 local json = require("json")
 local funcs = require("funcs")
+local registry = require("registry")
 local policy = require("policy")
 local repo = require("repo")
 local common = require("common")
@@ -13,6 +14,16 @@ local llm_fixture = require("llm_fixture")
 
 return {run = test.run_cases(function()
     test.describe("provider credential boundaries", function()
+        test.it("binds every model migration to the configured host database", function()
+            local config = assert(registry.get("kickside.models:db_config"))
+            local migrations = assert(registry.find({[".namespace"] = "kickside.models.migrations",
+                ["meta.type"] = "migration"}))
+            test.not_nil(config.meta.db_id)
+            test.is_true(#migrations > 0)
+            for _, migration in ipairs(migrations) do
+                test.eq(migration.meta.target_db, config.meta.db_id, migration.id)
+            end
+        end)
         test.it("encrypts nested headers and supports replacement and clearing through profile updates", function()
             local sentinel = "nested-credential-sentinel"
             local profile = assert(repo.create_profile({id = "nested-headers", name = "Nested headers",

@@ -1,11 +1,12 @@
 local sql = require("sql")
 local uuid = require("uuid")
 local eligibility = require("eligibility")
+local clock = require("clock")
 
 local listing = {}
 type Executor = sql.DB | sql.Transaction
 
-local DUE_COLUMN = "CASE WHEN " .. eligibility.due("CURRENT_TIMESTAMP") .. " THEN TRUE ELSE FALSE END AS due"
+local DUE_COLUMN = "CASE WHEN " .. eligibility.due("jobs_clock.observed_at") .. " THEN TRUE ELSE FALSE END AS due"
 
 local function job_rows(rows: table[]): table[]
     for _, row in ipairs(rows) do
@@ -28,6 +29,25 @@ end
 
 local function invalid(): error
     return (errors.new({ message = "job history position is invalid or no longer available", kind = errors.INVALID }) :: error)
+end
+
+local function database_type(db: Executor): (string?, error?)
+    local dbtype, type_err
+    if type((db :: any).db_type) == "function" then
+        dbtype, type_err = (db :: sql.Transaction):db_type()
+    else
+        dbtype, type_err = (db :: sql.DB):type()
+    end
+    if type_err then return nil, type_err end
+    if dbtype ~= sql.type.SQLITE and dbtype ~= sql.type.POSTGRES then
+        return nil, response_error("database.type")
+    end
+    return tostring(dbtype), nil
+end
+
+local function observed_clock(query: any, dbtype: string): any
+    local cast = dbtype == sql.type.POSTGRES and "TIMESTAMPTZ" or "TEXT"
+    return query:join("(SELECT CAST(? AS " .. cast .. ") AS observed_at) jobs_clock ON TRUE", clock.now(dbtype))
 end
 
 local function scoped_query(dbtype: string, collection: string, thread_ids: string[], filters: table?, owner_kind: string?): any
@@ -55,6 +75,7 @@ local function scoped_query(dbtype: string, collection: string, thread_ids: stri
         :from(runs and "kickside_job_run" or "kickside_job")
         :where(sql.builder.eq({ owner_kind = owner_kind or "thread" }))
         :where(sql.builder.expr("owner_id IN (" .. table.concat(marks, ",") .. ")", table.unpack(thread_ids)))
+    if not runs then query = observed_clock(query, dbtype) end
     local keys = runs and { "job_id", "thread_id", "status" } or { "thread_id", "status", "job_type", "queue_tier" }
     for _, key in ipairs(keys) do
         local value = opts[key]
@@ -70,16 +91,8 @@ local function read(db: Executor, collection: string, thread_ids: string[], filt
     if type(limit) ~= "number" or limit < 1 or limit ~= math.floor(limit) then
         return nil, (errors.new({ message = "job history limit must be a positive integer", kind = errors.INVALID }) :: error)
     end
-    local dbtype, type_err
-    if type((db :: any).db_type) == "function" then
-        dbtype, type_err = (db :: sql.Transaction):db_type()
-    else
-        dbtype, type_err = (db :: sql.DB):type()
-    end
+    local dbtype, type_err = database_type(db)
     if type_err then return nil, type_err end
-    if dbtype ~= sql.type.SQLITE and dbtype ~= sql.type.POSTGRES then
-        return nil, response_error("database.type")
-    end
     local timestamp = collection == "runs" and "started_at" or "created_at"
     local position: table? = nil
     if after ~= nil then
@@ -164,13 +177,15 @@ local function read_exact_jobs(db: Executor, ids: string[]): (table?, error?)
     if selection_err then return nil, selection_err end
     local marks, values = selected.marks, selected.values
     if #values == 0 then return {}, nil end
-    local rows, err = sql.builder.select(
+    local dbtype, type_err = database_type(db)
+    if type_err then return nil, type_err end
+    local query = sql.builder.select(
         "id", "thread_id", "owner_kind", "owner_id", "job_type", "status", "slot", DUE_COLUMN, "priority", "attempts",
         "max_attempts", "queue_tier", "idempotency_key", "last_error", "wake_enabled", "wake_control_pending", "execution_seq",
         "scheduled_at", "finished_at", "created_at", "updated_at"
     ):from("kickside_job")
         :where(sql.builder.expr("id IN (" .. table.concat(marks, ",") .. ")", table.unpack(values)))
-        :run_with(db):query()
+    local rows, err = observed_clock(query, dbtype):run_with(db):query()
     local read_err = rows_error(rows, err, "failed to read jobs", "job.rows")
     if read_err then return nil, read_err end
     return job_rows(rows), nil

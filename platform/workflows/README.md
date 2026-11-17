@@ -72,6 +72,74 @@ install Data Sync with the same trigger and the Run Workflow sink's exact
 contracts. The destination picker offers **New workflow** for the selected
 source and returns to setup after publication with its binding selected.
 
+The `kickside.workflows:run_sink` configuration can optionally select terminal
+correlation from the admitted Start input:
+
+```yaml
+flow_ref: {kind: flow, id: <workflow UUID>, version: 1}
+correlation_fields: [board_id, item, visit, attempt]
+```
+
+`correlation_fields` is a dense array of 1–16 distinct top-level field names,
+each 1–128 bytes. Invalid or oversized selections return `invalid_config` at
+the sink boundary before access or admission. Each selected input value must
+be present and be a string, finite number, or boolean; missing, composite, or
+oversized values return `invalid_request` before reservation. The complete
+encoded correlation record is limited to 4096 JSON bytes. Selection happens
+once when the run is reserved and is saved in its existing durable creation
+payload. Changing a selection for the same delivery conflicts with its
+admission identity. No selection preserves the existing behavior.
+
+Terminal events carry this record unchanged as optional `body.correlation`,
+alongside authoritative `body.run_id` and `body.status`. Success uses status
+`completed` on `kickside.workflows.runs.events:finished` through
+`kickside.workflows:flow_run_finished`; `failed`, `cancelled`, and `terminated`
+use `kickside.workflows.runs.events:failed` through
+`kickside.workflows:flow_run_failed`. This includes failure before the first
+node executes and recovered or repeated publication after a crash. The event
+contains only the selected values; the complete Start input is never copied
+into the terminal event. `flow_run_started` retains its existing event shape.
+
+The run sink also accepts optional private completion configuration:
+
+```yaml
+completion:
+  component_id: <target component UUID>
+  token_fields: [board_id, item, visit, attempt]
+```
+
+The target binding must implement `kickside.workflows:run_completion.complete`.
+Workflows checks the launch principal's WRITE access and target capability before
+reservation. Only `component_id` and `token_fields` are accepted. Token selection
+uses the correlation limits above, independently of `correlation_fields`, and is
+included in admission identity. The resolved target and immutable token stay in
+the existing private creation payload, outside engine metadata and audit events.
+The receiver owns domain validation of its token (for Work: board/item UUIDs and
+positive integer visit/attempt).
+
+For every terminal status (`completed`, `failed`, `cancelled`, `terminated`), the
+existing publisher appends the deduplicated audit event, calls `complete` under
+the stored run identity with live authorization in a function with no added
+maintenance policies, and then clears the existing publication flag. The callback
+receives `token`, authoritative `run_id`,
+`dataflow_id`, exact `flow_ref`, `status`, optional `started_at`, `ended_at`, and
+an error bounded to 4096 encoded JSON bytes for non-success outcomes. It never
+receives full Start input, progress, or outputs; outputs continue through report.
+Claim, append, and acknowledgement bookkeeping stay outside the callback frame.
+Complete UTF-8 error characters are preserved; byte cuts discard only an
+incomplete final sequence. The receiver returns `{acknowledged: true}` or a typed
+native error.
+
+Completion is one logical outcome delivered at least once. Receivers must fence
+repeated tokens, including a crash after their commit but before acknowledgement.
+Any callback or authorization failure remains pending for existing maintenance
+retry until repaired. Only `false` from Component's boolean
+`kickside.component.system:exists` point lookup acknowledges target deletion as
+a no-op; a denied or unavailable lookup remains pending. Idle Flow
+references are not deletion pins. Deletion protection for unpublished terminal
+rows is a release prerequisite (PR #512); the concurrent admission/delete race
+remains known. Callers omitting completion retain their existing behavior.
+
 Binding assist accepts optional `source_root` to lower its expression for the
 consumer's environment, such as `payload` for Data Sync. Omitting it preserves
 the Workflow authoring expression contract.
@@ -165,3 +233,44 @@ policy and timeouts into the native commands; each run retains those values when
 it assigns fresh node ids. Existing published versions remain unchanged. An
 idempotent forward migration adds optional draft-node storage without rewriting
 existing definitions, publications, events, or runs.
+
+### Deleting a Workflow with runs
+
+Deletion returns HTTP 409 (`kind: Conflict`, `details.code: workflow_runs_active`,
+`retryable: false`) while any run is pending or running, or a terminal run's event
+has not been acknowledged as published. The Workflow, its Automations and runs
+remain intact; work stages and Inbox decisions continue normally. Delete again
+after runs finish and their terminal events are acknowledged.
+
+Migration `08_delete_admission_index` adds one partial index on `(workflow_id, run_id)`
+containing only pending/running runs and runs with unpublished terminal events.
+Apply this migration in a maintenance window: PostgreSQL briefly blocks run writes while the index builds (measured on test-2 at 0.057 s for 100,000 retained runs plus 1,000 active runs and 0.349 s for 1,000,000 retained runs plus 10,000 active runs; build plus commit took 0.060 s and 0.544 s respectively), and holds the lock until migration commit; allow extra time for lock waits and larger installations.
+The delete-time existence check orders by `run_id` and stops at the first
+matching index entry, so it does not scan retained, acknowledged terminal history
+before Component opens its delete transaction.
+
+This rule is enforced at Component deletion admission, including direct Component
+and trusted owner deletion, reading Workflows' configured database even when
+Component uses a separate database. Run admission keeps its existing behavior: a run
+starting at the same instant as deletion may pass the check before its reservation
+is visible. This rare race retains today's deletion behavior; admission and
+deletion are not serialized against each other.
+
+The separate-database regression uses fresh databases and the existing test profile:
+`cd test && wippy test --config .wippy.yaml --config .split-db.yaml test app:delete_admission_storage_test`
+(add `--profile postgres` and dedicated `pg_database` / `pg_upgrade_database` values for PostgreSQL).
+
+Automation deletion uses the same Component preflight through Automation's
+`delete_admission_library` requirement. Runs record their launching Automation in
+`trigger_id`; pending/running runs and unpublished terminal events return typed
+CONFLICT (`automation_runs_active`) on every Automation delete path. The validator
+opens Workflows' configured storage before Component opens its transaction, so
+separate database placement remains supported. Migration
+`09_automation_delete_admission_index` adds a partial `(trigger_id, run_id)` blocker
+index: the Workflow-id index cannot seek this reference, and the admission-count
+index excludes superseded rows and does not cover terminal publication. The query
+seeks one Automation and stops at the first blocker, including superseded rows.
+No admission/claim/append locks or additional per-event statements are introduced.
+Concurrent admission and deletion retain the accepted non-atomic race described
+above. PostgreSQL CREATE INDEX (and rollback DROP INDEX) requires a maintenance
+window because it can block writes until the migration transaction commits.

@@ -5,9 +5,11 @@ entries:
   kind: library.lua
   source: file://attachment_completion_source.lua
   modules:
+  - security
   - crypto
   - sql
   imports:
+    provision: kickside.core.threads:provision
     sql_boundary: kickside.core.jobs.persist:sql_boundary
     contract_common: app:attachment_completion_common
     contract_events: app:attachment_completion_events

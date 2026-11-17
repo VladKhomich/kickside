@@ -26,9 +26,11 @@ entries:
   kind: library.lua
   source: file://component_cleanup_source.lua
   modules:
+  - security
   - crypto
   - sql
   imports:
+    provision: kickside.core.threads:provision
     sql_boundary: kickside.core.jobs.persist:sql_boundary
     contract_common: app:component_cleanup_common
     contract_events: kickside.core.threads:contract_events

@@ -13,7 +13,7 @@ function M.current_runtime_identity() return {id = function() return "caller" en
 function M.get_component_service()
     return {delete = function(_, args)
         M.deleted[#M.deleted + 1] = args.component_id
-        if args.component_id == M.options.fail then return nil, errors.new({message = "teardown refuses", kind = errors.CONFLICT}) end
+        if args.component_id == M.options.fail then return nil, errors.new({message = "teardown refuses", kind = errors.CONFLICT, retryable = false, details = {code = "fixture_delete_refused"}}) end
         if not M.options.active then M.absent[args.component_id] = true end
         return {success = true, job_id = "job"}, nil
     end}, nil

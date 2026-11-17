@@ -1,18 +1,30 @@
-import { W as e, s } from "./styles-CeEd04d7.js";
-import { p as t, P as i, _ as r } from "./package-BMx0qiGW.js";
+import { W as e, P as t, u as r } from "./wc-runtime-pqFrgqFa.js";
+import { l as s, s as i } from "./styles-CeBRcDSy.js";
+import { p as n } from "./package-CCTUAjDf.js";
 import "@iconify/vue";
-import { define as o } from "@wippy-fe/proxy";
-class p extends e {
+import { define as p } from "@wippy-fe/proxy";
+const a = s(
+  () => import("./WebhookCreate-BpKiX3XI.js"),
+  { loading: "Loading webhook form…", failed: "Could not load the webhook form. Reload the page to try again." },
+  r
+);
+class o extends e {
   static get wippyConfig() {
     return {
-      propsSchema: t.wippy.props,
+      propsSchema: n.wippy.props,
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: s
+      inlineCss: i
     };
   }
   static get vueConfig() {
-    return { rootComponent: r, plugins: [i] };
+    return { rootComponent: a, plugins: [t] };
   }
 }
-o(import.meta.url, p);
+async function d() {
+  return o;
+}
+p(import.meta.url, o);
+export {
+  d as webComponent
+};
 //# sourceMappingURL=create.js.map
