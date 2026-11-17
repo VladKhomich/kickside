@@ -1,0 +1,1 @@
+../../src/lifecycle/migrations_applied.lua

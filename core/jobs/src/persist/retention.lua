@@ -9,6 +9,16 @@ local clock = require("clock")
 local thread_teardown = require("thread_teardown")
 local sql_boundary = require("sql_boundary")
 local thread_fence = require("thread_fence")
+local dead_outcome = require("dead_outcome")
+local enqueue = require("lifecycle_enqueue")
+
+local job_id = "CAST(kickside_job.id AS TEXT)"
+local outcome_identity = "'" .. enqueue.encode_part(dead_outcome.NAMESPACE) .. "' || LENGTH("
+    .. job_id .. ") || ':' || " .. job_id .. " || '" .. enqueue.encode_part(dead_outcome.KEY) .. "'"
+-- The active identity index guarantees at most one undelivered outcome.
+local unreferenced = [[ AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)
+    AND (status <> 'dead' OR (SELECT 1 FROM kickside_job outcome
+        WHERE outcome.status IN ('pending','running') AND outcome.job_identity=]] .. outcome_identity .. [[) IS NULL)]]
 
 local function bounded(limit: integer?, maximum: integer): integer
     return math.max(0, math.min(maximum, limit or maximum))
@@ -61,7 +71,7 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
     local cutoff_arg = "$" .. tostring(#params)
     params[#params + 1] = batch
     local limit_arg = "$" .. tostring(#params)
-    local no_runs = runs and "" or " AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)"
+    local references_clear = runs and "" or unreferenced
     local cols = runs and "id,job_id,owner_kind,owner_id" or "id,owner_kind,owner_id"
     local source = table_name
     local ordered = "finished_at,id"
@@ -72,7 +82,7 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
     end
     local rows, read_err = db:query("SELECT " .. cols .. " FROM " .. source .. " WHERE " .. predicate
         .. " AND " .. settled .. " AND finished_at IS NOT NULL AND finished_at < " .. cutoff_arg
-        .. no_runs .. " ORDER BY " .. ordered .. " LIMIT " .. limit_arg, params)
+        .. references_clear .. " ORDER BY " .. ordered .. " LIMIT " .. limit_arg, params)
     if read_err then return nil, errors.wrap(read_err, "job prune candidates") end
     if type(rows) ~= "table" then return nil, response_error("candidates.rows") end
     if #rows == 0 then return 0, nil end
@@ -120,7 +130,7 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
         selected = "rowid IN (SELECT rowid FROM " .. table_name .. " WHERE " .. selected .. ")"
     end
     local deleted, delete_err = tx:execute("DELETE FROM " .. delete_source .. " WHERE finished_at < $1"
-        .. " AND " .. settled .. " AND " .. selected .. no_runs, args)
+        .. " AND " .. settled .. " AND " .. selected .. references_clear, args)
     if delete_err then return nil, sql_boundary.rollback(tx, errors.wrap(delete_err, "job prune delete"), "retention rollback failed") end
     local total, proof_err = affected(deleted, "job prune delete", batch)
     if proof_err then return nil, sql_boundary.rollback(tx, proof_err, "retention rollback failed") end
