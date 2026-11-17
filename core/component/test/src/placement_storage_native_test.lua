@@ -9,6 +9,7 @@ local routes = {
     {name = "sibling", call = function() return placement.max_sibling_position(fixture, "parent") end},
     {name = "root sibling", call = function() return placement.max_sibling_position(fixture, nil) end},
     {name = "tree lock", call = function() return nil, placement.lock_tree(fixture) end},
+    {name = "key", call = function() return placement.key_exists(fixture, "component") end},
 }
 local function native(source: error, value: any, err: error?)
     test.is_nil(value); test.not_nil(err)
@@ -29,12 +30,13 @@ return {run = test.run_cases(function()
                 end
             end
         end
-        for _, name in ipairs({"read", "tree lock"}) do
+        for _, name in ipairs({"read", "tree lock", "key"}) do
             test.it(name .. "/dialect failure", function()
                 local source = errors.new({kind = errors.UNAVAILABLE, retryable = false, message = "dialect refuses", details = {code = "placement_storage_dependency", nested = {marker = "kept"}}})
                 fixture.reset(nil, sql.type.POSTGRES); fixture.dialect_error = source
                 local value, err
                 if name == "read" then value, err = placement.read_node(fixture, "component", true)
+                elseif name == "key" then value, err = placement.key_exists(fixture, "component")
                 else err = placement.lock_tree(fixture) end
                 native(source, value, err); test.eq(fixture.calls, 0)
             end)
@@ -45,11 +47,14 @@ return {run = test.run_cases(function()
             test.is_nil(err); test.eq(node.component_id, "component")
             local position, sibling_err = placement.max_sibling_position(fixture, "parent")
             test.is_nil(sibling_err); test.eq(position, "rank")
+            local exists, key_err = placement.key_exists(fixture, "component")
+            test.is_nil(key_err); test.is_true(exists)
         end)
         test.it("empty reads preserve absent values", function()
             fixture.reset(nil, sql.type.SQLITE)
             local node, err = placement.read_node(fixture, "component"); test.is_nil(node); test.is_nil(err)
             local position, sibling_err = placement.max_sibling_position(fixture, nil); test.is_nil(position); test.is_nil(sibling_err)
+            local exists, key_err = placement.key_exists(fixture, "component"); test.is_false(exists); test.is_nil(key_err)
             test.is_nil(placement.lock_tree(fixture)); test.eq(fixture.calls, 0)
         end)
     end)
