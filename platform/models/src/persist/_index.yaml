@@ -59,13 +59,25 @@ entries:
   - name: reload_profiles
     kind: function.lua
     meta: {private: true}
-    source: file://profile_reload.lua
+    source: file://catalog_dispatch.lua
     method: run
-    imports:
-      catalog_policy: kickside.models.catalog:policy
+    modules: [funcs]
     security:
+      actor: {id: kickside.models.persist:reload_profiles}
+      groups: [kickside.models.persist:catalog_dispatch]
       policies:
         - kickside.models:secret_key_access
+
+  - name: reload_catalog_call
+    kind: security.policy
+    meta: {private: true}
+    groups: [kickside.models.persist:catalog_dispatch]
+    policy:
+      resources: [kickside.models.persist:reload_catalog]
+      actions: [funcs.call]
+      effect: allow
+      conditions:
+        - {field: actor.id, operator: eq, value: 'kickside.models.persist:reload_profiles'}
 
   - name: reload_catalog
     kind: function.lua
@@ -84,11 +96,21 @@ entries:
         - kickside.models.persist:publish_profile_cache
         - kickside.models.persist:decode_profiles_call
 
+  - name: decode_profiles
+    kind: function.lua
+    meta: {private: true}
+    source: file://profile_reload.lua
+    method: run
+    imports:
+      catalog_policy: kickside.models.catalog:policy
+    security:
+      policies: [kickside.models:secret_key_access]
+
   - name: decode_profiles_call
     kind: security.policy
     meta: {private: true}
     policy:
-      resources: [kickside.models.persist:reload_profiles]
+      resources: [kickside.models.persist:decode_profiles]
       actions: [funcs.call, funcs.security]
       effect: allow
 

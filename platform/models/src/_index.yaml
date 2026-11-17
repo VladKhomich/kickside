@@ -389,6 +389,6 @@ entries:
   - name: reload_profiles_call
     kind: security.policy
     policy:
-      resources: [kickside.models.persist:reload_catalog]
+      resources: [kickside.models.persist:reload_profiles]
       actions: [funcs.call, funcs.security]
       effect: allow

@@ -54,7 +54,7 @@ local function reload_catalog(): (any?, any?)
     ]], {})
     if perr then return fail(perr) end
 
-    local profiles, decode_err = funcs.call("kickside.models.persist:reload_profiles", profile_rows or {})
+    local profiles, decode_err = funcs.call("kickside.models.persist:decode_profiles", profile_rows or {})
     if decode_err then return fail(decode_err) end
     local profiles_by_id = {}
     for _, profile in ipairs(profiles) do
@@ -95,7 +95,7 @@ function M.reload_catalog(): any
 end
 
 function M.reload(): (any?, any?)
-    local result, err = funcs.call("kickside.models.persist:reload_catalog")
+    local result, err = funcs.call("kickside.models.persist:reload_profiles")
     if err then return nil, err end
     return result.snapshot, result.error
 end
