@@ -260,7 +260,7 @@ local function define_tests()
             local converter = entry("kickside.convert.doc2md:converter")
             local setting = entry("kickside.uploads:setting.process_max_execution_ms")
             test.eq(tonumber(value(setting, "default")), 600000)
-            test.is_true(tonumber(value(converter, "limits").max_execution_ms) >= tonumber(value(setting, "default")))
+            test.is_true(tonumber(value(converter, "options").limits.max_execution_ms) >= tonumber(value(setting, "default")))
         end)
 
         test.it("does not publish a module-local processing queue", function()
