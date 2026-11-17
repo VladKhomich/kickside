@@ -947,6 +947,32 @@ local function define_selected_install_cases()
         test.is_nil(rows_err)
         test.eq(#rows, 0)
     end)
+    for _, anchor in ipairs({"inherited root", "*"}) do
+        test.it("rooted selected install refuses another principal despite delegation on " .. anchor, function()
+            local id = assert(crypto.random.uuid())
+            components[#components + 1] = id
+            local inherited = component_root()
+            root_access(inherited, "user", operator, 8)
+            install_operator_access()
+            grant(bot, anchor == "*" and "*" or inherited, {operator_group})
+            test.not_nil((groups.set_user_groups(operator, {baseline, operator_group})))
+            allowed(false, {execution_root = {owner_id = "kickside.component", record_id = inherited}})
+            local result, err = install_selected(id, nil, nil, nil, nil, {component_id = inherited})
+            test.is_nil(result)
+            local db = assert(sql.get("app:db"))
+            for _, table_name in ipairs({"kickside_components", "kickside_automation_drive",
+                "kickside_automation_op", "kickside_automation_command"}) do
+                local key = table_name == "kickside_components" and "component_id" or "automation_id"
+                local rows, rows_err = db:query("SELECT " .. key .. " FROM " .. table_name .. " WHERE " .. key .. "=$1", {id})
+                test.is_nil(rows_err)
+                test.eq(#rows, 0, table_name .. " retains rejected installation state")
+            end
+            db:release()
+            test.is_true(errors.is(err, errors.PERMISSION_DENIED), tostring(err))
+            test.eq(err:retryable(), false)
+            test.eq(effect_count(), 0)
+        end)
+    end
     for _, field in ipairs({"credential_id", "link_id"}) do
         test.it("RA-H21 native selected install preserves the captured " .. field .. " through deferred SET", function()
             local id = assert(crypto.random.uuid())

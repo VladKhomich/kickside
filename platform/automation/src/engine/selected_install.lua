@@ -131,6 +131,10 @@ function part.attach(M: any, dependencies: any, P: any): ()
         if principal.kind ~= "user" then
             return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false, message = "selected installation requires a user principal"})
         end
+        if identity.component_id ~= nil and principal.id ~= identity.principal.id then
+            return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "rooted selected installation requires the caller's principal"})
+        end
         local subject, subject_err = (dependencies.execution_identity :: any).capture({
             principal = principal, component_id = identity.component_id or a.component_id})
         if subject_err or not subject then return nil, subject_err end
