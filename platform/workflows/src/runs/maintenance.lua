@@ -22,6 +22,9 @@ local selected_admission = dependencies.admission or admission
 local client_new = dependencies.client_new or client.new
 local append_event = dependencies.append_event or runs_state.append_event
 local selected_component = dependencies.component or component
+local component_exists = dependencies.component_exists or function(id: string): (boolean?, error?)
+    return funcs.call("kickside.component.system:exists", id)
+end
 local selected_identity = dependencies.execution_identity or execution_identity
 local M = {}
 local log = logger:named("workflows.runs.maintenance")
@@ -336,11 +339,11 @@ local function run_row_action(row: any, phase: string, local_client: any?): (any
         local completion, payload_err = completion_of(row)
         if payload_err then return nil, payload_err end
         if not completion then return acknowledge_event(row) end
-        -- An unfiltered component point read proves deletion; an ACL-filtered
-        -- miss cannot distinguish deletion from revoked access.
-        local _, target_err = selected_component.get_private_context(completion.component_id)
-        if errors.is(target_err, errors.NOT_FOUND) then return acknowledge_event(row) end
+        -- Component's boolean point read proves deletion without exposing data;
+        -- an ACL-filtered miss cannot distinguish deletion from revoked access.
+        local target_exists, target_err = component_exists(completion.component_id)
         if target_err then return nil, target_err end
+        if target_exists == false then return acknowledge_event(row) end
     end
     local encoded, decode_err = json.decode(tostring(row.execution_identity_json or ""))
     if decode_err or type(encoded) ~= "table" or type(encoded.principal) ~= "table" then

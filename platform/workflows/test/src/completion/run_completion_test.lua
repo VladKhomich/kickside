@@ -38,10 +38,10 @@ local function fixture(): any
             return { acknowledged = true }, nil
         end }, nil
     end
-    function selected_component.get_private_context(_id: string): (any?, any?)
-        if state.lookup_error then return nil, errors.new({ kind = errors.UNAVAILABLE, message = "lookup unavailable" }) end
-        if not state.exists then return nil, errors.new({ kind = errors.NOT_FOUND, message = "deleted" }) end
-        return {}, nil
+    sc.maintenance._component_exists = function(id: string): (boolean?, error?)
+        test.eq(id, target)
+        if state.lookup_error then return nil, errors.new({ kind = state.lookup_error, message = "lookup failed" }) end
+        return state.exists, nil
     end
     sc.writable._component = selected_component
     sc.maintenance._component = selected_component
@@ -218,9 +218,12 @@ local cases = test.run_cases(function()
             local result = f.sc.writable.write(f.req)
             local id = result.dest_ref.run_id
             f.sc.mark_terminal(f.engine, id)
-            f.state.lookup_error = true
-            test.eq(f.tick(id).failures, 1)
-            test.eq(f.sc.pending_count(f.req.automation_ref.id), 1)
+            for _, kind in ipairs({ errors.UNAVAILABLE, errors.PERMISSION_DENIED, errors.NOT_FOUND }) do
+                f.state.lookup_error = kind
+                test.eq(f.tick(id).failures, 1)
+                test.eq(#f.state.callbacks, 0)
+                test.eq(f.sc.pending_count(f.req.automation_ref.id), 1)
+            end
             f.state.lookup_error, f.state.exists = false, false
             test.eq(f.tick(id).failures, 0)
             test.eq(#f.state.callbacks, 0)

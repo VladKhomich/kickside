@@ -225,6 +225,7 @@ entries:
       policies:
         - kickside.workflows.security:maintenance_defer
         - kickside.workflows.security:maintenance_actor
+        - kickside.workflows.security:maintenance_component_exists
         - kickside.workflows.security:maintenance_store
         - kickside.workflows.security:maintenance_db
     imports:

@@ -29,8 +29,8 @@ with no added policies, and clears `terminal_event_pending` only after
 is delivered at least once, including immediate failures and recovered runs.
 Claim, audit append, and acknowledgement stay outside the receiver frame.
 Error byte cuts preserve complete UTF-8 characters and trim only an incomplete
-final sequence. Failures remain pending; an unfiltered point lookup proving
-target deletion is
-an acknowledged no-op. Receivers fence duplicates and validate domain token
+final sequence. Failures remain pending; only `false` from Component's boolean
+`kickside.component.system:exists` point lookup acknowledges target deletion as
+a no-op. Receivers fence duplicates and validate domain token
 fields. No new persistence, service, or reservation path is introduced. See the
 module README for the exact callback envelope and deletion release prerequisite.

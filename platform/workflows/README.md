@@ -133,8 +133,9 @@ native error.
 Completion is one logical outcome delivered at least once. Receivers must fence
 repeated tokens, including a crash after their commit but before acknowledgement.
 Any callback or authorization failure remains pending for existing maintenance
-retry until repaired. Only an unfiltered point lookup proving target deletion
-acknowledges a no-op; a denied or unavailable lookup remains pending. Idle Flow
+retry until repaired. Only `false` from Component's boolean
+`kickside.component.system:exists` point lookup acknowledges target deletion as
+a no-op; a denied or unavailable lookup remains pending. Idle Flow
 references are not deletion pins. Deletion protection for unpublished terminal
 rows is a release prerequisite (PR #512); the concurrent admission/delete race
 remains known. Callers omitting completion retain their existing behavior.
