@@ -22,3 +22,10 @@
    surface. A reconnect during a pending import can leave a second loader until the mount. */
 wippy-loading, wippy-error { height: 100%; }
 wippy-loading ~ wippy-loading { display: none; }
+
+/* The runtime spinner reserves 16px below the rings for its title.
+   The Workflows import loader has no title. Balance that space at the top. */
+.wf-builder-mount > wippy-loading:not([title]):not([subtitle]) {
+  box-sizing: border-box;
+  padding-block-start: 16px;
+}

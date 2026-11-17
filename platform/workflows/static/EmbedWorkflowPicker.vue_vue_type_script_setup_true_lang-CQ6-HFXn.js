@@ -1,7 +1,7 @@
 import { defineComponent as g, ref as c, computed as y, onMounted as C, watch as N, openBlock as f, createElementBlock as w, Fragment as W, toDisplayString as l, createCommentVNode as x, createVNode as d, withCtx as E, createElementVNode as o, unref as p, createTextVNode as S } from "vue";
 import { Icon as b } from "@iconify/vue";
 import "@wippy-fe/proxy";
-import { _ as V, m as B, J as F } from "./WorkflowSearchList.vue_vue_type_script_setup_true_lang-CifdAiNs.js";
+import { _ as V, l as B, J as F } from "./WorkflowSearchList.vue_vue_type_script_setup_true_lang-BrsNr0R3.js";
 const I = {
   key: 0,
   class: "wf-embed-note"

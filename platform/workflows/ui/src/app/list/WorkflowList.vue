@@ -38,6 +38,7 @@ const parentId = computed(() => {
 
 const rows = ref<WorkflowSummary[]>([])
 const loading = ref(true)
+const listError = ref('')
 const error = ref('')
 const q = ref('')
 const newTitle = ref('')
@@ -140,12 +141,12 @@ const beginLoad = latestRequest()
 async function load() {
   const current = beginLoad()
   loading.value = true
-  error.value = ''
+  listError.value = ''
   try {
     const listed = await listWorkflows()
     if (current()) rows.value = listed
   } catch (e) {
-    if (current()) error.value = humanError(e, 'Couldn’t load your Workflows.')
+    if (current()) listError.value = humanError(e, 'Couldn’t load your Workflows.')
   } finally {
     if (current()) loading.value = false
   }
@@ -368,13 +369,24 @@ const {acceptDeletion} = useComponentDeletion(rows, row => row.id, undefined, lo
       </template>
     </Dialog>
 
-    <main class="kx-body">
-      <div v-if="loading && !rows.length" class="kx-list wf-runs-loading">
+    <main class="kx-body" :class="{ 'kx-body--state': !filteredRows.length }">
+      <Message v-if="listError && rows.length" class="wf-banner" severity="error">
+        {{ listError }}
+        <Button label="Retry" size="small" text @click="load" />
+      </Message>
+
+      <div v-if="loading && !rows.length" class="kx-empty" role="status">
         <ProgressSpinner class="wf-status-spinner" stroke-width="4" aria-label="Loading Workflows" />
         <span>Loading Workflows…</span>
       </div>
 
-      <div v-else-if="!filteredRows.length && !q && labelFilter === null" class="kx-empty">
+      <div v-else-if="listError && !rows.length" class="kx-empty" role="alert">
+        <p class="kx-empty-title">Couldn’t load Workflows</p>
+        <p class="kx-empty-sub">{{ listError }}</p>
+        <Button label="Retry" @click="load" />
+      </div>
+
+      <div v-else-if="!filteredRows.length && !q.trim() && labelFilter === null" class="kx-empty">
         <div class="kx-empty-ico"><Icon icon="tabler:route" aria-hidden="true" /></div>
         <p class="kx-empty-title">No Workflows yet</p>
         <p class="kx-empty-sub">Create a Workflow from typed Blocks, then publish it when it’s ready.</p>
