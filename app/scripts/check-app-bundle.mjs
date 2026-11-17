@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export async function checkAppBundle(appDir) {
@@ -13,7 +13,7 @@ export async function checkAppBundle(appDir) {
     const value = reference.split(/[?#]/, 1)[0].replace(/^\/app\/app\/main\//, '')
     const path = resolve(from, value)
     const within = relative(bundle, path)
-    if (within.startsWith('../') || within === '..' || within === '' || value.startsWith('/')) {
+    if (within.startsWith(`..${sep}`) || within === '..' || within === '' || isAbsolute(within) || isAbsolute(value)) {
       throw new Error(`Application contains an invalid local asset path: ${reference}`)
     }
     return path
@@ -29,14 +29,7 @@ export async function checkAppBundle(appDir) {
     .map(value => value.replace(/^\/app\/app\/main\//, '').replace(/^\.\//, ''))
     .filter(Boolean)
   if (!references.some(value => value.endsWith('.js'))) throw new Error('Local JavaScript entrypoint is missing')
-  for (const reference of new Set(references)) {
-    const path = resolve(bundle, reference)
-    const fromBundle = relative(bundle, path)
-    if (fromBundle.startsWith('../') || fromBundle === '..' || path === bundle || reference.startsWith('/')) {
-      throw new Error(`Application contains an invalid local asset path: ${reference}`)
-    }
-    await requireFile(path)
-  }
+  for (const reference of new Set(references)) await requireFile(localAsset(reference))
   await requireFile(join(bundle, 'wippy-meta.json'))
   const manifest = JSON.parse(await readFile(join(bundle, 'vendor/manifest.json'), 'utf8'))
   if (!manifest.files || !manifest.imports || !Object.keys(manifest.files).length) {

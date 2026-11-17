@@ -1,31 +1,25 @@
-import { W as o, m as r } from "./wc-runtime-DRNaOAbU.js";
-import { l as i } from "./lazy-DX8B4FNv.js";
-import { s } from "./styles-B4tHWzmY.js";
-import "@iconify/vue";
+import { W as o, m as i } from "./wc-runtime-RWZ7nf8c.js";
+import { s as r } from "./styles-DRIjahFu.js";
 import { define as n } from "@wippy-fe/proxy";
 class e extends o {
   static get wippyConfig() {
     return {
       propsSchema: { type: "object", properties: {} },
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: s
+      inlineCss: r
     };
   }
   static get vueConfig() {
     return {
-      lazyConfig: i(
-        () => import("./artifacts-mount-DNZ5E_P0.js").then((t) => t.mountConfig),
-        "Could not load the artifact gallery. Reload the page to try again.",
-        r
-      )
+      ...i(() => import("./artifacts-mount-D3kBMI7k.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the artifact gallery. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }
-async function u() {
+async function l() {
   return e;
 }
 n(import.meta.url, e);
 export {
-  u as webComponent
+  l as webComponent
 };
 //# sourceMappingURL=artifacts.js.map

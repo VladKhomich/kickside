@@ -11,6 +11,8 @@ vi.mock('../composables/useWippy', () => ({
 }))
 vi.mock('@wippy-fe/proxy', () => ({ on: vi.fn() }))
 
+customElements.define('test-knowledge', class extends HTMLElement {})
+
 async function surface(initial: string) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -35,6 +37,47 @@ async function surface(initial: string) {
 }
 
 const back = { path: 'library', back: { within: 'library' } }
+
+it('waits for the direct mount event and ignores component data errors after mount', async () => {
+  const preload = vi.fn().mockResolvedValue(undefined)
+  class LazySurface extends HTMLElement {
+    static preloadImplementation = preload
+    wippyMountState = 'idle'
+
+    connectedCallback() {
+      this.wippyMountState = 'mounting'
+      this.dispatchEvent(new Event('load'))
+    }
+  }
+  customElements.define('test-lazy-surface', LazySurface)
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }],
+  })
+  await router.push('/')
+  const wrapper = mount(WcSurface, {
+    props: { tag: 'test-lazy-surface', path: '/' },
+    attachTo: document.body,
+    global: { plugins: [router] },
+  })
+  try {
+    await flushPromises()
+    const el = wrapper.get('test-lazy-surface').element as LazySurface
+    expect(preload).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('ready')).toBeUndefined()
+    const child = el.appendChild(document.createElement('span'))
+    child.dispatchEvent(new Event('wippy-mounted', { bubbles: true, composed: true }))
+    expect(wrapper.emitted('ready')).toBeUndefined()
+    el.wippyMountState = 'mounted'
+    el.dispatchEvent(new Event('wippy-mounted'))
+    el.dispatchEvent(new Event('error'))
+    expect(wrapper.emitted('ready')).toHaveLength(1)
+    expect(wrapper.emitted('error')).toBeUndefined()
+    expect(wrapper.get('test-lazy-surface').element).toBe(el)
+  } finally {
+    wrapper.unmount()
+  }
+})
 
 it('repeated Back follows real memory history inside the KB, preserving query and hash', async () => {
   const app = await surface('/knowledge/library')

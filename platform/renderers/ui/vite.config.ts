@@ -11,7 +11,7 @@ import { hostExternals, wcRuntimeChunk } from '../../widgets/ui/wc-build'
 export default defineConfig({
   resolve: { alias: { '@widgets': resolve(__dirname, '../../widgets/ui/src') } },
   base: './',
-  plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }), wippyComponentPlugin()],
+  plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }), wippyComponentPlugin({ required: true, lazyEntries: ['render-code'] })],
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
     'process.env': '{}',
