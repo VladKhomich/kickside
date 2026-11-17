@@ -131,7 +131,8 @@ local function define_tests()
             test.not_nil(dispatcher)
             test.is_true(dispatcher.status == "running" or
                 (type(dispatcher.scheduled_at) == "string" and dispatcher_is_due(dispatcher)),
-                "releasing a retention blocker must demand a fresh dispatcher pass")
+                "releasing a retention blocker must demand a fresh dispatcher pass; scheduled_at type="
+                    .. type(dispatcher.scheduled_at) .. ", due=" .. tostring(dispatcher.is_due))
         end)
 
         test.it("propagates a component notification error after committing", function()
@@ -155,7 +156,8 @@ local function define_tests()
             test.not_nil(dispatcher)
             test.is_true(dispatcher.status == "running" or
                 (type(dispatcher.scheduled_at) == "string" and dispatcher_is_due(dispatcher)),
-                "the committed release must wake maintenance before notification can fail")
+                "the committed release must wake maintenance before notification can fail; scheduled_at type="
+                    .. type(dispatcher.scheduled_at) .. ", due=" .. tostring(dispatcher.is_due))
         end)
 
         test.it("logs a committed terminal delivery failure with its item and reason", function()

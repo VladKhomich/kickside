@@ -33,6 +33,14 @@ Supplying a subject snapshot does not waive implementation visibility. Trusted
 callers own principal resolution and admission; an authority result grants no
 ambient registry access.
 
+Registration retains the creator's captured execution root, authorizer and
+credential/link restrictions. A component created from another component's
+execution can therefore have a stored execution root different from its own ID.
+Deferred execution checks ADMIN on that stored root; a direct grant on the
+consuming component does not substitute for a deleted or revoked root. Changing
+the component's stored execution identity requires the existing authenticated
+`set_execution_identity` command and its ADMIN and delegation checks.
+
 ## Kind mutation admission (SPEC)
 
 A component kind binding declares `meta.mutation: open` or `closed`. An absent

@@ -90,14 +90,21 @@ local function define_tests()
                     test.eq(result.last_seq, 1)
                     test.eq(f.event_type_count(target, case.event), 1)
                 else
-                    test.is_nil(result)
-                    test.not_nil(err)
+                    test.is_nil(err)
+                    test.is_true(result.self_completed)
+                    test.is_true(result.invalid)
+                    local failed_db = assert(sql.get("app:db"))
+                    local failed = assert(failed_db:query("SELECT c.status,c.last_error,p.state FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id WHERE c.id=$1", {rows[1].id}))[1]
+                    test.eq(failed.status, "invalid")
+                    test.eq(failed.state, "invalid")
+                    test.ok(type(failed.last_error) == "string" and failed.last_error ~= "")
                     if case.subject_status then
-                        test.is_true(errors.is(err, case.subject_status == "deleted" and errors.NOT_FOUND or errors.PERMISSION_DENIED), tostring(err))
-                        test.is_true(string.find(tostring(err), "deferred principal is " .. case.subject_status, 1, true) ~= nil)
+                        test.contains(failed.last_error, "deferred principal is " .. case.subject_status)
                     end
-                    test.is_true((case.invalid and errors.is(err, errors.INVALID)) or (not case.invalid
-                        and (errors.is(err, errors.PERMISSION_DENIED) or errors.is(err, errors.NOT_FOUND))), tostring(err))
+                    local slot = assert(failed_db:query("SELECT scheduled_at,wake_enabled FROM kickside_job WHERE id=$1", {selected.id}))[1]
+                    test.is_nil(slot.scheduled_at)
+                    test.is_false(slot.wake_enabled == true or tonumber(slot.wake_enabled) == 1)
+                    failed_db:release()
                     test.eq(f.event_type_count(target, case.event), 0)
                     local check, check_err = sql.get("app:db")
                     test.is_nil(check_err)

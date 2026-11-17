@@ -1,5 +1,5 @@
--- PUT /threads/{id}/projections/resume — resume a paused or
--- recoverable-invalid cursor, or return an active cursor unchanged (by cursor_id
+-- PUT /threads/{id}/projections/resume — resume a paused cursor or control-wake
+-- an active cursor without changing its position or generation (by cursor_id
 -- or by kind + projection_key + cursor_key). Response shape:
 -- { success, cursor_id, status }.
 

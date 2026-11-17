@@ -5,6 +5,7 @@ local uuid = require("uuid")
 local writer = require("writer")
 local invoke = require("invoke")
 local claim = require("claim")
+local apply = require("apply")
 
 local function run_case(mode: string)
     local db = assert(sql.get("app:db"))
@@ -24,6 +25,9 @@ local function run_case(mode: string)
         worker_config = { mode = mode },
     })
     test.is_nil(register_err)
+    if mode == "lease" then
+        assert(db:execute("UPDATE kickside_projection_cursor SET last_error='current owner error' WHERE id=$1", { registered.cursor_id }))
+    end
     if mode == "idle" then
         assert(db:execute("UPDATE kickside_projection_cursor SET last_seq=1 WHERE id=$1", { registered.cursor_id }))
         assert(db:execute("UPDATE kickside_projection SET last_event_seq=1 WHERE id=$1", { registered.projection_id }))
@@ -47,6 +51,18 @@ local function run_case(mode: string)
     local check = assert(sql.get("app:db"))
     local probes = assert(check:query("SELECT calls FROM projection_commit_probe WHERE projection_id=$1", { registered.projection_id }))
     local models = assert(check:query("SELECT last_event_seq FROM kickside_projection WHERE id=$1", { registered.projection_id }))
+    if mode == "lease" then
+        local cursors = assert(check:query("SELECT last_error FROM kickside_projection_cursor WHERE id=$1", { registered.cursor_id }))
+        test.eq(cursors[1].last_error, "current owner error")
+        local snapshot = assert(invoke.snapshot(check, registered.cursor_id, job.id))
+        check:release()
+        local _, fail_err = apply.fail("app:db", job, snapshot,
+            errors.new({ kind = errors.UNAVAILABLE, message = "stale infrastructure failure" }), false)
+        test.is_nil(fail_err)
+        check = assert(sql.get("app:db"))
+        cursors = assert(check:query("SELECT last_error FROM kickside_projection_cursor WHERE id=$1", { registered.cursor_id }))
+        test.eq(cursors[1].last_error, "current owner error")
+    end
     check:release()
     if mode == "success" then
         test.eq(#probes, 1)
