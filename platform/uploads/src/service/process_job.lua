@@ -118,7 +118,7 @@ local function settle(job: any, upload: any, outcome: table, failed_processing: 
         return false, err
     end
     local settled, state_err = upload_record_repo.settle_storage_tx(tx, upload.uuid,
-        success and "completed" or "failed", failed_processing)
+        success and "completed" or "failed", failed_processing, success and job_id or nil)
     if state_err then return abort(state_err) end
     if not settled then return abort(nil) end
     local callback_ok, callback_err = pipeline_lib.invoke_upload_token(upload, success,

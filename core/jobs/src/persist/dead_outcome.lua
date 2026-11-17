@@ -60,8 +60,6 @@ end
 
 -- Enqueue parameters of the outcome of dead job `row` for `handler`. The payload
 -- carries only the dead job's id: the handler reads the dead row itself.
--- Infrastructure failures of the handler retry up to the largest attempt limit;
--- a deterministic failure ends the outcome job dead.
 function M.params(row: table, handler: string): table
     return {
         owner_locator = { kind = tostring(row.owner_kind), id = tostring(row.owner_id) },
@@ -71,7 +69,6 @@ function M.params(row: table, handler: string): table
         worker_ref = handler,
         queue_tier = row.queue_tier,
         priority = math.floor(tonumber(row.priority) or 0),
-        max_attempts = job_types.MAX_ATTEMPTS,
         payload = { job_id = tostring(row.id) },
     }
 end

@@ -298,7 +298,7 @@ function sweeper.run_for_thread(db: DB, thread_id: string): (table?, error?)
     local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table,
         now, (policy :: table).batch_events)
     if prune_err then return nil, prune_err end
-    return { events = deleted }, nil
+    return { events = deleted, needs_continue = (deleted :: integer) >= (policy :: table).batch_events }, nil
 end
 
 return sweeper

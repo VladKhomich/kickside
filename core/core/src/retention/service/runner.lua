@@ -15,8 +15,29 @@ local function invalid_response(message: string, field: string): error
         details = {code = "retention_pass_response", field = field}})
 end
 
-local function perform(db: sql.DB, pid: string, change: table?): (PassResult?, error?)
-    local stats, sweep_err = sweeper.run(db)
+local function sweep_threads(db: sql.DB, pid: string, thread_ids: { string }): (table?, error?)
+    local stats = { events = 0, write_receipts = 0, needs_continue = false }
+    for _, thread_id in ipairs(thread_ids) do
+        local result, err = sweeper.run_for_thread(db, thread_id)
+        if err then return nil, err end
+        if not result then return nil, invalid_response("retention sweep returned no result", "sweeper.run_for_thread") end
+        stats.events = stats.events + result.events
+        if result.needs_continue then
+            local _, send_err = process.send(pid, "kickside.core.retention.changed", { kind = "continue", thread_id = thread_id })
+            if send_err then return nil, errors.wrap(send_err, "retention continuation handoff failed") end
+            stats.needs_continue = true
+        end
+    end
+    return stats, nil
+end
+
+local function perform(db: sql.DB, pid: string, change: table?, thread_ids: { string }?): (PassResult?, error?)
+    local stats, sweep_err
+    if thread_ids then
+        stats, sweep_err = sweep_threads(db, pid, thread_ids)
+    else
+        stats, sweep_err = sweeper.run(db)
+    end
     if sweep_err or not stats then
         local err = sweep_err or invalid_response("retention sweep returned no result", "sweeper.run")
         logger:error("retention sweep failed: " .. tostring(err))
@@ -47,11 +68,12 @@ local function perform(db: sql.DB, pid: string, change: table?): (PassResult?, e
         })
     end
 
-    s.needs_continue = s.needs_continue or (owners :: table).needs_continue == true
-    if s.needs_continue then
+    local owners_continue = (owners :: table).needs_continue == true
+    if owners_continue or (thread_ids == nil and s.needs_continue) then
         local _, send_err = process.send(pid, "kickside.core.retention.changed", { kind = "continue", owner_locator = change and change.owner_locator })
         if send_err then return nil, errors.wrap(send_err, "retention continuation handoff failed") end
     end
+    s.needs_continue = s.needs_continue or owners_continue
 
     local deadline_ms, deadline_err = sweeper.next_deadline_ms(db)
     if deadline_err then return nil, deadline_err end
@@ -70,7 +92,9 @@ function M.on_wake(db: sql.DB, pid: string, change: table): (PassResult?, error?
     if type(change) ~= "table" or type(change.kind) ~= "string" or change.kind == "" then
         return nil, (errors.new({ message = "retention wake requires a change kind", kind = errors.INVALID }) :: error)
     end
-    return perform(db, pid, change)
+    local thread_ids: { string }? = nil
+    if type(change.thread_id) == "string" and change.thread_id ~= "" then thread_ids = { change.thread_id } end
+    return perform(db, pid, change, thread_ids)
 end
 
 -- Unscoped changes are durable recovery hints. One full recovery covers them;
@@ -80,6 +104,8 @@ function M.on_wakes(db: sql.DB, pid: string, changes: table[]): (PassResult?, er
         return nil, (errors.new({ message = "retention wakes require changes", kind = errors.INVALID }) :: error)
     end
     local pending: table[] = {}
+    local thread_ids: { string } = {}
+    local seen: { [string]: boolean } = {}
     local recovered = false
     for _, change in ipairs(changes) do
         if type(change.kind) ~= "string" or change.kind == "" then
@@ -87,14 +113,25 @@ function M.on_wakes(db: sql.DB, pid: string, changes: table[]): (PassResult?, er
         end
         if change.owner_locator ~= nil then
             pending[#pending + 1] = { change = change }
+        elseif type(change.thread_id) == "string" and change.thread_id ~= "" then
+            if not seen[change.thread_id] then
+                thread_ids[#thread_ids + 1] = change.thread_id
+                seen[change.thread_id] = true
+            end
         elseif not recovered then
             pending[#pending + 1] = {}
             recovered = true
         end
     end
+    if not recovered and #thread_ids > 0 then pending[#pending + 1] = { thread_ids = thread_ids } end
     local aggregate: PassResult? = nil
     for _, request in ipairs(pending) do
-        local result, err = perform(db, pid, request.change)
+        local result, err
+        if request.change ~= nil then
+            result, err = M.on_wake(db, pid, request.change)
+        else
+            result, err = perform(db, pid, nil, request.thread_ids)
+        end
         if err or not result then return nil, err or invalid_response("retention recovery returned no result", "runner.perform") end
         if aggregate == nil then
             aggregate = result
