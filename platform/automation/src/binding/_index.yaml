@@ -7,6 +7,19 @@ namespace: kickside.automation.binding
 # (wired into installed bindings and referenced by dependent modules).
 
 entries:
+  - name: delete_admission
+    kind: library.lua
+    source: file://delete_admission.lua
+    meta:
+      comment: Standalone Automation deletion admission; Workflows supplies the launched-run validator.
+
+  - name: delete_admission_library
+    kind: ns.requirement
+    default: kickside.automation.binding:delete_admission
+    targets:
+      - entry: kickside.component:delete_admission
+        path: .imports.automation_delete_admission
+
   - name: source_delete_fence
     kind: function.lua
     meta:

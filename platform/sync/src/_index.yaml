@@ -205,6 +205,7 @@ entries:
     kind: contract.binding
     meta:
       type: kickside.automation
+      delete_admission: automation_delete_admission
       title: Data Sync
       comment: Move data from a source to a destination on a schedule or event, with an explicit owner-selected transform in between.
       icon: tabler:arrows-exchange

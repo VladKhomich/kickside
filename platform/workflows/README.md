@@ -219,3 +219,18 @@ deletion are not serialized against each other.
 The separate-database regression uses fresh databases and the existing test profile:
 `cd test && wippy test --config .wippy.yaml --config .split-db.yaml test app:delete_admission_storage_test`
 (add `--profile postgres` and dedicated `pg_database` / `pg_upgrade_database` values for PostgreSQL).
+
+Automation deletion uses the same Component preflight through Automation's
+`delete_admission_library` requirement. Runs record their launching Automation in
+`trigger_id`; pending/running runs and unpublished terminal events return typed
+CONFLICT (`automation_runs_active`) on every Automation delete path. The validator
+opens Workflows' configured storage before Component opens its transaction, so
+separate database placement remains supported. Migration
+`09_automation_delete_admission_index` adds a partial `(trigger_id, run_id)` blocker
+index: the Workflow-id index cannot seek this reference, and the admission-count
+index excludes superseded rows and does not cover terminal publication. The query
+seeks one Automation and stops at the first blocker, including superseded rows.
+No admission/claim/append locks or additional per-event statements are introduced.
+Concurrent admission and deletion retain the accepted non-atomic race described
+above. PostgreSQL CREATE INDEX (and rollback DROP INDEX) requires a maintenance
+window because it can block writes until the migration transaction commits.

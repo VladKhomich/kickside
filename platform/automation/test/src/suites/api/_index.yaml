@@ -43,6 +43,7 @@ entries:
   - funcs
   - security
   - uuid
+  - registry
   imports:
     test: wippy.test:test
     delete_automation: kickside.automation.api:delete

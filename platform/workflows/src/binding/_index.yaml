@@ -4,6 +4,14 @@ namespace: kickside.workflows.binding
 # Deletable + status functions for the workflow component kind.
 
 entries:
+  - name: automation_delete_admission
+    kind: library.lua
+    source: file://automation_delete_admission.lua
+    meta:
+      comment: Refuse Automation deletion while its launched runs or terminal publications are outstanding.
+    imports:
+      store: kickside.workflows.store:store
+
   - name: delete_admission
     kind: library.lua
     source: file://delete_admission.lua

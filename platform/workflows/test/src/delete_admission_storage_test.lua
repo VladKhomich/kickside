@@ -21,19 +21,22 @@ return {run=test.run_cases(function()
                 local _, err = workflow_db:execute(statement, args)
                 test.is_nil(err, tostring(err))
             end
+            for _, kind in ipairs({{impl=workflow_types.WORKFLOW_IMPL,code="workflow_runs_active"},
+                {impl="kickside.automation.manual:task",code="automation_runs_active"}}) do
             for _, state in ipairs({"idle", "pending", "running", "unpublished"}) do
                 local id, rid = uuid.v4(), uuid.v4()
                 local _, register_err = component_db:execute(
                     "INSERT INTO kickside_components (component_id,impl_id) VALUES ($1,$2)",
-                    {id,workflow_types.WORKFLOW_IMPL})
+                    {id,kind.impl})
                 test.is_nil(register_err, tostring(register_err))
                 if state ~= "idle" then
-                    execute("INSERT INTO workflow_runs (run_id,workflow_id,version,status,started_at,terminal_event_pending)"
-                        .. " VALUES ($1,$2,1,$3,'2026-11-16T00:00:00Z',$4)",
-                        {rid,id,state == "unpublished" and "completed" or state,state == "unpublished"})
+                    execute("INSERT INTO workflow_runs (run_id,workflow_id,trigger_id,version,status,started_at,terminal_event_pending)"
+                        .. " VALUES ($1,$2,$3,1,$4,'2026-11-16T00:00:00Z',$5)",
+                        {rid,kind.code == "workflow_runs_active" and id or uuid.v4(),id,
+                            state == "unpublished" and "completed" or state,state == "unpublished"})
                     local accepted, err = component.system_delete(id, "reparent_root")
                     test.is_false(accepted); test.is_true(errors.is(err, errors.CONFLICT), tostring(err))
-                    test.eq(err:details().code, "workflow_runs_active")
+                    test.eq(err:details().code, kind.code)
                     local rows, read_err = component_db:query(
                         "SELECT deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", {id})
                     test.is_nil(read_err, tostring(read_err)); test.not_nil(rows[1])
@@ -47,6 +50,7 @@ return {run=test.run_cases(function()
                     "SELECT deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", {id})
                 test.is_nil(read_err, tostring(read_err))
                 test.not_nil(rows[1].deleting_at); test.not_nil(rows[1].delete_intent)
+            end
             end
             workflow_db:release(); component_db:release()
         end)

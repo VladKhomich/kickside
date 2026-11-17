@@ -143,3 +143,17 @@ tombstones carry an expiry. Dead evidence remains while its recovery owner
 exists, and unresolved work remains until it settles. Engine receipts change only when their destination mapping changes
 or reconciliation updates their pass marker. Deleting a sync retires its
 receipts and keeps destination records.
+
+## Deletion admission
+
+Automation kind bindings declare `meta.delete_admission: automation_delete_admission`.
+The `kickside.automation.binding:delete_admission_library` requirement wires that
+alias into Component's existing preflight. Standalone Automation admits deletion;
+Workflows supplies its validator when installed. An Automation with launched
+Workflow runs that are pending/running, or whose terminal event is unpublished,
+returns a typed CONFLICT (`details.code: automation_runs_active`). The Automation
+HTTP delete endpoint answers 409. Uninstall and owner cascades use the same gate,
+before any deleting mark, drive fencing, rollback or cleanup. Refusal preserves the
+run and Inbox review so it can still be approved and resumed. Terminal publication
+acknowledgement admits deletion. Concurrent run admission and deletion remain
+unserialized, with the same accepted non-atomic race as Workflow deletion.

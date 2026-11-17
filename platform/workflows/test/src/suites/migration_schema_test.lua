@@ -56,6 +56,7 @@ local EXPECTED_INDEXES: { [string]: boolean } = {
     idx_workflow_event_due = true,
     idx_workflow_admission_count = true,
     idx_workflow_delete_blockers = true,
+    idx_automation_delete_blockers = true,
 }
 
 local function column_names(db: any, table_name: string): { string }

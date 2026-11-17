@@ -10,3 +10,4 @@ override:
   "kickside.workflows.migrations:06_iteration_input_routes:meta.target_db": app:retry_upgrade_db
   "kickside.workflows.migrations:07_retry_policy:meta.target_db": app:retry_upgrade_db
   "kickside.workflows.migrations:08_delete_admission_index:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:09_automation_delete_admission_index:meta.target_db": app:retry_upgrade_db
