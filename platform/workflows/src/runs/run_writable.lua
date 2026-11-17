@@ -18,6 +18,7 @@ local run_identity = require("run_identity")
 local execution_identity = require("execution_identity")
 local exact_automation_ref = require("automation_ref")
 local errors = require("errors")
+local component = require("component")
 
 local function construct(dependencies: any): any
 local selected_version_read = dependencies.version_read or version_read
@@ -26,6 +27,7 @@ local selected_compiler = dependencies.compiler or compiler
 local client_new = dependencies.client_new or client.new
 local selected_admission = dependencies.admission or admission
 local load_identity = dependencies.load_identity or run_identity.load
+local selected_component = dependencies.component or component
 local M = {}
 
 local function fail(code: string, message: any, retriable: boolean, scope: string, retry_after_ms: number?): any
@@ -80,6 +82,18 @@ local function exact(req: any): (any?, any?)
     if type(config) ~= "table" then return nil, "config is required" end
     local selection_err = validate_correlation_fields(config.correlation_fields)
     if selection_err then return nil, selection_err end
+    if config.completion ~= nil then
+        local completion = config.completion
+        if type(completion) ~= "table" or type(completion.component_id) ~= "string"
+            or not uuid.validate(completion.component_id) or completion.token_fields == nil then
+            return nil, "completion requires a component UUID and token_fields"
+        end
+        for field in pairs(completion) do
+            if field ~= "component_id" and field ~= "token_fields" then return nil, "unknown completion field" end
+        end
+        local token_err = validate_correlation_fields(completion.token_fields)
+        if token_err then return nil, "completion token_fields: " .. token_err end
+    end
     return flow_ref.validate(config.flow_ref)
 end
 
@@ -145,7 +159,7 @@ function M.write(request: any): any
     local valid_err = schema_validate.validate(version.input_schema, input, "input")
     if valid_err then return fail("invalid_request", valid_err, false, "item") end
     local admission_hash, hash_err = canonical_json.hash({ flow_ref = ref, op = req.sink_op, input = input,
-        correlation_fields = req.config.correlation_fields })
+        correlation_fields = req.config.correlation_fields, completion = req.config.completion })
     if hash_err or type(admission_hash) ~= "string" then
         if errors.is(hash_err, errors.INVALID) then
             return fail("invalid_request", hash_err, false, "item")
@@ -160,6 +174,21 @@ function M.write(request: any): any
     if encode_err or not identity_row then
         return fail("invalid_identity", encode_err or "automation identity invalid", false, "identity")
     end
+    local completion: any = nil
+    if req.config.completion ~= nil then
+        local token, token_err = select_correlation(req.config.completion.token_fields, input)
+        if token_err then return fail("invalid_request", token_err, false, "item") end
+        local target, target_err = selected_component.open(req.config.completion.component_id,
+            selected_component.ACCESS.WRITE, "kickside.workflows:run_completion")
+        if target_err or not target then
+            if errors.is(target_err, errors.PERMISSION_DENIED) then
+                return fail("permission_denied", target_err, false, "item")
+            end
+            if errors.is(target_err, errors.INVALID) then return fail("invalid_config", target_err, false, "item") end
+            return pending(target_err or "completion target unavailable")
+        end
+        completion = { component_id = req.config.completion.component_id, token = token }
+    end
     local function creation_for(run_id: string, dataflow_id: string): (string?, any?)
         local correlation, correlation_err = select_correlation(req.config.correlation_fields, input)
         if correlation_err then return nil, correlation_err end
@@ -169,6 +198,7 @@ function M.write(request: any): any
         })
         if remint_err or not commands then return nil, remint_err or "workflow input could not be routed" end
         return json.encode({ version = ref.version, input = input, commands = commands, correlation = correlation,
+            completion = completion,
             options = { dataflow_id = dataflow_id, type = "workflow",
                 metadata = { run_id = run_id, origin = "automation", flow_ref = ref,
                     resume_handler = "kickside.workflows.runs:resume",
