@@ -10,7 +10,6 @@ local function required(err: error?): error
 end
 local function invoke(api, dialect): (any, error?, any?)
     local db = fixture.database()
-    if api == "finish_cancellation" then return cancellation.finish_cancellation(db, dialect, {id = "job", token = "token", execution_seq = 1}) end
     return cancellation[api](db, dialect, {id = "job"})
 end
 local function retains(actual: error, source: error): ()
@@ -25,11 +24,10 @@ end
 return {run = test.run_cases(function()
     test.describe("native cancellation transaction failures", function()
         for _, dialect in ipairs({sql.type.SQLITE, sql.type.POSTGRES}) do
-            for _, api in ipairs({"cancel_job", "cancel_job_tx", "cancel_jobs", "cancel_jobs_tx", "finish_cancellation"}) do
-                local standalone = api == "cancel_job" or api == "cancel_jobs" or api == "finish_cancellation"
+            for _, api in ipairs({"cancel_job", "cancel_job_tx", "cancel_jobs", "cancel_jobs_tx"}) do
+                local standalone = api == "cancel_job" or api == "cancel_jobs"
                 local numeric = api == "cancel_jobs" or api == "cancel_jobs_tx"
-                local stages = {"size", "update", "marker"}
-                if api ~= "finish_cancellation" then stages[#stages + 1] = "lookup" end
+                local stages = {"size", "update", "marker", "lookup"}
                 if standalone then stages[#stages + 1] = "begin"; stages[#stages + 1] = "commit" end
                 for _, stage in ipairs(stages) do
                     for _, kind in ipairs(kinds) do
@@ -73,7 +71,7 @@ return {run = test.run_cases(function()
                 end
                 local proofs = {"update"}
                 if standalone then proofs[#proofs + 1] = "begin" end
-                if api ~= "finish_cancellation" then proofs[#proofs + 1] = "lookup" end
+                proofs[#proofs + 1] = "lookup"
                 for _, stage in ipairs(proofs) do
                     test.it("missing/" .. dialect .. "/" .. api .. "/" .. stage, function()
                         fixture.reset(stage, nil)
@@ -113,19 +111,17 @@ return {run = test.run_cases(function()
                         test.eq(fixture.markers, count)
                     end)
                 end
-                if api ~= "finish_cancellation" then
-                    for _, mode in ipairs({"empty", "running"}) do
-                        test.it(mode .. "/" .. dialect .. "/" .. api, function()
-                            fixture.reset("", nil)
-                            fixture.empty, fixture.running = mode == "empty", mode == "running"
-                            local value, err, revoked = invoke(api, dialect)
-                            test.is_nil(err)
-                            if numeric then test.eq(value, mode == "empty" and 0 or 1) else test.eq(value, mode ~= "empty") end
-                            test.eq(#revoked, mode == "running" and 1 or 0)
-                            test.eq(fixture.markers, 0)
-                            test.eq(fixture.commits, standalone and 1 or 0)
-                        end)
-                    end
+                for _, mode in ipairs({"empty", "running"}) do
+                    test.it(mode .. "/" .. dialect .. "/" .. api, function()
+                        fixture.reset("", nil)
+                        fixture.empty, fixture.running = mode == "empty", mode == "running"
+                        local value, err, revoked = invoke(api, dialect)
+                        test.is_nil(err)
+                        if numeric then test.eq(value, mode == "empty" and 0 or 1) else test.eq(value, mode ~= "empty") end
+                        test.eq(#revoked, mode == "running" and 1 or 0)
+                        test.eq(fixture.markers, 0)
+                        test.eq(fixture.commits, standalone and 1 or 0)
+                    end)
                 end
             end
         end

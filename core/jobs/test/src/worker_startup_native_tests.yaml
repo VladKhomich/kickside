@@ -15,7 +15,6 @@ entries:
     job_types: kickside.core.jobs:types
     config: kickside.core.jobs:config
     lifecycle: app:job_child_release_native_lifecycle
-    lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
     claim_execution: app:job_child_startup_native_claim
     reclaim: kickside.core.jobs.persist:reclaim
     proc_supervisor: kickside.core.jobs:proc_supervisor

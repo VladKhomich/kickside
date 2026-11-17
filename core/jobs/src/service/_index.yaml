@@ -75,7 +75,7 @@ entries:
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
       lease_status: kickside.core.jobs.persist:lease_status
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
+      reclaim: kickside.core.jobs.persist:reclaim
       worker_fence: kickside.core.jobs.service:worker_fence
       proc_supervisor: kickside.core.jobs:proc_supervisor
       worker_dispatch: kickside.core.jobs.service:worker_dispatch
@@ -160,7 +160,6 @@ entries:
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
       lifecycle: kickside.core.jobs.persist:lifecycle
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       claim_execution: kickside.core.jobs.persist:claim_execution
       reclaim: kickside.core.jobs.persist:reclaim
       proc_supervisor: kickside.core.jobs:proc_supervisor
@@ -186,7 +185,6 @@ entries:
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
       lifecycle: kickside.core.jobs.persist:lifecycle
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       claim_execution: kickside.core.jobs.persist:claim_execution
       reclaim: kickside.core.jobs.persist:reclaim
       proc_supervisor: kickside.core.jobs:proc_supervisor

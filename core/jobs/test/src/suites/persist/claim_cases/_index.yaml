@@ -170,7 +170,7 @@ entries:
     type: test
     suite: kickside_core
     group: KickSide Core / Jobs
-    comment: Lease reclaim closes the lost execution's run history.
+    comment: Lease reclaim and cancellation close the ended execution's run history.
   source: file://run_history_reclaim_test.lua
   method: run
   modules:
@@ -182,6 +182,7 @@ entries:
     claim: kickside.core.jobs.persist:claim
     reclaim: kickside.core.jobs.persist:reclaim
     lifecycle: kickside.core.jobs.persist:lifecycle
+    lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
     job_fixture: app:job_fixture
 - name: claim_sequence_test
   kind: function.lua
