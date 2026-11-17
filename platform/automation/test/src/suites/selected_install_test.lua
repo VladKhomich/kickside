@@ -16,24 +16,26 @@ local principal = {kind = "user", id = "selected_executor"}
 
 type State = {
     prepares: integer, creates: integer, identities: integer, slots: integer, bodies: integer, checks: integer,
-    created: boolean, identity: boolean, credential_id: string?, target_field: string?,
+    created: boolean, identity: boolean, credential_id: string?, link_id: string?, target_field: string?, inherited_root: string?,
     denied: boolean?, preflight_denied: boolean?, preflight_unavailable: boolean?, failure: string?, concurrent: (() -> ())?,
 }
 
-local function fixture()
+local function fixture(inherited_root: string?)
+    local principal = inherited_root and operator or principal
     local id = uuid.v7()
     local state: State = {prepares = 0, creates = 0, identities = 0, slots = 0, bodies = 0, checks = 0,
-        created = false, identity = false}
+        created = false, identity = false, inherited_root = inherited_root}
     local args = {component_id = id, request_id = "selected:" .. id, principal = principal}
     local entry = {kind = "contract.binding", meta = {type = "kickside.automation", inputs = {}}, data = {
         contracts = {{contract = "kickside.contract:installable", methods = {install = "fixture:legacy"}},
             {contract = "kickside.automation:prepared_installable", methods = {prepare_install = PREPARE}}}}}
     local function receipt()
         local stored = {version = 2, principal = principal, authorized_by = operator,
-            component_id = id, captured_at = "2026-10-10T00:00:00Z", credential_id = state.credential_id}
+            component_id = inherited_root or id, captured_at = "2026-10-10T00:00:00Z", credential_id = state.credential_id, link_id = state.link_id}
         if state.target_field == "authorized_by" then stored.authorized_by = {kind = "user", id = "other-operator"} end
         if state.target_field == "component_id" then stored.component_id = "other-root" end
         if state.target_field == "credential_id" then stored.credential_id = nil end
+        if state.target_field == "link_id" then stored.link_id = nil end
         return {execution_identity = stored, component_id = id, principal = state.identity and principal or operator,
             identity_generation = state.identity and 1 or 0, identity_hash = state.identity and "selected-hash" or "operator-hash",
             declaration_hash = shared.command_state(id).pending.digest,
@@ -45,9 +47,9 @@ local function fixture()
         execution_identity = {
             check_principal = function(value) return value, nil end,
             capture = function(input) return {version = 2, principal = input and input.principal or operator, authorized_by = operator,
-                component_id = input and input.component_id or nil, captured_at = "2026-10-10T00:00:00Z", credential_id = state.credential_id}, nil end,
+                component_id = inherited_root or (input and input.component_id or nil), captured_at = "2026-10-10T00:00:00Z", credential_id = state.credential_id, link_id = state.link_id}, nil end,
             authorize = function(identity)
-                test.eq(identity.component_id, id)
+                test.eq(identity.component_id, inherited_root or id)
                 test.eq(identity.authorized_by.id, operator.id)
                 test.eq(identity.principal.id, principal.id)
                 if state.preflight_denied or state.preflight_unavailable then
@@ -103,7 +105,7 @@ local function fixture()
             wake_dispatcher = function() return true, nil end,
             provision = function()
                 test.is_nil(shared.command_state(id).pending)
-                test.is_true(state.identity)
+                test.is_true(state.identity or inherited_root ~= nil)
                 state.slots = state.slots + 1
                 return "fixture-job", nil
             end},
@@ -114,7 +116,7 @@ end
 local function installed(id, args, state)
     test.eq(state.prepares, 1)
     test.eq(state.creates, 1)
-    test.eq(state.identities, 1)
+    test.eq(state.identities, state.inherited_root and 0 or 1)
     test.eq(state.bodies, 0)
     test.is_nil(shared.command_state(id).pending)
     test.eq(shared.op_of(id, args.request_id).state, "succeeded")
@@ -133,6 +135,62 @@ return {run = test.run_cases(function()
             test.eq(result.id, id)
             installed(id, args, state)
             test.eq(state.slots, 1)
+        end)
+        for _, failure in ipairs({"none", CREATE, APPLY}) do
+            test.it("keeps inherited creation identity across " .. failure .. " recovery and replay", function()
+                local root = uuid.v7()
+                local id, args, state, _, engine = fixture(root)
+                args.parent_id = root
+                state.credential_id, state.link_id = "inherited-credential", "inherited-link"
+                state.failure = failure ~= "none" and failure or nil
+                local result, err = engine().install_type_selected(TYPE, {}, args)
+                if state.failure then
+                    test.is_nil(result)
+                    test.not_nil(err)
+                    test.eq(state.slots, 0)
+                    state.failure = nil
+                    test.eq(engine().recover_command(id).state, "succeeded")
+                else
+                    test.is_nil(err, tostring(err))
+                    test.eq(result.id, id)
+                end
+                installed(id, args, state)
+                local replay, replay_err = engine().install_type_selected(TYPE, {}, args)
+                test.is_nil(replay_err, tostring(replay_err))
+                test.eq(replay.id, id)
+                test.eq(state.slots, 1)
+                local changed, changed_err = engine().install_type_selected(TYPE, {changed = true}, args)
+                test.is_nil(changed)
+                test.is_true(errors.is(changed_err, errors.CONFLICT))
+            end)
+        end
+        for _, field in ipairs({"component_id", "credential_id", "link_id"}) do
+            test.it("checks inherited " .. field .. " in the final creation receipt", function()
+                local id, args, state, _, engine = fixture(uuid.v7())
+                state.credential_id, state.link_id = "inherited-credential", "inherited-link"
+                state.target_field = field
+                local result, err = engine().install_type_selected(TYPE, {}, args)
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.CONFLICT), tostring(err))
+                test.eq(state.slots, 0)
+                test.eq(shared.read_drive(id, "main").enabled, false)
+                state.target_field = nil
+                test.eq(engine().recover_command(id).state, "succeeded")
+                installed(id, args, state)
+            end)
+        end
+        test.it("rechecks rooted caller authority after creation before enabling its drive", function()
+            local id, args, state, _, engine = fixture(uuid.v7())
+            state.failure = CREATE
+            local _, err = engine().install_type_selected(TYPE, {}, args)
+            test.not_nil(err)
+            state.failure, state.denied = nil, true
+            test.eq(engine().recover_command(id).state, "pending")
+            test.eq(state.slots, 0)
+            test.eq(shared.read_drive(id, "main").enabled, false)
+            state.denied = false
+            test.eq(engine().recover_command(id).state, "succeeded")
+            installed(id, args, state)
         end)
         for _, failure in ipairs({"denied", "unavailable"}) do
             test.it("selection preflight " .. failure .. " leaves no preparation or command and permits a later retry", function()

@@ -12,6 +12,9 @@ override:
       methods: {resolve: "app:scope_resolver_stub"}
   "app:history_upgrade_db:file": "${sqlite_path}.history-upgrade"
   "app:db:file": "${sqlite_path}"
+  # The scale suite checkpoints explicitly around its WAL measurements.
+  # A background TRUNCATE between the commit and sample erases that evidence.
+  "app:db:checkpoint.interval": "1h"
   "kickside.core.jobs.service:worker.service:lifecycle.auto_start": false
   "kickside.core.retention.service:sweeper.service:lifecycle.auto_start": false
 registry:
