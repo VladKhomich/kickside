@@ -2,6 +2,11 @@ local test = require("test")
 local sweeper = require("sweeper")
 local fixture = require("fixture")
 local sql = require("sql")
+local methods = {
+    run = sweeper.run,
+    next_deadline_ms = sweeper.next_deadline_ms,
+    run_for_thread = function(db: sql.DB) return sweeper.run_for_thread(db, "thread") end,
+}
 local function head(changes: table): table
     local row = {id = "thread", seq = 1, pin_floor = 1, projection_floor = 1,
         eligibility_ms = 1000, created_at = "2000-01-01 00:00:00", head_created_at = "2000-01-01 00:00:00"}
@@ -18,7 +23,7 @@ return {run = test.run_cases(function()
                 test.it(method .. "/heads/" .. tostring(response.value), function()
                     fixture.reset(method, "", nil, sql.type.SQLITE)
                     fixture.responses.heads = response
-                    local ok, result, err = pcall(sweeper[method], fixture.database(), "thread")
+                    local ok, result, err = pcall(methods[method], fixture.database())
                     test.is_true(ok)
                     test.is_nil(result)
                     test.eq(type(err), "userdata")
@@ -40,7 +45,7 @@ return {run = test.run_cases(function()
                     test.it(method .. "/" .. stage .. "/" .. tostring(response.value), function()
                         fixture.reset(method, "", nil, sql.type.SQLITE)
                         fixture.responses[stage] = response
-                        local ok, result, err = pcall(sweeper[method], fixture.database(), "thread")
+                        local ok, result, err = pcall(methods[method], fixture.database())
                         test.is_true(ok)
                         test.is_nil(result)
                         test.eq(type(err), "userdata")
@@ -77,7 +82,7 @@ return {run = test.run_cases(function()
             test.it(case.method .. "/" .. case.field, function()
                 fixture.reset(case.method, "", nil, sql.type.SQLITE)
                 fixture.responses.heads = {value = {case.value}}
-                local ok, result, err = pcall(sweeper[case.method], fixture.database(), "thread")
+                local ok, result, err = pcall(methods[case.method], fixture.database())
                 test.is_true(ok)
                 test.is_nil(result)
                 test.eq(err:kind(), errors.INTERNAL)
@@ -104,7 +109,7 @@ return {run = test.run_cases(function()
                 test.it("retains empty candidates/" .. dialect .. "/" .. method, function()
                     fixture.reset(method, "", nil, dialect)
                     fixture.responses.heads, fixture.responses.receipts = {value = {}}, {value = {}}
-                    local result, err = sweeper[method](fixture.database(), "thread")
+                    local result, err = methods[method](fixture.database())
                     test.is_nil(err)
                     if method ~= "next_deadline_ms" then test.eq(result.events, 0) else test.is_nil(result) end
                     test.eq(fixture.prunes, 0)

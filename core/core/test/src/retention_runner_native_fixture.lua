@@ -5,7 +5,7 @@ function M.reset(stage: string, source: any, missing: boolean?, value: any)
     M.sweeps, M.owners, M.sends, M.deadlines = 0, 0, 0, 0
     M.core_deadline, M.owner_deadline = 12345, nil
 end
-function M.sweep(db: any): (any, error?)
+function M.sweep(db: any, _traversal: table?): (any, error?)
     M.sweeps = M.sweeps + 1
     if M.stage == "sweep" then
         if M.source then return nil, M.source end

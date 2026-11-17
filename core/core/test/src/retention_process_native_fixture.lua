@@ -45,7 +45,7 @@ function M.get(id: string): (any, error?)
     if M.stage == "acquire" then return nil, M.source end
     return {release = function(self: any): () M.releases = M.releases + 1 end}, nil
 end
-function M.recover(db: any, pid: string): (any, error?)
+function M.recover(db: any, pid: string, _traversal: table?): (any, error?)
     M.recoveries = M.recoveries + 1
     if M.responses.recover then return M.responses.recover.value, nil end
     if M.stage == "recover" then return nil, M.source end
@@ -56,7 +56,7 @@ function M.select(cases: table): table
     return {channel = M.process_events,
         value = {kind = M.stage == "wake" and M.selects == 1 and "wake" or "cancel"}, ok = true}
 end
-function M.wake(db: any, pid: string, change: table): (any, error?)
+function M.wake(db: any, pid: string, change: table, _traversal: table?): (any, error?)
     M.wakes = M.wakes + 1
     if M.responses.wake then return M.responses.wake.value, nil end
     return {}, nil

@@ -12,12 +12,15 @@ local retention_policy = require("retention_policy")
 local sweeper = {}
 
 type DB = sql.DB
+type EventTraversal = { after_thread_id: string? }
 
 type RunStats = {
     events: integer,
     write_receipts: integer,
     needs_continue: boolean,
 }
+
+local EVENT_THREAD_PAGE = 256
 
 local function response_failure(message: string, field: string): error
     return errors.new({message = message, kind = errors.INTERNAL, retryable = false,
@@ -144,24 +147,60 @@ local function prune_thread(db: DB, dbtype: string, row: table, policy: table,
     return deleted_count(result, "prune.deleted")
 end
 
-local function load_event_threads(db: DB, dbtype: string, policy: table, now: any): ({ table }?, error?)
-    local enabled_match: any = dbtype == sql.type.SQLITE and 1 or true
-    local predicate = ""
-    local params: table = { enabled_match }
+local function load_event_threads(db: DB, dbtype: string, policy: table, now: any,
+        after_id: string?, through_id: string?): ({ table }?, error?)
+    local policy_join = [[LEFT JOIN kickside_retention_policy p ON p.thread_id=t.id]]
+    local event_join = [[LEFT JOIN kickside_event e INDEXED BY uq_kickside_event_thread_seq
+            ON e.thread_id=t.id AND e.seq=t.max_pruned_seq+1 AND (p.enabled IS NULL OR p.enabled=1)]]
+    local params: table = {}
     if dbtype == sql.type.POSTGRES then
-        predicate = [[ AND (p.event_hot_retention_days < 1 OR
-            FLOOR(EXTRACT(EPOCH FROM e.created_at)*1000)
-                + COALESCE(p.event_hot_retention_days::bigint*86400000,$2::bigint) + 1 <= $3::bigint)]]
-        params[2], params[3] = policy.events_ms, math.floor(now:unix_nano() / 1000000)
+        policy_join = [[LEFT JOIN LATERAL (
+            SELECT p.enabled,p.event_hot_retention_days FROM kickside_retention_policy p WHERE p.thread_id=t.id LIMIT 1
+        ) p ON TRUE]]
+        event_join = [[LEFT JOIN LATERAL (
+            SELECT e.created_at FROM kickside_event e
+            WHERE e.thread_id=t.id AND e.seq=t.max_pruned_seq+1 AND (p.enabled IS NULL OR p.enabled=$1)
+                AND (p.event_hot_retention_days < 1 OR FLOOR(EXTRACT(EPOCH FROM e.created_at)*1000)
+                    + COALESCE(p.event_hot_retention_days::bigint*86400000,$2::bigint) + 1 <= $3::bigint)
+            LIMIT 1
+        ) e ON TRUE]]
+        params = { true, policy.events_ms, math.floor(now:unix_nano() / 1000000) }
     end
-    local rows, err = db:query([[SELECT t.id,p.event_hot_retention_days,p.enabled,e.created_at AS head_created_at
-        FROM kickside_thread t
-        JOIN kickside_event e ON e.thread_id=t.id AND e.seq=t.max_pruned_seq+1
-        LEFT JOIN kickside_retention_policy p ON p.thread_id=t.id
-        WHERE t.deleting_at IS NULL AND (p.thread_id IS NULL OR p.enabled=$1)
-        ]] .. predicate .. " ORDER BY t.id", params)
+    local bounds = ""
+    if after_id then
+        params[#params + 1] = after_id
+        bounds = bounds .. " AND id>$" .. tostring(#params)
+    end
+    if through_id then
+        params[#params + 1] = through_id
+        bounds = bounds .. " AND id<=$" .. tostring(#params)
+    end
+    -- Bound the thread seek before looking up heads so sparse eligibility
+    -- cannot turn a page into a scan of event history.
+    local rows, err = db:query([[SELECT t.id,p.event_hot_retention_days,e.created_at AS head_created_at
+        FROM (SELECT id,max_pruned_seq FROM kickside_thread WHERE deleting_at IS NULL]]
+        .. bounds .. " ORDER BY id LIMIT " .. tostring(EVENT_THREAD_PAGE) .. ") t\n"
+        .. policy_join .. "\n" .. event_join .. "\nORDER BY t.id", params)
     if err then return nil, errors.wrap(err, "failed to load Core event retention candidates") end
     return rows_result(rows, "candidates.query")
+end
+
+local function sweep_event_range(db: DB, dbtype: string, policy: table, now: any, budget: integer,
+        after_id: string?, through_id: string?): (integer, string?, error?)
+    local events = 0
+    while true do
+        local threads, thread_err = load_event_threads(db, dbtype, policy, now, after_id, through_id)
+        if thread_err then return events, nil, thread_err end
+        local page = threads :: { table }
+        for _, row in ipairs(page) do
+            local deleted, prune_err = prune_thread(db, dbtype, row, policy, now, budget - events)
+            if prune_err then return events, nil, prune_err end
+            events = events + (deleted :: integer)
+            after_id = tostring(row.id)
+            if events >= budget then return events, after_id, nil end
+        end
+        if #page < EVENT_THREAD_PAGE then return events, nil, nil end
+    end
 end
 
 local function min_deadline(current: integer?, candidate: integer): integer
@@ -239,7 +278,7 @@ function sweeper.next_deadline_ms(db: DB): (integer?, error?)
     return next_ms, nil
 end
 
-function sweeper.run(db: DB): (RunStats?, error?)
+function sweeper.run(db: DB, traversal: EventTraversal?): (RunStats?, error?)
     local policy, policy_err = load_policy()
     if policy_err then return nil, policy_err end
     local raw_dbtype, dbtype_err = db:type()
@@ -249,15 +288,19 @@ function sweeper.run(db: DB): (RunStats?, error?)
     local now = time.now()
     local agg: RunStats = { events = 0, write_receipts = 0, needs_continue = false }
 
-    local threads, thread_err = load_event_threads(db, dbtype, policy :: table, now)
-    if thread_err then return nil, thread_err end
-    for _, row in ipairs(threads :: { table }) do
-        local remaining = math.floor((policy :: table).batch_events) - agg.events
-        if remaining <= 0 then break end
-        local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table, now, remaining)
-        if prune_err then return nil, prune_err end
-        agg.events = agg.events + (deleted :: integer)
+    local budget = math.floor((policy :: table).batch_events)
+    local after_id = traversal and traversal.after_thread_id
+    local events, next_id, sweep_err = sweep_event_range(db, dbtype, policy :: table, now, budget, after_id, nil)
+    if sweep_err then return nil, sweep_err end
+    if after_id and events < budget then
+        -- Wrap at most once and share the remaining deletion budget with the prefix.
+        local wrapped, wrap_err
+        wrapped, next_id, wrap_err = sweep_event_range(db, dbtype, policy :: table, now, budget - events, nil, after_id)
+        if wrap_err then return nil, wrap_err end
+        events = events + wrapped
     end
+    if traversal then traversal.after_thread_id = next_id end
+    agg.events = events
 
     -- Receipt timestamps are canonical RFC3339 UTC text on both dialects;
     -- event.created_at follows the database timestamp layout instead.

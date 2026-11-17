@@ -107,7 +107,9 @@ local function main(): (any?, error?)
         return nil, response_failure("Core retention SQL acquisition returns no database", "sql.get")
     end
 
-    local initial, initial_err = runner.recover(db :: sql.DB, pid)
+    -- All wakes, including coalesced continuations, share the current position.
+    local traversal = {}
+    local initial, initial_err = runner.recover(db :: sql.DB, pid, traversal)
     if initial_err then
         close(db :: sql.DB, subscription, changes, releases)
         return nil, initial_err
@@ -157,7 +159,7 @@ local function main(): (any?, error?)
 
         local next_pass, pass_err
         if timer and selected.channel == timer then
-            next_pass, pass_err = runner.on_deadline(db :: sql.DB, pid)
+            next_pass, pass_err = runner.on_deadline(db :: sql.DB, pid, traversal)
         else
             local change: table = { kind = "process_event" }
             if selected.channel == registry_events then
@@ -179,9 +181,9 @@ local function main(): (any?, error?)
                     pending[#pending + 1] = type(value) == "table" and type(value.kind) == "string"
                         and value or { kind = "process_event" }
                 end
-                next_pass, pass_err = runner.on_wakes(db :: sql.DB, pid, pending)
+                next_pass, pass_err = runner.on_wakes(db :: sql.DB, pid, pending, traversal)
             else
-                next_pass, pass_err = runner.on_wake(db :: sql.DB, pid, change)
+                next_pass, pass_err = runner.on_wake(db :: sql.DB, pid, change, traversal)
             end
         end
         if pass_err then

@@ -53,6 +53,13 @@ existing installations use the normal owner-authorized identity recovery.
 
 ## Module-owned retention
 
+Core shares its configured event deletion cap across threads in each sweep.
+When a sweep spends that budget, the next service pass resumes after the last
+thread visited and wraps in thread ID order. This gives every eligible thread
+a turn even while earlier threads still have expired events. All service wakes
+share that position in memory, and boot recovery restarts the traversal from
+the first thread.
+
 An installed module registers its maintenance function with
 `meta.type: kickside.retention.owner`. Core invokes ready owners on recovery,
 eligibility deadlines and change hints. Each owner retains its SQL, policy and
