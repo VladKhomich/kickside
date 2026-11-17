@@ -24,7 +24,7 @@ local function db()
     return handle
 end
 
-local function reload_catalog(): (any?, any?)
+local function reload_snapshot(): (any?, any?)
     local handle, derr = db()
     if not handle then return nil, derr end
     local dbh = handle :: sql.DB
@@ -89,8 +89,8 @@ local function reload_catalog(): (any?, any?)
     return snapshot
 end
 
-function M.reload_catalog(): any
-    local snapshot, err = reload_catalog()
+function M.reload_profiles(): any
+    local snapshot, err = reload_snapshot()
     return { snapshot = snapshot, error = err }
 end
 

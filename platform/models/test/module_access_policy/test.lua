@@ -80,8 +80,7 @@ local function define_tests()
             local actor = security.new_actor("binding-member", {})
             test.eq(scope:evaluate(actor, "db.get", "app:db"), "undefined")
             test.eq(scope:evaluate(actor, "env.get", "ENCRYPTION_KEY"), "undefined")
-            for _, id in ipairs({"kickside.models.persist:reload_catalog", "kickside.models.persist:reload_profiles",
-                                "kickside.models.persist:decode_profiles"}) do
+            for _, id in ipairs({"kickside.models.persist:reload_profiles", "kickside.models.persist:decode_profiles"}) do
                 test.eq(scope:evaluate(actor, "funcs.call", id), "undefined", id)
                 test.eq(scope:evaluate(actor, "funcs.security", id), "undefined", id)
             end
