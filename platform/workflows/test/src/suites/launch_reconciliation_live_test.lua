@@ -19,6 +19,7 @@ local store = require("store")
 local identity = require("execution_identity")
 local types = require("types")
 local engine_api = require("engine_api")
+local run_writable = require("run_writable")
 
 type Map = { [string]: any }
 
@@ -176,6 +177,50 @@ local function define_tests()
             test.is_nil(err)
             test.eq(current.status, "running")
             test.eq(creates, 1)
+        end)
+
+        test.it("publishes admitted correlation when the first real node fails", function()
+            local id = published(true)
+            local sink = run_writable.new({ load_identity = function() return identity.capture({}) end,
+                repo = { ACCESS = { READ = 1 }, require_access = function() return nil end } })
+            local automation_id = uuid.v4()
+            local result = sink.write({ config = { flow_ref = { kind = "flow", id = id, version = 1 },
+                correlation_fields = { "board_id", "item", "visit", "attempt" } },
+                input = { fail = true, board_id = "board-1", item = "item-1", visit = 4, attempt = 2,
+                    secret = "never publish" }, sink_op = "create", identity_key = "item-1",
+                idempotency_key = uuid.v4(), origin = automation_id,
+                automation_ref = { kind = "automation", id = automation_id, revision = 1 } })
+            test.is_true(result.success, tostring(result.error and result.error.message))
+            local row = read_row(result.dest_ref.run_id)
+            local cli = client.new()
+            test.eq(wait_terminal(cli, row.dataflow_id), "failed")
+            -- Join the durable completion callback before claiming publication;
+            -- engine status can become visible before its callback commits.
+            local _, completion_err = funcs.call("kickside.workflows.runs:run_completed", {
+                run_id = row.run_id, dataflow_id = row.dataflow_id, status = "failed" })
+            test.is_nil(completion_err)
+            force_due(row.run_id)
+            local tick, tick_err = maintenance.tick(1, row.run_id)
+            test.is_nil(tick_err)
+            test.eq(tick.failures, 0, tostring(tick.last_error))
+            local db = store.open_db()
+            local events, read_err = db:query("SELECT body FROM kickside_event"
+                .. " WHERE external_source='kickside.workflow_run' AND external_id=$1 AND external_version='1'",
+                { row.run_id })
+            db:release()
+            test.is_nil(read_err)
+            test.eq(#events, 1)
+            local body, decode_err = json.decode(events[1].body)
+            test.is_nil(decode_err)
+            test.eq(body.run_id, row.run_id)
+            test.eq(body.status, "failed")
+            test.not_nil(body.correlation)
+            test.eq(body.correlation.board_id, "board-1")
+            test.eq(body.correlation.item, "item-1")
+            test.eq(body.correlation.visit, 4)
+            test.eq(body.correlation.attempt, 2)
+            test.is_nil(body.correlation.secret)
+            test.is_nil(body.input)
         end)
 
         test.it("finalizes a fresh failed unadmitted flow without a completion hook", function()

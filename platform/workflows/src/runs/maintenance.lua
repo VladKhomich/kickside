@@ -21,6 +21,11 @@ local function construct(dependencies: any): any
 local selected_admission = dependencies.admission or admission
 local client_new = dependencies.client_new or client.new
 local append_event = dependencies.append_event or runs_state.append_event
+local selected_component = dependencies.component or component
+local component_exists = dependencies.component_exists or function(id: string): (boolean?, error?)
+    return funcs.call("kickside.component.system:exists", id)
+end
+local selected_identity = dependencies.execution_identity or execution_identity
 local M = {}
 local log = logger:named("workflows.runs.maintenance")
 
@@ -163,6 +168,13 @@ local function emit_terminal_event(row: any): (any?, any?)
             correlation_key = row.dedup_key or row.trigger_id or row.run_id },
         trigger_id = row.trigger_id,
     }
+    if type(row.creation_payload_json) == "string" and row.creation_payload_json ~= "" then
+        local payload, payload_err = json.decode(row.creation_payload_json)
+        if payload_err or type(payload) ~= "table" then
+            return nil, payload_err or "workflow run creation payload is invalid"
+        end
+        body.correlation = payload.correlation
+    end
     if run.flow_ref then body.flow_ref = run.flow_ref else body.draft_ref = run.draft_ref end
     if run.automation_ref then body.automation_ref = run.automation_ref end
     if row.status ~= "completed" then
@@ -181,10 +193,55 @@ local function emit_terminal_event(row: any): (any?, any?)
     return true, nil
 end
 
-local function publish(row: any): (any?, any?)
-    -- The durable external event identity makes an append retry idempotent.
-    -- Only the workflow publication receipt remains to commit after the append.
-    return acknowledge_event(row)
+local function completion_of(row: any): (any?, any?)
+    if type(row.creation_payload_json) ~= "string" or row.creation_payload_json == "" then return nil, nil end
+    local payload, err = json.decode(row.creation_payload_json)
+    if err or type(payload) ~= "table" then return nil, err or "invalid run creation payload" end
+    return payload.completion, nil
+end
+
+-- Preserve complete UTF-8 code points; only a byte cut can leave an
+-- incomplete final sequence. JSON escaping can require a second byte cut.
+local function byte_prefix(message: string, limit: integer): string
+    if #message <= limit then return message end
+    local cut = message:sub(1, limit)
+    local start = #cut
+    while start > 0 and cut:byte(start) >= 128 and cut:byte(start) < 192 do start = start - 1 end
+    local lead = cut:byte(start)
+    local width = lead and (lead >= 240 and 4 or lead >= 224 and 3 or lead >= 192 and 2 or 1) or 1
+    if #cut - start + 1 < width then return cut:sub(1, start - 1) end
+    return cut
+end
+
+-- Called through a policy-free function boundary under the live run scope.
+-- Claiming, audit publication and acknowledgement stay in the publisher frame.
+function M.complete(row: any): (any?, any?)
+    local completion, payload_err = completion_of(row)
+    if payload_err then return nil, payload_err end
+    if completion then
+        local target, target_err = selected_component.open(completion.component_id,
+            selected_component.ACCESS.WRITE, "kickside.workflows:run_completion")
+        if target_err or not target then return nil, target_err or "completion target unavailable" end
+        local envelope: any = { token = completion.token, run_id = row.run_id, dataflow_id = row.dataflow_id,
+            flow_ref = { kind = "flow", id = row.workflow_id, version = tonumber(row.version) },
+            status = row.status, started_at = row.started_at, ended_at = row.finished_at }
+        if row.status ~= "completed" then
+            local message = byte_prefix(tostring(row.error or row.status), 4096)
+            envelope.error = { code = row.status, message = message }
+            local encoded, encode_err = json.encode(envelope.error)
+            if encode_err or not encoded then return nil, encode_err or "completion error encoding failed" end
+            while #encoded > 4096 do
+                message = byte_prefix(message, math.max(0, #message - (#encoded - 4096)))
+                envelope.error.message = message
+                encoded, encode_err = json.encode(envelope.error)
+                if encode_err or not encoded then return nil, encode_err or "completion error encoding failed" end
+            end
+        end
+        local ack, callback_err = target:complete(envelope)
+        if callback_err then return nil, callback_err end
+        if type(ack) ~= "table" or ack.acknowledged ~= true then return nil, "completion was not acknowledged" end
+    end
+    return true, nil
 end
 
 -- Only maintenance_publish calls this after validating the claimed publication
@@ -230,8 +287,7 @@ end
 
 -- The claimed token fences each row action across the publisher and run frames.
 function M.row_action(args: any): (any?, any?)
-    if type(args) ~= "table" or (args.phase ~= "observe" and args.phase ~= "publish"
-        and args.phase ~= "publish_event")
+    if type(args) ~= "table" or (args.phase ~= "observe" and args.phase ~= "publish_event")
         or type(args.run_id) ~= "string" or type(args.token) ~= "string" then
         return nil, errors.new({ kind = errors.INVALID, message = "invalid maintenance row action" })
     end
@@ -248,12 +304,14 @@ function M.row_action(args: any): (any?, any?)
     end)
     if read_err or not row then return nil, read_err end
     if row.stale then return row, nil end
+    if args.phase ~= "observe" and not (row.terminal_event_pending == true or row.terminal_event_pending == 1) then
+        return { stale = true }, nil
+    end
     if args.phase == "publish_event" then
         local emitted, emit_err = emit_terminal_event(row)
         if emit_err or not emitted then return nil, emit_err end
         return refresh_public_meta(row)
     end
-    if args.phase == "publish" then return publish(row) end
     local cli, client_err = client_new()
     if client_err or not cli then return nil, client_err or "dataflow client unavailable" end
     local supported, support_err = engine_api.require_methods(cli)
@@ -262,42 +320,54 @@ function M.row_action(args: any): (any?, any?)
 end
 
 local function run_row_action(row: any, phase: string, local_client: any?): (any?, any?)
-    if local_client then
-        if phase == "observe" then return observe(local_client, row) end
-        local _, append_err = emit_terminal_event(row)
-        if append_err then return nil, append_err end
-        return publish(row)
-    end
+    if local_client and phase == "observe" then return observe(local_client, row) end
     local args = { phase = phase, run_id = tostring(row.run_id),
         token = tostring(phase == "observe" and row.completion_check_token or row.terminal_event_token) }
     -- The framework service publishes an already-authorized terminal audit
     -- event. The run identity alone executes user behavior and engine reads.
     if phase == "publish" then
-        local published, append_err = funcs.call("kickside.workflows.runs:maintenance_publish", {
+        local published, append_err
+        if local_client then published, append_err = emit_terminal_event(row)
+        else published, append_err = funcs.call("kickside.workflows.runs:maintenance_publish", {
             phase = "publish_event", run_id = args.run_id, token = args.token,
-        })
+        }) end
         if append_err then return nil, append_err end
         if published ~= true then
             return nil, errors.new({ kind = errors.INTERNAL,
                 message = "workflow terminal publisher returned no success result", retryable = true })
         end
-        return publish(row)
+        local completion, payload_err = completion_of(row)
+        if payload_err then return nil, payload_err end
+        if not completion then return acknowledge_event(row) end
+        -- Component's boolean point read proves deletion without exposing data;
+        -- an ACL-filtered miss cannot distinguish deletion from revoked access.
+        local target_exists, target_err = component_exists(completion.component_id)
+        if target_err then return nil, target_err end
+        if target_exists == false then return acknowledge_event(row) end
     end
     local encoded, decode_err = json.decode(tostring(row.execution_identity_json or ""))
     if decode_err or type(encoded) ~= "table" or type(encoded.principal) ~= "table" then
         return nil, errors.new({ kind = errors.INVALID, message = "workflow run execution identity is invalid" })
     end
-    local identity, identity_err = execution_identity.from_row(
-        execution_identity.actor_key(encoded.principal), row.execution_identity_json)
+    local identity, identity_err = selected_identity.from_row(
+        selected_identity.actor_key(encoded.principal), row.execution_identity_json)
     if identity_err or not identity then return nil, identity_err end
     local actor = security.actor()
-    if actor and actor:id() == execution_identity.actor_key(identity.principal) then
+    if phase == "observe" and actor and actor:id() == selected_identity.actor_key(identity.principal) then
         return M.row_action(args)
     end
-    return execution_identity.run_as(identity, "kickside.workflows.runs:maintenance_row", args, {
+    local result, run_err = selected_identity.run_as(identity,
+        phase == "publish" and "kickside.workflows.runs:maintenance_complete" or "kickside.workflows.runs:maintenance_row",
+        phase == "publish" and row or args, {
         deferred_owner = "kickside.workflows.runs:maintenance_tick_worker",
         execution_root = identity.component_id,
     })
+    if run_err then return nil, run_err end
+    if phase == "publish" then
+        if result ~= true then return nil, "completion returned no success result" end
+        return acknowledge_event(row)
+    end
+    return result, nil
 end
 
 function M.tick(limit: number?, run_id: string?, recover: boolean?): (any?, any?)

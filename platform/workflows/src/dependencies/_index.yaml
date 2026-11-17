@@ -14,3 +14,6 @@ entries:
     meta:
       comment: Generic trigger, binding, Flow runtime contract, and Automation web-component surfaces consumed by Workflows.
     component: kickside/automation
+    parameters:
+      - name: kickside.automation.binding:delete_admission_library
+        value: kickside.workflows.binding:automation_delete_admission

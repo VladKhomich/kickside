@@ -290,8 +290,11 @@ function M.log_rows(automation_id: string, drive_key: string): { Map }
         { automation_id, drive_key })
 end
 
+-- A record can retain several revisions. Observe its first admitted revision,
+-- as delivery does, independently of the database's physical or index order.
 function M.ledger_row(automation_id: string, item_key: string): Map?
-    return M.query("SELECT state, attempts, next_attempt_at, expires_at FROM kickside_trigger_item_ledger WHERE owner_id = $1 AND item_key = $2",
+    return M.query("SELECT state, attempts, next_attempt_at, expires_at FROM kickside_trigger_item_ledger WHERE owner_id = $1 AND item_key = $2"
+        .. " ORDER BY delivery_order, identity_key LIMIT 1",
         { automation_id, item_key })[1]
 end
 

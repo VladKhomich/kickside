@@ -22,6 +22,13 @@ function M.run(parent_id: string): (boolean?, error?)
             message = "cannot delete child component " .. id .. ": " .. tostring(cause)
             details.component_id = id
         elseif not id then message = tostring(cause) end
+        if id and visible[id] and type(cause) == "userdata" then
+            for key, value in pairs(cause:details() or {}) do
+                if details[key] == nil then details[key] = value end
+            end
+            return errors.new({kind = cause:kind(), retryable = cause:retryable(),
+                message = message .. "; " .. removed .. " child components removed", details = details})
+        end
         return errors.new({kind = errors.CONFLICT,
             message = message .. "; " .. removed .. " child components removed", details = details})
     end

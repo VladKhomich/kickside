@@ -8,6 +8,8 @@
 // an installation-specific card. Selection is reported via the `select` event
 // (see constants.ts).
 export interface ComponentProps {
+  label?: string
+  description?: string
   value?: string
   capability?: string
   mode?: string

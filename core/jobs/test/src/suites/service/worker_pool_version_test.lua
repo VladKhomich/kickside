@@ -18,7 +18,7 @@ local function define_tests()
             local worker_id = "registry-version-worker"
             local db = {
                 type = function() return sql.type.POSTGRES end,
-                query = function() return { {} }, nil end,
+                query = function() return {}, nil end,
                 release = function() end,
             }
             local pool = worker_pool.new({

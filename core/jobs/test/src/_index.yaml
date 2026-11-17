@@ -700,6 +700,7 @@ entries:
     method: run
     modules: [sql, uuid]
     imports:
+      clock: kickside.core.jobs:clock
       test: wippy.test:test
       wake: kickside.core.jobs.persist:wake
 
@@ -767,7 +768,7 @@ entries:
       comment: Registry-version notices and immediate fenced release of unstarted assignments.
     source: file://suites/service/worker_recycle_test.lua
     method: run
-    modules: [sql, uuid, process]
+    modules: [sql, uuid, process, time]
     imports:
       test: wippy.test:test
       job_types: kickside.core.jobs:types
@@ -854,7 +855,7 @@ entries:
       comment: Stale idle notices and repeat claims cannot overwrite a live assignment.
     source: file://suites/service/idle_report_test.lua
     method: run
-    modules: [sql, uuid, process]
+    modules: [sql, uuid, process, time]
     imports:
       test: wippy.test:test
       worker_pool: kickside.core.jobs.service:worker_pool
@@ -1647,6 +1648,7 @@ entries:
     modules: [uuid]
     imports:
       sql: app:listing_native_sql_adapter
+      clock: kickside.core.jobs:clock
       eligibility: kickside.core.jobs.persist:eligibility
 
   - name: listing_native_test_dependencies_1
@@ -1764,7 +1766,7 @@ entries:
     meta: {type: test, suite: jobs_deadline_native}
     source: file://deadline_native_test.lua
     method: run
-    modules: [sql]
+    modules: [sql, time]
     imports:
       test: wippy.test:test
       worker_pool: kickside.core.jobs.service:worker_pool
@@ -3476,6 +3478,7 @@ entries:
     source: file://eligibility_native_source.lua
     modules: [sql]
     imports:
+      clock: kickside.core.jobs:clock
       capacity: app:capacity_native_adapter
       sql_boundary: kickside.core.jobs.persist:sql_boundary
   - name: capacity_native_adapter
@@ -3997,6 +4000,7 @@ entries:
     method: run
     modules: [sql]
     imports:
+      clock: kickside.core.jobs:clock
       job_fixture: app:job_fixture
       lifecycle: kickside.core.jobs.persist:lifecycle
       test: wippy.test:test
@@ -4066,6 +4070,7 @@ entries:
     method: run
     modules: [sql, json, time]
     imports:
+      clock: kickside.core.jobs:clock
       test: wippy.test:test
       config: kickside.core.jobs:config
       runtime_policy: kickside.core.jobs.policy:runtime
@@ -4355,6 +4360,7 @@ entries:
     modules:
     - sql
     imports:
+      clock: kickside.core.jobs:clock
       test: wippy.test:test
       jobs: app:health_bounded_source
       fixture: app:job_fixture
@@ -4387,3 +4393,73 @@ entries:
       test: wippy.test:test
       enqueue: app:enqueue_native_source
       fixture: app:enqueue_native_fixture
+  - name: private_queue_runtime_clock
+    kind: db.sql.sqlite
+    file: ":memory:"
+  - name: runtime_clock_fixture
+    kind: library.lua
+    source: file://runtime_clock_fixture.lua
+    modules: [time]
+    imports: {clock: kickside.core.jobs:clock}
+  - name: runtime_clock_listing
+    kind: library.lua
+    source: file://listing_native_source.lua
+    modules: [sql, uuid]
+    imports:
+      eligibility: kickside.core.jobs.persist:eligibility
+      clock: app:runtime_clock_fixture
+  - name: runtime_clock_eligibility
+    kind: library.lua
+    source: file://eligibility_native_source.lua
+    modules: [sql]
+    imports:
+      capacity: kickside.core.jobs:capacity
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
+      clock: app:runtime_clock_fixture
+  - name: runtime_clock_jobs
+    kind: library.lua
+    meta:
+      comment: 'Durable jobs API: enqueue, post-commit nudge, slot purge, fenced cancellation,
+        lease validation, completion, listing, retention, and health.'
+    source: file://health_native_source.lua
+    modules:
+    - sql
+    - logger
+    imports:
+      runtime_policy: kickside.core.jobs.policy:runtime
+      config: app:runtime_clock_config
+      lifecycle: kickside.core.jobs.persist:lifecycle
+      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
+      lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
+      lease_status: kickside.core.jobs.persist:lease_status
+      wake: kickside.core.jobs.persist:wake
+      slot_purge: kickside.core.jobs.persist:slot_purge
+      clock: app:runtime_clock_fixture
+      completion: kickside.core.jobs.persist:completion
+      retention: kickside.core.jobs.persist:retention
+      thread_teardown: kickside.core.jobs.persist:thread_teardown
+      api_scope: kickside.core.jobs.api:scope
+      lease_release: kickside.core.jobs:lease_release
+      claim: kickside.core.jobs.persist:claim
+      error_envelope: kickside.contract:error_envelope
+      committed_error: kickside.contract:committed_error
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
+  - name: runtime_clock_test
+    kind: function.lua
+    source: file://runtime_clock_test.lua
+    method: run
+    meta: {type: test, suite: jobs_runtime_clock}
+    modules: [sql, time, uuid]
+    imports:
+      test: wippy.test:test
+      clock: kickside.core.jobs:clock
+      frozen: app:runtime_clock_fixture
+      config: kickside.core.jobs:config
+      fixture: app:job_fixture
+      worker_pool: kickside.core.jobs.service:worker_pool
+      listing: app:runtime_clock_listing
+      eligibility: app:runtime_clock_eligibility
+      jobs: app:runtime_clock_jobs
+  - name: runtime_clock_config
+    kind: library.lua
+    source: file://runtime_clock_config.lua

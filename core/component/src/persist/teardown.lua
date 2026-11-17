@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- Component deletion intent, provider cleanup and final unregister.
 
 local sql = require("sql")
@@ -11,6 +12,7 @@ local meta_service = require("meta_service")
 local ops = require("component_ops")
 local placement = require("placement")
 local component_lifecycle = require("component_lifecycle")
+local delete_admission = require("delete_admission")
 local error_envelope = require("error_envelope")
 
 local M = {}
@@ -221,6 +223,29 @@ end
 function M.begin_delete(component_id: string, gate_user_id: string?, child_policy: string?, delete_options: any?): (boolean, string?, any, boolean?, string?)
     local db, db_err = sql.get(ops.db_id())
     if db_err then return false, "connect", db_err end
+    -- Implementation storage may share SQLite's single application connection.
+    -- Read it before holding our transaction, then recheck Component's own gates
+    -- under the existing placement lock before committing its delete intent.
+    local function refuse(step: string, err: error?): (boolean, string, error?)
+        return false, step, error_envelope.cleanup(function(): (any, error?) return db:release() end,
+            err, "release component admission database")
+    end
+    local admission_rows, read_err = db:query(
+        "SELECT impl_id,deleting_at FROM kickside_components WHERE component_id=$1", {component_id})
+    if read_err or type(admission_rows) ~= "table" then
+        return refuse("delete", internal("component admission read failed", read_err or "missing rows"))
+    end
+    if admission_rows[1] and admission_rows[1].deleting_at == nil then
+        if gate_user_id ~= nil then
+            local allowed, access_err = ops.check_user_access(db, gate_user_id, component_id, ops.ACCESS.DELETE)
+            if access_err or not allowed then return refuse("access", access_err) end
+        end
+        local _, validation_err = ops.validate_delete_tx(db, {component_id=component_id, child_policy=child_policy})
+        if validation_err then return refuse("delete", validation_err) end
+        local admission_err = delete_admission.validate({component_id=component_id,
+            impl_id=admission_rows[1].impl_id, child_policy=child_policy, options=delete_options})
+        if admission_err then return refuse("delete", admission_err) end
+    end
     local tx, tx_err = db:begin()
     if tx_err then
         return false, "begin", error_envelope.cleanup(function(): (any, error?) return db:release() end,
@@ -247,7 +272,7 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
     if lock_err or not locked or tonumber(locked.rows_affected) == nil then
         return false, "delete", abort_transaction(db, tx, internal("component delete fence lock failed", lock_err or "missing row proof"))
     end
-    local rows, fence_err = tx:query("SELECT deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", { component_id })
+    local rows, fence_err = tx:query("SELECT impl_id,deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", { component_id })
     if fence_err or type(rows) ~= "table" then
         return false, "delete", abort_transaction(db, tx, internal("component delete fence read failed", fence_err or "missing result"))
     end

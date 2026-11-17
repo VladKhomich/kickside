@@ -50,7 +50,10 @@ function M.process_host(): (string?, error?)
     if err then return nil, errors.wrap(err, "jobs process host unavailable") end
     if type(entry) ~= "table" then return nil, response_error("process_config") end
     local host = entry.meta and entry.meta.host_id
-    if type(host) ~= "string" or host == "" then return nil, invalid("jobs process host is not configured") end
+    if type(host) ~= "string" or host == "" then
+        return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true,
+            message = "jobs process host is not configured"})
+    end
     return host, nil
 end
 
@@ -245,13 +248,14 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     return { self_completed = true, completion = done, last_seq = last }, nil
 end
 
--- Record a worker failure on the cursor that ran it, fenced on the snapshot's
+-- Record an attempt failure on its cursor, fenced on the snapshot's
 -- generation and head. A deterministic failure is the projection's verdict: the
 -- cursor and projection turn invalid with the error, and the slot completes
 -- with failed history and parks, so new events cannot re-run it until a
 -- corrected declaration re-registers it. An infrastructure failure keeps the
 -- cursor active with its last_error and returns to Jobs, which retries the
--- slot. Returns the self-completion of a deterministic failure, else nil.
+-- slot. Infrastructure publication also requires the current running lease.
+-- Returns the self-completion of a deterministic failure, else nil.
 function M.fail(db_id: string, job: table, snapshot: table, failure: error, deterministic: boolean): (table?, error?)
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection failure DB unavailable") end
@@ -288,10 +292,16 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
         end
     end
     local now = clock.now(dbtype)
-    local fenced, fence_err = tx:execute([[UPDATE kickside_projection_cursor SET status=$1,last_error=$2,updated_at=$3
-        WHERE id=$4 AND job_id=$5 AND generation=$6 AND last_seq=$7 AND status='active']],
-        { deterministic and "invalid" or "active", message, now, snapshot.id, tostring(job.id),
-            snapshot.generation, snapshot.last_seq })
+    local statement = [[UPDATE kickside_projection_cursor SET status=$1,last_error=$2,updated_at=$3
+        WHERE id=$4 AND job_id=$5 AND generation=$6 AND last_seq=$7 AND status='active']]
+    local args = { deterministic and "invalid" or "active", message, now, snapshot.id, tostring(job.id),
+        snapshot.generation, snapshot.last_seq }
+    if not deterministic then
+        statement = statement .. [[ AND EXISTS (SELECT 1 FROM kickside_job
+            WHERE id=$5 AND status='running' AND lease_token=$8)]]
+        args[8] = tostring(job.lease_token or "")
+    end
+    local fenced, fence_err = tx:execute(statement, args)
     local fence_write_err = write_error(fenced, fence_err, "projection failure record failed", "failure.fence")
     if fence_write_err then return abort(fence_write_err) end
     local recorded = fenced.rows_affected == 1

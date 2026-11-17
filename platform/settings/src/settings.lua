@@ -159,6 +159,7 @@ function M.list(args: any): settings_types.ListResponse
                         schema = def.schema,
                         title = def.title, category = def.category, order = def.order,
                         ui = def.ui, owner = def.owner, control = def.control,
+                        confirm_decrease = def.confirm_decrease,
                         updated_by = updated_by,
                         updated_at = updated_at,
                         error = rec and rec.error or nil,

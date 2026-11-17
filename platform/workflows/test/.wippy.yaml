@@ -3,6 +3,11 @@ version: "1.0"
 # resident maintenance service would claim the same due runs under them.
 # The automation scope suite claims its own Jobs round.
 override:
+  # The narrow completion principal has no storage grants. Keep the Component
+  # backend fixture's storage grants inside its own function boundary.
+  "kickside.component.binding:get_access_context_func:security.policies":
+    - kickside.workflows.security:maintenance_store
+    - kickside.workflows.security:maintenance_db
   "app:db:file": "${sqlite_path}"
   "kickside.workflows.runs:maintenance.service:lifecycle.auto_start": false
   "kickside.core.jobs.service:worker.service:lifecycle.auto_start": false
