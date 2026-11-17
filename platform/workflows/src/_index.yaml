@@ -117,6 +117,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.workflows.migrations:08_delete_admission_index
         path: .meta.target_db
+      - entry: kickside.workflows.migrations:09_automation_delete_admission_index
+        path: .meta.target_db
       - entry: kickside.workflows:db_config
         path: .meta.db_id
 

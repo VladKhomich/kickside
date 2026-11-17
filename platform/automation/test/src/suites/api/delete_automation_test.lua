@@ -6,6 +6,7 @@ local test = require("test")
 local funcs = require("funcs")
 local security = require("security")
 local uuid = require("uuid")
+local registry = require("registry")
 local delete_automation = require("delete_automation")
 
 local COMPONENT_PROBE = "app:delete_automation_component_probe"
@@ -38,6 +39,27 @@ end
 
 local function define_tests()
     test.describe("DELETE /automations/{id}", function()
+        test.it("declares run admission on each built-in Automation kind", function()
+            for _, id in ipairs({"kickside.automation.manual:task", "kickside.automation.recurring:task", "kickside.sync:sync"}) do
+                local entry, err = registry.get(id)
+                test.is_nil(err, tostring(err))
+                test.eq(entry.meta.delete_admission, "automation_delete_admission")
+            end
+        end)
+
+        test.it("preserves a typed active-run refusal as HTTP 409", function()
+            local refusal = errors.new({message="Automation has active runs",kind=errors.CONFLICT,
+                retryable=false,details={code="automation_runs_active",automation_id="installed-1"}})
+            local status, body = delete_automation.response_for(actor(), "installed-1", nil, {
+                component=component(),
+                automations_lib={delete_automation=function() return nil, refusal end},
+            })
+            test.eq(status, 409)
+            test.eq(body.error.code, "conflict")
+            test.is_false(body.error.retryable)
+            test.eq(body.error.details.code, "automation_runs_active")
+        end)
+
         test.it("returns typed retryable cleanup details to HTTP clients", function()
             local pending = errors.new({ message = "cleanup pending", kind = errors.CONFLICT,
                 retryable = true, details = { cleanup_pending = true,
