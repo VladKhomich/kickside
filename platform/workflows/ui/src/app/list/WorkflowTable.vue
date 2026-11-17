@@ -228,8 +228,8 @@ const rowMenuItems = computed<RowMenuEntry[]>(() => {
         role="row"
         tabindex="0"
         @click="!item.row.deleting_at && emit('open', item.row.id)"
-        @keydown.enter="!item.row.deleting_at && emit('open', item.row.id)"
-        @keydown.space.prevent="!item.row.deleting_at && emit('open', item.row.id)"
+        @keydown.enter.self="!item.row.deleting_at && emit('open', item.row.id)"
+        @keydown.space.self.prevent="!item.row.deleting_at && emit('open', item.row.id)"
       >
         <span class="wf-row-main" role="cell">
           <span class="wf-row-icon"><Icon icon="tabler:route" aria-hidden="true" /></span>

@@ -103,9 +103,15 @@
 
 * { box-sizing: border-box; }
 
+.wf-builder-mount,
 .wf {
-  position: absolute;
-  inset: 0;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wf {
+  position: relative;
   display: flex;
   flex-direction: column;
   background: var(--p-content-background);

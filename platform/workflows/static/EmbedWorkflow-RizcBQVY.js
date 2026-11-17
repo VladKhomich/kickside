@@ -1,12 +1,12 @@
 import { defineComponent as oe, defineAsyncComponent as ie, computed as g, ref as h, onBeforeUnmount as de, watch as ce, openBlock as n, createElementBlock as m, createVNode as d, unref as a, createElementVNode as o, createBlock as v, withCtx as c, createTextVNode as b, toDisplayString as w, withModifiers as fe, createCommentVNode as W, Fragment as ve } from "vue";
-import { L as pe, X as me, f as $, m as be, J as he, h as ye } from "./WorkflowSearchList.vue_vue_type_script_setup_true_lang-CifdAiNs.js";
+import { L as pe, X as me, f as $, l as be, J as he, h as ye } from "./WorkflowSearchList.vue_vue_type_script_setup_true_lang-BrsNr0R3.js";
 import { s as k } from "./index-CSqVKKCx.js";
 import { s as M } from "./index-3cGXfEXf.js";
-import { a as we, b as ke, C as _e, s as ge, _ as G, g as Re, D as Ee, z as Ce, i as Ie } from "./http-error-DQkaOZT2.js";
+import { a as we, b as ke, C as _e, s as ge, _ as G, g as Re, D as Ee, z as Ce, i as Ie } from "./http-error-CQeeeGpp.js";
 import { a as Se, u as We } from "./wc-runtime-Tr5oXE7R.js";
 import { on as K } from "@wippy-fe/proxy";
 import { Icon as A } from "@iconify/vue";
-import { _ as Oe } from "./EmbedWorkflowPicker.vue_vue_type_script_setup_true_lang-Buk9kei3.js";
+import { _ as Oe } from "./EmbedWorkflowPicker.vue_vue_type_script_setup_true_lang-CQ6-HFXn.js";
 const Pe = "Run Workflow";
 function X(t, r) {
   const l = t[r];
@@ -108,7 +108,7 @@ const Fe = { class: "wf-embed" }, xe = {
 }, st = { class: "wf-embed-actions" }, ft = /* @__PURE__ */ oe({
   __name: "EmbedWorkflow",
   setup(t) {
-    const r = ie(() => import("./SchemaEditor-C4rslUQF.js")), l = Se(), f = We(), i = g(() => je(l.value)), u = h(null), I = h(!1), R = h(""), O = h({}), q = h(0), N = h(!0), p = h("ready"), j = h(!1), E = h(""), _ = h(""), y = h(null);
+    const r = ie(() => import("./SchemaEditor-lUYaplVs.js")), l = Se(), f = We(), i = g(() => je(l.value)), u = h(null), I = h(!1), R = h(""), O = h({}), q = h(0), N = h(!0), p = h("ready"), j = h(!1), E = h(""), _ = h(""), y = h(null);
     let V = null, U = null, F = !1;
     const Y = g(() => u.value ? `/workflows/${u.value.id}` : "");
     function Q() {
