@@ -131,7 +131,8 @@ onBeforeUnmount(() => {
     :filter-placeholder="classesOnly ? 'Search classes…' : 'Search models…'"
     placeholder="Default model"
     :loading="loading"
-    aria-label="Choose model"
+    :aria-label="props.label || 'Choose model'"
+    :pt="{ label: { 'aria-description': props.description || undefined } }"
     @before-show="loadData"
     @update:model-value="(v: unknown) => emit('select', (v as string) ?? '')"
   >
