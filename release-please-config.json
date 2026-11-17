@@ -46,6 +46,12 @@
     "core/jobs": {
       "component": "jobs",
       "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "wippy.yaml"
+        }
+      ],
       "exclude-paths": [
         "core/jobs/test",
         "core/jobs/test-support",

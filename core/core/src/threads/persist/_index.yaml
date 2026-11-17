@@ -85,6 +85,7 @@ entries:
       - json
     imports:
       clock: kickside.core.jobs:clock
+      jobs: kickside.core.jobs:jobs
       threads_consts: kickside.core.threads:consts
       core_types: kickside.core:types
       autoinit: kickside.component:autoinit

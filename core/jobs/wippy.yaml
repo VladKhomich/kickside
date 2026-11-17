@@ -1,5 +1,6 @@
 organization: kickside
 module: jobs
+version: 0.1.83 # x-release-please-version
 type: library
 description: KickSide durable leased-job engine and projection scheduler — jobs service/api/persist/workers, effect-intent machinery, and the leased cursor scheduler
 license: LicenseRef-KickSide-Community-1.0

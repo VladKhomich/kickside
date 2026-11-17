@@ -12,6 +12,7 @@ local consts = require("threads_consts")
 local masks = require("core_types")
 local autoinit = require("autoinit")
 local normalize = require("threads_normalize")
+local jobs = require("jobs")
 
 local natural_key = require("natural_key")
 
@@ -149,6 +150,16 @@ function M.insert(tx: sql.Transaction, dbtype: string, thread_id: string, row: a
             details = {conflict = M.THREAD_CONFLICT, code = "thread_already_exists"}})
     end
     if count ~= 1 then return invalid_response("insert.rows_affected") end
+
+    local cleanup_sequence, cleanup_err = jobs.open_thread_tx(tx, dbtype, thread_id)
+    if cleanup_err then return cleanup_err end
+    if type(cleanup_sequence) ~= "number" then return invalid_response("cleanup.page_seq") end
+    if cleanup_sequence > 0 then
+        local stamped, stamp_err = tx:execute("UPDATE kickside_thread SET teardown_page_seq=$1 WHERE id=$2",
+            {cleanup_sequence, thread_id})
+        if stamp_err then return errors.wrap(stamp_err, "store thread cleanup sequence") end
+        if not stamped or tonumber(stamped.rows_affected) ~= 1 then return invalid_response("cleanup.rows_affected") end
+    end
 
     if checked.natural_key then
         local key = checked.natural_key

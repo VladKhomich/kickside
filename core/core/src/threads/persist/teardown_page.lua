@@ -1,5 +1,5 @@
 -- Core deletes only Core-owned thread rows. Jobs commits its own bounded page
--- first; Core records that receipt's A48 counts and acknowledges after commit.
+-- first; Core records that receipt's A48 counts and acknowledges in its transaction.
 local sql = require("sql")
 local json = require("json")
 local writer = require("threads_writer")
@@ -102,7 +102,7 @@ local function body(tx: any, dbtype: string, id: string, page_seq: integer,
         return nil, internal("marked thread state unavailable", thread_err or "missing result")
     end
     if not thread_rows[1] then
-        return { pending = false, discarded = {}, notified = {}, removed_cursors = {} }, nil
+        return nil, nil
     end
     local thread = thread_rows[1]
     if thread.teardown_fence_done ~= true and thread.teardown_fence_done ~= 1 then
@@ -243,17 +243,23 @@ function M.run(db: any, id: string): (any?, error?)
     if lock_err then tx:rollback(); return nil, lock_err end
     local result, run_err = body(tx, dbtype :: string, id, page_seq :: integer, job_page :: table, locked)
     if run_err then tx:rollback(); return nil, run_err end
+    if result then
+        local acknowledged, ack_err = jobs.ack_thread_cleanup_page_tx(tx, dbtype :: string, id, page_seq :: integer,
+            not result.pending)
+        if ack_err or acknowledged ~= true then
+            tx:rollback()
+            return nil, ack_err or internal("thread cleanup acknowledgment failed", "missing result")
+        end
+    end
     local _, commit_err = tx:commit()
     if commit_err then return nil, internal("thread cascade commit failed", commit_err) end
+    if not result then return {pending = false, discarded = {}, notified = {}}, nil end
     local removed_err: error? = nil
     for _, cursor_id in ipairs((result :: any).removed_cursors) do
         removed_err = error_envelope.cleanup(function(): (any, error?)
             return cursor_waiters.notify_cursor(cursor_id, nil, "removed")
         end, removed_err, "thread cursor removal notification failed")
     end
-    local _, ack_err = jobs.ack_thread_cleanup_page(id, page_seq :: integer,
-        (result :: any).pending ~= true)
-    if ack_err then return nil, ack_err end
     if removed_err then return nil, removed_err end
     if (result :: any).pending then return nil, pending((result :: any).discarded) end
     return result, nil

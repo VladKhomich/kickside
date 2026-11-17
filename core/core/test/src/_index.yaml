@@ -758,6 +758,8 @@ entries:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       autoinit: kickside.component:autoinit
+      threads_teardown: kickside.core.threads.persist:teardown
+      jobs: kickside.core.jobs:jobs
 
   - name: dep.wippy.bootloader
     version: "*"
