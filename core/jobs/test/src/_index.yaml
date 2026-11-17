@@ -4229,6 +4229,8 @@ entries:
       retention_order_migration: app:retention_order_migration
       worker_heartbeat: kickside.core.jobs.service:worker_heartbeat
       job_fixture: app:job_fixture
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
+      lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
 
   - name: private_queue_retention_pace
     kind: db.sql.sqlite
