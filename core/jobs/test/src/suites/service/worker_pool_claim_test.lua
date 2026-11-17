@@ -236,6 +236,65 @@ local function define_tests()
             test.eq(delay, 1)
         end)
 
+        test.it("seeks the earliest lease through a large running population", function()
+            local db, dbtype, db_err = job_fixture.private_queue("app:private_queue_claim_selection_test")
+            if db_err or not db or not dbtype then error(db_err or "test queue is absent") end
+            local now = time.now()
+            local dispatch_at = clock.format(now, dbtype)
+            local lease_at = clock.format(now:add(60 * time.SECOND), dbtype)
+            local numbers = dbtype == sql.type.POSTGRES and "SELECT generate_series(1,50000) AS n"
+                or "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<50000) SELECT n FROM seq"
+            local id = dbtype == sql.type.POSTGRES and "md5(n::text)::uuid" or "printf('%032d',n)"
+            assert(db:execute([[INSERT INTO kickside_job (id,owner_kind,owner_id,job_type,job_identity,status,lease_until)
+                SELECT ]] .. id .. ",'test','deadline','test.deadline',CAST(n AS TEXT),'running',$1 FROM (" .. numbers .. ") numbered", {lease_at}))
+            local statement, params
+            local probe = {query = function(_, query, args)
+                statement, params = query, args
+                return db:query(query, args)
+            end} :: any
+            local delay, kind, err = worker_pool.next_deadline(probe, dbtype, dispatch_at)
+            test.is_nil(err)
+            test.eq(kind, "lease")
+            test.is_true(delay > 0 and delay <= 60000)
+            -- Check before statistics too: existing SQLite installs need the
+            -- bounded seek even when ANALYZE has never run.
+            for _, analyzed in ipairs({false, true}) do
+                if analyzed then assert(db:execute("ANALYZE kickside_job")) end
+                local prefix = dbtype == sql.type.POSTGRES and "EXPLAIN (ANALYZE, BUFFERS) " or "EXPLAIN QUERY PLAN "
+                local rows = assert(db:query(prefix .. statement, params))
+                local lines = {}
+                for _, row in ipairs(rows) do
+                    for _, value in pairs(row) do
+                        if type(value) == "string" then lines[#lines + 1] = value end
+                    end
+                end
+                local plan = table.concat(lines, "\n")
+                if dbtype == sql.type.SQLITE then
+                    test.is_true(plan:find("idx_kickside_job_lease_reap", 1, true) ~= nil, plan)
+                    test.is_true(plan:find("lease_until>?", 1, true) ~= nil, plan)
+                else
+                    test.is_true(plan:find("Index Cond: (lease_until >", 1, true) ~= nil, plan)
+                end
+            end
+            local pending = assert(lifecycle.enqueue_job(db, dbtype, {
+                owner_locator = {kind = "test", id = "deadline"},
+                thread_id = uuid.v7(), job_type = "test.deadline", scheduled_at = lease_at,
+            }))
+            local _, tied_kind = worker_pool.next_deadline(db, dbtype, dispatch_at)
+            test.eq(tied_kind, "lease", "equal deadlines reclaim leases first")
+            assert(db:execute("UPDATE kickside_job SET scheduled_at=$1 WHERE id=$2",
+                {clock.format(now:add(30 * time.SECOND), dbtype), pending}))
+            local _, earlier_kind = worker_pool.next_deadline(db, dbtype, dispatch_at)
+            test.eq(earlier_kind, "due")
+            assert(db:execute("UPDATE kickside_job SET lease_until=$1 WHERE status='running'", {dispatch_at}))
+            assert(db:execute("UPDATE kickside_job SET scheduled_at=$1 WHERE id=$2", {dispatch_at, pending}))
+            local none, no_kind, no_err = worker_pool.next_deadline(db, dbtype, dispatch_at)
+            test.is_nil(no_err)
+            test.is_nil(none, "deadlines at the dispatch snapshot were already judged")
+            test.is_nil(no_kind)
+            db:release()
+        end)
+
         test.it("sends committed awaited work before reading maintenance deadlines", function()
             local outcome = run_pool(function()
                 return { { id = "awaited-job", job_type = "awaited", worker_id = WORKER_ID,

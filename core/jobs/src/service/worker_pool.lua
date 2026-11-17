@@ -66,17 +66,21 @@ local function next_deadline(db: sql.DB, dbtype: string, dispatch_at: string): (
     local due_sql: string
     local lease_sql: string
     if dbtype == sql.type.POSTGRES then
-        due_sql = [[SELECT EXTRACT(EPOCH FROM (MIN(scheduled_at) - NOW())) * 1000 AS ms
-            FROM kickside_job WHERE status='pending' AND scheduled_at > CAST($1 AS TIMESTAMPTZ)]]
-        lease_sql = [[SELECT EXTRACT(EPOCH FROM (MIN(lease_until) - NOW())) * 1000 AS ms
+        due_sql = [[SELECT EXTRACT(EPOCH FROM (scheduled_at - NOW())) * 1000 AS ms
+            FROM kickside_job WHERE status='pending' AND scheduled_at > CAST($1 AS TIMESTAMPTZ)
+            ORDER BY scheduled_at LIMIT 1]]
+        lease_sql = [[SELECT EXTRACT(EPOCH FROM (lease_until - NOW())) * 1000 AS ms
             FROM kickside_job WHERE status='running' AND lease_until IS NOT NULL
-            AND lease_until > CAST($2 AS TIMESTAMPTZ)]]
+            AND lease_until > CAST($2 AS TIMESTAMPTZ) ORDER BY lease_until LIMIT 1]]
     else
-        due_sql = [[SELECT (julianday(MIN(scheduled_at)) - julianday('now')) * 86400000 AS ms
-            FROM kickside_job WHERE status='pending' AND scheduled_at > $1]]
-        lease_sql = [[SELECT (julianday(MIN(lease_until)) - julianday('now')) * 86400000 AS ms
-            FROM kickside_job WHERE status='running' AND lease_until IS NOT NULL
-            AND lease_until > $2]]
+        due_sql = [[SELECT (julianday(scheduled_at) - julianday('now')) * 86400000 AS ms
+            FROM kickside_job WHERE status='pending' AND scheduled_at > $1 ORDER BY scheduled_at LIMIT 1]]
+        -- As in jobs.health, select the partial lease index explicitly:
+        -- without statistics SQLite can prefer status plus a population sort.
+        lease_sql = [[SELECT (julianday(lease_until) - julianday('now')) * 86400000 AS ms
+            FROM kickside_job INDEXED BY idx_kickside_job_lease_reap
+            WHERE status='running' AND lease_until IS NOT NULL
+            AND lease_until > $2 ORDER BY lease_until LIMIT 1]]
     end
     local rows, err = db:query("SELECT kind, ms FROM (SELECT 'due' AS kind, ms FROM ("
         .. due_sql .. ") AS due UNION ALL SELECT 'lease' AS kind, ms FROM ("
