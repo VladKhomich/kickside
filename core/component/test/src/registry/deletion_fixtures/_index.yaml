@@ -30,6 +30,8 @@ entries:
 
   - name: delete_admission_library
     kind: ns.requirement
+    meta:
+      value_kind: library.lua
     default: app:delete_admission_validator
     targets:
       - entry: kickside.component:delete_admission

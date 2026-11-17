@@ -22,6 +22,8 @@ entries:
 
   - name: delete_admission_library
     kind: ns.requirement
+    meta:
+      value_kind: library.lua
     default: kickside.workflows.binding:delete_admission
     targets:
       - entry: kickside.component:delete_admission
