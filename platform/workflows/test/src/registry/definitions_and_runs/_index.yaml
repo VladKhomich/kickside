@@ -256,6 +256,7 @@ entries:
     method: run
     modules: &native_reconciliation_modules [uuid, json, funcs, security, time, process, channel]
     imports: &native_reconciliation_imports
+      run_writable: kickside.workflows.runs:run_writable
       retention: userspace.dataflow.retention:sweeper
       engine_api: kickside.workflows.runs:engine_api
       test: wippy.test:test

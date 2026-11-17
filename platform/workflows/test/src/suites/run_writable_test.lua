@@ -40,6 +40,23 @@ local function define_tests()
         end)
 
 
+        test.it("refuses invalid and oversized correlation selections at sink configuration", function()
+            local many = {}
+            for index = 1, 17 do many[index] = "field" .. tostring(index) end
+            for _, fields in ipairs({ false, "*", {}, { "" }, { "item", "item" }, { 42 },
+                { string.rep("x", 129) }, many, { named = "item" }, { [1] = "item", [3] = "visit" } }) do
+                local guarded = writable_module.new({ repo = { ACCESS = { READ = 1 },
+                    require_access = function() error("invalid config reached access") end } })
+                local result = guarded.write({ config = { flow_ref = { kind = "flow", id = "flow-1", version = 1 },
+                    correlation_fields = fields }, input = {}, sink_op = "create",
+                    automation_ref = { kind = "automation", id = ORIGIN, revision = 1 }, origin = ORIGIN,
+                    identity_key = "key", idempotency_key = "delivery" })
+                test.is_false(result.success)
+                test.eq(result.error.code, "invalid_config")
+                test.is_false(result.error.retriable)
+            end
+        end)
+
         test.it("requires the invoking automation on the request and a stable record key", function()
             local result = writable.write({
                 config = { flow_ref = { kind = "flow", id = "flow-1", version = 2 } },

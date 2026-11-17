@@ -72,6 +72,34 @@ install Data Sync with the same trigger and the Run Workflow sink's exact
 contracts. The destination picker offers **New workflow** for the selected
 source and returns to setup after publication with its binding selected.
 
+The `kickside.workflows:run_sink` configuration can optionally select terminal
+correlation from the admitted Start input:
+
+```yaml
+flow_ref: {kind: flow, id: <workflow UUID>, version: 1}
+correlation_fields: [board_id, item, visit, attempt]
+```
+
+`correlation_fields` is a dense array of 1–16 distinct top-level field names,
+each 1–128 bytes. Invalid or oversized selections return `invalid_config` at
+the sink boundary before access or admission. Each selected input value must
+be present and be a string, finite number, or boolean; missing, composite, or
+oversized values return `invalid_request` before reservation. The complete
+encoded correlation record is limited to 4096 JSON bytes. Selection happens
+once when the run is reserved and is saved in its existing durable creation
+payload. Changing a selection for the same delivery conflicts with its
+admission identity. No selection preserves the existing behavior.
+
+Terminal events carry this record unchanged as optional `body.correlation`,
+alongside authoritative `body.run_id` and `body.status`. Success uses status
+`completed` on `kickside.workflows.runs.events:finished` through
+`kickside.workflows:flow_run_finished`; `failed`, `cancelled`, and `terminated`
+use `kickside.workflows.runs.events:failed` through
+`kickside.workflows:flow_run_failed`. This includes failure before the first
+node executes and recovered or repeated publication after a crash. The event
+contains only the selected values; the complete Start input is never copied
+into the terminal event. `flow_run_started` retains its existing event shape.
+
 Binding assist accepts optional `source_root` to lower its expression for the
 consumer's environment, such as `payload` for Data Sync. Omitting it preserves
 the Workflow authoring expression contract.
