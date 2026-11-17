@@ -5,6 +5,7 @@ entries:
     kind: contract.binding
     meta:
       announced: false
+      delete_admission: workflow_delete_admission
       name: flow
       title: Workflow
       icon: tabler:route

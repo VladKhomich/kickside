@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: delete_admission_storage_test
+    kind: function.lua
+    source: file://delete_admission_storage_test.lua
+    method: run
+    meta: {type: test, suite: workflows_delete_admission}
+    modules: [sql, uuid]
+    imports:
+      test: wippy.test:test
+      component: kickside.component:component
+      component_types: kickside.component:types
+      workflow_types: kickside.workflows:types
+      store: kickside.workflows.store:store

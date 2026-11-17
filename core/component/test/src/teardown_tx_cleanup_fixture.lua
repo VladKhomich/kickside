@@ -20,6 +20,7 @@ function M.db_id() return "fixture-db" end
 function M.sql_get()
     M.opens = M.opens + 1
     local db: any = {}
+    function db:query() return M.result("admission_read", {}) end
     function db:begin() return M.result("begin", M.transaction()) end
     function db:release()
         M.releases = M.releases + 1
