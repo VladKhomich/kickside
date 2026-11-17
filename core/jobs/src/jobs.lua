@@ -127,6 +127,7 @@ local function prepare_enqueue_params(params: table?): (lifecycle.EnqueueParams?
         queue_tier = opt_string(p.queue_tier),
         priority = opt_integer(p.priority),
         max_attempts = opt_integer(p.max_attempts),
+        progress_timeout_ms = p.progress_timeout_ms,
         idempotency_key = p.namespace == "thread" and p.key or nil,
         scheduled_at = opt_string(p.scheduled_at),
         trace_context = trace,

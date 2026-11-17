@@ -13,7 +13,6 @@ function M.db_id(...) return "fixture-db" end
 function M.process_host(...) return "fixture-host" end
 function M.resolve_max_execution_ms(...) return M.ceiling, nil end
 M.PROC_TIMEOUT_MARKER = "fixture-timeout"
-function M.resolve_heartbeat_timeout_ms(...) return M.heartbeat_timeout, nil end
 M.HEARTBEAT_TIMEOUT_MARKER = "fixture-heartbeat-timeout"
 function M.job_still_running(...)
     if M.stage == "lease" then return false, M.source, nil end
@@ -57,7 +56,7 @@ end
 M.CONTROL_TOPIC, M.TERMINATE_GRACE_MS = "fixture-control", 2000
 function M.read(job)
     if job and type(job.lease_policy) == "table" then return job.lease_policy, nil end
-    return M.policy()
+    return {proc_max_execution_ms = M.ceiling, progress_timeout_ms = M.heartbeat_timeout}, nil
 end
 function M.load_from(_, job) return M.read(job) end
 return M

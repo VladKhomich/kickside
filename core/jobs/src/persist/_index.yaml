@@ -86,6 +86,7 @@ entries:
       - uuid
     imports:
       runtime_policy: kickside.core.jobs.policy:runtime
+      execution_policy: kickside.core.jobs.policy:execution
       clock: kickside.core.jobs:clock
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
@@ -164,6 +165,7 @@ entries:
       - time
     imports:
       runtime_policy: kickside.core.jobs.policy:runtime
+      execution_policy: kickside.core.jobs.policy:execution
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
       lifecycle: kickside.core.jobs.persist:lifecycle

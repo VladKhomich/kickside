@@ -314,12 +314,11 @@ function M.runtime(overrides: table): (Resolved?, error?)
     return result and result.policy, resolve_err
 end
 
--- An execution carries only the editable values it consumes. Fixed limits
--- retain their registry-version-cached semantics in each engine primitive.
-function M.capture(policy: any): table
+-- An execution carries the editable values it consumes and its declared progress deadline.
+function M.capture(policy: any, progress_timeout_ms: integer?): table
     return {lease_timeout_seconds = policy.lease_timeout_seconds, lease_heartbeat_ms = policy.lease_heartbeat_ms,
         proc_max_execution_ms = policy.proc_max_execution_ms, retry_after_ms = policy.retry_after_ms,
-        retry_max_delay_ms = policy.retry_max_delay_ms}
+        retry_max_delay_ms = policy.retry_max_delay_ms, progress_timeout_ms = progress_timeout_ms}
 end
 
 local cached_version: string? = nil

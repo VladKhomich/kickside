@@ -132,9 +132,8 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
         priority = 20,
         max_attempts = 5,
         concurrency_key = "uploads:" .. component_id,
-        immutable_payload = { upload_id = upload.uuid,
-            max_execution_ms = ceiling,
-            heartbeat_timeout_ms = progress_timeout },
+        progress_timeout_ms = progress_timeout,
+        immutable_payload = { upload_id = upload.uuid, max_execution_ms = ceiling },
         trace_context = upload.trace_context,
     }
     local event = {

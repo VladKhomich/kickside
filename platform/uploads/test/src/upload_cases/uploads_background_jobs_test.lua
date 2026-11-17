@@ -297,11 +297,13 @@ local function define_tests()
                         "app:types.failing", upload_metadata(owner, "progress.txt"), "uploaded"))
                     local queued = assert(process_worker.enqueue_upload_job(upload, true))
                     local db = assert(sql.get("app:db"))
-                    local rows = assert(db:query("SELECT payload FROM kickside_job WHERE id=$1", {queued.job_id}))
+                    local rows = assert(db:query("SELECT payload,lease_policy FROM kickside_job WHERE id=$1", {queued.job_id}))
                     db:release()
                     local payload = type(rows[1].payload) == "string" and json.decode(rows[1].payload) or rows[1].payload
                     test.eq(payload.max_execution_ms, case.ceiling or 7200000)
-                    test.eq(payload.heartbeat_timeout_ms, case.heartbeat)
+                    test.is_nil(payload.heartbeat_timeout_ms)
+                    local policy = rows[1].lease_policy and assert(json.decode(rows[1].lease_policy)) or {}
+                    test.eq(policy.progress_timeout_ms, case.heartbeat)
                 end)
                 upload_type.get_pipeline = original
                 assert(settings_writer.clear("kickside.uploads", "process_max_execution_ms", "uploads-test"))

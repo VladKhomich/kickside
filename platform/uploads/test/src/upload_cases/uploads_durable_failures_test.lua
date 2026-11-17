@@ -1339,10 +1339,8 @@ local function define_tests()
 			local queued, queue_err = process_worker.enqueue_upload_job(upload, true)
 			test.is_nil(queue_err)
 			local db = assert(sql.get("app:db"))
-			local queued_row = assert(db:query("SELECT payload FROM kickside_job WHERE id=$1", { queued.job_id }))[1]
-			local payload = type(queued_row.payload) == "string" and json.decode(queued_row.payload) or queued_row.payload
-			test.eq(tonumber(payload.heartbeat_timeout_ms), 600000)
 			local job = admit_job(db, queued.job_id, 1)
+			test.eq(assert(json.decode(job.lease_policy)).progress_timeout_ms, 600000)
 			local input, _, input_err = worker_dispatch.build_worker_input(job)
 			test.is_nil(input_err)
 			-- A retriable stage failure on the first of five attempts leaves the job running.

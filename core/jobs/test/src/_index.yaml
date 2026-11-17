@@ -153,6 +153,7 @@ entries:
     modules: [json, sql, uuid, process]
     imports:
       runtime_policy: kickside.core.jobs.policy:runtime
+      execution_policy: kickside.core.jobs.policy:execution
       lifecycle: kickside.core.jobs.persist:lifecycle
       config: kickside.core.jobs:config
       wake: kickside.core.jobs.persist:wake
@@ -2239,9 +2240,10 @@ entries:
   - name: enqueue_native_source
     kind: library.lua
     source: file://enqueue_native_source.lua
-    modules: [uuid]
+    modules: [uuid, time]
     imports:
       runtime_policy: app:enqueue_native_fixture
+      execution_policy: kickside.core.jobs.policy:execution
       sql: app:enqueue_native_sql
       json: app:enqueue_native_json_adapter
       clock: app:enqueue_native_clock_adapter
@@ -3507,6 +3509,7 @@ entries:
     modules: [json, uuid]
     imports:
       runtime_policy: app:claim_native_fixture
+      execution_policy: kickside.core.jobs.policy:execution
       sql: app:claim_native_sql
       job_types: kickside.core.jobs:types
       config: app:claim_native_config

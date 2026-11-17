@@ -68,11 +68,13 @@ end
 
 local SLEEP_PROC = "proc://app:job_sleep_proc"
 
-local function enqueue_proc_and_claim(db: sql.DB, dbtype: string, thread_id: string, payload: any): table
+local function enqueue_proc_and_claim(db: sql.DB, dbtype: string, thread_id: string, payload: any,
+        progress_timeout_ms: integer?): table
     return enqueue_and_claim(db, dbtype, thread_id, "upload.process.test", {
         worker_ref = SLEEP_PROC,
         priority = 10000,
         max_attempts = 3,
+        progress_timeout_ms = progress_timeout_ms,
         payload = payload,
     })
 end
@@ -159,14 +161,27 @@ local function define_tests()
             verify_db:release()
         end)
 
+        test.it("keeps an existing payload field out of the execution policy", function()
+            local db = assert(sql.get("app:db"))
+            local job = enqueue_proc_and_claim(db, tostring(db:type()), make_thread(db), {
+                heartbeat_timeout_ms = "application value", max_execution_ms = 30000,
+            })
+            db:release()
+            local child_err = worker_child.supervise_job_child(job)
+            test.is_nil(child_err, tostring(child_err))
+            local verify_db = assert(sql.get("app:db"))
+            test.eq(job_row(verify_db, job.id).status, job_types.JOB_STATE.DONE)
+            verify_db:release()
+        end)
+
         test.it("keeps a heartbeating proc past its heartbeat timeout", function()
             local db = assert(sql.get("app:db"))
             local dbtype = tostring(db:type())
             -- 2.4s of work under a 1s heartbeat timeout, heartbeating every 300ms.
             local job = enqueue_proc_and_claim(db, dbtype, make_thread(db), {
-                heartbeat_timeout_ms = 1000, max_execution_ms = 30000,
+                max_execution_ms = 30000,
                 heartbeat_every_ms = 300, heartbeat_count = 8,
-            })
+            }, 1000)
             db:release()
 
             local child_err = worker_child.supervise_job_child(job :: table)
@@ -182,9 +197,9 @@ local function define_tests()
             local dbtype = tostring(db:type())
             -- Heartbeats for 0.6s, then blocks without heartbeating.
             local job = enqueue_proc_and_claim(db, dbtype, make_thread(db), {
-                heartbeat_timeout_ms = 1000, max_execution_ms = 30000,
+                max_execution_ms = 30000,
                 heartbeat_every_ms = 300, heartbeat_count = 2, block = true,
-            })
+            }, 1000)
             db:release()
             local started = time.now()
 
@@ -209,9 +224,9 @@ local function define_tests()
             local db = assert(sql.get("app:db"))
             local dbtype = tostring(db:type())
             local job = enqueue_proc_and_claim(db, dbtype, make_thread(db), {
-                heartbeat_timeout_ms = 1000, max_execution_ms = 1500,
+                max_execution_ms = 1500,
                 heartbeat_every_ms = 300, heartbeat_count = 20,
-            })
+            }, 1000)
             db:release()
 
             local child_err = worker_child.supervise_job_child(job :: table)

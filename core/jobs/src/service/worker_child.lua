@@ -37,8 +37,7 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
     if policy_err or not policy then return policy_err, nil, false end
     local max_execution_ms, duration_err = worker_dispatch.resolve_max_execution_ms(job, policy)
     if duration_err then return duration_err, nil, false end
-    local heartbeat_timeout_ms, heartbeat_err = worker_dispatch.resolve_heartbeat_timeout_ms(job)
-    if heartbeat_err then return heartbeat_err, nil, false end
+    local progress_timeout_ms = policy.progress_timeout_ms
     local host = trim(cfg.process_host())
     if host == "" then
         return (errors.new({ message = "job child requires a process host", kind = errors.INTERNAL }) :: error), nil, false
@@ -53,13 +52,11 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
         return register_err and errors.wrap(register_err, "job supervisor registration failed") or response_error("registration"), nil, false
     end
     local deadline: any = nil
-    -- The heartbeat deadline of a job that declares heartbeat_timeout_ms; each
-    -- heartbeat moves it, and the earlier of it and the ceiling ends the attempt.
     local heartbeat_deadline: any = nil
     local lease_deadline: any = nil
     local function next_heartbeat(): any
-        if heartbeat_timeout_ms == nil then return nil end
-        return time.now():add((heartbeat_timeout_ms :: integer) * time.MILLISECOND)
+        if progress_timeout_ms == nil then return nil end
+        return time.now():add((progress_timeout_ms :: integer) * time.MILLISECOND)
     end
     local function attempt_deadline(): any
         if heartbeat_deadline ~= nil and heartbeat_deadline:before(deadline) then return heartbeat_deadline end
