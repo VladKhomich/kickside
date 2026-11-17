@@ -49,33 +49,19 @@ function M.discover(profile_id: string): (any?, any?, any?)
             local name = mapper.public_name(profile.id, provider_model)
             local existing = existing_cards[name]
             if existing then classes = existing.class end
-            -- Fill context window / pricing the provider's own /models API does not
-            -- report (OpenAI, Anthropic, Bedrock) from the reference catalog. Only
-            -- absent fields are filled -- provider-supplied values always win.
-            local has_ctx = mapper.context_limit(item) > 0
+            local has_ctx = mapper.context_limit(item) ~= nil
+            local has_output = mapper.output_limit(item) ~= nil
             local has_price = type(item.pricing) == "table" and next(item.pricing :: any) ~= nil
-            if not has_ctx or not has_price then
+            if not has_ctx or not has_price or (not has_output and common.table_has(capabilities, "generate")) then
                 local ref, reference_err = reference_registry.lookup(provider_id, provider_model)
                 if reference_err then return nil, reference_err end
                 if type(ref) == "table" then
-                    if not has_ctx and ref.context_length then item.context_length = ref.context_length end
+                    if not has_ctx then item.context_length = ref.context_length end
                     if not has_price and ref.pricing then item.pricing = ref.pricing end
-                    if ref.output_tokens and not (item.outputTokenLimit or item.max_output_tokens) then
-                        item.max_output_tokens = ref.output_tokens
-                    end
+                    if not has_output then item.max_output_tokens = ref.output_tokens end
                 end
             end
-            local max_tokens, output_tokens, dimensions = mapper.model_limits(item, capabilities)
-            if existing then
-                local previous = existing.metadata and existing.metadata.discovered
-                local previous_context = type(previous) == "table" and mapper.context_limit(previous) or 0
-                if max_tokens == 0 or (existing.max_tokens > 0 and existing.max_tokens ~= previous_context) then
-                    max_tokens = existing.max_tokens
-                end
-                if output_tokens == 0 then output_tokens = existing.output_tokens end
-            end
-            local enabled = models_types.limits_configured(max_tokens, output_tokens, capabilities)
-            if existing then enabled = existing.enabled ~= false end
+            local _, _, dimensions = mapper.model_limits(item, capabilities)
             local metadata = {
                 discovered = mapper.discovered_metadata(item),
                 discovery_provider = profile.provider_id,
@@ -91,15 +77,12 @@ function M.discover(profile_id: string): (any?, any?, any?)
                 capabilities = capabilities,
                 classes = classes,
                 priority = common.table_has(capabilities, "embed") and not common.table_has(capabilities, "generate") and 10 or 20,
-                max_tokens = max_tokens,
-                output_tokens = output_tokens,
                 dimensions = dimensions,
                 pricing = type(item.pricing) == "table" and item.pricing or {},
                 options = mapper.infer_options(provider_model, classes, capabilities),
                 source = models_types.SOURCE_DISCOVERED,
                 metadata = metadata,
             }
-            if not existing then card_input.enabled = enabled end
             local card, save_err = models_repo.upsert_card(card_input, nil, capabilities)
             if save_err then return nil, save_err end
             table.insert(saved, card)

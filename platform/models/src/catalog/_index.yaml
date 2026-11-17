@@ -28,6 +28,7 @@ entries:
     imports:
       catalog_policy: kickside.models.catalog:policy
       models_types: kickside.models:models_types
+      model_mapper: kickside.models.discovery:mapper
       registry_models: wippy.llm.discovery:models
 
   - name: model_catalog

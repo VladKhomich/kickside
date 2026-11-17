@@ -59,7 +59,7 @@ function isEmbedOnly(m: ModelCard): boolean {
 const generateModels = computed(() => models.value.filter(m => m.enabled !== false && !isEmbedOnly(m)))
 const embedModels = computed(() => models.value.filter(m => m.enabled !== false
   && (hasCap(m, 'embed') || hasCap(m, 'embedding') || hasCap(m, 'embeddings'))))
-const disabledDiscoveredModels = computed(() => models.value.filter(m => m.source === 'discovered' && m.enabled === false))
+const discoveredModels = computed(() => models.value.filter(m => m.source === 'discovered'))
 
 // Class tiers, split by their DECLARED capability (model_class.capability), not by
 // a hardcoded name — a deployment can add tiers of either kind and they slot in.
@@ -73,7 +73,7 @@ function modelOptions(sectionModels: ModelCard[]): { label: string; value: strin
 }
 
 function editDiscoveredModel(name: string) {
-  editingModel.value = disabledDiscoveredModels.value.find(model => model.name === name) ?? null
+  editingModel.value = discoveredModels.value.find(model => model.name === name) ?? null
 }
 
 async function saveDiscoveredModel(payload: Record<string, unknown>) {
@@ -169,9 +169,6 @@ function cardWithClasses(m: ModelCard, classList: string[], priority: number): R
     capabilities: [...(m.capabilities ?? [])],
     classes: classList,
     priority,
-    max_tokens: Number(m.max_tokens ?? 0),
-    output_tokens: Number(m.output_tokens ?? 0),
-    dimensions: Number(m.dimensions ?? 0),
     pricing: m.pricing ?? {},
     options: m.options ?? {},
     metadata: m.metadata ?? {},
@@ -416,12 +413,11 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="disabledDiscoveredModels.length" class="ob-block">
-          <div class="ob-block-head"><span>Disabled models</span></div>
-          <p class="ob-auto-hint">Choose a model to enable it and enter any token limits its provider leaves unset.</p>
+        <div v-if="discoveredModels.length" class="ob-block">
+          <div class="ob-block-head"><span>Model settings</span></div>
           <SelectField
             model-value=""
-            :options="modelOptions(disabledDiscoveredModels)"
+            :options="modelOptions(discoveredModels)"
             placeholder="Choose a model to configure"
             aria-label="Model to configure"
             @update:model-value="editDiscoveredModel"

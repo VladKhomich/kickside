@@ -59,3 +59,16 @@ entries:
     imports:
       migration: wippy.migration:migration
       catalog_policy: kickside.models.catalog:policy
+
+  - name: 05_optional_model_limits
+    kind: function.lua
+    meta:
+      type: migration
+      depends_on:
+        - ns:wippy.migration
+        - kickside.models.migrations:04_encrypt_legacy_headers
+      timestamp: "2026-11-17T00:00:01Z"
+    source: file://05_optional_model_limits.lua
+    method: migrate
+    imports:
+      migration: wippy.migration:migration

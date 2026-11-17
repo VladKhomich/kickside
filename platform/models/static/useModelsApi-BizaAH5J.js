@@ -1,8 +1,8 @@
-import { openBlock as v, createElementBlock as y, mergeProps as b, createElementVNode as I, renderSlot as x, resolveComponent as N, Fragment as q, renderList as le, createCommentVNode as M, createVNode as g, resolveDirective as it, createTextVNode as W, toDisplayString as A, normalizeClass as Y, createBlock as G, resolveDynamicComponent as Te, withCtx as L, Transition as st, normalizeProps as ot, createSlots as rt, withDirectives as be, withModifiers as ze, defineComponent as X, unref as O, ref as $, computed as ve, vModelText as Re, reactive as lt, watch as Se, onMounted as at, onBeforeUnmount as dt, vShow as ut } from "vue";
+import { openBlock as v, createElementBlock as y, mergeProps as b, createElementVNode as I, renderSlot as V, resolveComponent as N, Fragment as q, renderList as le, createCommentVNode as M, createVNode as g, resolveDirective as it, createTextVNode as W, toDisplayString as A, normalizeClass as Y, createBlock as G, resolveDynamicComponent as Te, withCtx as L, Transition as st, normalizeProps as ot, createSlots as rt, withDirectives as be, withModifiers as ze, defineComponent as X, unref as O, ref as $, computed as ve, vModelText as Re, reactive as lt, watch as Se, onMounted as at, onBeforeUnmount as dt, vShow as ut } from "vue";
 import { a as pe, B as ee, s as ye, f as re, z as He, o as ge, c as ne, T as ie, j as ct, R as pt, g as me, F as ft, M as Fe, k as ht, p as mt, b as _, Y as vt, q as gt, t as bt, v as yt, D as It, x as Oe, S as Ot, O as St, L as wt, d as kt, $ as Ct, J as Lt, w as Q } from "./wc-runtime-CHL0PH8L.js";
 import { Icon as ae } from "@iconify/vue";
-import { e as Vt, f as je, g as F, h as K, j as Ae, a as Me } from "./ProviderProfileEditor.vue_vue_type_script_setup_true_lang-CIcOG-gh.js";
-import { loadByTagName as xt, api as R } from "@wippy-fe/proxy";
+import { e as xt, f as je, g as F, h as K, j as Ae, a as Me } from "./ProviderProfileEditor.vue_vue_type_script_setup_true_lang-CIcOG-gh.js";
+import { loadByTagName as Vt, api as R } from "@wippy-fe/proxy";
 var Ue = {
   name: "BlankIcon",
   extends: pe
@@ -188,18 +188,18 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
 }
 function tn(e, t) {
   if (e) {
-    if (typeof e == "string") return Ve(e, t);
+    if (typeof e == "string") return xe(e, t);
     var n = {}.toString.call(e).slice(8, -1);
-    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? Ve(e, t) : void 0;
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? xe(e, t) : void 0;
   }
 }
 function nn(e) {
   if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
 function sn(e) {
-  if (Array.isArray(e)) return Ve(e);
+  if (Array.isArray(e)) return xe(e);
 }
-function Ve(e, t) {
+function xe(e, t) {
   (t == null || t > e.length) && (t = e.length);
   for (var n = 0, s = Array(t); n < t; n++) s[n] = e[n];
   return s;
@@ -286,7 +286,7 @@ var rn = `
 function un(e, t, n, s, r, i) {
   return v(), y("div", b({
     class: e.cx("root")
-  }, e.ptmi("root")), [x(e.$slots, "default")], 16);
+  }, e.ptmi("root")), [V(e.$slots, "default")], 16);
 }
 qe.render = un;
 var cn = {
@@ -322,12 +322,12 @@ function hn(e, t, n, s, r, i) {
     class: i.containerClass
   }, e.ptmi("root"), {
     "aria-hidden": "true"
-  }), [x(e.$slots, "default")], 16);
+  }), [V(e.$slots, "default")], 16);
 }
 Ze.render = hn;
 var Je = {
   name: "BaseInput",
-  extends: Vt,
+  extends: xt,
   props: {
     size: {
       type: String,
@@ -738,13 +738,13 @@ function se(e) {
   return e;
 }
 function Qe(e, t, n) {
-  return (t = Vn(t)) in e ? Object.defineProperty(e, t, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : e[t] = n, e;
+  return (t = xn(t)) in e ? Object.defineProperty(e, t, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : e[t] = n, e;
 }
-function Vn(e) {
-  var t = xn(e, "string");
+function xn(e) {
+  var t = Vn(e, "string");
   return ue(t) == "symbol" ? t : t + "";
 }
-function xn(e, t) {
+function Vn(e, t) {
   if (ue(e) != "object" || !e) return e;
   var n = e[Symbol.toPrimitive];
   if (n !== void 0) {
@@ -869,15 +869,15 @@ var Xe = {
       }) : t > -1;
       if (o) {
         var d = this.first, h = this.element, c = h.scrollTop, u = c === void 0 ? 0 : c, a = h.scrollLeft, l = a === void 0 ? 0 : a, p = this.calculateNumItems(), w = p.numToleratedItems, C = this.getContentPosition(), S = this.itemSize, T = function() {
-          var f = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, V = arguments.length > 1 ? arguments[1] : void 0;
-          return f <= V ? 0 : f;
-        }, P = function(f, V, j) {
-          return f * V + j;
+          var f = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, x = arguments.length > 1 ? arguments[1] : void 0;
+          return f <= x ? 0 : f;
+        }, P = function(f, x, j) {
+          return f * x + j;
         }, E = function() {
-          var f = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, V = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : 0;
+          var f = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : 0, x = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : 0;
           return n.scrollTo({
             left: f,
-            top: V,
+            top: x,
             behavior: s
           });
         }, k = r ? {
@@ -1109,8 +1109,8 @@ var Xe = {
       } else {
         var B = i ? p : l, m = this.lastScrollPos <= B;
         if (!this.appendOnly || this.appendOnly && m) {
-          var f = h(B, this.itemSize), V = c(f, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, m);
-          w = u(f, V, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, m), C = a(f, w, this.last, this.numItemsInViewport, this.d_numToleratedItems), S = w !== this.first || C !== this.last || this.isRangeChanged, T = B;
+          var f = h(B, this.itemSize), x = c(f, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, m);
+          w = u(f, x, this.first, this.last, this.numItemsInViewport, this.d_numToleratedItems, m), C = a(f, w, this.last, this.numItemsInViewport, this.d_numToleratedItems), S = w !== this.first || C !== this.last || this.isRangeChanged, T = B;
         }
       }
       return {
@@ -1251,7 +1251,7 @@ function $n(e, t, n, s, r, i) {
   var o = N("SpinnerIcon");
   return e.disabled ? (v(), y(q, {
     key: 1
-  }, [x(e.$slots, "default"), x(e.$slots, "content", {
+  }, [V(e.$slots, "default"), V(e.$slots, "content", {
     items: e.items,
     rows: e.items,
     columns: i.loadedColumns
@@ -1264,7 +1264,7 @@ function $n(e, t, n, s, r, i) {
     onScroll: t[0] || (t[0] = function() {
       return i.onScroll && i.onScroll.apply(i, arguments);
     })
-  }, e.ptmi("root")), [x(e.$slots, "content", {
+  }, e.ptmi("root")), [V(e.$slots, "content", {
     styleClass: i.contentClass,
     items: i.loadedItems,
     getItemOptions: i.getOptions,
@@ -1285,7 +1285,7 @@ function $n(e, t, n, s, r, i) {
       class: i.contentClass,
       style: r.contentStyle
     }, e.ptm("content")), [(v(!0), y(q, null, le(i.loadedItems, function(d, h) {
-      return x(e.$slots, "item", {
+      return V(e.$slots, "item", {
         key: h,
         item: d,
         options: i.getOptions(h)
@@ -1301,13 +1301,13 @@ function $n(e, t, n, s, r, i) {
   }, e.ptm("loader")), [e.$slots && e.$slots.loader ? (v(!0), y(q, {
     key: 0
   }, le(r.loaderArr, function(d, h) {
-    return x(e.$slots, "loader", {
+    return V(e.$slots, "loader", {
       key: h,
       options: i.getLoaderOptions(h, i.isBoth() && {
         numCols: e.d_numItemsInViewport.cols
       })
     });
-  }), 128)) : M("", !0), x(e.$slots, "loadingicon", {}, function() {
+  }), 128)) : M("", !0), V(e.$slots, "loadingicon", {}, function() {
     return [g(o, b({
       spin: "",
       class: "p-virtualscroller-loading-icon"
@@ -1799,18 +1799,18 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
 }
 function Bn(e, t) {
   if (e) {
-    if (typeof e == "string") return xe(e, t);
+    if (typeof e == "string") return Ve(e, t);
     var n = {}.toString.call(e).slice(8, -1);
-    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? xe(e, t) : void 0;
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? Ve(e, t) : void 0;
   }
 }
 function Dn(e) {
   if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
 function Kn(e) {
-  if (Array.isArray(e)) return xe(e);
+  if (Array.isArray(e)) return Ve(e);
 }
-function xe(e, t) {
+function Ve(e, t) {
   (t == null || t > e.length) && (t = e.length);
   for (var n = 0, s = Array(t); n < t; n++) s[n] = e[n];
   return s;
@@ -2564,13 +2564,13 @@ function Zn(e, t, n, s, r, i) {
       return i.onKeyDown && i.onKeyDown.apply(i, arguments);
     }),
     "data-p": i.labelDataP
-  }, e.ptm("label")), [x(e.$slots, "value", {
+  }, e.ptm("label")), [V(e.$slots, "value", {
     value: e.d_value,
     placeholder: e.placeholder
   }, function() {
     var S;
     return [W(A(i.label === "p-emptylabel" ? " " : (S = i.label) !== null && S !== void 0 ? S : "empty"), 1)];
-  })], 16, Nn)), i.isClearIconVisible ? x(e.$slots, "clearicon", {
+  })], 16, Nn)), i.isClearIconVisible ? V(e.$slots, "clearicon", {
     key: 2,
     class: Y(e.cx("clearIcon")),
     clearCallback: i.onClearClick
@@ -2584,7 +2584,7 @@ function Zn(e, t, n, s, r, i) {
     }), null, 16, ["class", "onClick"]))];
   }) : M("", !0), I("div", b({
     class: e.cx("dropdown")
-  }, e.ptm("dropdown")), [e.loading ? x(e.$slots, "loadingicon", {
+  }, e.ptm("dropdown")), [e.loading ? V(e.$slots, "loadingicon", {
     key: 0,
     class: Y(e.cx("loadingIcon"))
   }, function() {
@@ -2598,7 +2598,7 @@ function Zn(e, t, n, s, r, i) {
       spin: "",
       "aria-hidden": "true"
     }, e.ptm("loadingIcon")), null, 16, ["class"]))];
-  }) : x(e.$slots, "dropdownicon", {
+  }) : V(e.$slots, "dropdownicon", {
     key: 1,
     class: Y(e.cx("dropdownIcon"))
   }, function() {
@@ -2643,7 +2643,7 @@ function Zn(e, t, n, s, r, i) {
           }, e.ptm("hiddenFirstFocusableEl"), {
             "data-p-hidden-accessible": !0,
             "data-p-hidden-focusable": !0
-          }), null, 16), x(e.$slots, "header", {
+          }), null, 16), V(e.$slots, "header", {
             value: e.d_value,
             options: i.visibleOptions
           }), e.filter ? (v(), y("div", b({
@@ -2680,7 +2680,7 @@ function Zn(e, t, n, s, r, i) {
                 pt: e.ptm("pcFilterIconContainer")
               }, {
                 default: L(function() {
-                  return [x(e.$slots, "filtericon", {}, function() {
+                  return [V(e.$slots, "filtericon", {}, function() {
                     return [e.filterIcon ? (v(), y("span", b({
                       key: 0,
                       class: e.filterIcon
@@ -2738,7 +2738,7 @@ function Zn(e, t, n, s, r, i) {
                   role: "option"
                 }, {
                   ref_for: !0
-                }, e.ptm("optionGroup")), [x(e.$slots, "optiongroup", {
+                }, e.ptm("optionGroup")), [V(e.$slots, "optiongroup", {
                   option: m.optionGroup,
                   index: i.getOptionIndex(f, k)
                 }, function() {
@@ -2788,7 +2788,7 @@ function Zn(e, t, n, s, r, i) {
                   class: e.cx("optionBlankIcon")
                 }, {
                   ref_for: !0
-                }, e.ptm("optionBlankIcon")), null, 16, ["class"]))], 64)) : M("", !0), x(e.$slots, "option", {
+                }, e.ptm("optionBlankIcon")), null, 16, ["class"]))], 64)) : M("", !0), V(e.$slots, "option", {
                   option: m,
                   selected: i.isSelected(m),
                   index: i.getOptionIndex(f, k)
@@ -2805,7 +2805,7 @@ function Zn(e, t, n, s, r, i) {
                 role: "option"
               }, e.ptm("emptyMessage"), {
                 "data-p-hidden-accessible": !0
-              }), [x(e.$slots, "emptyfilter", {}, function() {
+              }), [V(e.$slots, "emptyfilter", {}, function() {
                 return [W(A(i.emptyFilterMessageText), 1)];
               })], 16)) : !e.options || e.options && e.options.length === 0 ? (v(), y("li", b({
                 key: 1,
@@ -2813,7 +2813,7 @@ function Zn(e, t, n, s, r, i) {
                 role: "option"
               }, e.ptm("emptyMessage"), {
                 "data-p-hidden-accessible": !0
-              }), [x(e.$slots, "empty", {}, function() {
+              }), [V(e.$slots, "empty", {}, function() {
                 return [W(A(i.emptyMessageText), 1)];
               })], 16)) : M("", !0)], 16, Gn)];
             }),
@@ -2822,12 +2822,12 @@ function Zn(e, t, n, s, r, i) {
             name: "loader",
             fn: L(function(S) {
               var T = S.options;
-              return [x(e.$slots, "loader", {
+              return [V(e.$slots, "loader", {
                 options: T
               })];
             }),
             key: "0"
-          } : void 0]), 1040, ["items", "style", "disabled", "pt"])], 16), x(e.$slots, "footer", {
+          } : void 0]), 1040, ["items", "style", "disabled", "pt"])], 16), V(e.$slots, "footer", {
             value: e.d_value,
             options: i.visibleOptions
           }), !e.options || e.options && e.options.length === 0 ? (v(), y("span", b({
@@ -2990,7 +2990,7 @@ const Jn = /* @__PURE__ */ X({
         "aria-hidden": "true"
       }, null, 8, ["icon"]),
       I("span", ii, [
-        x(s.$slots, "default")
+        V(s.$slots, "default")
       ]),
       I("button", {
         class: "km-notice-x",
@@ -3230,7 +3230,7 @@ function Zi(e, t, n = () => []) {
 const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class: "km-form-sec" }, yi = { class: "km-form-grid" }, Ii = { class: "km-form-sec" }, Oi = { class: "km-form-sec" }, Si = { class: "km-form-grid" }, wi = { class: "km-form-grid" }, ki = { class: "km-form-sec" }, Ci = {
   key: 0,
   class: "km-adv-body"
-}, Li = { class: "km-form-grid" }, Vi = ["disabled"], xi = { class: "km-form-foot" }, Ji = /* @__PURE__ */ X({
+}, Li = { class: "km-form-grid" }, xi = ["disabled"], Vi = { class: "km-form-foot" }, Ji = /* @__PURE__ */ X({
   __name: "ModelEditor",
   props: {
     model: {},
@@ -3251,9 +3251,9 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
       capabilities: [],
       classes: [],
       priority: 10,
-      max_tokens: 0,
-      output_tokens: 0,
-      dimensions: 0,
+      max_tokens: "",
+      output_tokens: "",
+      dimensions: "",
       reasoning_model_request: !1,
       thinking_effort: "",
       temperature: "",
@@ -3264,7 +3264,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
     Se(() => n.model, (a) => {
       if (r.value = "", i.value = !1, !a) return;
       const l = a.options ?? {};
-      o.name = a.name, o.title = a.title || a.name, o.description = a.description || "", o.provider_id = a.provider_id || "", o.provider_profile_id = a.provider_profile_id || "", o.provider_model = a.provider_model || a.name, o.capabilities = [...a.capabilities ?? []], o.classes = [...a.class ?? []], o.priority = Number(a.priority ?? 10), o.max_tokens = Number(a.max_tokens ?? 0), o.output_tokens = Number(a.output_tokens ?? 0), o.dimensions = Number(a.dimensions ?? 0), o.reasoning_model_request = l.reasoning_model_request === !0, o.thinking_effort = typeof l.thinking_effort == "string" || typeof l.thinking_effort == "number" ? l.thinking_effort : "", o.temperature = l.temperature === void 0 ? "" : String(l.temperature), o.options_json = JSON.stringify(l, null, 2), o.source = a.source === "registry" ? "overlay" : a.source || "overlay", o.enabled = a.enabled !== !1;
+      o.name = a.name, o.title = a.title || a.name, o.description = a.description || "", o.provider_id = a.provider_id || "", o.provider_profile_id = a.provider_profile_id || "", o.provider_model = a.provider_model || a.name, o.capabilities = [...a.capabilities ?? []], o.classes = [...a.class ?? []], o.priority = Number(a.priority ?? 10), o.max_tokens = String(a.max_tokens ?? ""), o.output_tokens = String(a.output_tokens ?? ""), o.dimensions = String(a.dimensions ?? ""), o.reasoning_model_request = l.reasoning_model_request === !0, o.thinking_effort = typeof l.thinking_effort == "string" || typeof l.thinking_effort == "number" ? l.thinking_effort : "", o.temperature = l.temperature === void 0 ? "" : String(l.temperature), o.options_json = JSON.stringify(l, null, 2), o.source = a.source === "registry" ? "overlay" : a.source || "overlay", o.enabled = a.enabled !== !1;
     }, { immediate: !0 });
     const d = ve(() => n.capabilityOptions ?? []), h = ve(() => n.classOptions ?? []), c = ve(() => [
       { label: "Registry default", value: "" },
@@ -3300,9 +3300,9 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
         capabilities: [...o.capabilities],
         classes: [...o.classes],
         priority: Number(o.priority),
-        max_tokens: Number(o.max_tokens),
-        output_tokens: Number(o.output_tokens),
-        dimensions: Number(o.dimensions),
+        max_tokens: o.max_tokens === String(n.model?.max_tokens ?? "") ? void 0 : o.max_tokens,
+        output_tokens: o.output_tokens === String(n.model?.output_tokens ?? "") ? void 0 : o.output_tokens,
+        dimensions: o.dimensions === String(n.model?.dimensions ?? "") ? void 0 : o.dimensions,
         options: a,
         source: o.source,
         enabled: o.enabled
@@ -3443,7 +3443,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
                 modelValue: o.max_tokens,
                 "onUpdate:modelValue": l[10] || (l[10] = (p) => o.max_tokens = p),
                 type: "number",
-                min: 0,
+                min: 1,
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
             ]),
@@ -3455,7 +3455,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
                 modelValue: o.output_tokens,
                 "onUpdate:modelValue": l[11] || (l[11] = (p) => o.output_tokens = p),
                 type: "number",
-                min: 0,
+                min: 1,
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
             ]),
@@ -3515,7 +3515,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
                   modelValue: o.dimensions,
                   "onUpdate:modelValue": l[16] || (l[16] = (p) => o.dimensions = p),
                   type: "number",
-                  min: 0,
+                  min: 1,
                   disabled: e.saving
                 }, null, 8, ["modelValue", "disabled"])
               ]),
@@ -3531,7 +3531,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
                 "onUpdate:modelValue": l[17] || (l[17] = (p) => o.options_json = p),
                 class: "km-input mono km-textarea",
                 disabled: e.saving
-              }, null, 8, Vi), [
+              }, null, 8, xi), [
                 [Re, o.options_json]
               ])
             ]),
@@ -3545,7 +3545,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
         label: "Enabled",
         disabled: e.saving
       }, null, 8, ["modelValue", "disabled"]),
-      I("div", xi, [
+      I("div", Vi, [
         g(O(Me), {
           variant: "ghost",
           disabled: e.saving,
@@ -3617,7 +3617,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
       if (l(), o.value = "", !(!r.value || !n.tag)) {
         i.value = !0;
         try {
-          if (await xt(n.tag, { timeoutMs: 8e3 }), C !== h || !r.value) return;
+          if (await Vt(n.tag, { timeoutMs: 8e3 }), C !== h || !r.value) return;
           const S = document.createElement(n.tag);
           S.addEventListener("save", c), S.addEventListener("cancel", u), S.addEventListener("test", a), d = S, p(), r.value.replaceChildren(S);
         } catch (S) {
@@ -3681,15 +3681,15 @@ function Qi() {
     o.value = !0, c.value = "";
     try {
       return await m(), await l(), !0;
-    } catch (V) {
-      return c.value = oe(V, f), !1;
+    } catch (x) {
+      return c.value = oe(x, f), !1;
     } finally {
       o.value = !1;
     }
   }
-  function C(m, f, V) {
+  function C(m, f, x) {
     return w(async () => {
-      m === "edit" ? await R.put(`/api/v1/models/provider-profiles/${encodeURIComponent(f)}`, V) : await R.post("/api/v1/models/provider-profiles", V);
+      m === "edit" ? await R.put(`/api/v1/models/provider-profiles/${encodeURIComponent(f)}`, x) : await R.post("/api/v1/models/provider-profiles", x);
     }, "failed to save profile");
   }
   function S(m) {
@@ -3726,8 +3726,8 @@ function Qi() {
       const { data: f } = await R.post(`/api/v1/models/provider-profiles/${encodeURIComponent(m)}/test`, {});
       return await l(), f && f.success === !1 ? (c.value = f.error || "connection test failed", { ok: !1, message: c.value }) : { ok: !0, message: f?.message || "Connection test succeeded" };
     } catch (f) {
-      const V = oe(f, "connection test failed");
-      return await l(), c.value = V, { ok: !1, message: V };
+      const x = oe(f, "connection test failed");
+      return await l(), c.value = x, { ok: !1, message: x };
     }
   }
   async function B(m) {
@@ -3735,13 +3735,13 @@ function Qi() {
     try {
       const { data: f } = await R.post("/api/v1/models/cards/test", { name: m });
       if (f && f.success === !1) {
-        const V = f.error || f.message || "model probe failed";
-        return { ok: !1, message: V, data: { ...f, error: f.error || f.message || V } };
+        const x = f.error || f.message || "model probe failed";
+        return { ok: !1, message: x, data: { ...f, error: f.error || f.message || x } };
       }
       return { ok: !0, message: "Model works", data: f };
     } catch (f) {
-      const V = oe(f, "model probe failed");
-      return { ok: !1, message: V, data: { success: !1, model: m, error: V } };
+      const x = oe(f, "model probe failed");
+      return { ok: !1, message: x, data: { success: !1, model: m, error: x } };
     } finally {
       h.value = "";
     }
@@ -3790,4 +3790,4 @@ export {
   We as s,
   Qi as u
 };
-//# sourceMappingURL=useModelsApi-BP0pW0Lf.js.map
+//# sourceMappingURL=useModelsApi-BizaAH5J.js.map
