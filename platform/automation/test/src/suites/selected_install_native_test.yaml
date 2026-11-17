@@ -70,6 +70,7 @@ entries:
 - name: selected_install_native_kind
   kind: contract.binding
   meta:
+    test_fixture: true
     type: kickside.automation
     inputs:
       title:
