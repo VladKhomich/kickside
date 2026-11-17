@@ -157,8 +157,8 @@ function submit() {
         <FormField label="Temperature" help="0–2; blank to leave unset."><TextInput v-model="form.temperature" type="number" :min="0" :max="2" :step="0.1" :disabled="saving" /></FormField>
       </div>
       <div class="km-form-grid">
-        <FormField label="Context"><TextInput v-model="form.max_tokens" type="number" :min="1" :disabled="saving" /></FormField>
-        <FormField label="Output"><TextInput v-model="form.output_tokens" type="number" :min="1" :disabled="saving" /></FormField>
+        <FormField label="Context"><TextInput v-model="form.max_tokens" type="number" placeholder="Unknown" :min="1" :disabled="saving" /></FormField>
+        <FormField label="Output"><TextInput v-model="form.output_tokens" type="number" placeholder="Unknown" :min="1" :disabled="saving" /></FormField>
       </div>
     </section>
 
@@ -172,7 +172,7 @@ function submit() {
           <FormField label="Provider id"><TextInput v-model="form.provider_id" :disabled="saving" /></FormField>
           <FormField label="Source"><TextInput v-model="form.source" :disabled="saving" /></FormField>
           <FormField label="Priority"><TextInput v-model="form.priority" type="number" :disabled="saving" /></FormField>
-          <FormField label="Dimensions"><TextInput v-model="form.dimensions" type="number" :min="1" :disabled="saving" /></FormField>
+          <FormField label="Dimensions"><TextInput v-model="form.dimensions" type="number" placeholder="Unknown" :min="1" :disabled="saving" /></FormField>
         </div>
         <FormField label="Options JSON" help="Raw provider options; merged with the controls above.">
           <textarea v-model="form.options_json" class="km-input mono km-textarea" :disabled="saving" />

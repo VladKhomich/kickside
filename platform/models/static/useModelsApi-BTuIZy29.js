@@ -3174,7 +3174,7 @@ function Hi(e) {
   return e === "registry" ? "built-in" : e || "model";
 }
 function ji(e) {
-  return !e || e <= 0 ? "—" : e >= 1e3 ? `${Math.round(e / 1e3)}k` : String(e);
+  return !e || e <= 0 ? "Unknown" : e >= 1e3 ? `${Math.round(e / 1e3)}k` : String(e);
 }
 function Ui(e) {
   return e.icon || "tabler:plug";
@@ -3443,6 +3443,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
                 modelValue: o.max_tokens,
                 "onUpdate:modelValue": l[10] || (l[10] = (p) => o.max_tokens = p),
                 type: "number",
+                placeholder: "Unknown",
                 min: 1,
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
@@ -3455,6 +3456,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
                 modelValue: o.output_tokens,
                 "onUpdate:modelValue": l[11] || (l[11] = (p) => o.output_tokens = p),
                 type: "number",
+                placeholder: "Unknown",
                 min: 1,
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
@@ -3515,6 +3517,7 @@ const vi = { class: "km-form-sec" }, gi = { class: "km-form-id" }, bi = { class:
                   modelValue: o.dimensions,
                   "onUpdate:modelValue": l[16] || (l[16] = (p) => o.dimensions = p),
                   type: "number",
+                  placeholder: "Unknown",
                   min: 1,
                   disabled: e.saving
                 }, null, 8, ["modelValue", "disabled"])
@@ -3790,4 +3793,4 @@ export {
   We as s,
   Qi as u
 };
-//# sourceMappingURL=useModelsApi-BizaAH5J.js.map
+//# sourceMappingURL=useModelsApi-BTuIZy29.js.map

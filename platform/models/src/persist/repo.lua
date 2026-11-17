@@ -277,7 +277,7 @@ function M.upsert_card(input: any, base: any?, inferred_capabilities: any?): (an
             priority = excluded.priority,
             max_tokens = CASE WHEN $21 THEN excluded.max_tokens ELSE kickside_model_cards.max_tokens END,
             output_tokens = CASE WHEN $22 THEN excluded.output_tokens ELSE kickside_model_cards.output_tokens END,
-            dimensions = excluded.dimensions,
+            dimensions = CASE WHEN $23 THEN excluded.dimensions ELSE kickside_model_cards.dimensions END,
             pricing_json = excluded.pricing_json,
             options_json = excluded.options_json,
             source = excluded.source,
@@ -289,7 +289,7 @@ function M.upsert_card(input: any, base: any?, inferred_capabilities: any?): (an
         policy.encode_json(card.capabilities), policy.encode_json(card.classes), card.priority, card.max_tokens, card.output_tokens,
         card.dimensions, policy.encode_json(card.pricing), policy.encode_json(card.options), card.source, policy.bool_int(card.enabled),
         policy.encode_json(card.metadata), policy.encode_json(card.capability_ownership), ts, ts,
-        input.max_tokens ~= nil, input.output_tokens ~= nil,
+        input.max_tokens ~= nil, input.output_tokens ~= nil, input.dimensions ~= nil,
     })
     dbh:release()
     if err then return nil, "model save failed: " .. tostring(err) end

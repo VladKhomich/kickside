@@ -95,6 +95,53 @@ local function define_tests()
             if not ok then error(err, 0) end
         end)
 
+        test.it("leaves unadvertised embedding dimensions unset and keeps explicit dimensions on rediscovery", function()
+            local profile, profile_err = repo.create_profile({
+                name = "Embedding limits",
+                provider_id = "wippy.llm.openai_compat:provider",
+                config = { base_url = "https://example.invalid/v1" },
+            })
+            test.is_nil(profile_err)
+            local original_adapter, original_lookup = discovery.adapter_for, reference_registry.lookup
+            local item = { id = "sample-embedding" }
+            discovery.adapter_for = function() return {
+                fetch = function() return { item }, nil end,
+            } end
+            reference_registry.lookup = function() return nil end
+            local ok, err = pcall(function()
+                local function refresh()
+                    local result, discovery_err = discovery.discover(profile.id)
+                    test.is_nil(discovery_err)
+                    test.eq(result.count, 1)
+                    return result.models[1]
+                end
+                local card = refresh()
+                test.is_true(card.enabled)
+                test.eq(table.concat(card.capabilities, ","), "embed")
+                test.is_nil(card.dimensions)
+                local db, db_err = repo.open_db()
+                test.is_nil(db_err)
+                local rows, query_err = db:query("SELECT name FROM kickside_model_cards WHERE name = $1 AND dimensions IS NULL",
+                    { card.name })
+                db:release()
+                test.is_nil(query_err)
+                test.eq(#rows, 1)
+
+                item.dimensions = 1536
+                test.eq(refresh().dimensions, 1536)
+                item.dimensions = 3072
+                test.eq(refresh().dimensions, 3072)
+                test.eq(save({ name = card.name, dimensions = 768 }).dimensions, 768)
+                test.eq(refresh().dimensions, 768)
+                item.dimensions = nil
+                test.eq(refresh().dimensions, 768)
+            end)
+            discovery.adapter_for, reference_registry.lookup = original_adapter, original_lookup
+            local _, delete_err = repo.delete_profile(profile.id)
+            test.is_nil(delete_err)
+            if not ok then error(err, 0) end
+        end)
+
         test.it("returns a reference source failure instead of saving an incomplete discovery", function()
             local profile, profile_err = repo.create_profile({
                 name = "Reference source failure",

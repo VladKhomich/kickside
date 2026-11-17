@@ -61,7 +61,6 @@ function M.discover(profile_id: string): (any?, any?, any?)
                     if not has_output then item.max_output_tokens = ref.output_tokens end
                 end
             end
-            local _, _, dimensions = mapper.model_limits(item, capabilities)
             local metadata = {
                 discovered = mapper.discovered_metadata(item),
                 discovery_provider = profile.provider_id,
@@ -77,7 +76,6 @@ function M.discover(profile_id: string): (any?, any?, any?)
                 capabilities = capabilities,
                 classes = classes,
                 priority = common.table_has(capabilities, "embed") and not common.table_has(capabilities, "generate") and 10 or 20,
-                dimensions = dimensions,
                 pricing = type(item.pricing) == "table" and item.pricing or {},
                 options = mapper.infer_options(provider_model, classes, capabilities),
                 source = models_types.SOURCE_DISCOVERED,

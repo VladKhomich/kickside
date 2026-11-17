@@ -77,7 +77,9 @@ local function build_card(row: any, profile: any?): (any?, any?)
     local stored_limits = {
         max_tokens = models_types.positive_limit(row.max_tokens),
         output_tokens = models_types.positive_limit(row.output_tokens),
+        dimensions = models_types.positive_limit(row.dimensions),
     }
+    local context, output, dimensions = mapper.model_limits(metadata.discovered)
     local open_context = profile and not profile.error and policy.provider_context(profile) or nil
 
     return {
@@ -89,8 +91,8 @@ local function build_card(row: any, profile: any?): (any?, any?)
         capability_ownership = ownership,
         class = policy.normalize_list(classes, {}),
         priority = tonumber(row.priority) or 0,
-        max_tokens = stored_limits.max_tokens or mapper.context_limit(metadata.discovered),
-        output_tokens = stored_limits.output_tokens or mapper.output_limit(metadata.discovered),
+        max_tokens = stored_limits.max_tokens or context,
+        output_tokens = stored_limits.output_tokens or output,
         stored_limits = stored_limits,
         pricing = pricing,
         providers = {
@@ -102,7 +104,7 @@ local function build_card(row: any, profile: any?): (any?, any?)
                 provider_profile_id = row.provider_profile_id,
             }
         },
-        dimensions = models_types.positive_limit(row.dimensions),
+        dimensions = stored_limits.dimensions or dimensions,
         source = row.source or models_types.SOURCE_MANUAL,
         provider_profile_id = row.provider_profile_id,
         enabled = tonumber(row.enabled) ~= 0 and not (profile and (profile.error or profile.enabled == false)),
@@ -194,7 +196,7 @@ local function clean_card_input(input: any, base: any?, inferred: any?): (any?, 
         priority = tonumber(input.priority or (base and base.priority) or 10) or 10,
         max_tokens = card_limit(input, stored_limits, "max_tokens"),
         output_tokens = card_limit(input, stored_limits, "output_tokens"),
-        dimensions = card_limit(input, base, "dimensions"),
+        dimensions = card_limit(input, stored_limits, "dimensions"),
         pricing = type(input.pricing) == "table" and input.pricing or (base and base.pricing or {}),
         options = normalize_card_options(card_options(input, base)),
         source = input.source or (base and base.source) or models_types.SOURCE_MANUAL,

@@ -231,11 +231,16 @@ const NON_CHAT = /embed|whisper|tts|audio|image|imagen|dall-?e|lyria|veo|sora|mu
 
 // Capability proxy for ranking: completion price (cost tracks capability), then
 // context window. Higher = more capable.
-function capabilityScore(m: ModelCard): number {
+function capabilityScore(m: ModelCard): number | undefined {
   const pr = m.pricing as Record<string, unknown> | undefined
   const price = Number(pr?.completion ?? pr?.output ?? pr?.prompt ?? 0)
   if (Number.isFinite(price) && price > 0) return price
-  return (Number(m.max_tokens) || 0) / 1e6
+  if (m.max_tokens != null) return m.max_tokens / 1e6
+}
+
+function compareOptionalLimit(a?: number | null, b?: number | null): number {
+  if (a == null) return b == null ? 0 : -1
+  return b == null ? 1 : a - b
 }
 
 // Pool to auto-pick generation tiers from. Native /models APIs don't report
@@ -256,12 +261,12 @@ function suggestGenerate(tiers: ClassGroup[]): Map<string, string> {
   const map = new Map<string, string>()
   const pool = chatCandidates()
   if (!pool.length || !tiers.length) return map
-  const ranked = [...pool].sort((a, b) => capabilityScore(a) - capabilityScore(b))
+  const ranked = [...pool].sort((a, b) => compareOptionalLimit(capabilityScore(a), capabilityScore(b)))
   const last = ranked.length - 1
   tiers.forEach((c, i) => {
     const tagged = pool
       .filter(m => (m.class ?? []).includes(c.name))
-      .sort((a, b) => capabilityScore(b) - capabilityScore(a))
+      .sort((a, b) => compareOptionalLimit(capabilityScore(b), capabilityScore(a)))
     if (tagged.length) { map.set(c.name, tagged[0].name); return }
     const at = tiers.length <= 1 ? last : Math.round((i * last) / (tiers.length - 1))
     map.set(c.name, ranked[Math.min(at, last)].name)
@@ -273,7 +278,7 @@ function suggestGenerate(tiers: ClassGroup[]): Map<string, string> {
 function suggestEmbed(): string {
   const pool = [...embedModels.value].sort((a, b) =>
     (isNative(b) ? 1 : 0) - (isNative(a) ? 1 : 0)
-    || (Number(b.dimensions) || 0) - (Number(a.dimensions) || 0))
+    || compareOptionalLimit(b.dimensions, a.dimensions))
   return pool[0]?.name || ''
 }
 

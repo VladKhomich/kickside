@@ -197,10 +197,6 @@ function M.public_name(profile_id: string, provider_model: string): string
     return models_types.slug(profile_id) .. "/" .. tostring(provider_model)
 end
 
--- Platform convention: every embedding card runs at 512 dimensions regardless
--- of the size the provider reports or omits.
-local EMBEDDING_DIMENSIONS = 512
-
 local function advertised_limit(item: any, fields: { string }): number?
     if type(item) ~= "table" then return nil end
     for _, field in ipairs(fields) do
@@ -218,11 +214,8 @@ function M.output_limit(item: any): number?
     return advertised_limit(item, OUTPUT_LIMIT_FIELDS)
 end
 
-function M.model_limits(item: any, capabilities: { string }?): (number?, number?, number?)
-    local dimensions = models_types.positive_limit(item.dimensions)
-    if common.table_has(capabilities, "embed") then
-        dimensions = EMBEDDING_DIMENSIONS
-    end
+function M.model_limits(item: any): (number?, number?, number?)
+    local dimensions = type(item) == "table" and models_types.positive_limit(item.dimensions) or nil
     return M.context_limit(item), M.output_limit(item), dimensions
 end
 
