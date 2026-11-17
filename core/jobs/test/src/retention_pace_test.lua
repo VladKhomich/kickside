@@ -178,8 +178,9 @@ local function define_tests()
                                 for _, row in ipairs(plan) do
                                     local detail = tostring(row["QUERY PLAN"])
                                     local examined, loops = string.match(detail, "actual time=[^ ]+ rows=(%d+) loops=(%d+)")
-                                    if examined then
-                                        test.is_true(tonumber(examined) * tonumber(loops) <= batch,
+                                    local examined_rows, loop_count = tonumber(examined), tonumber(loops)
+                                    if examined_rows and loop_count then
+                                        test.is_true(examined_rows * loop_count <= batch,
                                             "candidate selection examines more than a batch: " .. detail)
                                     end
                                     local removed = string.match(detail, "Rows Removed by [%a ]+: (%d+)")
