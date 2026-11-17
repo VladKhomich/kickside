@@ -171,7 +171,7 @@ end
 -- Returns the earliest event or committed-receipt eligibility deadline. An
 -- event head blocked by a pin or projection cursor has no timer; those owners
 -- wake Core when their protection changes.
-function sweeper.next_deadline_ms(db: DB): (integer?, error?)
+function sweeper.next_deadline_ms(db: DB, thread_id: string?): (integer?, error?)
     local policy, policy_err = load_policy()
     if policy_err then return nil, policy_err end
     local raw_dbtype, dbtype_err = db:type()
@@ -191,6 +191,10 @@ function sweeper.next_deadline_ms(db: DB): (integer?, error?)
                 WHERE pc.thread_id=t.id AND pc.status<>'invalid' AND pc.last_seq<e.seq)]]
         ordering = " ORDER BY CASE WHEN p.event_hot_retention_days<1 THEN 0 ELSE 1 END,eligibility_ms LIMIT 1"
         params[2] = (policy :: table).events_ms
+    end
+    if thread_id ~= nil then
+        params[#params + 1] = thread_id
+        native_filter = native_filter .. " AND t.id=$" .. tostring(#params)
     end
     local rows, query_err = db:query("SELECT " .. native_deadline .. [[t.id,e.seq,e.created_at,p.event_hot_retention_days,
             COALESCE((SELECT MIN(cursor_seq) FROM kickside_retention_pin rp WHERE rp.thread_id=t.id),e.seq) AS pin_floor,
@@ -223,6 +227,8 @@ function sweeper.next_deadline_ms(db: DB): (integer?, error?)
         end
     end
 
+    if thread_id ~= nil then return next_ms, nil end
+
     local receipts, receipt_err = db:query([[SELECT completed_at FROM kickside_write_receipt
         WHERE status='committed' AND completed_at IS NOT NULL
         ORDER BY completed_at,sink_id,idempotency_key LIMIT 1]])
@@ -239,7 +245,7 @@ function sweeper.next_deadline_ms(db: DB): (integer?, error?)
     return next_ms, nil
 end
 
-function sweeper.run(db: DB): (RunStats?, error?)
+function sweeper.run(db: DB, events_deleted: integer?): (RunStats?, error?)
     local policy, policy_err = load_policy()
     if policy_err then return nil, policy_err end
     local raw_dbtype, dbtype_err = db:type()
@@ -249,10 +255,11 @@ function sweeper.run(db: DB): (RunStats?, error?)
     local now = time.now()
     local agg: RunStats = { events = 0, write_receipts = 0, needs_continue = false }
 
+    local batch_events = (policy :: table).batch_events - (events_deleted or 0)
     local threads, thread_err = load_event_threads(db, dbtype, policy :: table, now)
     if thread_err then return nil, thread_err end
     for _, row in ipairs(threads :: { table }) do
-        local remaining = math.floor((policy :: table).batch_events) - agg.events
+        local remaining = batch_events - agg.events
         if remaining <= 0 then break end
         local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table, now, remaining)
         if prune_err then return nil, prune_err end
@@ -268,12 +275,12 @@ function sweeper.run(db: DB): (RunStats?, error?)
     local count, count_err = deleted_count(purged, "purge.deleted")
     if count_err then return nil, count_err end
     agg.write_receipts = count :: integer
-    agg.needs_continue = agg.events >= (policy :: table).batch_events
+    agg.needs_continue = agg.events >= batch_events
         or agg.write_receipts >= (policy :: table).batch_receipts
     return agg, nil
 end
 
-function sweeper.run_for_thread(db: DB, thread_id: string): (table?, error?)
+function sweeper.run_for_thread(db: DB, thread_id: string, events_deleted: integer?): (table?, error?)
     if type(thread_id) ~= "string" or thread_id == "" then
         return nil, (errors.new({ message = "thread_id is required", kind = errors.INVALID }) :: error)
     end
@@ -294,11 +301,10 @@ function sweeper.run_for_thread(db: DB, thread_id: string): (table?, error?)
     if row.enabled ~= nil and not active(row.enabled) then return { events = 0 }, nil end
     local policy, policy_err = load_policy()
     if policy_err then return nil, policy_err end
-    local now = time.now()
-    local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table,
-        now, (policy :: table).batch_events)
+    local remaining = (policy :: table).batch_events - (events_deleted or 0)
+    local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table, time.now(), remaining)
     if prune_err then return nil, prune_err end
-    return { events = deleted, needs_continue = (deleted :: integer) >= (policy :: table).batch_events }, nil
+    return { events = deleted, needs_continue = (deleted :: integer) >= remaining }, nil
 end
 
 return sweeper
