@@ -239,6 +239,10 @@ local function define_tests()
         test.it("seeks the earliest lease through a large running population", function()
             local db, dbtype, db_err = job_fixture.private_queue("app:private_queue_claim_selection_test")
             if db_err or not db or not dbtype then error(db_err or "test queue is absent") end
+            -- The first plan must precede statistics on this private fixture.
+            if dbtype == sql.type.POSTGRES then
+                assert(db:execute("ALTER TABLE kickside_job SET (autovacuum_enabled=false)"))
+            end
             local now = time.now()
             local dispatch_at = clock.format(now, dbtype)
             local lease_at = clock.format(now:add(60 * time.SECOND), dbtype)

@@ -166,6 +166,11 @@ return {run = test.run_cases(function()
         end)
         test.it("seeks expired leases with 100k future running jobs before and after planner statistics",function()
             queue(function(db,dbtype)
+                -- Keep the first plan genuinely unanalyzed: autoanalyze can
+                -- otherwise sample the pending seed before its running update.
+                if dbtype == sql.type.POSTGRES then
+                    assert(db:execute("ALTER TABLE kickside_job SET (autovacuum_enabled=false)"))
+                end
                 seed(db,dbtype,100000)
                 assert(db:execute("UPDATE kickside_job SET status='running',lease_until='2099-01-01 00:00:00'"))
                 for _, analyzed in ipairs({false,true}) do
