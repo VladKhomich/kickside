@@ -18,6 +18,7 @@ local run_identity = require("run_identity")
 local execution_identity = require("execution_identity")
 local exact_automation_ref = require("automation_ref")
 local errors = require("errors")
+local component = require("component")
 
 local function construct(dependencies: any): any
 local selected_version_read = dependencies.version_read or version_read
@@ -26,6 +27,7 @@ local selected_compiler = dependencies.compiler or compiler
 local client_new = dependencies.client_new or client.new
 local selected_admission = dependencies.admission or admission
 local load_identity = dependencies.load_identity or run_identity.load
+local selected_component = dependencies.component or component
 local M = {}
 
 local function fail(code: string, message: any, retriable: boolean, scope: string, retry_after_ms: number?): any
@@ -34,9 +36,64 @@ local function fail(code: string, message: any, retriable: boolean, scope: strin
     return { success = false, error = error_result, retry_after_ms = retry_after_ms }
 end
 
+-- Only explicitly named scalar Start fields cross the terminal event boundary.
+local function validate_correlation_fields(fields: any): string?
+    if fields == nil then return nil end
+    if type(fields) ~= "table" or #fields < 1 or #fields > 16 then
+        return "correlation_fields must select between 1 and 16 fields"
+    end
+    local seen: { [string]: boolean } = {}
+    local count = 0
+    for index, field in pairs(fields) do
+        if type(index) ~= "number" or index < 1 or index > #fields or index ~= math.floor(index)
+            or type(field) ~= "string" or #field < 1 or #field > 128 or seen[field] then
+            return "correlation_fields must be a dense array of distinct field names of 1 to 128 bytes"
+        end
+        seen[field] = true
+        count = count + 1
+    end
+    if count ~= #fields then return "correlation_fields must be a dense array" end
+    return nil
+end
+
+local function select_correlation(fields: any, input: any): (any?, any?)
+    if fields == nil then return nil, nil end
+    local selected: any = {}
+    for _, field in ipairs(fields) do
+        local value = input[field]
+        local kind = type(value)
+        if kind ~= "string" and kind ~= "boolean" and kind ~= "number" then
+            return nil, "correlation field " .. field .. " must be a present scalar value"
+        end
+        if kind == "number" and (value ~= value or value == math.huge or value == -math.huge) then
+            return nil, "correlation field " .. field .. " must be finite"
+        end
+        if kind == "string" and #value > 4096 then return nil, "correlation exceeds 4096 bytes" end
+        selected[field] = value
+    end
+    local encoded, err = json.encode(selected)
+    if err or not encoded then return nil, err or "correlation encoding failed" end
+    if #encoded > 4096 then return nil, "correlation exceeds 4096 bytes" end
+    return selected, nil
+end
+
 local function exact(req: any): (any?, any?)
     local config = type(req) == "table" and req.config or nil
     if type(config) ~= "table" then return nil, "config is required" end
+    local selection_err = validate_correlation_fields(config.correlation_fields)
+    if selection_err then return nil, selection_err end
+    if config.completion ~= nil then
+        local completion = config.completion
+        if type(completion) ~= "table" or type(completion.component_id) ~= "string"
+            or not uuid.validate(completion.component_id) or completion.token_fields == nil then
+            return nil, "completion requires a component UUID and token_fields"
+        end
+        for field in pairs(completion) do
+            if field ~= "component_id" and field ~= "token_fields" then return nil, "unknown completion field" end
+        end
+        local token_err = validate_correlation_fields(completion.token_fields)
+        if token_err then return nil, "completion token_fields: " .. token_err end
+    end
     return flow_ref.validate(config.flow_ref)
 end
 
@@ -101,7 +158,8 @@ function M.write(request: any): any
     if not version then return fail("not_found", "published Flow version not found", false, "flow") end
     local valid_err = schema_validate.validate(version.input_schema, input, "input")
     if valid_err then return fail("invalid_request", valid_err, false, "item") end
-    local admission_hash, hash_err = canonical_json.hash({ flow_ref = ref, op = req.sink_op, input = input })
+    local admission_hash, hash_err = canonical_json.hash({ flow_ref = ref, op = req.sink_op, input = input,
+        correlation_fields = req.config.correlation_fields, completion = req.config.completion })
     if hash_err or type(admission_hash) ~= "string" then
         if errors.is(hash_err, errors.INVALID) then
             return fail("invalid_request", hash_err, false, "item")
@@ -116,13 +174,31 @@ function M.write(request: any): any
     if encode_err or not identity_row then
         return fail("invalid_identity", encode_err or "automation identity invalid", false, "identity")
     end
+    local completion: any = nil
+    if req.config.completion ~= nil then
+        local token, token_err = select_correlation(req.config.completion.token_fields, input)
+        if token_err then return fail("invalid_request", token_err, false, "item") end
+        local target, target_err = selected_component.open(req.config.completion.component_id,
+            selected_component.ACCESS.WRITE, "kickside.workflows:run_completion")
+        if target_err or not target then
+            if errors.is(target_err, errors.PERMISSION_DENIED) then
+                return fail("permission_denied", target_err, false, "item")
+            end
+            if errors.is(target_err, errors.INVALID) then return fail("invalid_config", target_err, false, "item") end
+            return pending(target_err or "completion target unavailable")
+        end
+        completion = { component_id = req.config.completion.component_id, token = token }
+    end
     local function creation_for(run_id: string, dataflow_id: string): (string?, any?)
+        local correlation, correlation_err = select_correlation(req.config.correlation_fields, input)
+        if correlation_err then return nil, correlation_err end
         local commands, _, remint_err = selected_compiler.remint(version.compiled_commands, uuid.v4, input, {
             run_id = run_id, dataflow_id = dataflow_id, version = ref.version,
             workflow_stack = { ref.id }, depth = 0,
         })
         if remint_err or not commands then return nil, remint_err or "workflow input could not be routed" end
-        return json.encode({ version = ref.version, input = input, commands = commands,
+        return json.encode({ version = ref.version, input = input, commands = commands, correlation = correlation,
+            completion = completion,
             options = { dataflow_id = dataflow_id, type = "workflow",
                 metadata = { run_id = run_id, origin = "automation", flow_ref = ref,
                     resume_handler = "kickside.workflows.runs:resume",

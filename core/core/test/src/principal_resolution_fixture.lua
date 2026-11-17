@@ -50,4 +50,6 @@ function M.append(...)
     M.appends = M.appends + 1
     return nil, M.later_error()
 end
+-- This fixture's synthetic kind is an ordinary thread, not a user singleton.
+function M.ensure_singleton(...) return false, nil end
 return M

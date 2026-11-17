@@ -352,8 +352,9 @@ local function define_tests()
             test.is_nil(plans.trim,"appends never scan or trim retained history")
             cleanup()
             if postgres then
-                -- Release this bulk fixture's dead index entries before live-worker suites.
-                h.exec("VACUUM (ANALYZE) kickside_automation_delivery_history")
+                -- AUTO can skip a small dead-tuple tail after autovacuum reclaims the bulk.
+                -- Establish clean indexes before measuring seeks over the remaining live rows.
+                h.exec("VACUUM (ANALYZE, INDEX_CLEANUP ON) kickside_automation_delivery_history")
                 local remaining=retained_before_seed
                 local heap_fetches=0
                 local function visit(node: Map): ()

@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.17](https://github.com/kicksideai/kickside/compare/workflows-v0.2.16...workflows-v0.2.17) (2026-11-17)
+
+
+### Features
+
+* **workflows:** deliver typed run completion callbacks ([#524](https://github.com/kicksideai/kickside/issues/524)) ([bea3c9a](https://github.com/kicksideai/kickside/commit/bea3c9a700ade32ab2d8be436b77b3245ebdbfb2))
+
+
+### Bug Fixes
+
+* **automation:** refuse deletion while launched runs are active ([#531](https://github.com/kicksideai/kickside/issues/531)) ([37d10c6](https://github.com/kicksideai/kickside/commit/37d10c6fdbbf13123c73a5b0ec7cd3ced83460a2))
+* **workflows:** refuse deletion while runs are active ([#512](https://github.com/kicksideai/kickside/issues/512)) ([b7a3e69](https://github.com/kicksideai/kickside/commit/b7a3e694fcb01cb0cad38d098189fc501ccc4b25))
+
+## [0.2.16](https://github.com/kicksideai/kickside/compare/workflows-v0.2.15...workflows-v0.2.16) (2026-11-16)
+
+
+### Features
+
+* **workflows:** preserve selected Start correlation in terminal events ([#510](https://github.com/kicksideai/kickside/issues/510)) ([fee4bb1](https://github.com/kicksideai/kickside/commit/fee4bb1f97840aa21c4056cc43807b6f489393b4))
+
+
+### Bug Fixes
+
+* preserve web component host contracts and eager bundles ([8bfd86d](https://github.com/kicksideai/kickside/commit/8bfd86dded87eea2c40294be136af1a66ab25765))
+* preserve web component host contracts and eager bundles ([b68bfa0](https://github.com/kicksideai/kickside/commit/b68bfa020b6f8ba97a0c37c9b5a955030617d37a))
+
 ## [0.2.15](https://github.com/kicksideai/kickside/compare/workflows-v0.2.14...workflows-v0.2.15) (2026-11-13)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.30](https://github.com/kicksideai/kickside/compare/automation-v0.2.29...automation-v0.2.30) (2026-11-17)
+
+
+### Bug Fixes
+
+* **automation:** preserve inherited roots in selected installs ([#528](https://github.com/kicksideai/kickside/issues/528)) ([febfb40](https://github.com/kicksideai/kickside/commit/febfb407e3cd178f1b69fbd431e7828bd3e84879))
+* **automation:** refuse deletion while launched runs are active ([#531](https://github.com/kicksideai/kickside/issues/531)) ([37d10c6](https://github.com/kicksideai/kickside/commit/37d10c6fdbbf13123c73a5b0ec7cd3ced83460a2))
+
+## [0.2.29](https://github.com/kicksideai/kickside/compare/automation-v0.2.28...automation-v0.2.29) (2026-11-16)
+
+
+### Bug Fixes
+
+* preserve web component host contracts and eager bundles ([8bfd86d](https://github.com/kicksideai/kickside/commit/8bfd86dded87eea2c40294be136af1a66ab25765))
+
+## [0.2.28](https://github.com/kicksideai/kickside/compare/automation-v0.2.27...automation-v0.2.28) (2026-11-16)
+
+
+### Bug Fixes
+
+* resume automation deletion after rollback upgrades ([#465](https://github.com/kicksideai/kickside/issues/465)) ([9f3fb38](https://github.com/kicksideai/kickside/commit/9f3fb3896bfd78408a0838c382694d33376152a8))
+
 ## [0.2.27](https://github.com/kicksideai/kickside/compare/automation-v0.2.26...automation-v0.2.27) (2026-11-14)
 
 

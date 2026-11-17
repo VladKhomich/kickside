@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+# Run delete_admission_storage_test with Workflows on the independent upgrade DB.
+version: "1.0"
+override:
+  "kickside.workflows:db_config:meta.db_id": app:retry_upgrade_db
+  "kickside.workflows.migrations:01_workflows:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:02_definition_state:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:04_admission_recovery:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:05_undo_history:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:06_iteration_input_routes:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:07_retry_policy:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:08_delete_admission_index:meta.target_db": app:retry_upgrade_db
+  "kickside.workflows.migrations:09_automation_delete_admission_index:meta.target_db": app:retry_upgrade_db

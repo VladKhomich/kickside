@@ -33,6 +33,24 @@ The `threads` slice additionally consumes the `kickside.component:component_serv
 contract (the component module is a sibling dependency) for ownership, access, and
 hierarchy.
 
+## Per-user provisioning
+
+A declared user singleton created by `provision.ensure_user` or first-touch
+singleton emission receives its own execution root, authorized by its owning
+user, only in the user's own frame (no inherited identity, or an inherited
+`authorized_by` equal to that user). A delegated frame retains its inherited root
+and authorizer unchanged, so revoking the authorizer's live delegation still stops
+deferred work. Provisioning derives the singleton key from the authenticated
+actor; the private entry refuses caller-supplied keys. Ordinary first-touch
+creation does not require permission to call that entry.
+Core selects the owner identity through its private provisioning function; its
+actor/scope construction capabilities are removed before registration and declared
+callbacks. Callers need no general actor-creation grant. Credential and link
+restrictions remain attached. The caller's frame and
+ordinary component registration retain their existing identity semantics.
+Provisioning is idempotent and does not replace existing singleton identities;
+existing installations use the normal owner-authorized identity recovery.
+
 ## Module-owned retention
 
 An installed module registers its maintenance function with
@@ -76,3 +94,26 @@ The standalone application harness (`test/`) provisions an in-memory database,
 a process host, a permissive scope, and the component module, then runs its
 harness-owned suites. Suites also run against PostgreSQL by pointing
 `target_db` at a `db.sql.postgres` resource.
+
+## Projection failure and recovery
+
+Once the slot's cursor is read, binding, stored-identity, worker and apply failures
+are recorded on that cursor through the same fenced failure transition.
+Deterministic failures invalidate the cursor and projection, preserve the error and failed run, and disable event
+wakes until a corrected declaration is registered. Infrastructure failures keep
+the cursor active with its error and use Jobs' existing slot retries. Lease loss
+returns without publishing a projection failure; infrastructure errors publish
+only while the attempt still owns the running slot's lease token.
+
+Resume sends a control wake even when the cursor is already active, so an active
+cursor with a disabled slot can recover without resetting or skipping events.
+An already-active resume preserves the cursor generation and position. Invalid
+cursors still require a corrected declaration through registration. Boot and
+installation convergence also restore disabled active slots through bounded
+keyset pages of the Jobs disabled-slot index, without changing cursor progress.
+Paused and invalid cursors keep their existing state.
+
+Thread deletion removes its own projection cursors and their blocked-input pins;
+those local pins do not require a surviving consumer's deletion fence. The fence
+pages raw pins before checking local cursor ownership by primary key, so pages
+advance through local pins with bounded work.

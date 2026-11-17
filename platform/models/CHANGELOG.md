@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.80](https://github.com/kicksideai/kickside/compare/models-v0.1.79...models-v0.1.80) (2026-11-16)
+
+
+### Bug Fixes
+
+* preserve web component host contracts and eager bundles ([8bfd86d](https://github.com/kicksideai/kickside/commit/8bfd86dded87eea2c40294be136af1a66ab25765))
+
+## [0.1.79](https://github.com/kicksideai/kickside/compare/models-v0.1.78...models-v0.1.79) (2026-11-16)
+
+
+### Bug Fixes
+
+* **models:** encrypt legacy provider headers and preserve safe diagnostics ([#462](https://github.com/kicksideai/kickside/issues/462)) ([03301f6](https://github.com/kicksideai/kickside/commit/03301f6f1de1134d7ed1af5470be1a9b2f70754f))
+
 ## [0.1.78](https://github.com/kicksideai/kickside/compare/models-v0.1.77...models-v0.1.78) (2026-11-15)
 
 

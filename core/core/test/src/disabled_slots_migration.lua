@@ -1,0 +1,1 @@
+../../../jobs/src/migrations/27_disabled_slots.lua

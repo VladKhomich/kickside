@@ -19,10 +19,13 @@
 local contract = require("contract")
 local funcs = require("funcs")
 local sql = require("sql")
+local security = require("security")
+local registry = require("registry")
 local autoinit = require("autoinit")
 local retention_repo = require("retention_repo")
 local core_db = require("core_db")
 local proj_types = require("proj_types")
+local projections_writer = require("projections_writer")
 local execution_identity = require("execution_identity")
 local component_identity = require("component_identity")
 local component_envelope = require("component_envelope")
@@ -37,11 +40,79 @@ local THREADS = "kickside.core:threads"
 local CONVERGE_THREAD_FN = "kickside.core.threads:converge_thread_method"
 -- The trusted owner entry that resolves a component's stored identity to converge it.
 local CONVERGE_OWNER = "kickside.core.threads:converge"
+local PROVISION_USER = "kickside.core.threads:provision_user"
+local PROVISION_IDENTITY = "kickside.core.threads:provision_identity"
 local COMPONENT_SERVICE = "kickside.component:component_service"
 
 local function missing_result(field: string): error
     return errors.new({kind = errors.INTERNAL, message = "provisioning dependency returns no result: " .. field,
         retryable = false, details = {code = "provision_response", field = field}})
+end
+
+-- A user's own frame may admit an independent singleton root. Delegated frames
+-- retain their inherited root and authorizer so live delegation still fences work.
+-- Keep request restrictions and never mutate the caller.
+local function user_actor(actor: any): (any?, error?)
+    if execution_identity.is_maintenance_key(actor:id()) then return actor, nil end
+    local principal, principal_err = execution_identity.principal_of_key(actor:id())
+    if principal_err then return nil, principal_err end
+    if principal.kind ~= "user" then return actor, nil end
+    local meta: { [string]: any } = {}
+    for key, value in pairs(actor:meta() or {}) do meta[key] = value end
+    local inherited = meta.execution_identity
+    if inherited ~= nil then
+        local valid, validation_err = execution_identity.validate(inherited)
+        if not valid then return nil, validation_err end
+        if not execution_identity.same_principal(inherited.principal, principal) then
+            return nil, errors.new({kind = errors.PERMISSION_DENIED,
+                message = "provisioning identity does not match its owning user"})
+        end
+        if not execution_identity.same_principal(inherited.authorized_by, principal) then
+            return actor, nil
+        end
+    end
+    local restrictions = inherited or meta
+    local authorizer = inherited and inherited.authorized_by or principal
+    -- A fresh owner frame already lets registration establish the singleton's
+    -- root. It needs no actor-creation capability beyond normal provisioning.
+    if restrictions.component_id == nil and execution_identity.same_principal(authorizer, principal) then
+        return actor, nil
+    end
+    meta.principal = principal
+    meta.component_id = nil
+    meta.execution_identity = {
+        version = execution_identity.VERSION,
+        principal = principal,
+        authorized_by = {kind = "user", id = principal.id},
+        credential_id = restrictions.credential_id,
+        link_id = restrictions.link_id,
+        captured_at = execution_identity.utc_now(),
+    }
+    local valid, validation_err = execution_identity.validate(meta.execution_identity)
+    if not valid then return nil, validation_err end
+    return security.new_actor(actor:id(), meta)
+end
+
+local function open_threads(actor: any, scope: any): (any?, error?)
+    local svc, cerr = contract.get(THREADS)
+    if cerr then return nil, (errors.wrap(cerr, "threads contract unavailable") :: error) end
+    if not svc then return nil, missing_result("threads_get") end
+    local threads, oerr = (svc :: any):with_actor(actor):with_scope(scope):open()
+    if oerr then return nil, (errors.wrap(oerr, "open threads contract failed") :: error) end
+    if not threads then return nil, missing_result("threads_open") end
+    return threads, nil
+end
+
+-- The private function owns actor selection, while the caller supplies the
+-- authenticated frame. No caller gains general actor-creation authority.
+local function provision_user(actor: any, scope: any, args: any): (any?, error?)
+    local executor, actor_err = funcs.new():with_actor(actor)
+    if actor_err then return nil, actor_err end
+    if not executor then return nil, missing_result("actor") end
+    local scoped, scope_err = executor:with_scope(scope)
+    if scope_err then return nil, scope_err end
+    if not scoped then return nil, missing_result("scope") end
+    return scoped:call(PROVISION_USER, args)
 end
 
 -- apply_grants writes each declared additional grant onto the provisioned component
@@ -136,12 +207,8 @@ local function provision_scope(actor: any, scope: any, scope_key: string, want_s
     if type(scope_key) ~= "string" or scope_key == "" then
         return nil, (errors.new({ message = "scope_key is required", kind = errors.INVALID }) :: error)
     end
-    local svc, cerr = contract.get(THREADS)
-    if cerr then return nil, (errors.wrap(cerr, "threads contract unavailable") :: error) end
-    if not svc then return nil, missing_result("threads_get") end
-    local threads, oerr = (svc :: any):with_actor(actor):with_scope(scope):open()
-    if oerr then return nil, (errors.wrap(oerr, "open threads contract failed") :: error) end
-    if not threads then return nil, missing_result("threads_open") end
+    local threads, open_err = open_threads(actor, scope)
+    if open_err then return nil, open_err end
 
     local ids: { string } = {}
     for _, decl in ipairs(autoinit.declarations()) do
@@ -285,9 +352,15 @@ function M.converge(opener_actor: any, opener_scope: any): ({ [string]: any }, e
         end
     end
 
+    local _, wake_err = projections_writer.converge(_db, summary.skipped :: {any})
     local _, release_err = _db:release()
-    if release_err then return summary, (errors.wrap(release_err, "converge: database release failed") :: error) end
-    return summary, nil
+    if release_err then
+        if wake_err then
+            return summary, error_envelope.wrap_secondary(release_err, wake_err, "converge: database release failed")
+        end
+        return summary, (errors.wrap(release_err, "converge: database release failed") :: error)
+    end
+    return summary, wake_err
 end
 
 -- ensure_user materializes every user-scope declaration for the actor. Two owners
@@ -295,7 +368,72 @@ end
 -- worker at first ingest for non-interactive/bridge actors that never log in. The
 -- actor owns the provisioned components; idempotent, so either owner converges.
 function M.ensure_user(actor: any, scope: any, scope_key: string): ({ string }?, error?)
-    return provision_scope(actor, scope, scope_key, autoinit.SCOPE.USER :: string)
+    if scope_key ~= actor:id() then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED,
+            message = "user provisioning key must match the authenticated actor"})
+    end
+    local meta = actor:meta() or {}
+    if meta.execution_identity == nil and meta.component_id == nil then
+        return provision_scope(actor, scope, actor:id(), autoinit.SCOPE.USER :: string)
+    end
+    return provision_user(actor, scope, {})
+end
+
+-- Internal first-touch emit path. Only the owning user's declared singleton
+-- enters provisioning; all other creation paths retain normal frame capture.
+local function is_user_singleton(actor: any, args: any): (boolean?, error?)
+    local entry, lookup_err = registry.get(args.impl_id)
+    if lookup_err then return nil, lookup_err end
+    local meta = entry and entry.meta or {}
+    local provision = meta.provision
+    local class = autoinit.first_class(meta.class)
+    if type(provision) ~= "table" or provision.scope == autoinit.SCOPE.SYSTEM
+        or type(class) ~= "string" or class == ""
+        or args.component_id ~= autoinit.component_id(actor:id(), class) then
+        return false, nil
+    end
+    return true, nil
+end
+
+local function ensure_singleton(actor: any, scope: any, args: any): (boolean?, error?)
+    local eligible, eligibility_err = is_user_singleton(actor, args)
+    if eligibility_err or not eligible then return eligible, eligibility_err end
+    local owner, owner_err = user_actor(actor)
+    if owner_err then return nil, owner_err end
+    local threads, open_err = open_threads(owner, scope)
+    if open_err then return nil, open_err end
+    local _, upsert_err = threads:upsert({thread_id = args.component_id,
+        impl_id = args.impl_id, thread_class = args.thread_class})
+    if upsert_err then return nil, upsert_err end
+    return true, nil
+end
+
+function M.ensure_singleton(actor: any, scope: any, args: any): (boolean?, error?)
+    local eligible, eligibility_err = is_user_singleton(actor, args)
+    if eligibility_err or not eligible then return eligible, eligibility_err end
+    return provision_user(actor, scope, args)
+end
+
+-- Private provisioning entry: its extra capabilities select only the current
+-- user's identity. Strip them before any contract write or declared callback.
+function M.provision_user(args: any): (any?, error?)
+    local actor = security.actor()
+    local caller_scope = security.scope()
+    if not actor or not caller_scope then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED,
+            message = "user provisioning requires an authenticated actor and scope"})
+    end
+    if args.scope_key ~= nil then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED,
+            message = "user provisioning does not accept a caller-supplied key"})
+    end
+    local scope = caller_scope:without(PROVISION_IDENTITY)
+    if args.component_id == nil then
+        local owner, owner_err = user_actor(actor)
+        if owner_err then return nil, owner_err end
+        return provision_scope(owner, scope, actor:id(), autoinit.SCOPE.USER :: string)
+    end
+    return ensure_singleton(actor, scope, args)
 end
 
 -- ensure_system materializes every system-scope declaration (called once at boot under

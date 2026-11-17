@@ -3,6 +3,8 @@ import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
 
+import { hostExternals, wcRuntimeChunk } from './wc-build'
+
 export default defineConfig({
   plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }), wippyComponentPlugin()],
   // Lib builds don't auto-replace process.env; provide it so deps that read
@@ -24,10 +26,11 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      preserveEntrySignatures: false,
+      preserveEntrySignatures: 'strict',
       input: { index: resolve(__dirname, 'src/index.ts') },
-      external: ['vue', '@iconify/vue', '@wippy-fe/proxy'],
+      external: hostExternals,
       output: {
+        manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',
         chunkFileNames: '[name]-[hash].js',
         assetFileNames: '[name]-[hash][extname]',

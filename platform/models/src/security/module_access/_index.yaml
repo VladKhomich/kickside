@@ -59,7 +59,6 @@ entries:
     - kickside.models.classes:*
     - kickside.models.discovery:*
     - kickside.models.migrations:*
-    - kickside.models.persist:*
     - kickside.models.providers:*
     - kickside.models.providers.google_vertex:*
     - kickside.models.providers.openai_compat_plain:*

@@ -44,6 +44,7 @@ entries:
     kind: contract.binding
     meta:
       type: kickside.automation
+      delete_admission: automation_delete_admission
       title: Recurring task
       comment: Run a published workflow, an agent prompt, or a declared writable action on a UTC schedule.
       icon: tabler:calendar-repeat

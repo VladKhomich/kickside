@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, useId } from 'vue'
 import { Icon } from '@iconify/vue'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useProps } from '@wippy-fe/webcomponent-vue'
 import { api } from '@wippy-fe/proxy'
+import { confirmSettingChange, type DestructiveSetting } from './setting-change'
 import WcMount from '@widgets/app/WcMount.vue'
 
 // A shared, config-driven provider settings card. One element, reused by every
@@ -33,7 +34,7 @@ interface FieldSchema {
   enum?: unknown[]
 }
 
-interface Setting {
+interface Setting extends DestructiveSetting {
   namespace: string
   key: string
   value: unknown
@@ -67,6 +68,12 @@ const settings = ref<Setting[]>([])
 const draft = ref<Record<string, string | number | boolean>>({})
 
 const DEFAULT_CATEGORY = 'General'
+const formId = useId()
+const fieldId = (s: Setting, part: string) => `${formId}-${encodeURIComponent(s.key)}-${part}`
+const controlAttrs = (s: Setting) => ({
+  'aria-labelledby': fieldId(s, 'title'),
+  'aria-describedby': s.description ? fieldId(s, 'description') : undefined,
+})
 
 function humanize(key: string): string {
   const words = key.split(/[._\-\s]+/).filter(Boolean)
@@ -145,12 +152,15 @@ async function load() {
 
 // Save every dirty field via PUT /api/v1/settings, then reload.
 async function save() {
+  if (saving.value) return
   saving.value = true
   error.value = ''
   try {
-    for (const s of settings.value) {
-      if (!dirtyField(s)) continue
-      const value = coerce(s, draft.value[s.key])
+    const changes = settings.value.filter(dirtyField).map(s => ({ s, value: coerce(s, draft.value[s.key]) }))
+    for (const { s, value } of changes) {
+      if (!await confirmSettingChange(s, value, titleOf(s), 'Save')) return
+    }
+    for (const { s, value } of changes) {
       const { data } = await api.put('/api/v1/settings', { namespace: s.namespace, key: s.key, value })
       if (!data?.success) throw new Error(data?.error || `could not save ${titleOf(s)}`)
     }
@@ -164,9 +174,11 @@ async function save() {
 
 // Reset one field to its declared default (null override), then reload.
 async function resetField(s: Setting) {
+  if (saving.value) return
   saving.value = true
   error.value = ''
   try {
+    if (!await confirmSettingChange(s, s.default, titleOf(s), 'Reset to default')) return
     const { data } = await api.put('/api/v1/settings', { namespace: s.namespace, key: s.key, value: null })
     if (!data?.success) throw new Error(data?.error || 'reset failed')
     await load()
@@ -188,6 +200,7 @@ onMounted(load)
         <Button
           type="button"
           label="Discard"
+          :aria-label="`Discard ${title} changes`" :aria-description="help || undefined"
           severity="secondary"
           outlined
           :disabled="!dirty || saving"
@@ -195,6 +208,7 @@ onMounted(load)
         <Button
           type="button"
           :label="saving ? 'Saving…' : 'Save'"
+          :aria-label="`Save ${title} settings`" :aria-description="help || undefined"
           :loading="saving"
           :disabled="!dirty || saving"
           @click="save">
@@ -220,7 +234,7 @@ onMounted(load)
 
               <div v-for="s in g.items" :key="s.key" class="pv-field">
                 <div class="pv-field-head">
-                  <label class="ap-blabel">{{ titleOf(s) }}</label>
+                  <span :id="fieldId(s, 'title')" class="ap-blabel">{{ titleOf(s) }}</span>
                   <span v-if="s.is_secret && s.has_value" class="ks-tag kx-tag-caps ks-tag-on">set</span>
                   <span v-else-if="!s.is_default && !s.is_secret" class="ks-tag kx-tag-caps ks-tag-on">overridden</span>
                   <Button
@@ -231,7 +245,8 @@ onMounted(load)
                     text
                     rounded
                     title="Reset to default"
-                    aria-label="Reset to default"
+                    :aria-label="`Reset ${titleOf(s)} to default`"
+                    :aria-describedby="controlAttrs(s)['aria-describedby']"
                     :disabled="saving"
                     @click="resetField(s)">
                     <template #icon>
@@ -242,49 +257,48 @@ onMounted(load)
 
                 <template v-if="s.control">
                   <span v-if="s.editable === false">{{ s.value }}</span>
-                  <WcMount v-else :tag="s.control.tag"
-                    :attrs="{ ...s.control.props, value: coerce(s, draft[s.key]) }"
+                  <WcMount v-else :tag="s.control.tag" :label="titleOf(s)"
+                    :attrs="{ ...s.control.props, role: 'group', description: s.description, ...controlAttrs(s), value: coerce(s, draft[s.key]) }"
                     @select="seed(s, $event)" />
-                  <p v-if="s.description" class="ap-hint">{{ s.description }}</p>
+                  <p :id="fieldId(s, 'description')" v-if="s.description" class="ap-hint">{{ s.description }}</p>
                 </template>
 
                 <!-- bool: a real toggle switch -->
                 <div v-else-if="s.value_type === 'bool'" class="ap-toggle-row pv-toggle">
                   <div class="ap-toggle-text">
-                    <span v-if="s.description" class="ap-toggle-desc">{{ s.description }}</span>
+                    <span :id="fieldId(s, 'description')" v-if="s.description" class="ap-toggle-desc">{{ s.description }}</span>
                   </div>
-                  <ToggleSwitch
+                  <ToggleSwitch :pt="{ input: controlAttrs(s) }"
                     :model-value="!!draft[s.key]"
-                    :aria-label="titleOf(s)"
                     @update:model-value="draft[s.key] = $event" />
                 </div>
 
                 <template v-else>
-                  <Select v-if="enumOptions(s)" class="ap-select"
+                  <Select v-if="enumOptions(s)" class="ap-select" :pt="{ label: controlAttrs(s) }"
                     :model-value="draft[s.key]"
                     :options="enumOptions(s) as unknown[]"
                     @update:model-value="draft[s.key] = $event" />
 
-                  <input v-else-if="s.value_type === 'int'" class="ap-binput" type="number"
+                  <input v-bind="controlAttrs(s)" v-else-if="s.value_type === 'int'" class="ap-binput" type="number"
                     :min="s.schema?.minimum" :max="s.schema?.maximum"
                     :value="draft[s.key]"
                     @input="draft[s.key] = Number(($event.target as HTMLInputElement).value)" />
 
-                  <input v-else-if="s.value_type === 'secret'" class="ap-binput" type="password" autocomplete="off"
+                  <input v-bind="controlAttrs(s)" v-else-if="s.value_type === 'secret'" class="ap-binput" type="password" autocomplete="off"
                     :placeholder="s.has_value ? '•••••••• set — type to replace' : 'Not set'"
                     :value="draft[s.key]"
                     @input="draft[s.key] = ($event.target as HTMLInputElement).value" />
 
-                  <textarea v-else-if="s.value_type === 'json'" class="ap-binput pv-textarea" rows="4"
+                  <textarea v-bind="controlAttrs(s)" v-else-if="s.value_type === 'json'" class="ap-binput pv-textarea" rows="4"
                     :value="draft[s.key] as string"
                     @input="draft[s.key] = ($event.target as HTMLTextAreaElement).value"></textarea>
 
-                  <input v-else class="ap-binput" type="text"
+                  <input v-bind="controlAttrs(s)" v-else class="ap-binput" type="text"
                     :minlength="s.schema?.minLength" :maxlength="s.schema?.maxLength"
                     :value="draft[s.key]"
                     @input="draft[s.key] = ($event.target as HTMLInputElement).value" />
 
-                  <p v-if="s.description" class="ap-hint">{{ s.description }}</p>
+                  <p :id="fieldId(s, 'description')" v-if="s.description" class="ap-hint">{{ s.description }}</p>
                 </template>
               </div>
             </div>

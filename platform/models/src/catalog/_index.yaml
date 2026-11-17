@@ -8,6 +8,7 @@ namespace: kickside.models.catalog
 # declared in kickside.models.classes; discovered llm.model entries reference them.
 
 entries:
+
   - name: policy
     kind: library.lua
     meta:
@@ -44,7 +45,7 @@ entries:
     source: file://resolver.lua
     method: resolve
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models.catalog:catalog_database, kickside.models.catalog:catalog_key]
+      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call]
     imports:
       model_catalog: kickside.models.catalog:model_catalog
 
@@ -64,12 +65,4 @@ entries:
     policy:
       resources: []
       actions: [db.get]
-      effect: allow
-
-  - name: catalog_key
-    kind: security.policy
-    meta: {private: true}
-    policy:
-      resources: []
-      actions: [env.get]
       effect: allow

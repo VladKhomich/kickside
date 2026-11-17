@@ -14,9 +14,11 @@ entries:
   kind: library.lua
   source: file://find_release_source.lua
   modules:
+  - security
   - crypto
   - sql
   imports:
+    provision: kickside.core.threads:provision
     sql_boundary: kickside.core.jobs.persist:sql_boundary
     contract_common: app:find_release_common
     contract_events: kickside.core.threads:contract_events

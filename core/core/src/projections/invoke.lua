@@ -72,13 +72,13 @@ local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?,
     end
     if row.execution_identity_json ~= nil then
         local identity, identity_err = execution_identity.from_row(row.actor_id, row.execution_identity_json)
-        if identity_err then return nil, identity_err end
-        if type(identity) ~= "table" then return nil, response_error("execution_identity") end
+        if identity_err then return row, identity_err end
+        if type(identity) ~= "table" then return row, response_error("execution_identity") end
     elseif row.actor_id ~= nil then
-        return nil, (errors.new({ message = "projection cursor execution identity is missing", kind = errors.INVALID }) :: error)
+        return row, (errors.new({ message = "projection cursor execution identity is missing", kind = errors.INVALID }) :: error)
     end
     local body, body_err = body_from(row.body)
-    if body_err then return nil, body_err end
+    if body_err then return row, body_err end
     row.body = body
     return row, nil
 end
@@ -156,24 +156,9 @@ local function defer(db: sql.DB, job: table, due: string): (table?, error?)
     return { self_completed = true, completion = done, deferred_until = due }, nil
 end
 
-function M.run(input: any): (table?, error?)
-    local job = type(input) == "table" and input.job or nil
-    local payload = type(input) == "table" and input.payload or nil
-    local cursor_id = type(payload) == "table" and payload.cursor_id or nil
-    if type(job) ~= "table" or type(job.id) ~= "string" or type(cursor_id) ~= "string" then
-        return nil, (errors.new({ message = "projection slot input requires job and cursor_id", kind = errors.INVALID }) :: error)
-    end
-    local pol, pol_err = projection_policy.policy()
-    if pol_err then return nil, pol_err end
-    if type(pol) ~= "table" then return nil, response_error("policy") end
-    local page_size = pol.apply_batch_size
-    local db_id = core_db.id()
-    local db, db_err = sql.get(db_id)
-    if db_err then return nil, errors.wrap(db_err, "projection DB unavailable") end
-    if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
-    local row, row_err = snapshot(db, cursor_id, job.id)
-    if row_err then return nil, release(db, row_err) end
-    local current = row :: table
+local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?)
+    local db: sql.DB? = connection
+    local cursor_id = tostring(current.id)
     local head = tonumber(current.event_count)
     local last = tonumber(current.last_seq)
     if head == nil or last == nil then
@@ -246,17 +231,7 @@ function M.run(input: any): (table?, error?)
             else
                 output, row_err = worker.run(binding, work_input)
             end
-            if row_err then
-                -- Only the worker's own failure is the projection's outcome;
-                -- binding and identity failures stay with Jobs.
-                local details = (row_err :: error):details()
-                if type(details) ~= "table" or details.reason ~= worker.WORKER_FAILED then return nil, row_err end
-                local deterministic = job_types.is_deterministic_kind((row_err :: error):kind())
-                local failed, fail_err = apply.fail(db_id, job, current, row_err :: error, deterministic)
-                if fail_err then return nil, fail_err end
-                if failed then return failed, nil end
-                return nil, row_err
-            end
+            if row_err then return nil, row_err end
             db = nil
         end
     end
@@ -279,6 +254,43 @@ function M.run(input: any): (table?, error?)
         if post_err then return nil, post_err end
     end
     return result, nil
+end
+
+function M.run(input: any): (table?, error?)
+    local job = type(input) == "table" and input.job or nil
+    local payload = type(input) == "table" and input.payload or nil
+    local cursor_id = type(payload) == "table" and payload.cursor_id or nil
+    if type(job) ~= "table" or type(job.id) ~= "string" or type(cursor_id) ~= "string" then
+        return nil, (errors.new({ message = "projection slot input requires job and cursor_id", kind = errors.INVALID }) :: error)
+    end
+    local pol, pol_err = projection_policy.policy()
+    if pol_err then return nil, pol_err end
+    if type(pol) ~= "table" then return nil, response_error("policy") end
+    local page_size = pol.apply_batch_size
+    local db_id = core_db.id()
+    local db, db_err = sql.get(db_id)
+    if db_err then return nil, errors.wrap(db_err, "projection DB unavailable") end
+    if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
+    local row, row_err = snapshot(db, cursor_id, job.id)
+    local result: table? = nil
+    local attempt_err: error? = nil
+    if row_err then
+        attempt_err = release(db, row_err)
+        if not row then return nil, attempt_err end
+    else
+        result, attempt_err = attempt(db, db_id, job, row :: table, page_size)
+    end
+    local current = row :: table
+    if not attempt_err then return result, nil end
+    if job_types.is_lease_lost_error(attempt_err) then return nil, attempt_err end
+    -- Binding, identity, worker and apply failures share the cursor's failure
+    -- transition before Jobs can park the slot. Its generation/position fence
+    -- keeps stale attempts from invalidating a resumed or committed cursor.
+    local deterministic = job_types.is_deterministic_kind(attempt_err:kind())
+    local failed, fail_err = apply.fail(db_id, job, current, attempt_err, deterministic)
+    if fail_err then return nil, fail_err end
+    if failed then return failed, nil end
+    return nil, attempt_err
 end
 
 return M

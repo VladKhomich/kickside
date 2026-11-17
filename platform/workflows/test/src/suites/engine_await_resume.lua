@@ -279,6 +279,14 @@ local function define_tests()
             wait_nonterminal(c, dataflow_id)
             local signal = wait_await_signal(dataflow_id)
 
+            -- Deletion admission must preserve the live wait and saved run identity.
+            local refused, refusal_err = call_as(actor_id, {op="agent_tool_delete", workflow_id=id})
+            test.is_nil(refusal_err, tostring(refusal_err))
+            test.is_false(refused.success)
+            test.eq(refused.error:kind(), errors.CONFLICT)
+            test.eq(refused.error:details().code, "workflow_runs_active")
+            test.eq(wait_await_signal(dataflow_id).signal_id, signal.signal_id)
+
             local db, db_err = sql.get("app:db")
             test.is_nil(db_err)
             if not db then error("test database unavailable") end

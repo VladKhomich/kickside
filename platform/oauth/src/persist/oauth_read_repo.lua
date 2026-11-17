@@ -71,7 +71,7 @@ function M.get_connection(component_id: string?): (oauth_types.Connection?, stri
     end
 
     -- Decrypt sensitive data
-    local oauth_data, err = decrypt_oauth_data(connection.oauth_data_encrypted :: string, encryption_key)
+    local oauth_data, err = decrypt_oauth_data(connection.oauth_data_encrypted :: string, encryption_key :: string)
     if err then
         return nil, "Failed to decrypt OAuth data: " .. err
     end

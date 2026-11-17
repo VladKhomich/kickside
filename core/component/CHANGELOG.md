@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.22](https://github.com/kicksideai/kickside/compare/component-v0.3.21...component-v0.3.22) (2026-11-17)
+
+
+### Bug Fixes
+
+* **core:** expose projection failures and restore active slot wakes ([#505](https://github.com/kicksideai/kickside/issues/505)) ([e44a75f](https://github.com/kicksideai/kickside/commit/e44a75f6edcbde07a5f4e9ed21aa1bc56b77baba))
+* **workflows:** refuse deletion while runs are active ([#512](https://github.com/kicksideai/kickside/issues/512)) ([b7a3e69](https://github.com/kicksideai/kickside/commit/b7a3e694fcb01cb0cad38d098189fc501ccc4b25))
+
+## [0.3.21](https://github.com/kicksideai/kickside/compare/component-v0.3.20...component-v0.3.21) (2026-11-16)
+
+
+### Bug Fixes
+
+* resume automation deletion after rollback upgrades ([#465](https://github.com/kicksideai/kickside/issues/465)) ([9f3fb38](https://github.com/kicksideai/kickside/commit/9f3fb3896bfd78408a0838c382694d33376152a8))
+
 ## [0.3.20](https://github.com/kicksideai/kickside/compare/component-v0.3.19...component-v0.3.20) (2026-11-14)
 
 

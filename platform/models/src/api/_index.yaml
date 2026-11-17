@@ -7,13 +7,14 @@ namespace: kickside.models.api
 # endpoints live under kickside.models.api.admin.
 
 entries:
+
   - name: list_models
     kind: function.lua
     meta:
       comment: "GET /models/list[?capability=generate|embed|<cap>] — models by capability (default generate) with title/provider/class/capabilities/dimensions."
     source: file://list_models.lua
     security:
-      policies: [kickside.models.catalog:catalog_read]
+      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call]
     modules: [http]
     imports:
       models: kickside.models.catalog:model_catalog
@@ -32,7 +33,7 @@ entries:
       comment: GET /models/classes — model classes (fast/balanced/…) with their members.
     source: file://list_model_classes.lua
     security:
-      policies: [kickside.models.catalog:catalog_read]
+      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call]
     modules: [http]
     imports:
       models: kickside.models.catalog:model_catalog
@@ -52,7 +53,7 @@ entries:
       comment: "GET /models/by-name?models=a,b — resolve names or class:<name> refs to name/title/description."
     source: file://get_models_by_name.lua
     security:
-      policies: [kickside.models.catalog:catalog_read]
+      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call]
     modules: [http]
     imports:
       models: kickside.models.catalog:model_catalog

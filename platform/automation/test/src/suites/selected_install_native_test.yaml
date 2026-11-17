@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: '1.0'
+namespace: kickside.automation
+entries:
+- name: selected_install_native_test
+  kind: function.lua
+  meta:
+    type: test
+    suite: automation_selected_install_native
+  source: file://selected_install_native_test.lua
+  method: run
+  modules:
+  - funcs
+  - security
+  - uuid
+  - contract
+  imports:
+    test: wippy.test:test
+    component: kickside.component:component
+    automations: kickside.automation:automation
+    execution_identity: kickside.execution:execution_identity
+- name: selected_install_native_probe
+  kind: function.lua
+  meta:
+    type: test_helper
+  source: file://selected_install_native_test.lua
+  method: probe
+  modules:
+  - funcs
+  - security
+  - uuid
+  - contract
+  imports:
+    test: wippy.test:test
+    component: kickside.component:component
+    automations: kickside.automation:automation
+    execution_identity: kickside.execution:execution_identity
+- name: selected_install_native_install
+  kind: function.lua
+  meta:
+    type: test_helper
+  source: file://selected_install_native_test.lua
+  method: install
+  imports:
+    test: wippy.test:test
+    component: kickside.component:component
+    automations: kickside.automation:automation
+    execution_identity: kickside.execution:execution_identity
+  modules:
+  - funcs
+  - security
+  - uuid
+  - contract
+- name: selected_install_native_prepare
+  kind: function.lua
+  meta:
+    type: test_helper
+  source: file://selected_install_native_test.lua
+  method: prepare
+  modules:
+  - funcs
+  - security
+  - uuid
+  - contract
+  imports:
+    test: wippy.test:test
+    component: kickside.component:component
+    automations: kickside.automation:automation
+    execution_identity: kickside.execution:execution_identity
+- name: selected_install_native_kind
+  kind: contract.binding
+  meta:
+    test_fixture: true
+    type: kickside.automation
+    inputs:
+      title:
+        type: string
+  contracts:
+  - contract: kickside.contract:installable
+    methods:
+      install: kickside.automation:selected_install_native_prepare
+  - contract: kickside.automation:prepared_installable
+    methods:
+      prepare_install: kickside.automation:selected_install_native_prepare
