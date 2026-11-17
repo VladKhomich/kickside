@@ -31,6 +31,7 @@ entries:
   imports:
     test: wippy.test:test
     models_repo: kickside.models.persist:repo
+    models_cache: kickside.models.service:models_cache
     llm: wippy.llm:llm
     contract: contract
     providers: wippy.llm.discovery:providers
@@ -42,6 +43,7 @@ entries:
   imports:
     test: wippy.test:test
     models_repo: kickside.models.persist:repo
+    models_cache: kickside.models.service:models_cache
     llm: wippy.llm:llm
     contract: contract
     providers: wippy.llm.discovery:providers
@@ -54,6 +56,7 @@ entries:
   imports:
     test: wippy.test:test
     models_repo: kickside.models.persist:repo
+    models_cache: kickside.models.service:models_cache
     llm: wippy.llm:llm
     providers: wippy.llm.discovery:providers
     contract: contract
