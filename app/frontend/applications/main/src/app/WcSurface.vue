@@ -99,7 +99,7 @@ async function mount() {
   }
   try {
     // Registration and implementation can start before Vue restores a mount host.
-    await wippy.loadByTagName(tag)
+    await wippy.loadByTagName(tag, { timeoutMs: 8000 })
     await customElements.whenDefined(tag)
     const constructor = customElements.get(tag) as (CustomElementConstructor & {
       preloadImplementation?: () => Promise<void>

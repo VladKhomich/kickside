@@ -6,8 +6,9 @@ import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import WcSurface from './WcSurface.vue'
 
+const loadByTagName = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('../composables/useWippy', () => ({
-  useWippy: () => ({ loadByTagName: vi.fn().mockResolvedValue(undefined) }),
+  useWippy: () => ({ loadByTagName }),
 }))
 vi.mock('@wippy-fe/proxy', () => ({ on: vi.fn() }))
 
@@ -63,6 +64,7 @@ it('waits for the direct mount event and ignores component data errors after mou
   try {
     await flushPromises()
     const el = wrapper.get('test-lazy-surface').element as LazySurface
+    expect(loadByTagName).toHaveBeenCalledWith('test-lazy-surface', { timeoutMs: 8000 })
     expect(preload).toHaveBeenCalledOnce()
     expect(wrapper.emitted('ready')).toBeUndefined()
     const child = el.appendChild(document.createElement('span'))
