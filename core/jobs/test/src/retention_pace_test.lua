@@ -9,6 +9,8 @@ local schedule = require("retention_schedule")
 local job_fixture = require("job_fixture")
 local heartbeat = require("worker_heartbeat")
 local retention_order_migration = require("retention_order_migration")
+local dead_outcome = require("dead_outcome")
+local enqueue = require("lifecycle_enqueue")
 
 local function required(value: any, err: error?): any
     if err then error(err) end
@@ -32,8 +34,8 @@ end
 local function drain(db: any, instant: any): (table, integer)
     local totals: any = {}
     local passes = 0
-    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function()
-        local stats = required(retention.sweep(db, tostring(db:type())))
+    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function(state)
+        local stats = required(retention.sweep(db, tostring(db:type()), state))
         for key, value in pairs(stats) do totals[key] = (totals[key] or 0) + value end
         return stats, nil
     end})
@@ -47,6 +49,112 @@ end
 
 local function define_tests()
     test.describe("retention keeps pace with expired writes", function()
+        test.it("bounds each expiration page when 10000 dead parents have pending outcomes", function()
+            local db = open_queue()
+            local dbtype = tostring(db:type())
+            local postgres = dbtype == sql.type.POSTGRES
+            local policy = required(config.policy())
+            local batch = policy.retention_batch
+            local total = 10000
+            local owner = uuid.v7()
+            local numbers = postgres and "SELECT generate_series(1,10000) AS n"
+                or "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<10000) SELECT n FROM seq"
+            local id = postgres and "md5($1::text || n::text)::uuid" or "lower(hex(randomblob(16)))"
+            required(db:execute([[INSERT INTO kickside_job
+                (id,owner_kind,owner_id,job_type,status,job_identity,finished_at)
+                SELECT ]] .. id .. ",'test',$1,'test.retention','dead',CAST(n AS TEXT),'2000-01-01T00:00:00Z' FROM ("
+                .. numbers .. ") numbered", {owner}))
+            local prefix, suffix = enqueue.encode_part(dead_outcome.NAMESPACE), enqueue.encode_part(dead_outcome.KEY)
+            local job_id = "CAST(id AS TEXT)"
+            local outcome_id = postgres and "md5('outcome' || " .. job_id .. ")::uuid" or "lower(hex(randomblob(16)))"
+            required(db:execute([[WITH parents AS (SELECT id,owner_id FROM kickside_job WHERE owner_id=$1)
+                INSERT INTO kickside_job
+                (id,owner_kind,owner_id,job_type,status,job_identity)
+                SELECT ]] .. outcome_id .. ",'test',owner_id,'test.outcome','pending',$2 || LENGTH(" .. job_id .. ") || ':' || "
+                .. job_id .. " || $3 FROM parents", {owner, prefix, suffix}))
+            local seeded = required(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE owner_id=$1 AND status='pending'", {owner}))
+            test.eq(tonumber(seeded[1].n), total)
+            local later = seed_job(db, owner)
+            required(db:execute("UPDATE kickside_job SET finished_at='2000-01-02T00:00:00Z' WHERE id=$1", {later}))
+            required(db:execute("ANALYZE kickside_job"))
+
+            local instant = time.now()
+            local pages, examined, deleted = 0, 0, 0
+            local probe = {
+                type = function() return db:type() end,
+                begin = function() return db:begin() end,
+                execute = function(_, statement, params) return db:execute(statement, params) end,
+                query = function(_, statement, params)
+                    if not string.find(statement, "idx_job_global_retention", 1, true)
+                        and not string.find(statement, "SELECT id,owner_kind,owner_id FROM kickside_job ", 1, true)
+                        and not string.find(statement, "WITH page AS MATERIALIZED", 1, true) then
+                        return db:query(statement, params)
+                    end
+                    pages = pages + 1
+                    if postgres then
+                        local plan = required(db:query("EXPLAIN (ANALYZE, BUFFERS) " .. statement, params))
+                        local loops = 0
+                        for _, row in ipairs(plan) do
+                            local detail = tostring(row["QUERY PLAN"])
+                            local rows, scans = string.match(detail, "actual time=[^ ]+ rows=(%d+) loops=(%d+)")
+                            if rows then
+                                loops = required(tonumber(scans))
+                                test.is_true(required(tonumber(rows)) * loops <= batch, detail)
+                            end
+                            local removed = string.match(detail, "Rows Removed by [%a ]+: (%d+)")
+                            if removed then
+                                test.is_true(required(tonumber(removed)) * loops <= batch, detail)
+                            end
+                        end
+                    else
+                        local plan = required(db:query("EXPLAIN QUERY PLAN " .. statement, params))
+                        local page, tie_seek = false, false
+                        for _, row in ipairs(plan) do
+                            if row.detail == "MATERIALIZE page" then page = true end
+                            if string.find(row.detail, "idx_job_global_retention (finished_at=? AND rowid>?)", 1, true) then
+                                tie_seek = true
+                            end
+                        end
+                        test.is_true(page, "the indexed page is limited before checking outcomes")
+                        if params[3] ~= nil then test.is_true(tie_seek, "same-timestamp parents use an indexed rowid seek") end
+                    end
+                    local rows = required(db:query(statement, params))
+                    examined = examined + #rows
+                    return rows, nil
+                end,
+            }
+            local driver = schedule.new({policy = config.policy, now = function() return instant end,
+                sweep = function(state)
+                    local stats = required(retention.sweep(probe, dbtype, state))
+                    deleted = deleted + stats.jobs
+                    return stats, nil
+                end})
+            local now = instant:unix_nano()
+            for pass = 1, math.ceil((total + 1) / batch) do
+                local before = examined
+                driver.run(now)
+                test.eq(pages, pass, "each sweep fetches one expiry page")
+                test.eq(examined - before, math.min(batch, total + 1 - before))
+                test.eq(deleted, examined <= total and 0 or 1)
+                if examined <= total then test.eq(driver.deadline(), now, "a protected page does not stop the sweep") end
+            end
+            test.is_true(driver.deadline() > now)
+            local rows = required(db:query("SELECT id FROM kickside_job WHERE id=$1", {later}))
+            test.eq(#rows, 0, "an eligible job behind all protected parents is pruned")
+            rows = required(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE owner_id=$1 AND status='dead'", {owner}))
+            test.eq(tonumber(rows[1].n), total)
+
+            local order = postgres and "id" or "rowid"
+            local first = required(db:query("SELECT id FROM kickside_job WHERE owner_id=$1 AND status='dead' ORDER BY "
+                .. order .. " LIMIT 1", {owner}))[1].id
+            required(db:execute("UPDATE kickside_job SET status='done' WHERE job_identity=$1",
+                {prefix .. enqueue.encode_part(tostring(first)) .. suffix}))
+            driver.run(driver.deadline())
+            rows = required(db:query("SELECT id FROM kickside_job WHERE id=$1", {first}))
+            test.eq(#rows, 0, "the next interval revisits parents whose outcomes settled")
+            db:release()
+        end)
+
         test.it("bounds job selection when runs have a longer retention window", function()
             local db = open_queue()
             local dbtype = tostring(db:type())
@@ -82,7 +190,7 @@ local function define_tests()
                     begin = function() return db:begin() end,
                     execute = function(_, statement, params) return db:execute(statement, params) end,
                     query = function(_, statement, params)
-                        if string.find(statement, "SELECT id,owner_kind,owner_id FROM kickside_job ", 1, true) == 1 then
+                        if string.find(statement, "WITH page AS MATERIALIZED", 1, true) == 1 then
                             checked = checked + 1
                             if dbtype == sql.type.SQLITE then
                                 local plan = required(db:query("EXPLAIN QUERY PLAN " .. statement, params))
@@ -216,8 +324,12 @@ local function define_tests()
                     type = function() return db:type() end,
                     query = function(_, statement, params)
                         local plan = required(db:query("EXPLAIN QUERY PLAN " .. statement, params))
+                        local materialized = false
                         for _, row in ipairs(plan) do
-                            test.is_nil(string.find(row.detail, "TEMP B-TREE", 1, true), "global candidates sort the backlog")
+                            if row.detail == "MATERIALIZE page" then materialized = true end
+                            if string.find(row.detail, "TEMP B-TREE", 1, true) then
+                                test.is_true(materialized and tonumber(row.parent) == 0, "global candidates sort the backlog")
+                            end
                         end
                         checked = checked + 1
                         return db:query(statement, params)

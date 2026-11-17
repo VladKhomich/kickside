@@ -16,9 +16,34 @@ local job_id = "CAST(kickside_job.id AS TEXT)"
 local outcome_identity = "'" .. enqueue.encode_part(dead_outcome.NAMESPACE) .. "' || LENGTH("
     .. job_id .. ") || ':' || " .. job_id .. " || '" .. enqueue.encode_part(dead_outcome.KEY) .. "'"
 -- The active identity index guarantees at most one undelivered outcome.
-local unreferenced = [[ AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)
+local unreferenced = [[NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)
     AND (status <> 'dead' OR (SELECT 1 FROM kickside_job outcome
         WHERE outcome.status IN ('pending','running') AND outcome.job_identity=]] .. outcome_identity .. [[) IS NULL)]]
+
+type JobCursor = { finished_at: string, key: string, cutoff: string }
+
+local function job_page(source: string, where: string, dbtype: string, cursor: JobCursor?): string
+    local sqlite = dbtype == sql.type.SQLITE
+    local key = sqlite and "rowid" or "id"
+    local read = "SELECT id,owner_kind,owner_id,status,finished_at," .. key .. " AS page_key FROM " .. source .. where
+    local order = " ORDER BY finished_at," .. key
+    local prefix = "WITH "
+    local page = read .. order .. " LIMIT $2"
+    if cursor and sqlite then
+        -- The SQLite index can seek (finished_at = ?, rowid > ?) as a pair.
+        -- A tuple inequality seeks only to the start of the timestamp's rows.
+        prefix = prefix .. "ties AS MATERIALIZED (" .. read
+            .. " AND finished_at=$2 AND rowid>CAST($3 AS INTEGER)" .. order .. " LIMIT $4), "
+        page = "SELECT * FROM ties UNION ALL SELECT * FROM (" .. read
+            .. " AND finished_at>$2" .. order .. " LIMIT ($4 - (SELECT COUNT(*) FROM ties)))"
+    elseif cursor then
+        page = read .. " AND (finished_at,id)>($2,$3)" .. order .. " LIMIT $4"
+    end
+    return prefix .. "page AS MATERIALIZED (" .. page .. [[)
+        SELECT id,owner_kind,owner_id,CAST(finished_at AS TEXT) AS cursor_finished_at,
+            CAST(page_key AS TEXT) AS cursor_key,CASE WHEN ]] .. unreferenced .. [[ THEN 1 ELSE 0 END AS eligible
+        FROM page kickside_job ORDER BY finished_at,page_key]]
+end
 
 local function bounded(limit: integer?, maximum: integer): integer
     return math.max(0, math.min(maximum, limit or maximum))
@@ -55,7 +80,7 @@ local function prelock_ids(tx: any, dbtype: string, table_name: string, ids: { s
 end
 
 local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: boolean,
-        limit: integer?, all_threads: boolean?): (integer?, error?)
+        limit: integer?, all_threads: boolean?, cursor: JobCursor?): (integer?, error?, JobCursor?)
     if limit == 0 then return 0, nil end
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
@@ -71,7 +96,7 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
     local cutoff_arg = "$" .. tostring(#params)
     params[#params + 1] = batch
     local limit_arg = "$" .. tostring(#params)
-    local references_clear = runs and "" or unreferenced
+    local references_clear = runs and "" or " AND " .. unreferenced
     local cols = runs and "id,job_id,owner_kind,owner_id" or "id,owner_kind,owner_id"
     local source = table_name
     local ordered = "finished_at,id"
@@ -80,12 +105,30 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
         ordered = "finished_at,rowid"
         source = source .. " INDEXED BY " .. (runs and "idx_job_run_global_retention" or "idx_job_global_retention")
     end
-    local rows, read_err = db:query("SELECT " .. cols .. " FROM " .. source .. " WHERE " .. predicate
-        .. " AND " .. settled .. " AND finished_at IS NOT NULL AND finished_at < " .. cutoff_arg
-        .. references_clear .. " ORDER BY " .. ordered .. " LIMIT " .. limit_arg, params)
+    local where = " WHERE " .. predicate .. " AND " .. settled .. " AND finished_at IS NOT NULL AND finished_at < " .. cutoff_arg
+    local paged = not runs and all_threads == true
+    local statement = "SELECT " .. cols .. " FROM " .. source .. where .. references_clear
+        .. " ORDER BY " .. ordered .. " LIMIT " .. limit_arg
+    if paged then
+        statement = job_page(source, where, tostring(dbtype), cursor)
+        if cursor then params[2], params[3], params[4] = cursor.finished_at, cursor.key, batch end
+    end
+    local rows, read_err = db:query(statement, params)
     if read_err then return nil, errors.wrap(read_err, "job prune candidates") end
     if type(rows) ~= "table" then return nil, response_error("candidates.rows") end
-    if #rows == 0 then return 0, nil end
+    local next_cursor: JobCursor? = nil
+    if paged then
+        if #rows == batch then
+            local last = rows[batch]
+            next_cursor = { finished_at = last.cursor_finished_at, key = last.cursor_key, cutoff = cutoff }
+        end
+        local eligible = {}
+        for _, row in ipairs(rows) do
+            if row.eligible == 1 then eligible[#eligible + 1] = row end
+        end
+        rows = eligible
+    end
+    if #rows == 0 then return 0, nil, next_cursor end
     local tx, begin_err = sql_boundary.begin(db, "job prune transaction", "transaction", response_error)
     if begin_err then return nil, begin_err end
     if not tx then return nil, response_error("transaction") end
@@ -136,17 +179,19 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
     if proof_err then return nil, sql_boundary.rollback(tx, proof_err, "retention rollback failed") end
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "job prune commit") end
-    return total :: integer, nil
+    return total :: integer, nil, next_cursor
 end
 
 function M.prune_runs(db: any, thread_id: string?, cutoff: string, limit: integer?,
         all_threads: boolean?): (integer?, error?)
-    return prune_owned(db, thread_id, cutoff, true, limit, all_threads)
+    local count, err = prune_owned(db, thread_id, cutoff, true, limit, all_threads)
+    return count, err
 end
 
 function M.prune_jobs(db: any, thread_id: string?, cutoff: string, limit: integer?,
         all_threads: boolean?): (integer?, error?)
-    return prune_owned(db, thread_id, cutoff, false, limit, all_threads)
+    local count, err = prune_owned(db, thread_id, cutoff, false, limit, all_threads)
+    return count, err
 end
 
 -- Worker identities are process-local; an absent heartbeat older than the
@@ -300,9 +345,9 @@ local function prune_completed_thread_fences(db: any, cutoff: string, limit: int
     return total, nil
 end
 
--- One bounded pass over each Jobs-owned retained table. Full batch counts
--- keep the worker pool retention deadline due until the backlog drains.
-function M.sweep(db: any, dbtype: string): (table?, error?)
+-- One bounded pass over each Jobs-owned retained table. Full batches and a
+-- remaining job cursor keep the worker pool retention deadline due.
+function M.sweep(db: any, dbtype: string, state: table?): (table?, error?)
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
     local batch = (policy :: any).retention_batch :: integer
@@ -311,10 +356,13 @@ function M.sweep(db: any, dbtype: string): (table?, error?)
     -- Jobs retain their runs, so skip the index range still protected by
     -- either window before checking for remaining runs.
     local job_candidate_cutoff = job_cutoff < run_cutoff and job_cutoff or run_cutoff
+    local cursor: JobCursor? = state and state.jobs_cursor or nil
+    -- Finish this cutoff before revisiting protected rows at the next interval.
+    if cursor and cursor.cutoff < job_candidate_cutoff then job_candidate_cutoff = cursor.cutoff end
     local receipt_cutoff = days_before(dbtype, (policy :: any).retention_thread_cleanup_receipts_ms)
     local runs, runs_err = M.prune_runs(db, nil, run_cutoff, batch, true)
     if runs_err then return nil, runs_err end
-    local jobs, jobs_err = M.prune_jobs(db, nil, job_candidate_cutoff, batch, true)
+    local jobs, jobs_err, next_cursor = prune_owned(db, nil, job_candidate_cutoff, false, batch, true, cursor)
     if jobs_err then return nil, jobs_err end
     local workers, workers_err = M.prune_workers(db, job_cutoff, batch)
     if workers_err then return nil, workers_err end
@@ -328,6 +376,7 @@ function M.sweep(db: any, dbtype: string): (table?, error?)
     if leftovers_err then return nil, leftovers_err end
     local cleanup_fences, fences_err = prune_completed_thread_fences(db, receipt_cutoff, batch, dbtype)
     if fences_err then return nil, fences_err end
+    if state then state.jobs_cursor = next_cursor end
     return {
         jobs = jobs :: integer, job_runs = runs :: integer,
         workers = workers :: integer, worker_pulses = pulses :: integer, wake_rows = wake_rows :: integer,
