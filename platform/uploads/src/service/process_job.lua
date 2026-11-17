@@ -117,7 +117,7 @@ local function settle(job: any, upload: any, outcome: table, failed_processing: 
         return false, err
     end
     local settled, state_err = upload_record_repo.settle_storage_tx(tx, upload.uuid,
-        success and "completed" or "failed", failed_processing, success and job_id or nil)
+        success and "completed" or "failed", job_id, failed_processing)
     if state_err then return abort(state_err) end
     if not settled then return abort(nil) end
     local callback_ok, callback_err = pipeline_lib.invoke_upload_token(upload, success,
@@ -134,8 +134,9 @@ local function settle(job: any, upload: any, outcome: table, failed_processing: 
     local thread_id = tostring(job.thread_id or "")
     local completing: string? = nil
     if failed_processing == nil then completing = tostring(job.id) end
-    local _, append_err = threads_writer.append_system_tx(tx, dbtype, thread_id, { event }, completing)
+    local appended, append_err = threads_writer.append_system_tx(tx, dbtype, thread_id, { event }, completing)
     if append_err then return abort(append_err) end
+    if failed_processing ~= nil and appended.inserted == 0 then return abort(nil) end
     if success then
         local recorded, hook_err = processing_hooks.completed(tx, dbtype, job, outcome.output, event.trace_context, prepared_hooks)
         if hook_err or recorded ~= true then
@@ -198,9 +199,10 @@ local function run(input: any): (any, any?)
         cancel_ref = {job_id = tostring(job.id), lease_token = tostring(job.lease_token), execution_seq = job.execution_seq}
     end
     local success, proc_err, processed_upload, retriable = true, nil, upload, nil
-    -- Completion is the processing checkpoint. A publication/settings/callback
-    -- retry must never repeat conversion or OCR for an already processed upload.
-    if upload.storage_state ~= "completed" then
+    -- A terminal storage checkpoint resumes publication without rerunning processing.
+    if upload.storage_state == "failed" then
+        success, proc_err, retriable = false, "upload processing failed", false
+    elseif upload.storage_state ~= "completed" then
         success, proc_err, processed_upload, retriable = pipeline_lib.process_upload(upload, {
             final_attempt = is_final_attempt(job),
             should_continue = function(_phase)

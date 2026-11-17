@@ -11,8 +11,11 @@ function upload_query_repo.processing_job_identity_sql(upload: string): string
     return "'7:uploads' || CAST(length(" .. upload .. "uuid) AS TEXT) || ':' || " .. upload .. "uuid || '7:process'"
 end
 
-local function intentless_job(upload: string): string
-    return upload .. "processing_intent_state IS NULL AND j.job_identity=" .. upload_query_repo.processing_job_identity_sql(upload)
+function upload_query_repo.processing_job_owner_sql(): string
+    return [[((processing_intent_state = 'acknowledged' AND processing_job_id = ?) OR
+        (processing_intent_state IS NULL AND processing_job_id IS NULL AND EXISTS (
+            SELECT 1 FROM kickside_job j WHERE j.id = ? AND j.job_identity = ]]
+        .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. ")))"
 end
 
 local function select_upload_columns()
@@ -124,9 +127,7 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
     local query = select_upload_columns():from("kickside_uploads"):where("uuid = ?", upload_id)
     local statement, params, build_err = query
         :where("actor_id = ?", actor_id)
-        :where("((processing_job_id = ? AND processing_intent_state = 'acknowledged') OR "
-            .. "(EXISTS (SELECT 1 FROM kickside_job j WHERE j.id=? AND " .. intentless_job("kickside_uploads.") .. ")))",
-            job_id, job_id)
+        :where(upload_query_repo.processing_job_owner_sql(), job_id, job_id)
         :limit(1)
         :placeholder_format(sql.builder.dollar):to_sql()
     if build_err then db:release(); return nil, build_err end

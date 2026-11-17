@@ -321,10 +321,10 @@ function upload_record_repo.mark_storage_failed(uuid)
 end
 
 -- Settle the processing outcome of an upload inside the caller's transaction.
--- Only the same job can resume a completion checkpoint written before publication.
+-- Only the same job can resume a terminal checkpoint written before publication.
 -- Dead outcomes require the same intent snapshot and dead job.
-function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: string, failed_processing: table?,
-        completing_job_id: string?): (boolean?, any?)
+function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: string, job_id: string,
+        failed_processing: table?): (boolean?, any?)
     if not uuid or uuid == "" then return nil, typed(errors.INVALID, "Upload ID is required") end
     if storage_state ~= "completed" and storage_state ~= "failed" then
         return nil, typed(errors.INVALID, "Upload outcome must be completed or failed")
@@ -333,16 +333,8 @@ function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: s
         :set("storage_state", storage_state)
         :set("updated_at", now_rfc3339())
         :where("uuid = ?", uuid)
-    if storage_state == "completed" and completing_job_id ~= nil then
-        query = query:where([[(storage_state = 'uploaded' OR (storage_state = 'completed' AND (
-            (processing_intent_state = 'acknowledged' AND processing_job_id = ?) OR
-            (processing_intent_state IS NULL AND processing_job_id IS NULL AND EXISTS (
-                SELECT 1 FROM kickside_job j WHERE j.id = ? AND j.job_identity = ]]
-            .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. ")))))",
-            completing_job_id, completing_job_id)
-    else
-        query = query:where("storage_state = 'uploaded'")
-    end
+        :where("(storage_state = 'uploaded' OR (storage_state = ? AND "
+            .. upload_query_repo.processing_job_owner_sql() .. "))", storage_state, job_id, job_id)
     if failed_processing ~= nil then
         if failed_processing.processing_intent_state == nil then
             query = query:where("processing_intent_state IS NULL")
@@ -355,7 +347,7 @@ function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: s
             query = query:where("processing_job_id = ?", failed_processing.processing_job_id)
         end
         query = query:where("EXISTS (SELECT 1 FROM kickside_job j WHERE j.id=? AND j.status='dead')",
-            failed_processing.dead_job_id)
+            job_id)
     end
     local result, exec_err = query:run_with(tx):exec()
     if exec_err then return nil, typed(errors.UNAVAILABLE, "Failed to settle upload: " .. tostring(exec_err)) end

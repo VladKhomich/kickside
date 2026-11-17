@@ -349,10 +349,18 @@ local function enqueue_upload_token_once(upload, token: string, success, error_m
         success = success == true,
         error = error_msg,
     }
+    local key = callback_idempotency_key(upload, token, success)
+    if tx ~= nil and upload.storage_state == (success and "completed" or "failed") then
+        local existing, lookup_err = tx:query([[SELECT id FROM kickside_job
+            WHERE thread_id=$1 AND job_type=$2 AND idempotency_key=$3 LIMIT 1]],
+            {component_id, CALLBACK_JOB_TYPE, key})
+        if lookup_err then return false, lookup_err end
+        if #existing > 0 then return true, nil end
+    end
     local params = {
         namespace = "thread", scope = component_id,
         owner_locator = { kind = "user", id = owner_actor_id :: string },
-        key = callback_idempotency_key(upload, token, success),
+        key = key,
         thread_id = component_id,
         job_type = CALLBACK_JOB_TYPE,
         queue_tier = "live",

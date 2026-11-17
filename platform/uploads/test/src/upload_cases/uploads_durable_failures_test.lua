@@ -890,46 +890,93 @@ local function define_tests()
         end
         end
 
-        for _, has_intent in ipairs({true, false}) do
-            test.it("resumes a published completion checkpoint, intent=" .. tostring(has_intent), function()
-                local id, owner = uuid_v4(), "completion-checkpoint-" .. uuid_v4()
+        for _, checkpoint in ipairs({
+            { name = "completed with an intent and a delivered callback", intent = true, delivered = true },
+            { name = "completed without an intent" },
+            { name = "failed with an intent", intent = true, failed = true },
+            { name = "failed without an intent and a dead job", failed = true, dead = true },
+        }) do
+            test.it("resumes a published checkpoint: " .. checkpoint.name, function()
+                local id, owner = uuid_v4(), "publication-checkpoint-" .. uuid_v4()
                 ensure_uploads_component(owner)
                 local metadata = upload_metadata(owner, "checkpoint.txt")
                 local identity = metadata[IDENTITY_META_KEY]
                 metadata.__upload_token = assert(upload_tokens.pack({upload_id = id, function_id = "app:callback_probe",
-                    actor_id = identity.actor_id, actor_context = identity.actor_context}))
+                    on_error_id = "app:callback_probe", actor_id = identity.actor_id, actor_context = identity.actor_context}))
                 local upload = assert(upload_record_repo.create(id, owner, 1, "text/plain", "app:uploads", id,
-                    "app:types.failing", metadata, "uploaded", nil, nil, has_intent, 600000))
+                    "app:types.failing", metadata, "uploaded", nil, nil, checkpoint.intent == true, 600000))
                 local queued = assert(process_worker.enqueue_upload_job(upload, true))
                 local db = assert(sql.get("app:db"))
-                local job = admit_job(db, queued.job_id, 1)
+                local job = admit_job(db, queued.job_id, checkpoint.dead and 5 or 1)
                 local dbtype = tostring(db:type())
 
-                -- The published worker commits this write before callbacks and the completion event.
-                assert(upload_record_repo.mark_storage_completed(id))
+                -- The published worker commits this state before publishing the event.
+                if checkpoint.failed then
+                    assert(upload_record_repo.mark_storage_failed(id))
+                else
+                    assert(upload_record_repo.mark_storage_completed(id))
+                end
+
+                local function callbacks(): { table }
+                    return assert(db:query("SELECT id FROM kickside_job WHERE thread_id=$1 AND job_type=$2",
+                        {queued.thread_id, "kickside.uploads.service:callback_job"}))
+                end
+                local function deliveries(): { table }
+                    return assert(db:query("SELECT status FROM upload_callback_probe WHERE upload_id=$1", {id}))
+                end
+                local function deliver_callback(callback_id: string)
+                    local callback = admit_job(db, callback_id, 1)
+                    local _, delivery_err = worker_dispatch.execute_job(db, dbtype, callback)
+                    test.is_nil(delivery_err, tostring(delivery_err))
+                    test.is_nil(jobs_lifecycle.complete_job(db, callback, dbtype, {}))
+                end
+                if checkpoint.delivered then
+                    assert(pipeline_lib.invoke_upload_token(upload, true, nil))
+                    deliver_callback(callbacks()[1].id)
+                    test.eq(#deliveries(), 1)
+                end
+
                 test.is_nil(jobs_lifecycle.fail_job(db, job, dbtype, "interrupted before publication", "infrastructure"))
+                local event_type = checkpoint.failed and uploads_events.TYPE.FAILED or uploads_events.TYPE.COMPLETED
                 local function events(): { table }
                     return assert(db:query([[SELECT type,body,created_at,external_version FROM kickside_event
                         WHERE thread_id=$1 AND external_id=$2 AND type=$3]],
-                        {queued.thread_id, id, uploads_events.TYPE.COMPLETED}))
+                        {queued.thread_id, id, event_type}))
                 end
                 test.eq(#events(), 0)
 
-                local resumed = admit_job(db, job.id, 2)
-                local input = assert(worker_dispatch.build_worker_input(resumed))
-                local result, run_err = process_job.run(input)
-                test.is_nil(run_err, tostring(run_err))
-                test.is_true(result.success)
-                test.eq(assert(db:query("SELECT status FROM kickside_job WHERE id=$1", {job.id}))[1].status, "done")
+                local expected_status = checkpoint.failed and "error" or "completed"
+                if checkpoint.dead then
+                    local result, run_err = process_job.dead({payload = {job_id = job.id}})
+                    test.is_nil(run_err, tostring(run_err))
+                    test.is_true(result.settled)
+                    local repeat_outcome, repeat_err = process_job.dead({payload = {job_id = job.id}})
+                    test.is_nil(repeat_err, tostring(repeat_err))
+                    test.is_false(repeat_outcome.settled)
+                else
+                    local resumed = admit_job(db, job.id, 2)
+                    local result, run_err = process_job.run(assert(worker_dispatch.build_worker_input(resumed)))
+                    test.is_nil(run_err, tostring(run_err))
+                    if checkpoint.failed then
+                        test.not_nil(result.job_error)
+                    else
+                        test.is_true(result.success)
+                    end
+                    test.eq(assert(db:query("SELECT status FROM kickside_job WHERE id=$1", {job.id}))[1].status, "done")
+                end
                 local published = events()
                 test.eq(#published, 1)
                 test.eq(published[1].external_version, job.id)
-                test.eq(#assert(db:query("SELECT id FROM kickside_job WHERE thread_id=$1 AND job_type=$2",
-                    {queued.thread_id, "kickside.uploads.service:callback_job"})), 1)
+                local callback_rows = callbacks()
+                test.eq(#callback_rows, 1)
+                if not checkpoint.delivered then deliver_callback(callback_rows[1].id) end
+                local delivered = deliveries()
+                test.eq(#delivered, 1)
+                test.eq(delivered[1].status, expected_status)
                 published[1].body = assert(json.decode(published[1].body))
                 local _, apply_err = upload_read_model.apply_events(queued.thread_id, published)
                 test.is_nil(apply_err)
-                test.eq(assert(upload_read_model.get_for_actor(owner, id)).status, "completed")
+                test.eq(assert(upload_read_model.get_for_actor(owner, id)).status, expected_status)
                 db:release()
             end)
         end
