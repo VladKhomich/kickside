@@ -71,6 +71,7 @@ entries:
   kind: contract.binding
   meta:
     type: kickside.automation
+    test_fixture: true
     inputs:
       title:
         type: string
