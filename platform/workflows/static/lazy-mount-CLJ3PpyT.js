@@ -1,5 +1,5 @@
 import { s as Lf, b as gt, B as yt, c as bt, z as qn, e as Ji, R as sn, T as Pn, d as Al, f as Qo, g as $t, h as Rn, F as $y, M as Hu, k as Bf, i as Ey, j as kt, Y as xy, C as Iy, I as Oy, v as zf, D as Ny, x as Yt, S as Ay, O as Ty, L as My, l as Dy, $ as Py, J as Ry, p as Tn, m as Uu, n as Ff, a as Vf, o as Hf, _ as Ly, q as xs, Q as mi, r as By, K as vi, V as ju, t as zy, w as Wu, u as Fy, P as Vy } from "./wc-runtime-Tr5oXE7R.js";
-import { inject as Nt, watch as Se, onBeforeUnmount as it, openBlock as k, createElementBlock as N, mergeProps as re, createElementVNode as C, resolveComponent as He, renderSlot as he, Fragment as ue, renderList as Te, createCommentVNode as q, createVNode as P, resolveDirective as ei, createTextVNode as de, toDisplayString as K, normalizeClass as $e, createBlock as ne, resolveDynamicComponent as Fe, withCtx as te, Transition as Uf, normalizeProps as Mr, createSlots as zi, withDirectives as un, withModifiers as We, defineComponent as we, computed as W, unref as p, ref as Y, nextTick as Ve, normalizeStyle as je, withKeys as tt, createPropsRestProxy as Hy, toRef as Ae, onMounted as Ke, getCurrentScope as jf, effectScope as Wf, provide as cn, getCurrentInstance as to, useAttrs as Tl, Teleport as Uy, useSlots as qf, onUnmounted as jy, reactive as Ml, onScopeDispose as Fi, onBeforeMount as Wy, shallowRef as at, isMemoSame as qy, toValue as Me, isRef as Dl, toRefs as Ky, customRef as Gy, h as Be, markRaw as rt, readonly as Yy, watchEffect as Kf, TransitionGroup as Xy, vShow as Zy, toHandlers as gi, vModelText as Jy, proxyRefs as Gf, createStaticVNode as Qy } from "vue";
+import { inject as Nt, watch as Se, onBeforeUnmount as it, openBlock as k, createElementBlock as N, mergeProps as re, createElementVNode as C, resolveComponent as He, renderSlot as he, Fragment as ue, renderList as Te, createCommentVNode as q, createVNode as P, resolveDirective as ei, createTextVNode as de, toDisplayString as K, normalizeClass as $e, createBlock as ne, resolveDynamicComponent as Fe, withCtx as te, Transition as Uf, normalizeProps as Mr, createSlots as zi, withDirectives as un, withModifiers as je, defineComponent as we, computed as W, unref as p, ref as Y, nextTick as Ve, normalizeStyle as We, withKeys as tt, createPropsRestProxy as Hy, toRef as Ae, onMounted as Ke, getCurrentScope as jf, effectScope as Wf, provide as cn, getCurrentInstance as to, useAttrs as Tl, Teleport as Uy, useSlots as qf, onUnmounted as jy, reactive as Ml, onScopeDispose as Fi, onBeforeMount as Wy, shallowRef as at, isMemoSame as qy, toValue as Me, isRef as Dl, toRefs as Ky, customRef as Gy, h as Be, markRaw as rt, readonly as Yy, watchEffect as Kf, TransitionGroup as Xy, vShow as Zy, toHandlers as gi, vModelText as Jy, proxyRefs as Gf, createStaticVNode as Qy } from "vue";
 import { on as Qi, api as no, loadByTagName as Dr } from "@wippy-fe/proxy";
 import { s as nt, a as Yf } from "./index-aoFXDxI3.js";
 import { n as So, p as eb, a as er, s as tb, g as Xf, b as Pr, c as Zf, d as Pl, e as Rl, f as pe, h as qe, i as nb, l as Jf, j as qu, k as Qf, m as ob, o as ep, q as Ku, t as ib, F as Bt, r as Rr, u as tr, v as tp, w as nr, x as Ll, y as Is, z as Bl, A as Lr, B as zl, C as Gu, D as rb, E as ab, G as Yu, K as et, H as sb, I as lb, _ as ub, J as cb, L as db, M as fb, N as pb, O as Xu, P as hb, Q as mb, R as vb, S as gb, T as yb, U as bb, V as np, W as wb } from "./WorkflowSearchList.vue_vue_type_script_setup_true_lang-BrsNr0R3.js";
@@ -2838,7 +2838,7 @@ function fw(e, t, n, o, i, r) {
                   onMousemove: function(D) {
                     return r.onOptionMouseMove(D, r.getOptionIndex(A, y));
                   },
-                  onClick: t[8] || (t[8] = We(function() {
+                  onClick: t[8] || (t[8] = je(function() {
                   }, ["stop"])),
                   "data-p-selected": !e.checkmark && r.isSelected(B),
                   "data-p-focused": i.focusedOptionIndex === r.getOptionIndex(A, y),
@@ -3072,9 +3072,9 @@ const pw = { class: "kx-head" }, hw = { class: "kx-head-icon" }, mw = { class: "
       key: 0,
       class: "component-deletion",
       role: "status",
-      onClick: i[1] || (i[1] = We(() => {
+      onClick: i[1] || (i[1] = je(() => {
       }, ["stop"])),
-      onKeydown: i[2] || (i[2] = We(() => {
+      onKeydown: i[2] || (i[2] = je(() => {
       }, ["stop"]))
     }, [
       n.value ? (k(), N(ue, { key: 0 }, [
@@ -3087,7 +3087,7 @@ const pw = { class: "kx-head" }, hw = { class: "kx-head-icon" }, mw = { class: "
           severity: "secondary",
           size: "small",
           outlined: "",
-          onClick: i[0] || (i[0] = We((r) => o.$emit("retry"), ["stop"]))
+          onClick: i[0] || (i[0] = je((r) => o.$emit("retry"), ["stop"]))
         })
       ], 64)) : (k(), N(ue, { key: 1 }, [
         P(p(mt), {
@@ -3196,7 +3196,7 @@ const Cw = /* @__PURE__ */ we({
       ref_key: "panel",
       ref: i,
       class: "anchored-panel",
-      style: je(r.value)
+      style: We(r.value)
     }, [
       he(g.$slots, "default")
     ], 4)) : q("", !0);
@@ -3396,8 +3396,8 @@ const Sw = {
             tabindex: "0",
             onClick: (x) => !w.row.deleting_at && r("open", w.row.id),
             onKeydown: [
-              tt((x) => !w.row.deleting_at && r("open", w.row.id), ["enter"]),
-              tt(We((x) => !w.row.deleting_at && r("open", w.row.id), ["prevent"]), ["space"])
+              tt(je((x) => !w.row.deleting_at && r("open", w.row.id), ["self"]), ["enter"]),
+              tt(je((x) => !w.row.deleting_at && r("open", w.row.id), ["self", "prevent"]), ["space"])
             ]
           }, [
             C("span", Ow, [
@@ -3422,7 +3422,7 @@ const Sw = {
               class: "wf-labels-cell",
               role: "cell",
               "data-label": "Labels",
-              onClick: F[2] || (F[2] = We(() => {
+              onClick: F[2] || (F[2] = je(() => {
               }, ["stop"]))
             }, [
               (k(!0), N(ue, null, Te(w.row.labels, (x) => (k(), N("span", {
@@ -3437,7 +3437,7 @@ const Sw = {
                   severity: "secondary",
                   "aria-label": `Remove label ${x}`,
                   disabled: !!w.row.deleting_at || l.value === w.row.id,
-                  onClick: We((S) => y(w.row, x, S), ["stop"])
+                  onClick: je((S) => y(w.row, x, S), ["stop"])
                 }, {
                   default: te(() => [
                     P(p(ae), {
@@ -3459,11 +3459,11 @@ const Sw = {
                   type: "text",
                   placeholder: "Add label…",
                   "aria-label": `Add a label to ${w.row.title}`,
-                  onClick: F[1] || (F[1] = We(() => {
+                  onClick: F[1] || (F[1] = je(() => {
                   }, ["stop"])),
                   onKeydown: [
-                    tt(We((x) => b(w.row), ["stop", "prevent"]), ["enter"]),
-                    tt(We(_, ["stop"]), ["escape"])
+                    tt(je((x) => b(w.row), ["stop", "prevent"]), ["enter"]),
+                    tt(je(_, ["stop"]), ["escape"])
                   ]
                 }, null, 8, ["modelValue", "aria-label", "onKeydown"]),
                 P(p(pe), {
@@ -3472,7 +3472,7 @@ const Sw = {
                   rounded: "",
                   severity: "secondary",
                   "aria-label": "Done editing labels",
-                  onClick: We(_, ["stop"])
+                  onClick: je(_, ["stop"])
                 }, {
                   default: te(() => [
                     P(p(ae), {
@@ -3490,7 +3490,7 @@ const Sw = {
                 "aria-label": `Add a label to ${w.row.title}`,
                 disabled: !!w.row.deleting_at || l.value === w.row.id,
                 loading: l.value === w.row.id,
-                onClick: We((x) => g(w.row.id, x), ["stop"])
+                onClick: je((x) => g(w.row.id, x), ["stop"])
               }, {
                 default: te(() => [
                   l.value !== w.row.id ? (k(), ne(p(ae), {
@@ -3569,7 +3569,7 @@ const Sw = {
             C("span", {
               class: "wf-row-actions",
               role: "cell",
-              onClick: F[3] || (F[3] = We(() => {
+              onClick: F[3] || (F[3] = je(() => {
               }, ["stop"]))
             }, [
               P(p(pe), {
@@ -3580,7 +3580,7 @@ const Sw = {
                 severity: "secondary",
                 "aria-label": `Actions for ${w.row.title}`,
                 "aria-expanded": u.value === w.row.id,
-                onClick: We((x) => I(w.row.id, x), ["stop"])
+                onClick: je((x) => I(w.row.id, x), ["stop"])
               }, {
                 default: te(() => [
                   P(p(ae), {
@@ -10483,7 +10483,7 @@ const MS = Gr, DS = ["transform"], PS = ["width", "height", "x", "y", "rx", "ry"
         height: `${t.value.height + 2 * r.labelBgPadding[1]}px`,
         x: -r.labelBgPadding[0],
         y: -r.labelBgPadding[1],
-        style: je(r.labelBgStyle),
+        style: We(r.labelBgStyle),
         rx: r.labelBgBorderRadius,
         ry: r.labelBgBorderRadius
       }, null, 12, PS)) : q("", !0),
@@ -11198,7 +11198,7 @@ const r$ = {
   setup(e) {
     return (t, n) => (k(), N("div", {
       class: "vue-flow__selection vue-flow__container",
-      style: je({
+      style: We({
         width: `${t.userSelectionRect.width}px`,
         height: `${t.userSelectionRect.height}px`,
         transform: `translate(${t.userSelectionRect.x}px, ${t.userSelectionRect.y}px)`
@@ -11248,13 +11248,13 @@ const r$ = {
     return (m, g) => !p(a) && u.value.width && u.value.height ? (k(), N("div", {
       key: 0,
       class: $e(["vue-flow__nodesselection vue-flow__container", p(i)]),
-      style: je({ transform: `translate(${p(n).x}px,${p(n).y}px) scale(${p(n).zoom})` })
+      style: We({ transform: `translate(${p(n).x}px,${p(n).y}px) scale(${p(n).zoom})` })
     }, [
       C("div", {
         ref_key: "el",
         ref: l,
         class: $e([{ dragging: p(c) }, "vue-flow__nodesselection-rect"]),
-        style: je(d.value),
+        style: We(d.value),
         tabIndex: p(r) ? void 0 : -1,
         onContextmenu: f,
         onKeydown: h
@@ -11419,7 +11419,7 @@ const d$ = {
     const { viewport: t, fitViewOnInit: n, fitViewOnInitDone: o } = Le(), i = W(() => n.value ? !o.value : !1), r = W(() => `translate(${t.value.x}px,${t.value.y}px) scale(${t.value.zoom})`);
     return (a, s) => (k(), N("div", {
       class: "vue-flow__transformationpane vue-flow__container",
-      style: je({ transform: r.value, opacity: i.value ? 0 : void 0 })
+      style: We({ transform: r.value, opacity: i.value ? 0 : void 0 })
     }, [
       he(a.$slots, "default")
     ], 4));
@@ -12015,7 +12015,7 @@ const Gc = su, $$ = we({
     }, [
       t.type === p(mr).ArrowClosed ? (k(), N("polyline", {
         key: 0,
-        style: je({
+        style: We({
           stroke: t.color,
           fill: t.color,
           strokeWidth: t.strokeWidth
@@ -12026,7 +12026,7 @@ const Gc = su, $$ = we({
       }, null, 4)) : q("", !0),
       t.type === p(mr).Arrow ? (k(), N("polyline", {
         key: 1,
-        style: je({
+        style: We({
           stroke: t.color,
           strokeWidth: t.strokeWidth
         }),
@@ -12088,7 +12088,7 @@ const Gc = su, $$ = we({
       (k(!0), N(ue, null, Te(p(n), (a) => (k(), N("svg", {
         key: a.id,
         class: "vue-flow__edges vue-flow__container",
-        style: je({ zIndex: p(tS)(a, p(t), p(o)) })
+        style: We({ zIndex: p(tS)(a, p(t), p(o)) })
       }, [
         P(p(E$), {
           id: a.id
@@ -12528,7 +12528,7 @@ const K$ = /* @__PURE__ */ C("div", { class: "vue-flow__edge-labels" }, null, -1
     const t = e, { userSelectionActive: n } = Le(), o = W(() => `${t.position}`.split("-"));
     return (i, r) => (k(), N("div", {
       class: $e(["vue-flow__panel", o.value]),
-      style: je({ pointerEvents: p(n) ? "none" : "all" })
+      style: We({ pointerEvents: p(n) ? "none" : "all" })
     }, [
       he(i.$slots, "default")
     ], 6));
@@ -12608,7 +12608,7 @@ const J$ = ["title", "aria-label"], Q$ = ["title"], eE = {
         e.data.issue && "wfn--issue",
         o.value && `wfn--boundary wfn--boundary-${o.value}`
       ]]),
-      style: je(c.value),
+      style: We(c.value),
       title: e.data.issue || e.data.ref || e.data.title,
       role: "group",
       "aria-label": `${e.data.kindLabel}: ${e.data.title}${e.data.runStatus !== "idle" ? `, ${e.data.runStatus}` : ""}`
@@ -13677,7 +13677,7 @@ const lI = {
       ref_key: "resizeControlRef",
       ref: u,
       class: $e(["vue-flow__resize-control", [...m.value, E.variant, p(l)]]),
-      style: je({
+      style: We({
         ...g.value,
         scale: _.value
       })
@@ -13741,7 +13741,7 @@ const lI = {
       (k(), N(ue, null, Te(a, (f) => P(Jc, {
         key: f,
         class: $e(u.lineClassName),
-        style: je(u.lineStyle),
+        style: We(u.lineStyle),
         "node-id": l.value,
         position: f,
         variant: p($n).Line,
@@ -13760,7 +13760,7 @@ const lI = {
       (k(), N(ue, null, Te(r, (f) => P(Jc, {
         key: f,
         class: $e(u.handleClassName),
-        style: je(u.handleStyle),
+        style: We(u.handleStyle),
         "node-id": l.value,
         position: f,
         color: u.color,
@@ -13965,7 +13965,7 @@ const wI = ["title"], rm = /* @__PURE__ */ we({
           C("span", {
             class: $e(["wf-edge-completeness-badge", r.value && "is-contract-unavailable"]),
             title: r.value ? "This step’s input fields are unavailable" : `${i.value} required field${i.value === 1 ? "" : "s"} need mapping`,
-            style: je({ transform: `translate(-50%, -50%) translate(${a.value.x}px, ${a.value.y}px)` })
+            style: We({ transform: `translate(-50%, -50%) translate(${a.value.x}px, ${a.value.y}px)` })
           }, K(r.value ? "!" : i.value), 15, wI)
         ]),
         _: 1
@@ -20621,7 +20621,7 @@ const c8 = {
     }), i = Ae(() => `pattern-${t}${e.id ? `-${e.id}` : ""}`), r = Ae(() => e.color || e.patternColor || c8[e.variant || Kt.Dots]);
     return (a, s) => (k(), N("svg", {
       class: "vue-flow__background vue-flow__container",
-      style: je({
+      style: We({
         height: `${a.height > 100 ? 100 : a.height}%`,
         width: `${a.width > 100 ? 100 : a.width}%`
       })
@@ -23034,7 +23034,7 @@ const mv = Symbol("MiniMapSlots"), kA = ["id", "x", "y", "rx", "ry", "width", "h
             dimensions: J.dimensions,
             selected: J.selected,
             dragging: J.dragging,
-            style: je(J.style),
+            style: We(J.style),
             class: $e(I.value(J)),
             color: b.value(J),
             "border-radius": j.nodeBorderRadius,
@@ -26429,7 +26429,7 @@ function BM(e, t, n, o, i, r) {
     name: e.$formName,
     role: "spinbutton",
     class: $e([e.cx("pcInputText"), e.inputClass]),
-    style: je(e.inputStyle),
+    style: We(e.inputStyle),
     defaultValue: r.formattedValue,
     "aria-valuemin": e.min,
     "aria-valuemax": e.max,
@@ -26953,8 +26953,8 @@ const m7 = {
           rows: "2",
           placeholder: "Explain how this step should behave…",
           onKeydown: [
-            tt(We(T, ["meta", "prevent"]), ["enter"]),
-            tt(We(T, ["ctrl", "prevent"]), ["enter"])
+            tt(je(T, ["meta", "prevent"]), ["enter"]),
+            tt(je(T, ["ctrl", "prevent"]), ["enter"])
           ]
         }, null, 8, ["id", "modelValue", "onKeydown"]),
         P(p(pe), {
@@ -27696,7 +27696,7 @@ const O7 = ["aria-label"], N7 = {
             (k(!0), N(ue, null, Te(y.value, (L) => (k(), N("div", {
               key: L.expr,
               class: "fm-pill-row",
-              style: je({ "--fm-depth": `${L.depth * 14}px` })
+              style: We({ "--fm-depth": `${L.depth * 14}px` })
             }, [
               L.expandable ? (k(), N("button", {
                 key: 0,
@@ -28573,8 +28573,8 @@ const dP = "What should flow here?", Tf = "e.g. use the first search result’s 
       class: "wf-intent",
       role: "region",
       "aria-label": "Describe this connection",
-      onKeydown: O[6] || (O[6] = tt(We((B) => o("dismiss"), ["stop", "prevent"]), ["esc"])),
-      onPointerdown: O[7] || (O[7] = We(() => {
+      onKeydown: O[6] || (O[6] = tt(je((B) => o("dismiss"), ["stop", "prevent"]), ["esc"])),
+      onPointerdown: O[7] || (O[7] = je(() => {
       }, ["stop"]))
     }, [
       P(p(pe), {
@@ -28616,7 +28616,7 @@ const dP = "What should flow here?", Tf = "e.g. use the first search result’s 
           placeholder: p(Tf),
           disabled: r.value === "drafting",
           "aria-label": "What should flow across this connection",
-          onKeydown: tt(We(E, ["prevent"]), ["enter"])
+          onKeydown: tt(je(E, ["prevent"]), ["enter"])
         }, null, 8, ["modelValue", "placeholder", "disabled", "onKeydown"]),
         r.value === "drafting" ? (k(), N("p", wP, [
           P(p(mt), {
@@ -28779,7 +28779,7 @@ const dP = "What should flow here?", Tf = "e.g. use the first search result’s 
           class: "wf-intent-input",
           placeholder: p(Tf),
           "aria-label": "What should flow across this connection",
-          onKeydown: tt(We(E, ["prevent"]), ["enter"])
+          onKeydown: tt(je(E, ["prevent"]), ["enter"])
         }, null, 8, ["modelValue", "placeholder", "onKeydown"]),
         C("p", LP, K(p(gP)), 1),
         C("div", BP, [
@@ -28841,7 +28841,7 @@ const dP = "What should flow here?", Tf = "e.g. use the first search result’s 
       ref_key: "overlayEl",
       ref: i,
       class: "wf-automap",
-      onPointerdown: m[7] || (m[7] = We(() => {
+      onPointerdown: m[7] || (m[7] = je(() => {
       }, ["stop"]))
     }, [
       r.value === "reveal" ? (k(), ne(p(pe), {
@@ -29600,13 +29600,13 @@ const iR = { class: "wf-top" }, rR = { class: "wf-top-count" }, aR = { class: "w
       C("div", {
         class: "wf-ctx-backdrop",
         onClick: f[0] || (f[0] = (h) => o("close")),
-        onContextmenu: f[1] || (f[1] = We((h) => o("close"), ["prevent"]))
+        onContextmenu: f[1] || (f[1] = je((h) => o("close"), ["prevent"]))
       }, null, 32),
       C("div", {
         class: "wf-drop-picker",
         role: "dialog",
         "aria-label": "Add a connected step",
-        style: je({ left: e.x + "px", top: e.y + "px" })
+        style: We({ left: e.x + "px", top: e.y + "px" })
       }, [
         C("div", _R, [
           P(p(ae), {
@@ -29779,7 +29779,7 @@ const iR = { class: "wf-top" }, rR = { class: "wf-top-count" }, aR = { class: "w
           class: "wf-ctx-backdrop",
           onClick: u[5] || (u[5] = //@ts-ignore
           (...d) => p(i).closePaneMenu && p(i).closePaneMenu(...d)),
-          onContextmenu: u[6] || (u[6] = We(
+          onContextmenu: u[6] || (u[6] = je(
             //@ts-ignore
             (...d) => p(i).closePaneMenu && p(i).closePaneMenu(...d),
             ["prevent"]
@@ -29788,7 +29788,7 @@ const iR = { class: "wf-top" }, rR = { class: "wf-top-count" }, aR = { class: "w
         C("div", {
           class: "wf-ctx",
           role: "menu",
-          style: je({ left: p(i).paneMenu.x + "px", top: p(i).paneMenu.y + "px" })
+          style: We({ left: p(i).paneMenu.x + "px", top: p(i).paneMenu.y + "px" })
         }, [
           C("button", {
             class: "wf-ctx-item",
@@ -29976,7 +29976,7 @@ const iR = { class: "wf-top" }, rR = { class: "wf-top-count" }, aR = { class: "w
           p(i).connectStatus && p(i).connectStatus !== "neutral" && p(i).connectHintPosition ? (k(), N("div", {
             key: 2,
             class: $e(["wf-connect-hint", `is-${p(i).connectStatus}`]),
-            style: je({ left: p(i).connectHintPosition.left + "px", top: p(i).connectHintPosition.top + "px" })
+            style: We({ left: p(i).connectHintPosition.left + "px", top: p(i).connectHintPosition.top + "px" })
           }, [
             P(p(ae), {
               icon: p(i).connectStatus === "ok" ? "tabler:plug-connected" : p(i).connectStatus === "warn" ? "tabler:wand" : "tabler:plug-connected-x",
@@ -29987,7 +29987,7 @@ const iR = { class: "wf-top" }, rR = { class: "wf-top-count" }, aR = { class: "w
           (k(!0), N(ue, null, Te(p(i).autoMapAnchored, (d) => (k(), ne(JP, {
             key: d.id,
             entry: d.entry,
-            style: je({ left: d.left + "px", top: d.top + "px", visibility: d.placed ? "visible" : "hidden", "--wf-overlay-max-height": d.maxHeight + "px" }),
+            style: We({ left: d.left + "px", top: d.top + "px", visibility: d.placed ? "visible" : "hidden", "--wf-overlay-max-height": d.maxHeight + "px" }),
             onMeasure: (f) => p(i).measureAuto(d.id, f),
             onOpen: p(i).openAutoMapped,
             onDismiss: p(i).dismissAutoMapped
@@ -29997,7 +29997,7 @@ const iR = { class: "wf-top" }, rR = { class: "wf-top-count" }, aR = { class: "w
             "workflow-id": p(o),
             edge: p(i).pendingEdge,
             "available-steps": p(i).availableSteps,
-            style: je({ left: p(i).pendingAnchor.left + "px", top: p(i).pendingAnchor.top + "px", visibility: p(i).pendingOverlaySize ? "visible" : "hidden", "--wf-overlay-max-height": p(i).pendingAnchor.maxHeight + "px" }),
+            style: We({ left: p(i).pendingAnchor.left + "px", top: p(i).pendingAnchor.top + "px", visibility: p(i).pendingOverlaySize ? "visible" : "hidden", "--wf-overlay-max-height": p(i).pendingAnchor.maxHeight + "px" }),
             onMeasure: p(i).measurePending,
             onAccept: p(i).acceptPending,
             onSuggestNode: p(i).showSuggestedNode,
