@@ -167,6 +167,23 @@ function M.read_node(tx: Executor, component_id: string, for_write: boolean?): (
     return rows[1] :: Node, nil
 end
 
+-- key_exists reports whether a component row holds component_id. On PostgreSQL
+-- it takes FOR KEY SHARE: a concurrent delete of the row settles first, while
+-- writers of the row's other columns proceed without a wait.
+function M.key_exists(tx: Executor, component_id: string): (boolean?, error?)
+    local query = sql.builder.select("component_id")
+        :from(component_types.TABLES.COMPONENTS)
+        :where("component_id = ?", component_id)
+    local dialect, dialect_err = (tx :: sql.Transaction):db_type()
+    if dialect_err then return nil, dialect_err end
+    if dialect == sql.type.POSTGRES then query = query:suffix("FOR KEY SHARE") end
+    local rows, err = query:run_with(tx):query()
+    if err then
+        return nil, errors.wrap(err, "placement key_exists failed")
+    end
+    return rows ~= nil and #rows > 0, nil
+end
+
 -- Structural writers serialize before reading paths or ancestry. A row lock on
 -- the immediate parent alone cannot fence creation under a moving ancestor.
 -- SQLite already serializes transactions on its single connection.
