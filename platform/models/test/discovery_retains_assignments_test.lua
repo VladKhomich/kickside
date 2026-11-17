@@ -27,8 +27,9 @@ local function define_tests()
             })
             test.is_nil(profile_err)
             local original_adapter, original_lookup = discovery.adapter_for, reference_registry.lookup
+            local catalog_model = { id = "unknown-limits", capabilities = { "generate" } }
             discovery.adapter_for = function() return {
-                fetch = function() return { { id = "unknown-limits", capabilities = { "generate" } } }, nil end,
+                fetch = function() return { catalog_model }, nil end,
             } end
             reference_registry.lookup = function() return nil end
             local ok, err = pcall(function()
@@ -62,6 +63,18 @@ local function define_tests()
                 test.eq(rediscovered.models[1].max_tokens, 32768)
                 test.eq(rediscovered.models[1].output_tokens, 4096)
                 test.is_true(rediscovered.models[1].enabled)
+
+                catalog_model.max_model_len = 65536
+                local advertised, advertised_err = discovery.discover(profile.id)
+                test.is_nil(advertised_err)
+                test.eq(advertised.models[1].max_tokens, 32768)
+                test.eq(advertised.models[1].metadata.discovered.max_model_len, 65536)
+                repo.delete_card(discovered.name)
+
+                local fresh, fresh_err = discovery.discover(profile.id)
+                test.is_nil(fresh_err)
+                test.eq(fresh.models[1].max_tokens, 65536)
+                test.is_false(fresh.models[1].enabled)
                 repo.delete_card(discovered.name)
             end)
             discovery.adapter_for, reference_registry.lookup = original_adapter, original_lookup

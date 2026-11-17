@@ -52,7 +52,7 @@ function M.discover(profile_id: string): (any?, any?, any?)
             -- Fill context window / pricing the provider's own /models API does not
             -- report (OpenAI, Anthropic, Bedrock) from the reference catalog. Only
             -- absent fields are filled -- provider-supplied values always win.
-            local has_ctx = tonumber(item.context_length or item.contextLength or item.inputTokenLimit) ~= nil
+            local has_ctx = mapper.context_limit(item) > 0
             local has_price = type(item.pricing) == "table" and next(item.pricing :: any) ~= nil
             if not has_ctx or not has_price then
                 local ref, reference_err = reference_registry.lookup(provider_id, provider_model)
@@ -67,7 +67,11 @@ function M.discover(profile_id: string): (any?, any?, any?)
             end
             local max_tokens, output_tokens, dimensions = mapper.model_limits(item, capabilities)
             if existing then
-                if max_tokens == 0 then max_tokens = existing.max_tokens end
+                local previous = existing.metadata and existing.metadata.discovered
+                local previous_context = type(previous) == "table" and mapper.context_limit(previous) or 0
+                if max_tokens == 0 or (existing.max_tokens > 0 and existing.max_tokens ~= previous_context) then
+                    max_tokens = existing.max_tokens
+                end
                 if output_tokens == 0 then output_tokens = existing.output_tokens end
             end
             local enabled = models_types.limits_configured(max_tokens, output_tokens, capabilities)

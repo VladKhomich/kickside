@@ -3,6 +3,8 @@ local models_types = require("models_types")
 
 local M = {}
 
+local CONTEXT_LIMIT_FIELDS = { "context_length", "contextLength", "inputTokenLimit", "max_model_len" }
+
 local DISCOVERED_METADATA_FIELDS = {
     "id",
     "name",
@@ -18,6 +20,7 @@ local DISCOVERED_METADATA_FIELDS = {
     "context_length",
     "contextLength",
     "inputTokenLimit",
+    "max_model_len",
     "outputTokenLimit",
     "max_output_tokens",
     "capabilities",
@@ -196,11 +199,18 @@ end
 -- of the size the provider reports or omits.
 local EMBEDDING_DIMENSIONS = 512
 
+function M.context_limit(item: any): number
+    for _, field in ipairs(CONTEXT_LIMIT_FIELDS) do
+        local limit = tonumber(item[field])
+        if limit and limit > 0 then return limit end
+    end
+    return 0
+end
+
 function M.model_limits(item: any, capabilities: { string }?): (number, number, number)
-    local max_tokens = tonumber(item.context_length or item.contextLength or item.inputTokenLimit or 0) or 0
+    local max_tokens = M.context_limit(item)
     local output_tokens = tonumber(item.outputTokenLimit or item.max_output_tokens or 0) or 0
     local dimensions = tonumber(item.dimensions or 0) or 0
-    if max_tokens < 0 then max_tokens = 0 end
     if output_tokens < 0 then output_tokens = 0 end
     if common.table_has(capabilities, "embed") then
         dimensions = EMBEDDING_DIMENSIONS
