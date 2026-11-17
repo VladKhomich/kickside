@@ -40,3 +40,64 @@ entries:
       store: kickside.workflows.store:store
       workflow_repo: kickside.workflows.repo:repo
       component: kickside.component:component
+
+  - name: run_completion_test
+    kind: function.lua
+    meta: { type: test, suite: workflows, group: KickSide Workflows }
+    source: file://run_completion_test.lua
+    method: run
+    modules: [uuid, json, registry]
+    imports:
+      test: wippy.test:test
+      run_writable: kickside.workflows.runs:run_writable
+      maintenance: kickside.workflows.runs:maintenance
+      admission: kickside.workflows.runs:admission
+      store: kickside.workflows.store:store
+      admission_scaffold: app:admission_scaffold
+
+  - name: run_completion_live_test
+    kind: function.lua
+    meta: { type: test, suite: workflows, group: KickSide Workflows }
+    source: file://run_completion_live_test.lua
+    method: run
+    modules: [uuid, funcs, security, ctx]
+    imports: &completion_live_imports
+      test: wippy.test:test
+      component: kickside.component:component
+      workflow_repo: kickside.workflows.repo:repo
+      workflow: kickside.workflows:workflow
+      version_publish: kickside.workflows.repo:version_publish
+      run_writable: kickside.workflows.runs:run_writable
+      maintenance: kickside.workflows.runs:maintenance
+      admission: kickside.workflows.runs:admission
+      execution_identity: kickside.execution:execution_identity
+      store: kickside.workflows.store:store
+  - name: run_completion_live_actor
+    kind: function.lua
+    source: file://run_completion_live_test.lua
+    method: actor_run
+    modules: [uuid, funcs, security, ctx]
+    imports: *completion_live_imports
+  - name: completion_receiver
+    kind: contract.binding
+    meta: { name: completion_test, class: completion_test }
+    contracts:
+      - contract: kickside.contract:component
+        methods: { get_status: 'app:completion_status' }
+      - contract: kickside.workflows:run_completion
+        methods: { complete: 'app:completion_receive' }
+  - name: completion_receive
+    kind: function.lua
+    source: file://run_completion_live_test.lua
+    method: complete
+    modules: [uuid, funcs, security, ctx]
+    imports: *completion_live_imports
+  - name: completion_test_scope
+    kind: security.scope
+    policies: ['app:workflows_suite_policy']
+  - name: completion_status
+    kind: function.lua
+    source: file://run_completion_live_test.lua
+    method: status
+    modules: [uuid, funcs, security, ctx]
+    imports: *completion_live_imports

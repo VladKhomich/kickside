@@ -98,6 +98,7 @@ entries:
       execution_identity: kickside.execution:execution_identity
       automation_ref: kickside.automation:automation_ref
       run_identity: kickside.workflows.runs:run_identity
+      component: kickside.component:component
 
   - name: resume
     kind: function.lua
@@ -134,6 +135,7 @@ entries:
       execution_identity: kickside.execution:execution_identity
       automation_ref: kickside.automation:automation_ref
       run_identity: kickside.workflows.runs:run_identity
+      component: kickside.component:component
 
   - name: maintenance
     kind: library.lua
