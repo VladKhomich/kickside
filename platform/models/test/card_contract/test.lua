@@ -10,6 +10,9 @@ local registry = require("registry")
 local models_repo = require("models_repo")
 local model_catalog = require("model_catalog")
 local card_service = require("card_service")
+local models_cache = require("models_cache")
+local sql = require("sql")
+local json = require("json")
 
 local UPSERT = "kickside.models.cards:upsert_card"
 local DISABLE = "kickside.models.cards:disable_card"
@@ -65,6 +68,33 @@ end
 
 local function cleanup()
     models_repo.delete_card(NAME)
+end
+
+local function stored_profile(id: string): any
+    local db = assert(sql.get("app:db"))
+    local rows, err = db:query("SELECT * FROM kickside_model_provider_profiles WHERE id = $1", { id })
+    db:release()
+    test.is_nil(err)
+    return rows[1]
+end
+
+local function with_existing_provider(fn: (any) -> ())
+    local profile = assert(models_repo.create_profile({
+        id = "cc-existing-provider", name = "Existing provider",
+        provider_id = "wippy.llm.openai:provider", api_key = "cc-existing-credential",
+    }))
+    local ok, err = pcall(function()
+        assert(models_repo.upsert_card(card_body({
+            name = "cc-existing-card", provider_profile_id = profile.id,
+            class = { "cc-existing-class" },
+        })))
+        fn(profile)
+    end)
+    local deleted, delete_err = models_repo.delete_card(NAME)
+    test.eq(deleted, true, tostring(delete_err))
+    deleted, delete_err = models_repo.delete_profile(profile.id)
+    test.eq(deleted, true, tostring(delete_err))
+    if not ok then error(err, 0) end
 end
 
 local function define_tests()
@@ -156,6 +186,42 @@ local function define_tests()
     end)
 
     test.describe("card_registrar policy", function()
+        for _, action in ipairs({ "upsert_card", "disable_card" }) do
+            for _, cold in ipairs({ false, true }) do
+                test.it(action .. " preserves existing encrypted providers with a " .. (cold and "cold" or "warm") .. " cache", function()
+                    with_existing_provider(function(profile)
+                        assert(card_service.save(card_body()))
+                        local before = stored_profile(profile.id)
+                        if cold then models_cache.clear() end
+                        local scope = assert(security.new_scope({ assert(security.policy("kickside.models.security:card_registrar")) }))
+                        local cards = assert(assert(contract.get(CONTRACT))
+                            :with_actor(security.new_actor("module-registrar", {})):with_scope(scope):open())
+                        local result, call_err
+                        if action == "upsert_card" then
+                            result, call_err = (cards :: any):upsert_card(card_body({ priority = 42 }))
+                        else
+                            result, call_err = (cards :: any):disable_card({ name = NAME })
+                        end
+                        test.is_nil(call_err, tostring(call_err))
+                        test.eq(result.success, true, tostring(result.error))
+                        local existing, read_err = models_repo.get_profile(profile.id)
+                        test.is_nil(read_err, tostring(read_err))
+                        test.eq(existing.enabled, true)
+                        test.is_nil(existing.error)
+                        test.eq(existing.secret_config.api_key, "cc-existing-credential")
+                        for _, identifier in ipairs({ "cc-existing-card", "class:cc-existing-class" }) do
+                            local resolved, resolve_err = model_catalog.resolve(identifier)
+                            test.is_nil(resolve_err, tostring(resolve_err))
+                            test.eq(resolved.providers[1].context.api_key, "cc-existing-credential")
+                        end
+                        local after = stored_profile(profile.id)
+                        for key, value in pairs(before) do test.eq(after[key], value, key) end
+                        test.is_nil((assert(json.encode(result)):find("cc-existing-credential", 1, true)))
+                    end)
+                end)
+            end
+        end
+
         test.it("admits the contract, its binding and its functions, and nothing else", function()
             local policy = assert(security.policy("kickside.models.security:card_registrar"))
             local actor = security.new_actor("module-registrar", {})
@@ -175,6 +241,11 @@ local function define_tests()
             test.eq(policy:evaluate(actor, "funcs.call", "kickside.models.persist:repo"), "undefined")
             test.eq(policy:evaluate(actor, "access", "kickside.models.api.admin:upsert_card.endpoint"), "undefined")
             test.eq(policy:evaluate(actor, "db.get", "*"), "undefined")
+            test.eq(policy:evaluate(actor, "env.get", "ENCRYPTION_KEY"), "undefined")
+            local writer_key = assert(security.policy("kickside.models.cards:card_writer_encryption_key"))
+            test.eq(writer_key:evaluate(actor, "env.get", "ENCRYPTION_KEY"), "allow")
+            test.eq(writer_key:evaluate(actor, "env.get", "OTHER_KEY"), "undefined")
+            test.eq(writer_key:evaluate(actor, "env.set", "ENCRYPTION_KEY"), "undefined")
         end)
 
         test.it("opens the contract through its binding and saves and retires a card", function()

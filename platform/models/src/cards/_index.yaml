@@ -17,6 +17,16 @@ entries:
       actions: [registry.get, db.get, store.get, store.key.get, store.key.set, store.key.delete]
       effect: allow
 
+  - name: card_writer_encryption_key
+    kind: security.policy
+    meta:
+      private: true
+      comment: The shared catalog reload decrypts existing provider profiles before publishing the snapshot.
+    policy:
+      resources: [ENCRYPTION_KEY]
+      actions: env.get
+      effect: allow
+
   - name: cards
     kind: contract.definition
     meta:
@@ -94,6 +104,7 @@ entries:
     security:
       policies:
         - kickside.models.cards:card_writer_runtime
+        - kickside.models.cards:card_writer_encryption_key
 
   - name: disable_card
     kind: function.lua
@@ -106,6 +117,7 @@ entries:
     security:
       policies:
         - kickside.models.cards:card_writer_runtime
+        - kickside.models.cards:card_writer_encryption_key
 
   - name: cards_binding
     kind: contract.binding

@@ -13,10 +13,11 @@ entries:
       suite: kickside_models_card_contract
       comment: Registering and retiring a card through the cards contract.
     source: file://test.lua
-    modules: [funcs, security, registry, contract]
+    modules: [funcs, security, registry, contract, sql, json]
     method: run
     imports:
       test: wippy.test:test
       models_repo: kickside.models.persist:repo
       model_catalog: kickside.models.catalog:model_catalog
       card_service: kickside.models.catalog:card_service
+      models_cache: kickside.models.service:models_cache
