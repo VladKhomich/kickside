@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
+import { bindChatDraftComposer, type ChatDrafts } from '@widgets/chatDraftComposer'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChatEmptyState from './ChatEmptyState.vue'
 import { CHAT_APPEARANCE_CSS } from './chatAppearance'
@@ -9,6 +10,7 @@ const props = defineProps<{
   sessionId?: string
   startToken?: string
   generation: number
+  drafts?: ChatDrafts
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +31,7 @@ const notice = ref('')
 const mounting = ref(true)
 let element: HTMLElement | null = null
 let attempt = 0
+let draftBinding: ReturnType<typeof bindChatDraftComposer> | undefined
 const initialMessage = ref('')
 const blankChat = computed(() => !props.sessionId && !props.startToken)
 
@@ -44,6 +47,8 @@ function sessionIdFromEvent(event: Event): string {
 }
 
 function detachChat() {
+  draftBinding?.dispose()
+  draftBinding = undefined
   element?.removeEventListener('load', onLoad)
   element?.removeEventListener('error', onError)
   element?.removeEventListener('session-started', onSessionStarted)
@@ -55,6 +60,9 @@ function detach() {
 }
 
 function onLoad() {
+  const root = element?.shadowRoot
+  if (root && props.drafts && !draftBinding)
+    draftBinding = bindChatDraftComposer(root, () => props.sessionId ?? '', props.drafts)
   mounting.value = false
   failure.value = ''
   notice.value = ''
@@ -99,6 +107,7 @@ function syncAttributes() {
     element?.setAttribute('meta-placement', 'before-composer')
   else
     element?.removeAttribute('meta-placement')
+  void nextTick(() => draftBinding?.sync())
 }
 
 function createChatElement(): HTMLElement {

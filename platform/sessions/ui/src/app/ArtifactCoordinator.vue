@@ -5,13 +5,19 @@ import type { host as proxyHost } from '@wippy-fe/proxy'
 import { useHost, useLayoutBus } from '@wippy-fe/webcomponent-vue'
 import {
   ARTIFACT_PANEL_ID,
+  CHAT_PANEL_ID,
+  MAIN_PANEL_ID,
   acceptsArtifactSession,
   eventArtifactId,
   eventSessionId,
+  isRecord,
   layoutSnapshot,
+  mainIsAppPage,
+  sessionPath,
   sessionIdFromPath,
 } from './hostRoute.ts'
 import type { ArtifactIntent, LayoutEvent } from './hostRoute.ts'
+import { closeStartedSession, exchangeStartToken } from './chatStart'
 import { useHostRoute } from './useHostRoute'
 import { useSessionsApi } from './useSessionsApi.ts'
 
@@ -28,11 +34,12 @@ const api = useSessionsApi()
 const manager = host ? getLayoutManager(host) : null
 const stops: Array<() => void> = []
 
-const route = useHostRoute(host, path => setActiveSession(sessionIdFromPath(path)))
+const route = useHostRoute(host, ({ path }) => setActiveSession(sessionIdFromPath(path)))
 const activeSessionId = ref(sessionIdFromPath(route.initialPath))
 
 /** Invalidate title lookups when the modal closes or changes ownership. */
 let modalSequence = 0
+let legacyChatRequest = 0
 
 function reveal() {
   manager?.expandPanel(ARTIFACT_PANEL_ID)
@@ -141,6 +148,42 @@ function setActiveSession(sessionId: string) {
   hide()
 }
 
+/** Compatibility when this Sessions release is loaded by the previous app. */
+async function openLegacyChat(intent: Record<string, unknown>) {
+  const request = ++legacyChatRequest
+  let sessionId = typeof intent.uuid === 'string' ? intent.uuid : ''
+  if (intent.intent === 'startChat') {
+    if (typeof intent.startToken !== 'string' || !intent.startToken) return
+    try {
+      sessionId = await exchangeStartToken(intent.startToken)
+    } catch {
+      if (request === legacyChatRequest) host?.toast({ severity: 'error', summary: 'Could not start chat' })
+      return
+    }
+    if (request !== legacyChatRequest) {
+      closeStartedSession(sessionId)
+      return
+    }
+  }
+  if (!sessionId) return
+  const context = intent.context
+  if (isRecord(context) && isRecord(context.context)) {
+    const source = context.source
+    const origin = isRecord(source) && typeof source.uuid === 'string'
+      && (source.type === 'page' || source.type === 'artifact')
+      ? { type: source.type, uuid: source.uuid } as const
+      : undefined
+    host?.setContext(context.context, sessionId, origin)
+  }
+  if (mainIsAppPage(layoutSnapshot(host))) {
+    bus?.send(MAIN_PANEL_ID, 'kickside:chat-open', {
+      intent: 'openSession', uuid: sessionId, sidebar: intent.sidebar === true,
+    })
+  } else {
+    host?.navigate(sessionPath(sessionId))
+  }
+}
+
 function onLayoutEvent(event: LayoutEvent) {
   if (event.channel === 'kickside:artifact-session') {
     // This announces the session a navigation is about to reach. The same rule
@@ -150,10 +193,15 @@ function onLayoutEvent(event: LayoutEvent) {
     return
   }
   if (event.channel === '@HOST/intent') {
-    const payload = event.payload as ArtifactIntent | undefined
+    if (!isRecord(event.payload)) return
+    const payload = event.payload
+    if (payload.intent === 'startChat' || payload.intent === 'openSession') {
+      if (!layoutSnapshot(host)?.panels?.[CHAT_PANEL_ID]) void openLegacyChat(payload)
+      return
+    }
     const id = eventArtifactId(payload)
     if (payload?.intent === 'openArtifact' && id)
-      showArtifact(id, payload, event.sourcePanelId)
+      showArtifact(id, payload as ArtifactIntent, event.sourcePanelId)
     return
   }
   if (event.channel === 'kickside:artifact-close') {
@@ -194,7 +242,11 @@ onMounted(() => {
   stops.push(on('action:*', onAction))
 })
 
-onBeforeUnmount(() => stops.forEach(stop => stop()))
+onBeforeUnmount(() => {
+  legacyChatRequest++
+  modalSequence++
+  stops.forEach(stop => stop())
+})
 </script>
 
 <template><span aria-hidden="true" /></template>

@@ -13,6 +13,7 @@ import AppNavigation from './AppNavigation.vue'
 import LayoutPortalTarget from './LayoutPortalTarget.vue'
 import BufferedSurfaceHost from './BufferedSurfaceHost.vue'
 import ChatPanel from './ChatPanel.vue'
+import { useInlineChatDrafts } from './chatDrafts'
 import SessionsPanel from './SessionsPanel.vue'
 import ArtifactsGalleryPanel from './ArtifactsGalleryPanel.vue'
 import { useChatController, isKicksideChatOpenDetail, type KicksideChatOpenDetail } from './useChatController'
@@ -38,6 +39,7 @@ const host = useHost()
 const instance = useWippy()
 
 const chat = useChatController()
+const drafts = useInlineChatDrafts(host)
 // The host retires this page behind Keeper or Git and brings it back. The surfaces
 // and System refresh their data on that return (hostReturn.ts).
 provideHostReturn(handler => instance.on('@visibility', handler))
@@ -358,6 +360,7 @@ onUnmounted(() => {
   window.removeEventListener('kickside:nav-changed', refreshShellRegistryState)
   window.removeEventListener('kickside:modules-changed', scheduleRegistryRefresh)
   toneOverlay.stop()
+  drafts.dispose()
   unsubLayoutChange?.()
   unsubNavigate?.()
   unsubNavChanged?.()
@@ -444,6 +447,7 @@ onUnmounted(() => {
         :session-id="chat.sessionId.value"
         :start-token="chat.startToken.value"
         :generation="chat.generation.value"
+        :drafts="drafts"
         @session-started="recordStartedSession"
         @error="reportOwnedPanelError"
       />

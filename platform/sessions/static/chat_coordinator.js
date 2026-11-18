@@ -1,201 +1,303 @@
-import { u as ft, a as pt, W as ht } from "./wc-runtime-DRNaOAbU.js";
-import { defineComponent as dt, onMounted as gt, onBeforeUnmount as kt, openBlock as mt, createElementBlock as yt } from "vue";
-import { getLayoutManager as Pt, on as wt, define as Ct } from "@wippy-fe/proxy";
-import { p as W, c as U, A as F, i as C, l as St, m as vt, d as S, f as V, g as z, C as a, h as G, j as b, k as Q, n as I, o as X, q as Y, s as Tt } from "./hostRoute-CHFKAd6h.js";
-import "@iconify/vue";
-const bt = { "aria-hidden": "true" }, It = "kickside:chat-start", _t = /* @__PURE__ */ dt({
+import { u as At, a as Dt, W as Rt } from "./wc-runtime-C6gaf4iX.js";
+import { defineComponent as Ot, onMounted as Tt, onBeforeUnmount as qt, openBlock as Et, createElementBlock as xt, nextTick as Bt } from "vue";
+import { getLayoutManager as Lt, on as Mt, config as Nt, define as $t } from "@wippy-fe/proxy";
+import { p as ot, f as at, A as G, C as r, g as E, l as Ft, d as Ht, h as x, j as rt, k as it, n as ct, i as B, o as U, M as ut, s as V, c as Q, q as lt, r as ft } from "./hostRoute-uRovXTvG.js";
+import { e as Kt, c as jt } from "./chatStart-Bxe6JK-R.js";
+function Wt(g, S, o) {
+  let a = null, i = "", u = "", p = 0;
+  function d() {
+    !a || !i || i !== S() || u === a.value || (u = a.value, p++, o.write(i, u));
+  }
+  function w() {
+    const l = g.querySelector("textarea.chat-input__textarea"), f = S();
+    if (l === a && f === i) {
+      d();
+      return;
+    }
+    const A = i;
+    a = l, i = f;
+    const R = ++p;
+    if (!l || !f) return;
+    u = l.value, A && A !== f && L(""), o.read(f).then((v) => {
+      R === p && f === S() && v !== void 0 && L(v);
+    });
+    function L(v) {
+      !l || l.value === v || (u = l.value = v, l.dispatchEvent(new Event("input", { bubbles: !0, composed: !0 })));
+    }
+  }
+  const m = (l) => {
+    l.target === a && d();
+  };
+  g.addEventListener("input", m);
+  const D = new MutationObserver(w);
+  return D.observe(g, { subtree: !0, childList: !0, attributes: !0, attributeFilter: ["disabled"] }), w(), {
+    sync: w,
+    dispose() {
+      p++, D.disconnect(), g.removeEventListener("input", m);
+    }
+  };
+}
+const zt = 65536, Jt = 100;
+function Xt(g) {
+  const S = g();
+  let o = !!S;
+  const a = /* @__PURE__ */ new Map();
+  function i() {
+    return o && S !== g() && (a.clear(), o = !1), o;
+  }
+  return {
+    async read(u) {
+      return i() ? a.get(u) ?? "" : void 0;
+    },
+    write(u, p) {
+      if (!(!i() || p.length > zt) && (a.delete(u), p && a.set(u, p), a.size > Jt)) {
+        const d = a.keys().next().value;
+        d && a.delete(d);
+      }
+    }
+  };
+}
+const Gt = { "aria-hidden": "true" }, Ut = "kickside:chat-start", dt = "chat-tab", pt = "kickside:chat-draft", Vt = '[data-wippy-panel-mount="chat"] .layout-chat-wrapper', Qt = /* @__PURE__ */ Ot({
   __name: "ChatCoordinator",
-  setup(tt) {
-    const r = ft(), v = pt(), c = r ? Pt(r) : null, h = [];
-    let _ = window.location.pathname, l = W(_), $ = "default", B = "|", D = !1, A = !1, O = "", s = null, k = null;
+  setup(g) {
+    const S = {
+      kind: "builtin",
+      id: "@HOST/panel-tab",
+      chrome: !1,
+      anchor: { right: 0, top: "50%" },
+      position: { x: 0, y: 0 },
+      size: { width: 48, height: 80 },
+      props: { target: r, mode: "auto", label: "Open chat" }
+    }, o = At(), a = Dt(), i = o ? Lt(o) : null, u = Xt(() => Nt.auth?.token);
+    let p = null, d, w;
+    const m = [], D = () => window.location.pathname + window.location.search + window.location.hash;
+    let l = D(), f = ot(l), A = "default", R = "|", L = 0, v = !1, N = !1, $ = "", c = null, O = null;
     const T = /* @__PURE__ */ new Map();
-    function i(t) {
+    function b(t) {
       return typeof t == "string" ? t : "";
     }
-    function f() {
-      return St(r);
+    function y() {
+      return Ft(o);
     }
-    function p() {
-      if (!c) throw new Error("[kickside-chat-coordinator] used before it started");
-      return c;
+    function k() {
+      if (!i) throw new Error("[kickside-chat-coordinator] used before it started");
+      return i;
     }
-    function d(t) {
-      const n = vt(t);
-      return W(n ?? _);
+    function C(t) {
+      const e = Ht(t);
+      return ot(e ?? l);
     }
-    function E(t) {
-      return `${t.path}${t.search}`;
+    function F(t) {
+      return `${t.path}${t.search}${t.hash}`;
     }
-    function L(t) {
-      const n = S(t, a);
-      return `${i(n.sessionId)}|${i(n.startToken)}`;
+    function H(t) {
+      const e = x(t, r);
+      return `${b(e.sessionId)}|${e.startRequest ?? ""}`;
     }
-    function m(t) {
-      "sessionId" in t && (k = i(t.sessionId)), r?.layout.updatePanel(a, { props: t });
+    function I(t) {
+      "sessionId" in t && (O = b(t.sessionId)), o?.layout.updatePanel(r, { props: t });
     }
-    function nt(t) {
-      const n = S(t, a);
-      s && i(n.startToken) === s.token && !i(n.sessionId) && (s.seen = !0), k !== null && i(n.sessionId) === k && (k = null);
-    }
-    function N(t) {
-      if (!t) return;
-      const n = p();
-      V(z(t, n.activeBreakpoint, a)) ? n.openDrawer(a) : n.expandPanel(a);
-    }
-    function y(t) {
-      if (!t) return;
-      const n = p();
-      V(z(t, n.activeBreakpoint, a)) ? n.closeDrawer(a) : n.collapsePanel(a);
-    }
-    function x(t) {
-      const n = p().activeBreakpoint;
-      return {
-        chat: G(t, n, a),
-        artifact: G(t, n, F)
-      };
-    }
-    function et(t) {
-      const { chat: n, artifact: e } = x(t);
-      if (n && e) {
-        const o = !D;
-        !A && !o ? p().closeDrawer(a) : o && p().closeDrawer(F);
-      }
-      D = n, A = e;
+    function yt(t) {
+      const e = x(t, r);
+      c && e.startRequest === c.request && !b(e.sessionId) && (c.seen = !0), O !== null && b(e.sessionId) === O && (O = null);
     }
     function K(t) {
-      for (const [n, e] of Object.entries(t?.floating ?? {}))
-        !b(e) || !b(e.props) || e.props.target !== a || T.has(n) || (T.set(n, JSON.parse(JSON.stringify(e))), r?.layout.removeFloating(n));
-    }
-    function M() {
-      for (const [t, n] of T) r?.layout.addFloating(t, n);
-      T.clear();
-    }
-    function H(t, n) {
-      !t || !b(t.context) || r?.setContext(t.context, n, t.source);
-    }
-    function j(t, n) {
-      return C(n.path) || t.sidebar === !1;
-    }
-    function g(t) {
-      const n = s !== null != (t !== null);
-      s = t, n && v?.broadcast(It, { pending: t !== null });
-    }
-    function R() {
-      const t = s;
-      t && (g(null), m({ startToken: null, sessionId: t.previousSessionId || null }));
-    }
-    function ot(t, n) {
-      const e = f(), o = d(e);
-      if (H(t.context, n), j(t, o)) {
-        R(), r?.navigate(I(n));
-        return;
-      }
-      g(null), m({ sessionId: n, startToken: null }), N(e);
-    }
-    function st(t, n) {
-      const e = f(), o = d(e), u = j(t, o), P = X(o.path), w = s !== null && s.token === n;
-      if (s && w)
-        s = { ...s, fullPage: u, context: t.context, section: P };
-      else {
-        const lt = s ? s.previousSessionId : k ?? i(S(e, a).sessionId);
-        g({ token: n, fullPage: u, context: t.context, section: P, previousSessionId: lt, seen: !1 });
-      }
-      u && e && Q(e, p().activeBreakpoint, a) && y(e), w || m({ startToken: n, sessionId: null }), u || N(e);
-    }
-    function at(t) {
-      const n = s;
-      if (!n) return;
-      const e = i(S(f(), a).startToken);
-      if (e && e !== n.token) return;
-      if (g(null), e !== n.token) {
-        n.seen || m({ sessionId: t, startToken: null });
-        return;
-      }
-      if (H(n.context, t), n.fullPage) {
-        r?.navigate(I(t));
-        return;
-      }
-      const o = d(f());
-      Y(o) && r?.navigate(`${I(t)}${o.search}${o.hash}`);
-    }
-    function rt(t) {
-      if (t.channel !== "@HOST/intent" || !b(t.payload)) return;
-      const n = t.payload, e = i(n.uuid), o = i(n.startToken);
-      if (n.intent === "openSession" && e) {
-        t.sourcePanelId === a ? at(e) : ot(n, e);
-        return;
-      }
-      n.intent === "startChat" && o && st(n, o);
-    }
-    function it(t, n, e) {
-      let o = i(S(e, a).sessionId);
-      s?.fullPage && X(n.path) !== s.section && (o = s.previousSessionId, R());
-      const u = C(t.path), P = C(n.path);
-      if (P && !u)
-        y(e), K(e), o && Y(n) && r?.navigate(`${I(o)}${n.search}${n.hash}`);
-      else if (!P && u) {
-        const w = Tt(t.path);
-        w && (g(null), m({ sessionId: w, startToken: null })), y(e), M();
-      }
-    }
-    function ct(t) {
-      const n = L(t);
-      n !== B && (n === "|" && s?.seen && g(null), B = n), et(t);
+      if (!t) return;
+      const e = k();
+      rt(it(t, e.activeBreakpoint, r)) ? e.openDrawer(r) : e.expandPanel(r);
     }
     function q(t) {
-      const { chat: n, artifact: e } = x(t);
-      return `${E(d(t))}#${L(t)}#${n}#${e}`;
-    }
-    function J() {
-      const t = f();
       if (!t) return;
-      nt(t);
-      const n = q(t);
-      if (n === O) return;
-      O = n;
-      const e = l;
-      l = d(t), E(e) !== E(l) && it(e, l, t), ct(t);
+      const e = k();
+      rt(it(t, e.activeBreakpoint, r)) ? e.closeDrawer(r) : e.collapsePanel(r);
     }
-    function ut() {
-      const t = f();
+    function j(t) {
+      const e = k().activeBreakpoint;
+      return {
+        chat: ct(t, e, r),
+        artifact: ct(t, e, G)
+      };
+    }
+    function gt(t) {
+      const { chat: e, artifact: n } = j(t);
+      if (e && n) {
+        const s = !v;
+        !N && !s ? k().closeDrawer(r) : s && k().closeDrawer(G);
+      }
+      v = e, N = n;
+    }
+    function Y(t) {
+      for (const [e, n] of Object.entries(t?.floating ?? {}))
+        !B(n) || !B(n.props) || n.props.target !== r || T.has(e) || (T.set(e, JSON.parse(JSON.stringify(n))), o?.layout.removeFloating(e));
+    }
+    function W() {
+      for (const [t, e] of T) o?.layout.addFloating(t, e);
+      T.clear();
+    }
+    function Z(t, e) {
+      o?.navigate(`${Q(t)}${e.search}${e.hash}`, { replace: !0 });
+    }
+    function tt(t, e) {
+      !t || !B(t.context) || o?.setContext(t.context, e, t.source);
+    }
+    function et(t, e) {
+      return E(e.path) || t.sidebar === !1;
+    }
+    function _(t) {
+      const e = c !== null != (t !== null);
+      c = t, e && a?.broadcast(Ut, { pending: t !== null });
+    }
+    function M() {
+      const t = c;
+      t && (_(null), I({ startRequest: null, sessionId: t.previousSessionId || null }));
+    }
+    function wt(t, e) {
+      const n = y(), s = C(n);
+      if (tt(t.context, e), et(t, s)) {
+        M(), o?.navigate(Q(e));
+        return;
+      }
+      _(null), I({ sessionId: e, startRequest: null }), K(n);
+    }
+    async function mt(t) {
+      let e;
+      try {
+        e = await Kt(t.token);
+      } catch {
+        if (c !== t) return;
+        M(), o?.toast({ severity: "error", summary: "Could not start chat" });
+        return;
+      }
+      if (c !== t) {
+        jt(e);
+        return;
+      }
+      if (_(null), tt(t.context, e), t.fullPage) {
+        I({ sessionId: t.previousSessionId || null, startRequest: null }), o?.navigate(Q(e));
+        return;
+      }
+      I({ sessionId: e, startRequest: null });
+      const n = C(y());
+      ft(n) && Z(e, n);
+    }
+    function vt(t, e) {
+      const n = y(), s = C(n), h = et(t, s), P = lt(s.path);
+      if (h && n && U(n, k().activeBreakpoint, r) && q(n), c?.token === e && c)
+        Object.assign(c, { fullPage: h, context: t.context, section: P });
+      else {
+        const Pt = c?.previousSessionId ?? O ?? b(x(n, r).sessionId), X = {
+          token: e,
+          request: ++L,
+          fullPage: h,
+          context: t.context,
+          section: P,
+          previousSessionId: Pt,
+          seen: !1
+        };
+        _(X), I({ startRequest: X.request, sessionId: null }), mt(X);
+      }
+      h || K(n);
+    }
+    function bt() {
+      return b(x(y(), r).sessionId);
+    }
+    function z(t) {
+      const e = U(t, k().activeBreakpoint, r), n = e ? document.querySelector(Vt) : null;
+      n !== p && (w?.dispose(), p = n, w = n ? Wt(n, bt, u) : void 0), !e || n ? (d?.disconnect(), d = void 0) : d || (d = new MutationObserver(() => {
+        const s = y();
+        s && z(s);
+      }), d.observe(document.body, { childList: !0, subtree: !0 })), w?.sync();
+    }
+    async function St(t) {
+      if (t.sourcePanelId !== ut || !B(t.payload)) return;
+      const { kind: e, sessionId: n, requestId: s, draft: h } = t.payload;
+      if (!(typeof n != "string" || !n || V(C(y()).path) !== n) && (e === "write" && typeof h == "string" && u.write(n, h), e === "read" && typeof s == "number")) {
+        const P = await u.read(n);
+        V(C(y()).path) === n && a?.send(ut, pt, { requestId: s, draft: P });
+      }
+    }
+    function kt(t) {
+      if (t.channel === pt) {
+        St(t);
+        return;
+      }
+      if (t.channel !== "@HOST/intent" || !B(t.payload)) return;
+      const e = t.payload, n = b(e.uuid), s = b(e.startToken);
+      if (e.intent === "openSession" && n) {
+        t.sourcePanelId === r ? (c && (_(null), I({ sessionId: n, startRequest: null })), Bt(() => w?.sync())) : wt(e, n);
+        return;
+      }
+      e.intent === "startChat" && s && vt(e, s);
+    }
+    function Ct(t, e, n) {
+      let s = b(x(n, r).sessionId);
+      c?.fullPage && lt(e.path) !== c.section && (s = c.previousSessionId, M());
+      const h = E(t.path), P = E(e.path);
+      if (P && !h)
+        q(n), Y(n), s && ft(e) && Z(s, e);
+      else if (!P && h) {
+        const J = V(t.path);
+        J && (_(null), I({ sessionId: J, startRequest: null })), q(n), W();
+      }
+    }
+    function It(t) {
+      const e = H(t);
+      e !== R && (e === "|" && c?.seen && _(null), R = e), gt(t);
+    }
+    function nt(t) {
+      const { chat: e, artifact: n } = j(t);
+      return `${F(C(t))}#${H(t)}#${e}#${n}`;
+    }
+    function st() {
+      const t = y();
       if (!t) return;
-      const n = U(t, p().activeBreakpoint), e = $;
-      n !== e && ($ = n, Q(t, e, a) && !C(l.path) ? N(t) : y(t));
+      yt(t), z(t);
+      const e = nt(t);
+      if (e === $) return;
+      $ = e;
+      const n = f;
+      f = C(t), F(n) !== F(f) && Ct(n, f, t), It(t);
     }
-    return gt(() => {
-      const t = f();
-      if (!r || !c || !v || !t) {
+    function _t() {
+      const t = y();
+      if (!t) return;
+      const e = at(t, k().activeBreakpoint), n = A;
+      e !== n && (A = e, U(t, n, r) && !E(f.path) ? K(t) : q(t));
+    }
+    return Tt(() => {
+      const t = y();
+      if (!o || !i || !a || !t) {
         console.error("[kickside-chat-coordinator] not started: needs a managed layout host with a layout manager, a layout bus and a layout snapshot", {
-          host: !!r,
-          manager: !!c,
-          bus: !!v,
+          host: !!o,
+          manager: !!i,
+          bus: !!a,
           snapshot: !!t
         });
         return;
       }
-      l = d(t), $ = U(t, c.activeBreakpoint), B = L(t);
-      const { chat: n, artifact: e } = x(t);
-      n && e && c.closeDrawer(F), D = n, A = e && !n, O = q(t), C(l.path) && (y(t), K(t)), h.push(v.subscribe(rt)), h.push(c.on("change", J)), h.push(c.on("breakpoint", ut)), h.push(wt("@history", ({ path: o }) => {
-        _ = o, J();
+      f = C(t), A = at(t, i.activeBreakpoint), R = H(t);
+      const { chat: e, artifact: n } = j(t);
+      e && n && i.closeDrawer(G), v = e, N = n && !e, $ = nt(t), t.floating?.[dt] || T.set(dt, S), E(f.path) ? (q(t), Y(t)) : W(), z(t), m.push(a.subscribe(kt)), m.push(i.on("change", st)), m.push(i.on("breakpoint", _t)), m.push(Mt("@history", ({ path: s }) => {
+        l = s === window.location.pathname ? D() : s, st();
       }));
-    }), kt(() => {
-      h.forEach((t) => t()), h.length = 0, R(), M();
-    }), (t, n) => (mt(), yt("span", bt));
+    }), qt(() => {
+      m.forEach((t) => t()), m.length = 0, d?.disconnect(), w?.dispose(), M(), W();
+    }), (t, e) => (Et(), xt("span", Gt));
   }
 });
-class Z extends ht {
+class ht extends Rt {
   static get wippyConfig() {
     return { propsSchema: { type: "object", properties: {} } };
   }
   static get vueConfig() {
-    return { rootComponent: _t };
+    return { rootComponent: Qt };
   }
 }
-async function Et() {
-  return Z;
+async function se() {
+  return ht;
 }
-Ct(import.meta.url, Z);
+$t(import.meta.url, ht);
 export {
-  Et as webComponent
+  se as webComponent
 };
 //# sourceMappingURL=chat_coordinator.js.map

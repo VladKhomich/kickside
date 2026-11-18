@@ -1,12 +1,12 @@
-import { s as ve, B as fe, b as ge, c as ie, f as ae, z as Ae, e as me, R as oe, T as le, d as qe, g as Ze, F as Ye, M as ke, k as Je, h as Qe, i as G, Y as Xe, C as et, I as tt, v as nt, D as it, x as ye, S as st, O as ot, L as lt, j as rt, $ as at, J as dt, p as te, a as ut, u as ct, l as pt, W as ft, P as ht } from "./wc-runtime-DRNaOAbU.js";
+import { s as ve, B as fe, b as ge, c as ie, f as ae, z as Ae, e as me, R as oe, T as le, d as qe, g as Ze, F as Ye, M as ke, k as Je, h as Qe, i as G, Y as Xe, C as et, I as tt, v as nt, D as it, x as ye, S as st, O as ot, L as lt, j as rt, $ as at, J as dt, p as te, a as ut, u as ct, l as pt, W as ft, P as ht } from "./wc-runtime-C6gaf4iX.js";
 import { openBlock as h, createElementBlock as g, mergeProps as p, createElementVNode as b, renderSlot as x, resolveComponent as N, Fragment as se, renderList as be, createCommentVNode as j, createVNode as D, resolveDirective as mt, createTextVNode as de, toDisplayString as M, normalizeClass as J, createBlock as ne, resolveDynamicComponent as Le, withCtx as U, Transition as vt, normalizeProps as gt, createSlots as yt, withDirectives as Pe, withModifiers as bt, defineComponent as It, ref as _, computed as Ot, onMounted as wt, onBeforeUnmount as St, unref as q, vShow as Ct } from "vue";
 import { Icon as he } from "@iconify/vue";
 import { on as xe, define as kt } from "@wippy-fe/proxy";
-import { s as Me } from "./index-B4Oms5dR.js";
-import { s as Lt } from "./index-oxBrmUiV.js";
+import { s as Me } from "./index-BDDI-UVm.js";
+import { s as Lt } from "./index-By5ijQWt.js";
 import { a as Z } from "./artifactPresentation-Dgf5Fs_k.js";
-import { s as ze, a as xt, l as zt, e as $t, b as Ft, A as Vt } from "./hostRoute-CHFKAd6h.js";
-import { u as Tt } from "./useHostRoute-BCkMq4pd.js";
+import { s as ze, a as xt, l as zt, e as $t, b as Ft, A as Vt } from "./hostRoute-uRovXTvG.js";
+import { u as Tt } from "./useHostRoute-Bxm2JrjL.js";
 import { u as At } from "./useSessionsApi-BQAm970o.js";
 import { s as Pt } from "./styles-BfuGB-97.js";
 var Ee = {
@@ -2983,7 +2983,7 @@ const Jn = {
 }, pi = /* @__PURE__ */ It({
   __name: "ArtifactPanel",
   setup(t) {
-    const e = At(), n = ut(), s = ct(), o = _([]), i = _(""), a = Tt(s, (r) => T(ze(r))), d = _(ze(a.initialPath)), c = _(!!d.value), u = _(""), l = _(""), f = _(!1), O = [], $ = /* @__PURE__ */ new Set();
+    const e = At(), n = ut(), s = ct(), o = _([]), i = _(""), a = Tt(s, ({ path: r }) => T(ze(r))), d = _(ze(a.initialPath)), c = _(!!d.value), u = _(""), l = _(""), f = _(!1), O = [], $ = /* @__PURE__ */ new Set();
     let w = null, C = 0, y = 0, k = "";
     const z = Ot(() => o.value.find((r) => Z(r) === i.value));
     async function V() {

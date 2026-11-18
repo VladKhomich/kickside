@@ -1,12 +1,15 @@
 <!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
-import { getLayoutManager, on } from '@wippy-fe/proxy'
+import { nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { config, getLayoutManager, on } from '@wippy-fe/proxy'
 import type { host as proxyHost } from '@wippy-fe/proxy'
 import { useHost, useLayoutBus } from '@wippy-fe/webcomponent-vue'
+import { bindChatDraftComposer } from '@widgets/chatDraftComposer'
+import { createChatDrafts } from './chatDrafts'
 import {
   ARTIFACT_PANEL_ID,
   CHAT_PANEL_ID,
+  MAIN_PANEL_ID,
   isBareSessions,
   isDrawerSlot,
   isPanelDrawerOpen,
@@ -24,6 +27,7 @@ import {
   slotFor,
 } from './hostRoute.ts'
 import type { HostRoute, LayoutEvent, LayoutLike } from './hostRoute.ts'
+import { closeStartedSession, exchangeStartToken } from './chatStart.ts'
 
 /**
  * Kickside's chat routing for the host `chat` panel (@HOST/chat-wrapper).
@@ -38,6 +42,17 @@ import type { HostRoute, LayoutEvent, LayoutLike } from './hostRoute.ts'
 
 /** Bus channel on which this coordinator tells the chat empty state whether a start is in flight. */
 const START_CHANNEL = 'kickside:chat-start'
+
+const CHAT_TAB_ID = 'chat-tab'
+const CHAT_TAB = {
+  kind: 'builtin',
+  id: '@HOST/panel-tab',
+  chrome: false,
+  anchor: { right: 0, top: '50%' },
+  position: { x: 0, y: 0 },
+  size: { width: 48, height: 80 },
+  props: { target: CHAT_PANEL_ID, mode: 'auto', label: 'Open chat' },
+} as const
 
 interface IntentContext {
   context: Record<string, unknown>
@@ -55,6 +70,7 @@ interface ChatIntent {
 /** A token start whose session has not been announced yet. */
 interface PendingStart {
   token: string
+  request: number
   /** Show the new session on /sessions/<id> instead of in the panel. */
   fullPage: boolean
   context?: IntentContext
@@ -63,9 +79,7 @@ interface PendingStart {
   /** The session the panel held before this start, put back if the start is cancelled. */
   previousSessionId: string
   /**
-   * The snapshot has shown this start's token. A cleared panel counts as the end
-   * of the start only after that: before it, the token's patch is still on its
-   * way, and the clear belongs to an earlier start.
+   * A layout clear cancels only a start whose request marker has arrived.
    */
   seen: boolean
 }
@@ -73,13 +87,22 @@ interface PendingStart {
 const host = useHost<typeof proxyHost>()
 const bus = useLayoutBus()
 const manager = host ? getLayoutManager(host) : null
+const drafts = createChatDrafts(() => config.auth?.token)
+const DRAFT_CHANNEL = 'kickside:chat-draft'
+const DRAWER_COMPOSER = '[data-wippy-panel-mount="chat"] .layout-chat-wrapper'
+let drawerRoot: HTMLElement | null = null
+let drawerObserver: MutationObserver | undefined
+let drawerDraft: ReturnType<typeof bindChatDraftComposer> | undefined
+
 const stops: Array<() => void> = []
 
-let hostPath = window.location.pathname
+const browserRoute = () => window.location.pathname + window.location.search + window.location.hash
+let hostPath = browserRoute()
 let route: HostRoute = parseRoute(hostPath)
 /** Layout name (not breakpoint name) the panel state was last applied to. */
 let activeLayout = 'default'
 let lastPropsKey = '|'
+let requestSequence = 0
 let lastChatDrawer = false
 let lastArtifactDrawer = false
 let lastSyncKey = ''
@@ -123,12 +146,12 @@ function readRoute(layout: LayoutLike | null): HostRoute {
 }
 
 function routeKey(value: HostRoute): string {
-  return `${value.path}${value.search}`
+  return `${value.path}${value.search}${value.hash}`
 }
 
 function propsKey(layout: LayoutLike | null): string {
   const props = panelProps(layout, CHAT_PANEL_ID)
-  return `${text(props.sessionId)}|${text(props.startToken)}`
+  return `${text(props.sessionId)}|${props.startRequest ?? ''}`
 }
 
 function patchChat(props: Record<string, unknown>) {
@@ -138,12 +161,11 @@ function patchChat(props: Record<string, unknown>) {
 
 /**
  * Record what the snapshot now shows of the pending start and of the latest
- * patch. A start's own patch carries no session, which tells it apart from an
- * earlier finished start that left the same token in the panel.
+ * patch. Only the non-secret request marker is written to the layout.
  */
 function noteSnapshot(layout: LayoutLike) {
   const props = panelProps(layout, CHAT_PANEL_ID)
-  if (pending && text(props.startToken) === pending.token && !text(props.sessionId)) pending.seen = true
+  if (pending && props.startRequest === pending.request && !text(props.sessionId)) pending.seen = true
   if (patchedSession !== null && text(props.sessionId) === patchedSession) patchedSession = null
 }
 
@@ -220,6 +242,10 @@ function restoreChatTabs() {
   removedTabs.clear()
 }
 
+function carryIn(sessionId: string, current: HostRoute) {
+  host?.navigate(`${sessionPath(sessionId)}${current.search}${current.hash}`, { replace: true })
+}
+
 function applyContext(context: IntentContext | undefined, sessionId: string) {
   if (!context || !isRecord(context.context)) return
   host?.setContext(context.context, sessionId, context.source)
@@ -239,17 +265,11 @@ function setPending(next: PendingStart | null) {
   if (changed) bus?.broadcast(START_CHANNEL, { pending: next !== null })
 }
 
-/**
- * Cancel the start in flight: forget it and abort the panel's token exchange
- * by clearing the token and putting back the session the panel held before.
- * (Cancels caused by a panel that was already cleared, or by a pick, only
- * forget it: the panel has already moved on.)
- */
 function cancelPending() {
   const start = pending
   if (!start) return
   setPending(null)
-  patchChat({ startToken: null, sessionId: start.previousSessionId || null })
+  patchChat({ startRequest: null, sessionId: start.previousSessionId || null })
 }
 
 function openSession(intent: ChatIntent, sessionId: string) {
@@ -261,10 +281,35 @@ function openSession(intent: ChatIntent, sessionId: string) {
     host?.navigate(sessionPath(sessionId))
     return
   }
-  // The patch below replaces the token and the session, which also cancels it.
   setPending(null)
-  patchChat({ sessionId, startToken: null })
+  patchChat({ sessionId, startRequest: null })
   reveal(layout)
+}
+
+async function finishStart(start: PendingStart) {
+  let sessionId: string
+  try {
+    sessionId = await exchangeStartToken(start.token)
+  } catch {
+    if (pending !== start) return
+    cancelPending()
+    host?.toast({ severity: 'error', summary: 'Could not start chat' })
+    return
+  }
+  if (pending !== start) {
+    closeStartedSession(sessionId)
+    return
+  }
+  setPending(null)
+  applyContext(start.context, sessionId)
+  if (start.fullPage) {
+    patchChat({ sessionId: start.previousSessionId || null, startRequest: null })
+    host?.navigate(sessionPath(sessionId))
+    return
+  }
+  patchChat({ sessionId, startRequest: null })
+  const current = readRoute(readLayout())
+  if (isBareSessions(current)) carryIn(sessionId, current)
 }
 
 function startChat(intent: ChatIntent, token: string) {
@@ -272,62 +317,65 @@ function startChat(intent: ChatIntent, token: string) {
   const current = readRoute(layout)
   const fullPage = isFullPage(intent, current)
   const section = pathSection(current.path)
-  // The same token again is the start the panel already runs, or is about to:
-  // a second patch would reset the panel and start another session. Only where
-  // the session goes changes.
-  const merged = pending !== null && pending.token === token
-  if (pending && merged) {
-    pending = { ...pending, fullPage, context: intent.context, section }
-  }
-  else {
-    // A start replaced by this one hands on the session it was going to restore;
-    // otherwise it is the session the panel shows, or is about to show.
-    const previousSessionId = pending
-      ? pending.previousSessionId
-      : patchedSession ?? text(panelProps(layout, CHAT_PANEL_ID).sessionId)
-    setPending({ token, fullPage, context: intent.context, section, previousSessionId, seen: false })
-  }
-  // A full-page start never shows the panel: its session opens on the page.
   if (fullPage && layout && isPanelOpen(layout, requireManager().activeBreakpoint, CHAT_PANEL_ID)) hide(layout)
-  if (!merged) patchChat({ startToken: token, sessionId: null })
+  const merged = pending?.token === token
+  if (merged && pending) {
+    Object.assign(pending, { fullPage, context: intent.context, section })
+  } else {
+    const previousSessionId = pending?.previousSessionId
+      ?? patchedSession ?? text(panelProps(layout, CHAT_PANEL_ID).sessionId)
+    const start: PendingStart = {
+      token, request: ++requestSequence, fullPage, context: intent.context, section, previousSessionId, seen: false,
+    }
+    setPending(start)
+    patchChat({ startRequest: start.request, sessionId: null })
+    void finishStart(start)
+  }
   if (!fullPage) reveal(layout)
 }
 
-/**
- * The chat panel announced a session: either a token start finished
- * (`{ sessionId }`, token kept) or the reader picked one in its selector
- * (`{ sessionId, startToken: null }`). The panel already shows it, so only a
- * start has anything left to do. The token the panel carries says which it was:
- *  - the pending start's token: that start finished;
- *  - no token: a pick, which supersedes the start;
- *  - another token: an older start finished while the pending start's token was
- *    still on its way to the panel (a patch applies in a later task), so the
- *    pending start keeps waiting.
- * A pick made before the start's patch landed is put in again, so that the patch
- * does not replace it.
- */
-function onPanelAnnounced(sessionId: string) {
-  const start = pending
-  if (!start) return
-  const token = text(panelProps(readLayout(), CHAT_PANEL_ID).startToken)
-  if (token && token !== start.token) return
-  setPending(null)
-  if (token !== start.token) {
-    if (!start.seen) patchChat({ sessionId, startToken: null })
-    return
+function drawerSessionId(): string {
+  return text(panelProps(readLayout(), CHAT_PANEL_ID).sessionId)
+}
+
+function syncDrawerDraft(layout: LayoutLike) {
+  const open = isPanelOpen(layout, requireManager().activeBreakpoint, CHAT_PANEL_ID)
+  const candidate = open ? document.querySelector<HTMLElement>(DRAWER_COMPOSER) : null
+  if (candidate !== drawerRoot) {
+    drawerDraft?.dispose()
+    drawerRoot = candidate
+    drawerDraft = candidate ? bindChatDraftComposer(candidate, drawerSessionId, drafts) : undefined
   }
-  applyContext(start.context, sessionId)
-  if (start.fullPage) {
-    host?.navigate(sessionPath(sessionId))
-    return
+  if (!open || candidate) {
+    drawerObserver?.disconnect()
+    drawerObserver = undefined
+  } else if (!drawerObserver) {
+    drawerObserver = new MutationObserver(() => {
+      const current = readLayout()
+      if (current) syncDrawerDraft(current)
+    })
+    drawerObserver.observe(document.body, { childList: true, subtree: true })
   }
-  // A drawer start that finishes while the reader sits on a blank /sessions
-  // takes the usual carry-in: the session moves inline.
-  const current = readRoute(readLayout())
-  if (isBareSessions(current)) host?.navigate(`${sessionPath(sessionId)}${current.search}${current.hash}`)
+  drawerDraft?.sync()
+}
+
+async function onDraft(event: LayoutEvent) {
+  if (event.sourcePanelId !== MAIN_PANEL_ID || !isRecord(event.payload)) return
+  const { kind, sessionId, requestId, draft } = event.payload
+  if (typeof sessionId !== 'string' || !sessionId || sessionIdFromPath(readRoute(readLayout()).path) !== sessionId) return
+  if (kind === 'write' && typeof draft === 'string') drafts.write(sessionId, draft)
+  if (kind === 'read' && typeof requestId === 'number') {
+    const value = await drafts.read(sessionId)
+    if (sessionIdFromPath(readRoute(readLayout()).path) === sessionId)
+      bus?.send(MAIN_PANEL_ID, DRAFT_CHANNEL, { requestId, draft: value })
+  }
 }
 
 function onLayoutEvent(event: LayoutEvent) {
+  if (event.channel === DRAFT_CHANNEL) {
+    void onDraft(event)
+    return
+  }
   if (event.channel !== '@HOST/intent' || !isRecord(event.payload)) return
   const intent = event.payload as ChatIntent
   const sessionId = text(intent.uuid)
@@ -335,8 +383,15 @@ function onLayoutEvent(event: LayoutEvent) {
   // The panel's own announcements first: they are not requests, and treating
   // one as a request would navigate to the page it is already showing.
   if (intent.intent === 'openSession' && sessionId) {
-    if (event.sourcePanelId === CHAT_PANEL_ID) onPanelAnnounced(sessionId)
-    else openSession(intent, sessionId)
+    if (event.sourcePanelId === CHAT_PANEL_ID) {
+      // The drawer selector supersedes an in-flight start, including a layout
+      // patch that has been queued but hasn't reached the panel.
+      if (pending) {
+        setPending(null)
+        patchChat({ sessionId, startRequest: null })
+      }
+      void nextTick(() => drawerDraft?.sync())
+    } else openSession(intent, sessionId)
     return
   }
   if (intent.intent === 'startChat' && token) startChat(intent, token)
@@ -360,17 +415,14 @@ function onNavigated(prev: HostRoute, next: HostRoute, layout: LayoutLike) {
     removeChatTabs(layout)
     // Bare /sessions is a blank chat; a session held in the panel moves inline.
     // A panel cleared by "New chat" holds none, so it is left blank.
-    if (held && isBareSessions(next))
-      host?.navigate(`${sessionPath(held)}${next.search}${next.hash}`)
+    if (held && isBareSessions(next)) carryIn(held, next)
   }
   else if (!isSessions && wasSessions) {
     const left = sessionIdFromPath(prev.path)
     if (left) {
-      // The patch pins the session left behind, so the panel cancels its token
-      // exchange, closes the late session and announces nothing. The start is
-      // over; what the reader does next decides what comes after it.
+      // The session left behind takes over; any late start result is closed.
       setPending(null)
-      patchChat({ sessionId: left, startToken: null })
+      patchChat({ sessionId: left, startRequest: null })
     }
     hide(layout)
     restoreChatTabs()
@@ -380,9 +432,8 @@ function onNavigated(prev: HostRoute, next: HostRoute, layout: LayoutLike) {
 function watchPanel(layout: LayoutLike) {
   const key = propsKey(layout)
   if (key !== lastPropsKey) {
-    // "New chat" clears both props, and so does the Host when a token exchange
-    // fails; a start still waiting must not revive them. A start whose token
-    // has not been seen yet is not the one cleared: its patch is still queued.
+    // "New chat" clears both fields. A start whose marker hasn't arrived
+    // still has its own patch queued behind that clear.
     if (key === '|' && pending?.seen) setPending(null)
     lastPropsKey = key
   }
@@ -390,7 +441,7 @@ function watchPanel(layout: LayoutLike) {
 }
 
 /**
- * What the sync reacts to: the route, the chat panel's session and token, and
+ * What the sync reacts to: the route, the chat panel's session and request marker, and
  * whether the chat or artifact drawer is open. A splitter drag changes the
  * layout many times without touching any of them.
  */
@@ -403,6 +454,7 @@ function sync() {
   const layout = readLayout()
   if (!layout) return
   noteSnapshot(layout)
+  syncDrawerDraft(layout)
   const key = syncKey(layout)
   if (key === lastSyncKey) return
   lastSyncKey = key
@@ -446,16 +498,19 @@ onMounted(() => {
   lastChatDrawer = chat
   lastArtifactDrawer = artifact && !chat
   lastSyncKey = syncKey(layout)
+  if (!layout.floating?.[CHAT_TAB_ID]) removedTabs.set(CHAT_TAB_ID, CHAT_TAB)
   if (isSessionsPath(route.path)) {
     hide(layout)
     removeChatTabs(layout)
+  } else {
+    restoreChatTabs()
   }
+  syncDrawerDraft(layout)
   stops.push(bus.subscribe(onLayoutEvent))
   stops.push(manager.on('change', sync))
   stops.push(manager.on('breakpoint', onBreakpoint))
-  // The host path alone, no query: an extra signal beside the layout changes.
   stops.push(on('@history', ({ path }) => {
-    hostPath = path
+    hostPath = path === window.location.pathname ? browserRoute() : path
     sync()
   }))
 })
@@ -463,6 +518,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stops.forEach(stop => stop())
   stops.length = 0
+  drawerObserver?.disconnect()
+  drawerDraft?.dispose()
   cancelPending()
   restoreChatTabs()
 })

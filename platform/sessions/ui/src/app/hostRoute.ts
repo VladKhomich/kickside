@@ -136,7 +136,7 @@ export function mainAppRoute(layout: LayoutLike | null | undefined): string | nu
 }
 
 /** The main panel shows the Kickside app page (whether or not it has reported a route). */
-function mainIsAppPage(layout: LayoutLike | null | undefined): boolean {
+export function mainIsAppPage(layout: LayoutLike | null | undefined): boolean {
   const main = layout?.panels?.[MAIN_PANEL_ID]
   return isRecord(main) && main.kind === 'page' && main.id === APP_PAGE_ID
 }

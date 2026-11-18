@@ -120,8 +120,8 @@ modules:
       version: 0.7.37
       hash: 10c09e1327244a67a8bb23aa0312da6b92012822f218426764e638125faa1fa9
     - name: wippy/facade
-      version: 0.6.52
-      hash: cf09d4e1245b77475431f87d6183a493dfb0c5ba8abe1ac88077f6c2c8d4fce8
+      version: 0.6.53
+      hash: 506bcd53d716afd3416923b487992dea3f1d26985fabecf3aa45f9c1fec8d356
     - name: wippy/llm
       version: 0.5.19
       hash: 1851a5dbb11031ef813cc6965530e489b1e9d96ec34c94154ae36942c9d2c59b

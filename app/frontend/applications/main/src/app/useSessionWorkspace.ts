@@ -63,7 +63,7 @@ export function useSessionWorkspace(deps: {
     broadcastArtifactSession('')
     // Blank the host chat drawer before leaving, so Sessions does not carry a
     // drawer session inline and "New chat" really starts empty.
-    host.layout.updatePanel(HOST_CHAT_PANEL, { props: { sessionId: null, startToken: null } })
+    host.layout.updatePanel(HOST_CHAT_PANEL, { props: { sessionId: null, startRequest: null } })
     chat.newChat()
     if (route.path !== '/sessions' || route.query.view) void router.push('/sessions')
   }

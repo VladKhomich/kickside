@@ -22,16 +22,14 @@ import { useSessionsApi } from './useSessionsApi.ts'
 const api = useSessionsApi()
 const bus = useLayoutBus()
 const groups = ref<ChatAgentGroup[]>([])
-const selected = ref<ChatAgent | null>(null)
+const selectedId = ref('')
 const loading = ref(true)
 const error = ref('')
 const open = ref(false)
 const query = ref('')
 /**
  * A start is in flight. Both controls stay locked until the chat coordinator
- * reports that no start is pending (it finished, was cancelled, or failed: the
- * host clears the panel's token when the token exchange fails, and the
- * coordinator reads that as the end of the start) or until this element is
+ * reports that the start finished, was cancelled, or failed, or this element is
  * removed, which the drawer does once a session exists.
  */
 const starting = ref(false)
@@ -40,6 +38,11 @@ const searchInput = ref<HTMLInputElement | null>(null)
 const trigger = ref<HTMLButtonElement | null>(null)
 let requestSequence = 0
 let stopBus: (() => void) | undefined
+
+const selected = computed(() => groups.value
+  .flatMap(group => group.agents)
+  .find(agent => agent.name === selectedId.value))
+const canStart = computed(() => !!selected.value && !loading.value && !error.value && !starting.value)
 
 const hasAgents = computed(() => groups.value.length > 0)
 
@@ -83,15 +86,16 @@ function closeMenu(returnFocus = false) {
 }
 
 function choose(agent: ChatAgent) {
-  selected.value = agent
+  selectedId.value = agent.name
   closeMenu(true)
 }
 
 function startChat() {
-  if (!selected.value || starting.value) return
+  const token = selected.value?.start_token
+  if (!canStart.value || !token) return
   starting.value = true
   closeMenu()
-  host.startChat(selected.value.start_token, { sidebar: true })
+  host.startChat(token, { sidebar: true })
 }
 
 function onLayoutEvent(event: LayoutEvent) {
@@ -186,7 +190,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="p-button p-button-primary"
-        :disabled="!selected || starting"
+        :disabled="!canStart"
         @click="startChat"
       >
         <Icon v-if="starting" icon="tabler:loader-2" class="spin" aria-hidden="true" />
