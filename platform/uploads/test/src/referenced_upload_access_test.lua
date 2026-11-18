@@ -11,6 +11,7 @@ local registry = require("registry")
 local http_client = require("http_client")
 local types = require("types")
 local upload_tokens = require("upload_tokens")
+local artifacts = require("artifacts")
 
 local function call_as(actor_id, target, upload_id, args)
     local actor = security.new_actor(actor_id, {security_groups = {"app:uploads_test"}})
@@ -138,6 +139,51 @@ return {run = test.run_cases(function()
             test.eq(response.body, "private bytes")
             test.eq(raw(writer).status_code, 404)
             test.eq(raw(owner).status_code, 200)
+        end)
+        for _, fixture in ipairs({
+            {name = "missing backing bytes", storage_id = "app:uploads", status = 404},
+            {name = "unavailable artifact storage", storage_id = "app.upload_errors:unreadable_storage", status = 503},
+        }) do
+            test.it("returns a public artifact response for " .. fixture.name, function()
+                register(owner, {}, types.component_id_for_owner(owner), types.IMPL)
+                local path = "private/" .. upload_id
+                local artifact = assert(artifacts.create_artifact({upload_id = upload_id, kind = "image",
+                    mime_type = "image/png", locator = {type = "image.region", storage_id = fixture.storage_id, storage_path = path}}))
+                local response = raw(owner, nil, upload_id, "/artifacts/" .. artifact.artifact_id .. "/raw")
+                test.eq(response.status_code, fixture.status, response.body)
+                test.is_nil(response.body:find(path, 1, true), response.body)
+                test.is_nil(response.body:find('"details"', 1, true), response.body)
+            end)
+        end
+        test.it("reports an artifact lookup failure without exposing the database diagnostic", function()
+            register(owner, {}, types.component_id_for_owner(owner), types.IMPL)
+            local db = assert(sql.get("app:db"))
+            local artifact_id = uuid.v4()
+            local path = "/artifacts/" .. artifact_id .. "/raw"
+            local missing = raw(owner, nil, upload_id, path)
+            test.eq(missing.status_code, 404, missing.body)
+            test.contains(missing.body, "Artifact not found")
+
+            assert(db:execute("ALTER TABLE kickside_upload_artifact_blobs RENAME TO unavailable_artifact_blobs"))
+            local ok, response = pcall(raw, owner, nil, upload_id, path)
+            assert(db:execute("ALTER TABLE unavailable_artifact_blobs RENAME TO kickside_upload_artifact_blobs"))
+            db:release()
+
+            test.is_true(ok, tostring(response))
+            test.eq(response.status_code, 500, response.body)
+            test.contains(response.body, "Failed to read artifact")
+            test.is_nil(response.body:find("kickside_upload_artifact_blobs", 1, true), response.body)
+        end)
+        test.it("returns a public tool error for an unreadable artifact reference", function()
+            register(owner, {}, types.component_id_for_owner(owner), types.IMPL)
+            local artifact = assert(artifacts.create_artifact({upload_id = upload_id, kind = "image",
+                mime_type = "image/png", locator = {type = "image.region", storage_id = "app.upload_errors:unreadable_storage",
+                    storage_path = "private/" .. upload_id}}))
+            local result, err = call_as(owner, "kickside.uploads.traits:view_files", upload_id,
+                {artifact_refs = {{upload_id = upload_id, artifact_id = artifact.artifact_id}}})
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.INTERNAL), tostring(err))
+            test.eq(err:message(), "Failed to read artifact")
         end)
         test.it("accepts any authorized readable reference alongside an unauthorized reference", function()
             legacy_reference(reader, {upload_id = upload_id})

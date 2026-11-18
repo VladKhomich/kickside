@@ -34,3 +34,4 @@ entries:
       provision: kickside.core.threads:provision
       types: kickside.uploads:types
       artifacts: kickside.uploads.persist:artifact_content_repo
+      artifact_parts: kickside.uploads.persist:artifact_parts_repo

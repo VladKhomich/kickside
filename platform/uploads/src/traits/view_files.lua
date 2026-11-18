@@ -5,6 +5,7 @@ local base64 = require("base64")
 local artifact_content_repo = require("artifact_content_repo")
 local trim = require("text_trim").trim
 local artifact_parts_repo = require("artifact_parts_repo")
+local log = require("logger"):named("kickside.uploads.traits.view_files")
 
 local DEFAULT_ARTIFACT_LIST_LIMIT = 20
 local MAX_ARTIFACT_LIST_LIMIT = 50
@@ -216,7 +217,9 @@ local function handle(args)
                             local artifact_id = tostring(artifact.artifact_id or "")
                             local content, content_err = artifact_content_repo.read_artifact_content(upload_id, artifact_id)
                             if content_err or type(content) ~= "string" then
-                                table.insert(results, { upload_id = upload_id, artifact_id = artifact_id, error = "Failed to read artifact: " .. tostring(content_err) })
+                                log:warn("Failed to read artifact", {upload_id = upload_id, artifact_id = artifact_id,
+                                    error = tostring(content_err)})
+                                table.insert(results, {upload_id = upload_id, artifact_id = artifact_id, error = "Failed to read artifact"})
                             else
                                 local content_type = artifact.mime_type or "application/octet-stream"
                                 local is_image = is_image_type(content_type)

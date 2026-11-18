@@ -10,9 +10,13 @@ entries:
       comment: FetchURL check-only, async upload, durable completion wait, and error handling.
     source: file://fetch_url_test.lua
     method: run
+    modules: [fs, uuid]
     imports:
       test: wippy.test:test
       handler: kickside.uploads.traits:fetch_url
+      artifacts: kickside.uploads.persist:artifact_content_repo
+      parts: kickside.uploads.persist:artifact_parts_repo
+      records: kickside.uploads.persist:upload_record_repo
 
   - name: upload_file_test
     kind: function.lua

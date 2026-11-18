@@ -18,6 +18,11 @@ local function typed(kind: any, message: string): any
     return errors.new({ message = message, kind = kind })
 end
 
+local function missing_artifact_reference(message: string): error
+    return errors.new({kind = errors.NOT_FOUND, message = message,
+        details = {code = "artifact_reference_not_found"}})
+end
+
 local function now()
     return time.now():utc():format_rfc3339()
 end
@@ -90,7 +95,7 @@ local function load_blob_by_id(db, blob_id)
         :limit(1)
 
     local rows, err = query:run_with(db):query()
-    if err then return nil, "failed to load artifact blob: " .. err end
+    if err then return nil, errors.wrap(err, "failed to load artifact blob") end
     if #rows == 0 then return nil, typed(errors.NOT_FOUND, "artifact blob not found") end
     local row = rows[1]
     local metadata, metadata_err = persisted_json.decode_table(row.metadata, "artifact.metadata", true)
@@ -126,8 +131,8 @@ local function load_artifact_by_id(db, artifact_id)
         :limit(1)
         :run_with(db)
         :query()
-    if err then return nil, "failed to load artifact: " .. err end
-    if #rows == 0 then return nil, typed(errors.NOT_FOUND, "artifact not found") end
+    if err then return nil, errors.wrap(err, "failed to load artifact") end
+    if #rows == 0 then return nil, missing_artifact_reference("artifact not found") end
     return artifact_content_repo.normalize_artifact_row(rows[1])
 end
 
@@ -519,7 +524,7 @@ function artifact_content_repo.get_artifact(upload_id, artifact_id)
     local artifact, artifact_err = load_artifact_by_id(db, artifact_id)
     db:release()
     if artifact_err then return nil, artifact_err end
-    if artifact.upload_id ~= upload_id then return nil, typed(errors.NOT_FOUND, "artifact not found for upload") end
+    if artifact.upload_id ~= upload_id then return nil, missing_artifact_reference("artifact not found for upload") end
     return artifact
 end
 
@@ -539,7 +544,8 @@ function artifact_content_repo.read_blob(blob_id)
         return nil, storage_err or "failed to get artifact storage"
     end
 
-    local content = storage:readfile(storage_path)
+    local content, read_err = storage:readfile(storage_path)
+    if read_err then return nil, errors.wrap(read_err, "failed to read artifact blob") end
     if type(content) ~= "string" then
         return nil, typed(errors.INVALID, "failed to read artifact blob")
     end
@@ -574,7 +580,6 @@ end
 function artifact_content_repo.read_artifact_content(upload_id, artifact_id)
     local artifact, artifact_err = artifact_content_repo.get_artifact(upload_id, artifact_id)
     if artifact_err then return nil, artifact_err end
-    if not artifact then return nil, typed(errors.NOT_FOUND, "artifact not found") end
 
     if artifact.blob_id and artifact.blob_id ~= "" then
         local content, content_err, blob = artifact_content_repo.read_blob(artifact.blob_id)
@@ -588,7 +593,8 @@ function artifact_content_repo.read_artifact_content(upload_id, artifact_id)
     if storage_err or not storage then
         return nil, storage_err or "failed to get artifact storage"
     end
-    local content = storage:readfile(location.storage_path)
+    local content, read_err = storage:readfile(location.storage_path)
+    if read_err then return nil, errors.wrap(read_err, "failed to read artifact bytes") end
     if type(content) ~= "string" then
         return nil, typed(errors.INVALID, "failed to read artifact bytes")
     end
