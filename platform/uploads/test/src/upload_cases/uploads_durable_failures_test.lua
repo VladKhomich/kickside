@@ -929,8 +929,9 @@ local function define_tests()
         end
 
         for _, checkpoint in ipairs({
-            { name = "completed with an intent and a delivered callback", intent = true, delivered = true },
+            { name = "completed with an intent and a pruned callback", intent = true, delivered = true },
             { name = "completed without an intent" },
+            { name = "completed without an intent and a dead job", dead = true },
             { name = "failed with an intent", intent = true, failed = true },
             { name = "failed without an intent and a dead job", failed = true, dead = true },
         }) do
@@ -964,13 +965,24 @@ local function define_tests()
                 end
                 local function deliver_callback(callback_id: string)
                     local callback = admit_job(db, callback_id, 1)
-                    local _, delivery_err = worker_dispatch.execute_job(db, dbtype, callback)
+                    local run = assert(jobs_lifecycle.start_job_run(db, dbtype, callback, "upload-callback", 1))
+                    local output, delivery_err = worker_dispatch.execute_job(db, dbtype, callback)
                     test.is_nil(delivery_err, tostring(delivery_err))
                     test.is_nil(jobs_lifecycle.complete_job(db, callback, dbtype, {}))
+                    test.is_nil(jobs_lifecycle.finalize_job_run(db, dbtype, run, "completed", output, output, nil))
+                    return run.id
                 end
                 if checkpoint.delivered then
                     assert(pipeline_lib.invoke_upload_token(upload, true, nil))
-                    deliver_callback(callbacks()[1].id)
+                    local callback_id = callbacks()[1].id
+                    local callback_run_id = deliver_callback(callback_id)
+                    test.eq(#deliveries(), 1)
+                    local expired_at = jobs_lifecycle.format_time(dbtype, time.now():add(-31 * 24 * 60 * 60 * time.SECOND))
+                    assert(db:execute("UPDATE kickside_job SET finished_at=$1 WHERE id=$2", {expired_at, callback_id}))
+                    assert(db:execute("UPDATE kickside_job_run SET finished_at=$1 WHERE id=$2", {expired_at, callback_run_id}))
+                    assert(jobs_retention.sweep(db, dbtype))
+                    test.eq(#callbacks(), 0, "retention prunes the finished callback job")
+                    test.eq(#assert(db:query("SELECT id FROM kickside_job_run WHERE id=$1", {callback_run_id})), 0)
                     test.eq(#deliveries(), 1)
                 end
 
@@ -1005,8 +1017,13 @@ local function define_tests()
                 local published = events()
                 test.eq(#published, 1)
                 test.eq(published[1].external_version, job.id)
+                test.eq(assert(upload_query_repo.get(id)).storage_state, checkpoint.failed and "failed" or "completed")
+                if not checkpoint.failed then
+                    test.eq(#assert(db:query("SELECT id FROM kickside_event WHERE external_id=$1 AND type=$2",
+                        {id, uploads_events.TYPE.FAILED})), 0)
+                end
                 local callback_rows = callbacks()
-                test.eq(#callback_rows, 1)
+                test.eq(#callback_rows, checkpoint.delivered and 0 or 1, "resume schedules only undelivered callbacks")
                 if not checkpoint.delivered then deliver_callback(callback_rows[1].id) end
                 local delivered = deliveries()
                 test.eq(#delivered, 1)

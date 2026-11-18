@@ -179,9 +179,9 @@ local function main(): (any?, error?)
                     pending[#pending + 1] = type(value) == "table" and type(value.kind) == "string"
                         and value or { kind = "process_event" }
                 end
-                next_pass, pass_err = runner.on_wakes(db :: sql.DB, pid, pending, deadline_ms)
+                next_pass, pass_err = runner.on_wakes(db :: sql.DB, pid, pending)
             else
-                next_pass, pass_err = runner.on_wake(db :: sql.DB, pid, change, deadline_ms)
+                next_pass, pass_err = runner.on_wake(db :: sql.DB, pid, change)
             end
         end
         if pass_err then

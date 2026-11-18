@@ -56,7 +56,7 @@ function M.select(cases: table): table
     return {channel = M.process_events,
         value = {kind = M.stage == "wake" and M.selects == 1 and "wake" or "cancel"}, ok = true}
 end
-function M.wake(db: any, pid: string, change: table, _previous_deadline: integer?): (any, error?)
+function M.wake(db: any, pid: string, change: table): (any, error?)
     M.wakes = M.wakes + 1
     if M.responses.wake then return M.responses.wake.value, nil end
     return {}, nil

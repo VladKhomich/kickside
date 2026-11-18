@@ -102,6 +102,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.uploads.migrations:05_scope_archive_deduplication
         path: .meta.target_db
+      - entry: kickside.uploads.migrations:06_callback_deliveries
+        path: .meta.target_db
 
   - name: storage_id
     kind: ns.requirement

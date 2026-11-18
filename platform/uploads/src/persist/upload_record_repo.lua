@@ -324,7 +324,7 @@ end
 -- Only the same job can resume a terminal checkpoint written before publication.
 -- Dead outcomes require the same intent snapshot and dead job.
 function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: string, job_id: string,
-        failed_processing: table?): (boolean?, any?)
+        dead_processing: table?): (table?, any?)
     if not uuid or uuid == "" then return nil, typed(errors.INVALID, "Upload ID is required") end
     if storage_state ~= "completed" and storage_state ~= "failed" then
         return nil, typed(errors.INVALID, "Upload outcome must be completed or failed")
@@ -335,23 +335,51 @@ function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: s
         :where("uuid = ?", uuid)
         :where("(storage_state = 'uploaded' OR (storage_state = ? AND "
             .. upload_query_repo.processing_job_owner_sql() .. "))", storage_state, job_id, job_id)
-    if failed_processing ~= nil then
-        if failed_processing.processing_intent_state == nil then
+    if dead_processing ~= nil then
+        if dead_processing.processing_intent_state == nil then
             query = query:where("processing_intent_state IS NULL")
         else
-            query = query:where("processing_intent_state = ?", failed_processing.processing_intent_state)
+            query = query:where("processing_intent_state = ?", dead_processing.processing_intent_state)
         end
-        if failed_processing.processing_job_id == nil then
+        if dead_processing.processing_job_id == nil then
             query = query:where("processing_job_id IS NULL")
         else
-            query = query:where("processing_job_id = ?", failed_processing.processing_job_id)
+            query = query:where("processing_job_id = ?", dead_processing.processing_job_id)
         end
         query = query:where("EXISTS (SELECT 1 FROM kickside_job j WHERE j.id=? AND j.status='dead')",
             job_id)
     end
-    local result, exec_err = query:run_with(tx):exec()
+    local statement, params, build_err = query:placeholder_format(sql.builder.dollar):to_sql()
+    if build_err then return nil, build_err end
+    local rows, exec_err = tx:query(statement .. " RETURNING callback_deliveries", params)
     if exec_err then return nil, typed(errors.UNAVAILABLE, "Failed to settle upload: " .. tostring(exec_err)) end
-    return result.rows_affected > 0, nil
+    if #rows == 0 then return nil, nil end
+    local deliveries, decode_err = persisted_json.decode_table(rows[1].callback_deliveries,
+        "kickside_uploads.callback_deliveries", true)
+    if decode_err then return nil, decode_err end
+    return deliveries or {}, nil
+end
+
+-- Record delivery against the same terminal upload checkpoint read by the callback.
+function upload_record_repo.record_callback_delivery(upload: any, digest: string): any?
+    local db, db_err = resources.get_db()
+    if db_err then return db_err end
+    local dbtype, type_err = db:type()
+    if type_err then db:release(); return type_err end
+    local delivery = tostring(dbtype) == sql.type.POSTGRES
+        and sql.builder.expr("(COALESCE(callback_deliveries, '{}')::jsonb || jsonb_build_object(CAST(? AS text), true))::text", digest)
+        or sql.builder.expr("json_set(COALESCE(callback_deliveries, '{}'), ?, json('true'))", "$." .. digest)
+    local query = sql.builder.update("kickside_uploads"):set("callback_deliveries", delivery)
+        :where("uuid = ? AND storage_state = ?", upload.uuid, upload.storage_state)
+    if upload.processing_job_id == nil then
+        query = query:where("processing_job_id IS NULL")
+    else
+        query = query:where("processing_job_id = ?", upload.processing_job_id)
+    end
+    local _, write_err = query:run_with(db):exec()
+    db:release()
+    if write_err then return typed(errors.UNAVAILABLE, "Failed to record upload callback delivery: " .. tostring(write_err)) end
+    return nil
 end
 
 -- Return a failed upload to the uploaded state so its processing runs again.
@@ -371,6 +399,7 @@ function upload_record_repo.mark_failed_for_retry(uuid, processing_max_execution
     local result, exec_err = sql.builder.update("kickside_uploads")
         :set("storage_state", "uploaded")
         :set("processing_intent_state", "pending")
+        :set("callback_deliveries", sql.as.null())
         :set("processing_max_execution_ms", processing_max_execution_ms)
         :set("updated_at", now_rfc3339())
         :where("uuid = ?", uuid)
