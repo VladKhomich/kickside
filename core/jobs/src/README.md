@@ -67,6 +67,14 @@ pool delays subtract runtime time from the earliest stored deadline. Database
 host time and transaction-start time do not determine eligibility. SQLite keeps
 microsecond timestamp comparisons, including the worker freshness boundary.
 
+## History retention
+
+`retention.jobs` and `retention.job_runs` set the default windows.
+`retention.by_type` can override both windows for up to 64 job types.
+The worker prunes each type's expired runs before its jobs and keeps any job
+that still owns run history. Each sweep bounds the rows and types it examines
+and resumes through the existing retention timer.
+
 ## Dependency interface
 
 The host must supply `target_db`; it is injected into both the jobs migration and the

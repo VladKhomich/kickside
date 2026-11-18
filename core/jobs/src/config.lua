@@ -74,7 +74,7 @@ local function duration_ms(value: any, path: string): (integer?, error?)
     return ms :: integer, nil
 end
 
--- Each override adds one bounded pass per retained table to every sweep.
+-- Bound the size of the declared override map.
 M.MAX_RETENTION_TYPES = 64
 
 type RetentionWindow = {

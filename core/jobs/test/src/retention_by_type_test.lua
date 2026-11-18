@@ -22,7 +22,7 @@ local function days_ago(days: integer): string
     return time.now():add(-days * DAY_MS * time.MILLISECOND):format(time.RFC3339)
 end
 
-local function seed(db: any, job_type: string, total: integer, finished: string, runs: boolean): string
+local function seed(db: any, job_type: string, total: integer, finished: string, runs: boolean, distinct_types: boolean?): string
     local owner = uuid.v7()
     local dbtype = tostring(db:type())
     local numbers = dbtype == sql.type.POSTGRES
@@ -31,9 +31,10 @@ local function seed(db: any, job_type: string, total: integer, finished: string,
             .. tostring(total) .. ") SELECT n FROM seq"
     local id = dbtype == sql.type.POSTGRES and "md5($1::text || n::text)::uuid" or "lower(hex(randomblob(16)))"
     local stamp = dbtype == sql.type.POSTGRES and "$3::timestamptz" or "$3"
+    local type_expr = distinct_types and "$2 || CAST(n AS TEXT)" or "$2"
     required(db:execute([[INSERT INTO kickside_job
         (id,owner_kind,owner_id,job_type,status,job_identity,finished_at)
-        SELECT ]] .. id .. ",'test',$1,$2,'done',CAST(n AS TEXT)," .. stamp
+        SELECT ]] .. id .. ",'test',$1," .. type_expr .. ",'done',CAST(n AS TEXT)," .. stamp
         .. " FROM (" .. numbers .. ") numbered", {owner, job_type, finished}))
     if runs then
         required(db:execute([[INSERT INTO kickside_job_run
@@ -90,6 +91,48 @@ end
 
 local function define_tests()
     test.describe("retention windows per job type", function()
+        test.it("bounds type discovery even when most types have no expired rows", function()
+            with_policy(function(policy)
+                policy.retention_batch = 10
+                policy.retention_jobs_ms, policy.retention_job_runs_ms = 30 * DAY_MS, 30 * DAY_MS
+                policy.retention_by_type = {["z.expired"] = {jobs_ms = DAY_MS, job_runs_ms = DAY_MS}}
+            end, function(db, policy)
+                local retained = seed(db, "a.retained.", 1024, days_ago(0), true, true)
+                local expired = seed(db, "z.expired", 1, days_ago(5), true)
+                local run_only = seed(db, "z.running", 1, days_ago(40), true)
+                required(db:execute("UPDATE kickside_job SET status='running',finished_at=NULL WHERE owner_id=$1", {run_only}))
+                local discovered, selections = 0, 0
+                local probe = {
+                    type = function() return db:type() end,
+                    begin = function() return db:begin() end,
+                    execute = function(_, statement, params) return db:execute(statement, params) end,
+                    query = function(_, statement, params)
+                        local rows, err = db:query(statement, params)
+                        if string.find(statement, "WITH RECURSIVE types", 1, true) == 1 then
+                            discovered = discovered + #required(rows, err)
+                        elseif string.find(statement, "SELECT id,", 1, true) == 1
+                            and string.find(statement, "job_type = ", 1, true) then
+                            selections = selections + 1
+                        end
+                        return rows, err
+                    end,
+                }
+                local stats = required(retention.sweep(probe, tostring(db:type())))
+                test.is_true(discovered <= policy.retention_batch + 1 and selections <= policy.retention_batch * 2,
+                    "one sweep materialized " .. tostring(discovered) .. " types and selected across "
+                        .. tostring(selections) .. " type ranges")
+                test.not_nil(stats.job_cursor, "the next batch of stored types must remain reachable")
+                local totals = drain(db, policy)
+                test.eq(totals.jobs, 1)
+                test.eq(totals.job_runs, 2)
+                test.eq(remaining(db, "kickside_job", retained), 1024)
+                test.eq(remaining(db, "kickside_job_run", retained), 1024)
+                test.eq(remaining(db, "kickside_job", expired), 0)
+                test.eq(remaining(db, "kickside_job", run_only), 1)
+                test.eq(remaining(db, "kickside_job_run", run_only), 0)
+            end)
+        end)
+
         test.it("purges an overridden type by its shorter window and keeps other types", function()
             with_policy(function(policy)
                 policy.retention_jobs_ms, policy.retention_job_runs_ms = 30 * DAY_MS, 30 * DAY_MS

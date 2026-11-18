@@ -274,24 +274,33 @@ local function before(dbtype: string, duration_ms: integer): string
     return clock.format(time.now():add(-duration_ms * time.MILLISECOND), dbtype)
 end
 
--- The job types with settled rows, read by one index seek per type, so the
--- read is independent of how many rows each type retains.
-local function settled_types(db: any, dbtype: string, runs: boolean, first_type: string?): ({ string }?, error?)
-    local table_name = runs and "kickside_job_run" or "kickside_job"
-    local source = table_name
+-- Use a bounded, ordered merge of the heads of the two type-leading indexes.
+-- A running job may have settled runs even when its type has no settled jobs.
+local function settled_types(db: any, dbtype: string, first_type: string?, limit: integer): ({ string }?, error?)
+    local job_source = "kickside_job"
+    local run_source = "kickside_job_run"
     if dbtype == sql.type.SQLITE then
-        source = source .. " INDEXED BY " .. (runs and "idx_job_run_type_retention" or "idx_job_type_retention")
+        job_source = job_source .. " INDEXED BY idx_job_type_retention"
+        run_source = run_source .. " INDEXED BY idx_job_run_type_retention"
     end
-    local settled = (runs and run_status.terminal_predicate() or "status IN ('done','dead','cancelled')")
-        .. " AND finished_at IS NOT NULL"
-    local from_type = first_type and " AND job_type >= $1" or ""
-    local rows, err = db:query("WITH RECURSIVE types(job_type) AS ("
-        .. "SELECT (SELECT MIN(job_type) FROM " .. source .. " WHERE " .. settled .. from_type .. ")"
-        .. " UNION ALL SELECT (SELECT MIN(job_type) FROM " .. source .. " WHERE " .. settled
-        .. " AND job_type > types.job_type) FROM types WHERE types.job_type IS NOT NULL"
-        .. ") SELECT job_type FROM types WHERE job_type IS NOT NULL", {first_type})
+    local function first_in_either(qualifier: string): string
+        return "(SELECT MIN(head) FROM ("
+            .. "SELECT MIN(job_type) AS head FROM " .. job_source
+            .. " WHERE status IN ('done','dead','cancelled') AND finished_at IS NOT NULL" .. qualifier
+            .. " UNION ALL SELECT MIN(job_type) FROM " .. run_source
+            .. " WHERE " .. run_status.terminal_predicate() .. " AND finished_at IS NOT NULL" .. qualifier
+            .. ") heads)"
+    end
+    local start = first_type and " AND job_type >= $1" or ""
+    local limit_arg = first_type and "$2" or "$1"
+    local params = first_type and {first_type, limit} or {limit}
+    local rows, err = db:query("WITH RECURSIVE types(job_type,step) AS ("
+        .. "SELECT " .. first_in_either(start) .. ",1 UNION ALL SELECT "
+        .. first_in_either(" AND job_type > types.job_type")
+        .. ",step+1 FROM types WHERE job_type IS NOT NULL AND step < " .. limit_arg
+        .. ") SELECT job_type FROM types WHERE job_type IS NOT NULL ORDER BY step", params)
     if err then return nil, errors.wrap(err, "job prune types") end
-    if type(rows) ~= "table" then return nil, response_error("types.rows") end
+    if type(rows) ~= "table" or #rows > limit then return nil, response_error("types.rows") end
     local types: { string } = {}
     for _, row in ipairs(rows) do
         if type(row.job_type) ~= "string" or row.job_type == "" then return nil, response_error("types.job_type") end
@@ -300,40 +309,44 @@ local function settled_types(db: any, dbtype: string, runs: boolean, first_type:
     return types, nil
 end
 
--- Each job type prunes its own expiration range by its override windows, or
--- by the global windows without one, so a type retained longer than the
--- global window never lies in another type's range. Blocked jobs consume the
--- same candidate budget as deleted jobs and advance the same cursor.
-local function prune_history(db: any, dbtype: string, policy: any, runs: boolean,
-        cursor: table?): (integer?, error?, table?)
-    local global = { jobs_ms = policy.retention_jobs_ms, job_runs_ms = policy.retention_job_runs_ms }
-    local batch: integer = policy.retention_batch
-    if not next(policy.retention_by_type) then
-        local window = runs and global.job_runs_ms or math.max(global.jobs_ms, global.job_runs_ms)
-        local count, err, next_cursor = prune_owned(db, nil, before(dbtype, window), runs, batch, true, cursor)
-        return count, err, next_cursor
-    end
-    local first_type = cursor and cursor.job_type
-    local types, types_err = settled_types(db, dbtype, runs, first_type)
-    if types_err then return nil, types_err end
-    local total: integer = 0
-    local remaining = batch
-    for _, job_type in ipairs(types :: { string }) do
+-- Jobs and their runs share a type. Finish the run pass for a type before
+-- deleting its jobs. A cursor names either the next type or a partially
+-- visited job page. The row budgets and type-page budget each bound one sweep.
+local function prune_by_type(db: any, dbtype: string, policy: any, cursor: table?): (integer?, integer?, table?, error?)
+    local batch = policy.retention_batch :: integer
+    local type_page = math.min(batch, 64)
+    local types, types_err = settled_types(db, dbtype, cursor and cursor.job_type, type_page + 1)
+    if types_err or not types then return nil, nil, nil, types_err end
+
+    local global = {jobs_ms = policy.retention_jobs_ms, job_runs_ms = policy.retention_job_runs_ms}
+    local jobs, runs = 0, 0
+    local jobs_budget, runs_budget = batch, batch
+    for index = 1, math.min(#types, type_page) do
+        local job_type = types[index]
         local window = policy.retention_by_type[job_type] or global
-        local duration = runs and window.job_runs_ms or math.max(window.jobs_ms, window.job_runs_ms)
-        local after = job_type == first_type and cursor or nil
-        local count, err, next_cursor, selected = prune_owned(db, nil, before(dbtype, duration),
-            runs, remaining, true, after, job_type)
-        if err then return nil, err end
-        total = total + (count :: integer)
+        local after = cursor and cursor.job_type == job_type and cursor.key ~= nil and cursor or nil
+        if not after then
+            local count, err, _, selected = prune_owned(db, nil, before(dbtype, window.job_runs_ms),
+                true, runs_budget, true, nil, job_type)
+            if err then return nil, nil, nil, err end
+            runs = runs + (count :: integer)
+            runs_budget = runs_budget - (selected or 0)
+            if runs_budget == 0 then return jobs, runs, {job_type = job_type}, nil end
+        end
+
+        local cutoff = before(dbtype, math.max(window.jobs_ms, window.job_runs_ms))
+        local count, err, next_cursor, selected = prune_owned(db, nil, cutoff,
+            false, jobs_budget, true, after, job_type)
+        if err then return nil, nil, nil, err end
+        jobs = jobs + (count :: integer)
         if next_cursor then
             next_cursor.job_type = job_type
-            return total, nil, next_cursor
+            return jobs, runs, next_cursor, nil
         end
-        remaining = remaining - (selected or 0)
-        if remaining == 0 then break end
+        jobs_budget = jobs_budget - (selected or 0)
     end
-    return total, nil
+    local next_type = types[type_page + 1]
+    return jobs, runs, next_type and {job_type = next_type} or nil, nil
 end
 
 local function prune_thread_cleanup_receipts(db: any, cutoff: string, limit: integer,
@@ -409,24 +422,34 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
     local per_type = next((policy :: any).retention_by_type) ~= nil
     if cursor and per_type ~= (cursor.job_type ~= nil) then cursor = nil end
     local runs: integer? = 0
-    if not cursor then
-        local runs_err: error?
-        runs, runs_err = prune_history(db, dbtype, policy, true)
-        if runs_err then return nil, runs_err end
-    end
     local jobs: integer? = 0
     local job_cursor: table? = nil
-    if runs < batch then
-        local jobs_err: error?
-        jobs, jobs_err, job_cursor = prune_history(db, dbtype, policy, false, cursor)
-        if jobs_err then return nil, jobs_err end
-    end
-    -- Keep run deletion between complete job rounds: unblocking an earlier
-    -- job cannot restart a round that still has later candidates to examine.
-    if cursor and not job_cursor then
-        local runs_err: error?
-        runs, runs_err = prune_history(db, dbtype, policy, true)
-        if runs_err then return nil, runs_err end
+    if per_type then
+        local history_err: error?
+        jobs, runs, job_cursor, history_err = prune_by_type(db, dbtype, policy, cursor)
+        if history_err then return nil, history_err end
+    else
+        local run_cutoff = before(dbtype, (policy :: any).retention_job_runs_ms)
+        if not cursor then
+            local runs_err: error?
+            runs, runs_err = M.prune_runs(db, nil, run_cutoff, batch, true)
+            if runs_err then return nil, runs_err end
+        end
+        if runs < batch then
+            -- A job stays retained while either window protects its history.
+            local job_candidate_cutoff = before(dbtype, math.max((policy :: any).retention_jobs_ms,
+                (policy :: any).retention_job_runs_ms))
+            local jobs_err: error?
+            jobs, jobs_err, job_cursor = M.prune_jobs(db, nil, job_candidate_cutoff, batch, true, cursor)
+            if jobs_err then return nil, jobs_err end
+        end
+        -- Keep run deletion between complete job rounds: unblocking an
+        -- earlier job cannot restart a round with candidates still ahead.
+        if cursor and not job_cursor then
+            local runs_err: error?
+            runs, runs_err = M.prune_runs(db, nil, run_cutoff, batch, true)
+            if runs_err then return nil, runs_err end
+        end
     end
     local workers, workers_err = M.prune_workers(db, liveness_cutoff, batch)
     if workers_err then return nil, workers_err end
