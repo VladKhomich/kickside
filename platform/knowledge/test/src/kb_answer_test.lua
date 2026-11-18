@@ -291,8 +291,13 @@ local function define_tests()
         test.it("does not invoke generation when Search analysis is off and Fast is unassigned", function()
             local models = require("models_repo")
             local fixture_model = "app.models:gpt-4.1-mini"
-            local _, disable_err = models.upsert_card({ name = fixture_model, enabled = false })
+            local disabled, disable_err = models.upsert_card({ name = fixture_model, enabled = false })
             test.is_nil(disable_err, tostring(disable_err))
+            test.eq(disabled.enabled, false)
+            local resolver = assert(assert(require("contract").get("wippy.llm:model_resolver")):open())
+            local card, resolve_err = resolver:resolve({ model = "class:fast" })
+            test.is_nil(card, card and card.name)
+            test.is_true(errors.is(resolve_err, errors.NOT_FOUND), tostring(resolve_err))
             local prev_search = kb_answer._kb_search
             local prev_funcs = kb_answer._funcs
             local prev_llm = kb_answer._llm

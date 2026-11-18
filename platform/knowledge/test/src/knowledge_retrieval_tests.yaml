@@ -18,7 +18,7 @@ entries:
     meta: { type: test, suite: knowledge }
     source: file://kb_answer_test.lua
     method: run
-    modules: [funcs, security]
+    modules: [contract, funcs, security]
     imports:
       test: wippy.test:test
       kb_answer: kickside.knowledge.retrieval:kb_answer
