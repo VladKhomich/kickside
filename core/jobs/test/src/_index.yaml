@@ -329,6 +329,8 @@ entries:
     modules: [sql, uuid, process, registry, logger, time, channel, events]
     imports:
       worker_pool: kickside.core.jobs.service:worker_pool
+      config: kickside.core.jobs:config
+      runtime_policy: kickside.core.jobs.policy:runtime
 
   - name: awaited_job_probe
     kind: function.lua
@@ -877,6 +879,7 @@ entries:
       - registry
       - events
       - logger
+      - system
     imports:
       test: wippy.test:test
       job_types: kickside.core.jobs:types

@@ -5,7 +5,11 @@
 local sql = require("sql")
 local uuid = require("uuid")
 local registry = require("registry")
+local process = require("process")
+local channel = require("channel")
 local worker_pool = require("worker_pool")
+local cfg = require("config")
+local runtime_policy = require("runtime_policy")
 
 local function run(handover: any?): (any?, error?)
     local db, db_err = sql.get("app:db")
@@ -16,7 +20,20 @@ local function run(handover: any?): (any?, error?)
         :run_with(db):exec()
     db:release()
     if err then error("service probe PID insert failed: " .. tostring(err)) end
-    return worker_pool.main(handover)
+    local gate = process.listen("jobs.service.probe.block")
+    return worker_pool.new({
+        policy = cfg.policy,
+        settings = runtime_policy,
+        sql_get = function()
+            local selected = channel.select({ gate:case_receive(), default = true })
+            if selected.channel == gate then
+                local request = selected.value
+                assert(process.send(request.observer, request.topic, true))
+                channel.new(0):receive()
+            end
+            return sql.get(cfg.db_id())
+        end,
+    }).main(handover)
 end
 
 return { run = run }

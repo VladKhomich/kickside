@@ -24,6 +24,21 @@ drain of an in-flight execution is bounded by that execution's own declared
 `proc.max_execution`); past it the ordinary timeout termination and retry policy
 apply. An upgrade never terminates or re-runs an execution.
 
+The pool has five seconds for shutdown coordination, including dispatch,
+assignment release and cleanup waits in the database or runtime. A service
+stop or replacement closes admission and lets each running execution settle
+under its own execution ceiling. Explicit process cancellation also asks
+each slot to cancel through its existing termination fence. If coordination
+exceeds the deadline, the pool exits with an error. Shutdown cleanup can
+finish separately, reusing confirmed slot exits and the original claim and
+run-owner fences to refund assignments that never started.
+
+Before a hot upgrade or rollback, the pool handles lifecycle events already
+taken from its mailbox. The runtime carries later events to the replacement
+at the same PID. If a rollback removes the shutdown cleanup process before
+a concurrent stop can hand off an assignment, the existing lease recovery
+handles any release still pending when the root exits.
+
 The pool reads its next pending and lease deadlines in one query. Each branch
 seeks the first timestamp after the dispatch snapshot through the existing
 deadline index and stops after one row. SQLite explicitly selects the partial
