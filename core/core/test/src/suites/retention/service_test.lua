@@ -331,8 +331,14 @@ local function define_tests()
                 tostring(_db:type()))
             test.is_nil(row_deadline_err)
             local expected = earlier_deadline(baseline, row_deadline :: integer)
-            local awakened, wake_err = runner.on_wake(_db, "retention-policy-test", { kind = "thread_policy_changed" })
+            local traversal = {}
+            local awakened, wake_err = runner.on_wake(_db, "retention-policy-test",
+                { kind = "thread_policy_changed" }, traversal)
             test.is_nil(wake_err)
+            while traversal.after_thread_id do
+                awakened, wake_err = runner.on_deadline(_db, "retention-policy-test", traversal)
+                test.is_nil(wake_err)
+            end
             test.eq((awakened :: table).deadline_ms, expected,
                 "a committed thread policy change must replace the previous deadline")
             _db:release()
