@@ -235,8 +235,9 @@ The editable policy paths are Settings definitions in namespace
 `retry.max_attempts` (1–1000000), `retry.retry_after_ms` (1–86400000),
 `retry.max_delay_ms` (1000–86400000), and `proc.max_execution` (default **10m**).
 
-Precedence is administrator override, then the host assignment in
-`kickside.core.jobs:policy` meta, then the shipped default in its `defaults`.
+Precedence is administrator override, then the host assignment, then the
+shipped default. The complete host policy stays in `kickside.core.jobs:policy`
+meta so active workers can read it while a new module version is applied.
 Settings stores only overrides; Jobs reads the keys `get_namespace` reports as
 `overridden`, so a value without an override follows the host configuration
 rather than the Settings default. Each override is validated by
