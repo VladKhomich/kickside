@@ -1,303 +1,320 @@
-import { u as At, a as Dt, W as Rt } from "./wc-runtime-C6gaf4iX.js";
-import { defineComponent as Ot, onMounted as Tt, onBeforeUnmount as qt, openBlock as Et, createElementBlock as xt, nextTick as Bt } from "vue";
-import { getLayoutManager as Lt, on as Mt, config as Nt, define as $t } from "@wippy-fe/proxy";
-import { p as ot, f as at, A as G, C as r, g as E, l as Ft, d as Ht, h as x, j as rt, k as it, n as ct, i as B, o as U, M as ut, s as V, c as Q, q as lt, r as ft } from "./hostRoute-uRovXTvG.js";
-import { e as Kt, c as jt } from "./chatStart-Bxe6JK-R.js";
-function Wt(g, S, o) {
-  let a = null, i = "", u = "", p = 0;
-  function d() {
-    !a || !i || i !== S() || u === a.value || (u = a.value, p++, o.write(i, u));
+import { u as Tt, a as Et, W as Bt } from "./wc-runtime-C6gaf4iX.js";
+import { defineComponent as Lt, onMounted as Mt, onBeforeUnmount as Nt, openBlock as xt, createElementBlock as $t, nextTick as Ft } from "vue";
+import { getLayoutManager as Ht, on as Kt, config as jt, define as Wt } from "@wippy-fe/proxy";
+import { p as ct, f as ut, A as V, C as a, g as B, l as zt, d as Jt, h as L, j as lt, k as ft, n as pt, i as M, o as Q, M as Y, m as dt, c as Z, q as ht, r as tt, s as yt } from "./hostRoute-uRovXTvG.js";
+import { e as Xt, c as Gt } from "./chatStart-Bxe6JK-R.js";
+function Ut(m, I, o) {
+  let r = null, i = "", u = "", d = 0;
+  function p() {
+    !r || !i || i !== I() || u === r.value || (u = r.value, d++, o.write(i, u));
   }
   function w() {
-    const l = g.querySelector("textarea.chat-input__textarea"), f = S();
-    if (l === a && f === i) {
-      d();
+    const l = m.querySelector("textarea.chat-input__textarea"), f = I();
+    if (l === r && f === i) {
+      p();
       return;
     }
-    const A = i;
-    a = l, i = f;
-    const R = ++p;
+    const O = i;
+    r = l, i = f;
+    const y = ++d;
     if (!l || !f) return;
-    u = l.value, A && A !== f && L(""), o.read(f).then((v) => {
-      R === p && f === S() && v !== void 0 && L(v);
+    u = l.value, O && O !== f && D(""), o.read(f).then((b) => {
+      y === d && f === I() && b !== void 0 && D(b);
     });
-    function L(v) {
-      !l || l.value === v || (u = l.value = v, l.dispatchEvent(new Event("input", { bubbles: !0, composed: !0 })));
+    function D(b) {
+      !l || l.value === b || (u = l.value = b, l.dispatchEvent(new Event("input", { bubbles: !0, composed: !0 })));
     }
   }
-  const m = (l) => {
-    l.target === a && d();
+  const v = (l) => {
+    l.target === r && p();
   };
-  g.addEventListener("input", m);
-  const D = new MutationObserver(w);
-  return D.observe(g, { subtree: !0, childList: !0, attributes: !0, attributeFilter: ["disabled"] }), w(), {
+  m.addEventListener("input", v);
+  const R = new MutationObserver(w);
+  return R.observe(m, { subtree: !0, childList: !0, attributes: !0, attributeFilter: ["disabled"] }), w(), {
     sync: w,
     dispose() {
-      p++, D.disconnect(), g.removeEventListener("input", m);
+      d++, R.disconnect(), m.removeEventListener("input", v);
     }
   };
 }
-const zt = 65536, Jt = 100;
-function Xt(g) {
-  const S = g();
-  let o = !!S;
-  const a = /* @__PURE__ */ new Map();
+const Vt = 65536, Qt = 100;
+function Yt(m) {
+  const I = m();
+  let o = !!I;
+  const r = /* @__PURE__ */ new Map();
   function i() {
-    return o && S !== g() && (a.clear(), o = !1), o;
+    return o && I !== m() && (r.clear(), o = !1), o;
   }
   return {
     async read(u) {
-      return i() ? a.get(u) ?? "" : void 0;
+      return i() ? r.get(u) ?? "" : void 0;
     },
-    write(u, p) {
-      if (!(!i() || p.length > zt) && (a.delete(u), p && a.set(u, p), a.size > Jt)) {
-        const d = a.keys().next().value;
-        d && a.delete(d);
+    write(u, d) {
+      if (!(!i() || d.length > Vt) && (r.delete(u), d && r.set(u, d), r.size > Qt)) {
+        const p = r.keys().next().value;
+        p && r.delete(p);
       }
     }
   };
 }
-const Gt = { "aria-hidden": "true" }, Ut = "kickside:chat-start", dt = "chat-tab", pt = "kickside:chat-draft", Vt = '[data-wippy-panel-mount="chat"] .layout-chat-wrapper', Qt = /* @__PURE__ */ Ot({
+const Zt = { "aria-hidden": "true" }, te = "kickside:chat-start", gt = "chat-tab", mt = "kickside:chat-draft", ee = '[data-wippy-panel-mount="chat"] .layout-chat-wrapper', ne = /* @__PURE__ */ Lt({
   __name: "ChatCoordinator",
-  setup(g) {
-    const S = {
+  setup(m) {
+    const I = {
       kind: "builtin",
       id: "@HOST/panel-tab",
       chrome: !1,
       anchor: { right: 0, top: "50%" },
       position: { x: 0, y: 0 },
       size: { width: 48, height: 80 },
-      props: { target: r, mode: "auto", label: "Open chat" }
-    }, o = At(), a = Dt(), i = o ? Lt(o) : null, u = Xt(() => Nt.auth?.token);
-    let p = null, d, w;
-    const m = [], D = () => window.location.pathname + window.location.search + window.location.hash;
-    let l = D(), f = ot(l), A = "default", R = "|", L = 0, v = !1, N = !1, $ = "", c = null, O = null;
+      props: { target: a, mode: "auto", label: "Open chat" }
+    }, o = Tt(), r = Et(), i = o ? Ht(o) : null, u = Yt(() => jt.auth?.token);
+    let d = null, p, w;
+    const v = [], R = () => window.location.pathname + window.location.search + window.location.hash;
+    let l = R(), f = ct(l), O = "", y = null, D = "default", b = "|", vt = 0, F = !1, H = !1, K = "", c = null, q = null;
     const T = /* @__PURE__ */ new Map();
-    function b(t) {
+    function S(t) {
       return typeof t == "string" ? t : "";
     }
-    function y() {
-      return Ft(o);
+    function g() {
+      return zt(o);
     }
     function k() {
       if (!i) throw new Error("[kickside-chat-coordinator] used before it started");
       return i;
     }
     function C(t) {
-      const e = Ht(t);
-      return ot(e ?? l);
+      const e = Jt(t);
+      return ct(e ?? l);
     }
-    function F(t) {
+    function N(t) {
       return `${t.path}${t.search}${t.hash}`;
     }
-    function H(t) {
-      const e = x(t, r);
-      return `${b(e.sessionId)}|${e.startRequest ?? ""}`;
-    }
-    function I(t) {
-      "sessionId" in t && (O = b(t.sessionId)), o?.layout.updatePanel(r, { props: t });
-    }
-    function yt(t) {
-      const e = x(t, r);
-      c && e.startRequest === c.request && !b(e.sessionId) && (c.seen = !0), O !== null && b(e.sessionId) === O && (O = null);
-    }
-    function K(t) {
-      if (!t) return;
-      const e = k();
-      rt(it(t, e.activeBreakpoint, r)) ? e.openDrawer(r) : e.expandPanel(r);
-    }
-    function q(t) {
-      if (!t) return;
-      const e = k();
-      rt(it(t, e.activeBreakpoint, r)) ? e.closeDrawer(r) : e.collapsePanel(r);
-    }
     function j(t) {
+      const e = L(t, a);
+      return `${S(e.sessionId)}|${e.startRequest ?? ""}`;
+    }
+    function _(t) {
+      "sessionId" in t && (q = S(t.sessionId)), o?.layout.updatePanel(a, { props: t });
+    }
+    function bt(t) {
+      const e = L(t, a);
+      c && e.startRequest === c.request && !S(e.sessionId) && (c.seen = !0), q !== null && S(e.sessionId) === q && (q = null);
+    }
+    function W(t) {
+      if (!t) return;
+      const e = k();
+      lt(ft(t, e.activeBreakpoint, a)) ? e.openDrawer(a) : e.expandPanel(a);
+    }
+    function E(t) {
+      if (!t) return;
+      const e = k();
+      lt(ft(t, e.activeBreakpoint, a)) ? e.closeDrawer(a) : e.collapsePanel(a);
+    }
+    function z(t) {
       const e = k().activeBreakpoint;
       return {
-        chat: ct(t, e, r),
-        artifact: ct(t, e, G)
+        chat: pt(t, e, a),
+        artifact: pt(t, e, V)
       };
     }
-    function gt(t) {
-      const { chat: e, artifact: n } = j(t);
+    function St(t) {
+      const { chat: e, artifact: n } = z(t);
       if (e && n) {
-        const s = !v;
-        !N && !s ? k().closeDrawer(r) : s && k().closeDrawer(G);
+        const s = !F;
+        !H && !s ? k().closeDrawer(a) : s && k().closeDrawer(V);
       }
-      v = e, N = n;
+      F = e, H = n;
     }
-    function Y(t) {
+    function et(t) {
       for (const [e, n] of Object.entries(t?.floating ?? {}))
-        !B(n) || !B(n.props) || n.props.target !== r || T.has(e) || (T.set(e, JSON.parse(JSON.stringify(n))), o?.layout.removeFloating(e));
+        !M(n) || !M(n.props) || n.props.target !== a || T.has(e) || (T.set(e, JSON.parse(JSON.stringify(n))), o?.layout.removeFloating(e));
     }
-    function W() {
+    function J() {
       for (const [t, e] of T) o?.layout.addFloating(t, e);
       T.clear();
     }
-    function Z(t, e) {
-      o?.navigate(`${Q(t)}${e.search}${e.hash}`, { replace: !0 });
+    function nt(t, e) {
+      y = { sessionId: t, from: e }, x();
     }
-    function tt(t, e) {
-      !t || !B(t.context) || o?.setContext(t.context, e, t.source);
+    function x() {
+      if (!y) return;
+      const { sessionId: t, from: e } = y, n = N(e);
+      R() !== n || O !== n || (y = null, o?.navigate(`${Z(t)}${e.search}${e.hash}`, { replace: !0 }));
     }
-    function et(t, e) {
-      return E(e.path) || t.sidebar === !1;
+    function st(t, e) {
+      !t || !M(t.context) || o?.setContext(t.context, e, t.source);
     }
-    function _(t) {
+    function ot(t, e) {
+      return B(e.path) || t.sidebar === !1;
+    }
+    function P(t) {
       const e = c !== null != (t !== null);
-      c = t, e && a?.broadcast(Ut, { pending: t !== null });
+      c = t, e && r?.broadcast(te, { pending: t !== null });
     }
-    function M() {
+    function $() {
       const t = c;
-      t && (_(null), I({ startRequest: null, sessionId: t.previousSessionId || null }));
+      t && (P(null), _({ startRequest: null, sessionId: t.previousSessionId || null }));
     }
-    function wt(t, e) {
-      const n = y(), s = C(n);
-      if (tt(t.context, e), et(t, s)) {
-        M(), o?.navigate(Q(e));
+    function It(t, e) {
+      const n = g(), s = C(n);
+      if (st(t.context, e), ot(t, s)) {
+        $(), o?.navigate(Z(e));
         return;
       }
-      _(null), I({ sessionId: e, startRequest: null }), K(n);
+      P(null), _({ sessionId: e, startRequest: null }), W(n);
     }
-    async function mt(t) {
+    async function kt(t) {
       let e;
       try {
-        e = await Kt(t.token);
+        e = await Xt(t.token);
       } catch {
         if (c !== t) return;
-        M(), o?.toast({ severity: "error", summary: "Could not start chat" });
+        $(), o?.toast({ severity: "error", summary: "Could not start chat" });
         return;
       }
       if (c !== t) {
-        jt(e);
+        Gt(e);
         return;
       }
-      if (_(null), tt(t.context, e), t.fullPage) {
-        I({ sessionId: t.previousSessionId || null, startRequest: null }), o?.navigate(Q(e));
+      if (P(null), st(t.context, e), t.fullPage) {
+        _({ sessionId: t.previousSessionId || null, startRequest: null }), o?.navigate(Z(e));
         return;
       }
-      I({ sessionId: e, startRequest: null });
-      const n = C(y());
-      ft(n) && Z(e, n);
+      _({ sessionId: e, startRequest: null });
+      const n = C(g());
+      tt(n) && nt(e, n);
     }
-    function vt(t, e) {
-      const n = y(), s = C(n), h = et(t, s), P = lt(s.path);
-      if (h && n && U(n, k().activeBreakpoint, r) && q(n), c?.token === e && c)
-        Object.assign(c, { fullPage: h, context: t.context, section: P });
+    function Ct(t, e) {
+      const n = g(), s = C(n), h = ot(t, s), A = ht(s.path);
+      if (h && n && Q(n, k().activeBreakpoint, a) && E(n), c?.token === e && c)
+        Object.assign(c, { fullPage: h, context: t.context, section: A });
       else {
-        const Pt = c?.previousSessionId ?? O ?? b(x(n, r).sessionId), X = {
+        const qt = c?.previousSessionId ?? q ?? S(L(n, a).sessionId), U = {
           token: e,
-          request: ++L,
+          request: ++vt,
           fullPage: h,
           context: t.context,
-          section: P,
-          previousSessionId: Pt,
+          section: A,
+          previousSessionId: qt,
           seen: !1
         };
-        _(X), I({ startRequest: X.request, sessionId: null }), mt(X);
+        P(U), _({ startRequest: U.request, sessionId: null }), kt(U);
       }
-      h || K(n);
-    }
-    function bt() {
-      return b(x(y(), r).sessionId);
-    }
-    function z(t) {
-      const e = U(t, k().activeBreakpoint, r), n = e ? document.querySelector(Vt) : null;
-      n !== p && (w?.dispose(), p = n, w = n ? Wt(n, bt, u) : void 0), !e || n ? (d?.disconnect(), d = void 0) : d || (d = new MutationObserver(() => {
-        const s = y();
-        s && z(s);
-      }), d.observe(document.body, { childList: !0, subtree: !0 })), w?.sync();
-    }
-    async function St(t) {
-      if (t.sourcePanelId !== ut || !B(t.payload)) return;
-      const { kind: e, sessionId: n, requestId: s, draft: h } = t.payload;
-      if (!(typeof n != "string" || !n || V(C(y()).path) !== n) && (e === "write" && typeof h == "string" && u.write(n, h), e === "read" && typeof s == "number")) {
-        const P = await u.read(n);
-        V(C(y()).path) === n && a?.send(ut, pt, { requestId: s, draft: P });
-      }
-    }
-    function kt(t) {
-      if (t.channel === pt) {
-        St(t);
-        return;
-      }
-      if (t.channel !== "@HOST/intent" || !B(t.payload)) return;
-      const e = t.payload, n = b(e.uuid), s = b(e.startToken);
-      if (e.intent === "openSession" && n) {
-        t.sourcePanelId === r ? (c && (_(null), I({ sessionId: n, startRequest: null })), Bt(() => w?.sync())) : wt(e, n);
-        return;
-      }
-      e.intent === "startChat" && s && vt(e, s);
-    }
-    function Ct(t, e, n) {
-      let s = b(x(n, r).sessionId);
-      c?.fullPage && lt(e.path) !== c.section && (s = c.previousSessionId, M());
-      const h = E(t.path), P = E(e.path);
-      if (P && !h)
-        q(n), Y(n), s && ft(e) && Z(s, e);
-      else if (!P && h) {
-        const J = V(t.path);
-        J && (_(null), I({ sessionId: J, startRequest: null })), q(n), W();
-      }
-    }
-    function It(t) {
-      const e = H(t);
-      e !== R && (e === "|" && c?.seen && _(null), R = e), gt(t);
-    }
-    function nt(t) {
-      const { chat: e, artifact: n } = j(t);
-      return `${F(C(t))}#${H(t)}#${e}#${n}`;
-    }
-    function st() {
-      const t = y();
-      if (!t) return;
-      yt(t), z(t);
-      const e = nt(t);
-      if (e === $) return;
-      $ = e;
-      const n = f;
-      f = C(t), F(n) !== F(f) && Ct(n, f, t), It(t);
+      h || W(n);
     }
     function _t() {
-      const t = y();
-      if (!t) return;
-      const e = at(t, k().activeBreakpoint), n = A;
-      e !== n && (A = e, U(t, n, r) && !E(f.path) ? K(t) : q(t));
+      return S(L(g(), a).sessionId);
     }
-    return Tt(() => {
-      const t = y();
-      if (!o || !i || !a || !t) {
+    function X(t) {
+      const e = Q(t, k().activeBreakpoint, a), n = e ? document.querySelector(ee) : null;
+      n !== d && (w?.dispose(), d = n, w = n ? Ut(n, _t, u) : void 0), !e || n ? (p?.disconnect(), p = void 0) : p || (p = new MutationObserver(() => {
+        const s = g();
+        s && X(s);
+      }), p.observe(document.body, { childList: !0, subtree: !0 })), w?.sync();
+    }
+    function rt(t) {
+      const e = g();
+      return dt(e) && yt(C(e).path) === t;
+    }
+    async function Pt(t) {
+      if (t.sourcePanelId !== Y || !M(t.payload)) return;
+      const { kind: e, sessionId: n, requestId: s, draft: h } = t.payload;
+      if (!(typeof n != "string" || !n || !rt(n)) && (e === "write" && typeof h == "string" && u.write(n, h), e === "read" && typeof s == "number")) {
+        const A = await u.read(n);
+        rt(n) && r?.send(Y, mt, { requestId: s, draft: A });
+      }
+    }
+    function At(t) {
+      if (t.channel === mt) {
+        Pt(t);
+        return;
+      }
+      if (t.channel !== "@HOST/intent" || !M(t.payload)) return;
+      if (t.payload.intent === "routeChanged" && t.sourcePanelId === Y && dt(g()) && typeof t.payload.route == "string") {
+        O = t.payload.route, x();
+        return;
+      }
+      const e = t.payload, n = S(e.uuid), s = S(e.startToken);
+      if (e.intent === "openSession" && n) {
+        t.sourcePanelId === a ? (c && (P(null), _({ sessionId: n, startRequest: null })), Ft(() => w?.sync())) : It(e, n);
+        return;
+      }
+      e.intent === "startChat" && s && Ct(e, s);
+    }
+    function Rt(t, e, n) {
+      y && (tt(e) ? y.from = e : y = null);
+      let s = S(L(n, a).sessionId);
+      c?.fullPage && ht(e.path) !== c.section && (s = c.previousSessionId, $());
+      const h = B(t.path), A = B(e.path);
+      if (A && !h)
+        E(n), et(n), s && tt(e) && nt(s, e);
+      else if (!A && h) {
+        const G = yt(t.path);
+        G && (P(null), _({ sessionId: G, startRequest: null })), E(n), J();
+      }
+    }
+    function Dt(t) {
+      const e = j(t);
+      e !== b && (e === "|" && (c?.seen && P(null), y = null), b = e), St(t);
+    }
+    function at(t) {
+      const { chat: e, artifact: n } = z(t);
+      return `${N(C(t))}#${j(t)}#${e}#${n}`;
+    }
+    function it() {
+      const t = g();
+      if (!t) return;
+      bt(t), X(t);
+      const e = at(t);
+      if (e === K) {
+        x();
+        return;
+      }
+      K = e;
+      const n = f;
+      f = C(t), N(n) !== N(f) && Rt(n, f, t), Dt(t), x();
+    }
+    function Ot() {
+      const t = g();
+      if (!t) return;
+      const e = ut(t, k().activeBreakpoint), n = D;
+      e !== n && (D = e, Q(t, n, a) && !B(f.path) ? W(t) : E(t));
+    }
+    return Mt(() => {
+      const t = g();
+      if (!o || !i || !r || !t) {
         console.error("[kickside-chat-coordinator] not started: needs a managed layout host with a layout manager, a layout bus and a layout snapshot", {
           host: !!o,
           manager: !!i,
-          bus: !!a,
+          bus: !!r,
           snapshot: !!t
         });
         return;
       }
-      f = C(t), A = at(t, i.activeBreakpoint), R = H(t);
-      const { chat: e, artifact: n } = j(t);
-      e && n && i.closeDrawer(G), v = e, N = n && !e, $ = nt(t), t.floating?.[dt] || T.set(dt, S), E(f.path) ? (q(t), Y(t)) : W(), z(t), m.push(a.subscribe(kt)), m.push(i.on("change", st)), m.push(i.on("breakpoint", _t)), m.push(Mt("@history", ({ path: s }) => {
-        l = s === window.location.pathname ? D() : s, st();
+      f = C(t), D = ut(t, i.activeBreakpoint), b = j(t);
+      const { chat: e, artifact: n } = z(t);
+      e && n && i.closeDrawer(V), F = e, H = n && !e, K = at(t), t.floating?.[gt] || T.set(gt, I), B(f.path) ? (E(t), et(t)) : J(), X(t), v.push(r.subscribe(At)), v.push(i.on("change", it)), v.push(i.on("breakpoint", Ot)), v.push(Kt("@history", ({ path: s }) => {
+        l = s === window.location.pathname ? R() : s, it();
       }));
-    }), qt(() => {
-      m.forEach((t) => t()), m.length = 0, d?.disconnect(), w?.dispose(), M(), W();
-    }), (t, e) => (Et(), xt("span", Gt));
+    }), Nt(() => {
+      v.forEach((t) => t()), v.length = 0, p?.disconnect(), w?.dispose(), $(), J();
+    }), (t, e) => (xt(), $t("span", Zt));
   }
 });
-class ht extends Rt {
+class wt extends Bt {
   static get wippyConfig() {
     return { propsSchema: { type: "object", properties: {} } };
   }
   static get vueConfig() {
-    return { rootComponent: Qt };
+    return { rootComponent: ne };
   }
 }
-async function se() {
-  return ht;
+async function ce() {
+  return wt;
 }
-$t(import.meta.url, ht);
+Wt(import.meta.url, wt);
 export {
-  se as webComponent
+  ce as webComponent
 };
 //# sourceMappingURL=chat_coordinator.js.map

@@ -19,6 +19,7 @@ import {
   layoutName,
   layoutSnapshot,
   mainAppRoute,
+  mainIsAppPage,
   panelProps,
   parseRoute,
   pathSection,
@@ -99,6 +100,8 @@ const stops: Array<() => void> = []
 const browserRoute = () => window.location.pathname + window.location.search + window.location.hash
 let hostPath = browserRoute()
 let route: HostRoute = parseRoute(hostPath)
+let reportedAppRoute = ''
+let carryInRequest: { sessionId: string, from: HostRoute } | null = null
 /** Layout name (not breakpoint name) the panel state was last applied to. */
 let activeLayout = 'default'
 let lastPropsKey = '|'
@@ -243,7 +246,20 @@ function restoreChatTabs() {
 }
 
 function carryIn(sessionId: string, current: HostRoute) {
-  host?.navigate(`${sessionPath(sessionId)}${current.search}${current.hash}`, { replace: true })
+  carryInRequest = { sessionId, from: current }
+  replaceCarryIn()
+}
+
+function replaceCarryIn() {
+  if (!carryInRequest) return
+  const { sessionId, from } = carryInRequest
+  const path = routeKey(from)
+  // The Host writes its history before the iframe follows. If we replace
+  // before the iframe reports the blank route, its late report pushes the
+  // blank entry back into history.
+  if (browserRoute() !== path || reportedAppRoute !== path) return
+  carryInRequest = null
+  host?.navigate(`${sessionPath(sessionId)}${from.search}${from.hash}`, { replace: true })
 }
 
 function applyContext(context: IntentContext | undefined, sessionId: string) {
@@ -359,14 +375,19 @@ function syncDrawerDraft(layout: LayoutLike) {
   drawerDraft?.sync()
 }
 
+function ownsInlineDraft(sessionId: string): boolean {
+  const layout = readLayout()
+  return mainIsAppPage(layout) && sessionIdFromPath(readRoute(layout).path) === sessionId
+}
+
 async function onDraft(event: LayoutEvent) {
   if (event.sourcePanelId !== MAIN_PANEL_ID || !isRecord(event.payload)) return
   const { kind, sessionId, requestId, draft } = event.payload
-  if (typeof sessionId !== 'string' || !sessionId || sessionIdFromPath(readRoute(readLayout()).path) !== sessionId) return
+  if (typeof sessionId !== 'string' || !sessionId || !ownsInlineDraft(sessionId)) return
   if (kind === 'write' && typeof draft === 'string') drafts.write(sessionId, draft)
   if (kind === 'read' && typeof requestId === 'number') {
     const value = await drafts.read(sessionId)
-    if (sessionIdFromPath(readRoute(readLayout()).path) === sessionId)
+    if (ownsInlineDraft(sessionId))
       bus?.send(MAIN_PANEL_ID, DRAFT_CHANNEL, { requestId, draft: value })
   }
 }
@@ -377,6 +398,12 @@ function onLayoutEvent(event: LayoutEvent) {
     return
   }
   if (event.channel !== '@HOST/intent' || !isRecord(event.payload)) return
+  if (event.payload.intent === 'routeChanged' && event.sourcePanelId === MAIN_PANEL_ID
+    && mainIsAppPage(readLayout()) && typeof event.payload.route === 'string') {
+    reportedAppRoute = event.payload.route
+    replaceCarryIn()
+    return
+  }
   const intent = event.payload as ChatIntent
   const sessionId = text(intent.uuid)
   const token = text(intent.startToken)
@@ -398,6 +425,10 @@ function onLayoutEvent(event: LayoutEvent) {
 }
 
 function onNavigated(prev: HostRoute, next: HostRoute, layout: LayoutLike) {
+  if (carryInRequest) {
+    if (isBareSessions(next)) carryInRequest.from = next
+    else carryInRequest = null
+  }
   let held = text(panelProps(layout, CHAT_PANEL_ID).sessionId)
   // A full-page start belongs to the page section it was requested on
   // (`/keeper`, `/git`, `/sessions`, ...). Moving within the section, to
@@ -434,7 +465,10 @@ function watchPanel(layout: LayoutLike) {
   if (key !== lastPropsKey) {
     // "New chat" clears both fields. A start whose marker hasn't arrived
     // still has its own patch queued behind that clear.
-    if (key === '|' && pending?.seen) setPending(null)
+    if (key === '|') {
+      if (pending?.seen) setPending(null)
+      carryInRequest = null
+    }
     lastPropsKey = key
   }
   keepOneDrawer(layout)
@@ -456,12 +490,16 @@ function sync() {
   noteSnapshot(layout)
   syncDrawerDraft(layout)
   const key = syncKey(layout)
-  if (key === lastSyncKey) return
+  if (key === lastSyncKey) {
+    replaceCarryIn()
+    return
+  }
   lastSyncKey = key
   const prev = route
   route = readRoute(layout)
   if (routeKey(prev) !== routeKey(route)) onNavigated(prev, route, layout)
   watchPanel(layout)
+  replaceCarryIn()
 }
 
 /**
