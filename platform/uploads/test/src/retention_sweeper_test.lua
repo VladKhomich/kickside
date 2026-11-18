@@ -168,6 +168,25 @@ return test.run_cases(function()
             test.eq(events[2].type, upload_types.EVENT.COMPLETED)
         end)
 
+        test.it("recovers completion after a released retry that shared its original queue event", function()
+            local component_id, owner = user_container()
+            local upload_id, job_id = uuid.v4(), uuid.v4()
+            checkpoint(component_id, owner, upload_id, job_id, "{}", "uploaded")
+            lifecycle_event(component_id, upload_id, upload_types.EVENT.QUEUED, upload_types.EVENT.QUEUED)
+            lifecycle_event(component_id, upload_id, upload_types.EVENT.FAILED, upload_types.EVENT.FAILED)
+            local failure = terminal_events(component_id, upload_id)[1]
+            exec("UPDATE kickside_upload_read_model SET status='error',last_event_seq=$1 WHERE upload_id=$2",
+                { failure.seq, upload_id })
+            exec("UPDATE kickside_uploads SET storage_state='completed' WHERE uuid=$1", { upload_id })
+
+            local result = assert(funcs.call("kickside.uploads:retention", {}))
+            test.is_true(result.success, tostring(result.error))
+            local events = terminal_events(component_id, upload_id)
+            test.eq(#events, 2)
+            test.eq(events[2].external_version, job_id)
+            test.eq(events[2].type, upload_types.EVENT.COMPLETED)
+        end)
+
         test.it("recovers intentless completed uploads with a present or pruned parent and fails invalid checkpoints", function()
             local component_id, owner = user_container()
             local fixtures = { {}, { pruned = true }, { invalid = true } }

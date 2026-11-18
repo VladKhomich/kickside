@@ -144,7 +144,8 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
 end
 
 -- A newer queue event fences a terminal event or projection from an earlier
--- attempt. The projection still witnesses publication after event pruning.
+-- attempt. Released retries can share a queue event, so an earlier legacy
+-- failure cannot witness a completed checkpoint. The projection also survives event pruning.
 local terminal_projection = "r.status = CASE u.storage_state WHEN 'completed' THEN 'completed' ELSE 'error' END"
 local checkpoint_published = [[(
     SELECT COALESCE(r.status = 'deleted', FALSE) OR COALESCE((
@@ -156,7 +157,10 @@ local checkpoint_published = [[(
           AND (r.component_id IS NULL OR CAST(e.thread_id AS TEXT) = r.component_id)
           AND (e.type = 'kickside.uploads.events:upload.queued'
             OR (e.type IN ('kickside.uploads.events:upload.completed', 'kickside.uploads.events:upload.failed')
-              AND (u.processing_job_id IS NULL OR e.external_version IN (u.processing_job_id, e.type))))
+              AND (e.external_version = u.processing_job_id
+                OR ((u.processing_job_id IS NULL OR e.external_version = e.type)
+                  AND e.type = CASE u.storage_state WHEN 'completed' THEN 'kickside.uploads.events:upload.completed'
+                    ELSE 'kickside.uploads.events:upload.failed' END))))
         ORDER BY e.seq DESC LIMIT 1
     ), ]] .. terminal_projection .. [[, FALSE)
     FROM (SELECT 1) anchor LEFT JOIN kickside_upload_read_model r ON r.upload_id = u.uuid
