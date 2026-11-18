@@ -66,7 +66,7 @@ local function assignable_policies(): ({ stypes.PolicySummary }?, error?)
         if read_err then return nil, read_err end
         for _, entry in ipairs(entries :: { any }) do
             local meta = meta_of(entry)
-            if meta.private ~= true and meta.internal ~= true and meta.service_only ~= true
+            if meta.assignable ~= false and meta.private ~= true and meta.internal ~= true and meta.service_only ~= true
                 and type(meta.title) == "string" and meta.title:find("%S") and meta.title ~= tostring(entry.id) then
                 out[#out + 1] = policy_summary(entry)
             end
@@ -109,19 +109,20 @@ local function role_descriptors(): (any?, error?)
     return by_id
 end
 
--- resolve_policies summarizes a scope's policies. A stored selection (stored)
--- lists only the policies still installed, the rule its projection applies; a
--- registry-declared scope names policies that must exist.
-local function resolve_policies(ids: any, by_id: { [string]: stypes.PolicySummary }, stored: boolean): ({ stypes.PolicySummary }?, error?)
+local function resolve_policies(ids: any, by_id: { [string]: stypes.PolicySummary }, stored: boolean,
+    include_unavailable: boolean): ({ stypes.PolicySummary }?, error?)
     local out: { stypes.PolicySummary } = {}
     if type(ids) ~= "table" then return out end
     for _, pid in ipairs(ids) do
-        local s = by_id[tostring(pid)]
+        local id = tostring(pid)
+        local s = by_id[id]
         if s then
             out[#out + 1] = s
         elseif not stored then
             return nil, (errors.new({kind = errors.NOT_FOUND, retryable = false,
-                message = "policy unavailable: " .. tostring(pid)}) :: error)
+                message = "policy unavailable: " .. id}) :: error)
+        elseif include_unavailable then
+            out[#out + 1] = {id = id, available = false}
         end
     end
     return out
@@ -150,6 +151,7 @@ end
 function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     opts = opts or {}
     local include_internal = opts.include_internal == true
+    local include_unavailable = opts.include_unavailable == true
     local index, policies_err = policy_index()
     if policies_err then return nil, policies_err end
     local projections, projection_err = registry.find({[".kind"] = "registry.entry", ["meta.type"] = scope_key.META_TYPE})
@@ -172,12 +174,12 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     local function emit(scope: any): (boolean?, error?)
         if scope.internal and not include_internal then return true, nil end
         if seen[scope.id] then return true, nil end
-        local policies, policy_err = resolve_policies(scope.policies, by_id, scope.source == consts.SOURCE.CUSTOM)
+        local policies, policy_err = resolve_policies(scope.policies, by_id, scope.source == consts.SOURCE.CUSTOM, include_unavailable)
         if policy_err then return nil, policy_err end
         scope.policies = policies
         local overlay = overlays_by_target[scope.id]
         if overlay then
-            local overlay_policies, overlay_err = resolve_policies(overlay.policies, by_id, true)
+            local overlay_policies, overlay_err = resolve_policies(overlay.policies, by_id, true, include_unavailable)
             if overlay_err then return nil, overlay_err end
             scope.overlay_policies = overlay_policies
             scope.overlay_slug = overlay.slug

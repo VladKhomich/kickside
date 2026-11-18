@@ -28,7 +28,7 @@ export function useSecurityApi() {
     error.value = ''
     try {
       const [scopeRes, policyRes] = await Promise.all([
-        api.get('/api/v1/security/scopes'),
+        api.get('/api/v1/security/scopes?include_unavailable=true'),
         api.get('/api/v1/security/policies?assignable=true'),
       ])
       if (seq !== loadSeq) return

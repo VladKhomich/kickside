@@ -8,18 +8,19 @@ local function failure(message: string, kind: string, code: string): error
     return (errors.new({message = message, kind = kind, retryable = false, details = {code = code}}) :: error)
 end
 
-local function walk(ids, read, authorize, retained, available)
+local function walk(ids, read, authorize, retained, allow_missing_root)
     local out, seen, visiting = {}, {}, {}
     local function visit(id, root)
         if visiting[id] then return failure("policy composition cycle at " .. tostring(id), errors.INVALID, "policy_composition_cycle") end
         if seen[id] then return nil end
         local entry, err = read(id)
+        local missing_allowed = root and allow_missing_root and allow_missing_root(id)
         if err then
-            if available and root and errors.is(err, errors.NOT_FOUND) then return nil end
+            if missing_allowed and errors.is(err, errors.NOT_FOUND) then return nil end
             return (errors.wrap(err, "policy unavailable " .. tostring(id)) :: error)
         end
         if not entry then
-            if retained or (available and root) then return nil end
+            if retained or missing_allowed then return nil end
             return failure("policy unavailable " .. tostring(id) .. ": nil", errors.NOT_FOUND, "policy_not_found")
         end
         if tostring(entry.kind) ~= "security.policy" then return failure("not a security policy: " .. tostring(id), errors.INVALID, "policy_kind_invalid") end
@@ -91,10 +92,10 @@ end
 -- module or application update removed is absent from the next projection pass;
 -- invalid present entries and missing transitive includes remain errors.
 function M.expand_available(ids: any, get: ((string) -> (any?, any?))?): (any?, error?)
-    return walk(ids, get or registry.get, nil, false, true)
+    return walk(ids, get or registry.get, nil, false, function() return true end)
 end
 
-function M.authorize_mutation(ids: any, gate: string, retained: boolean?): (any?, error?)
+function M.authorize_mutation(ids: any, gate: string, retained: boolean?, saved: { [string]: boolean }?): (any?, error?)
     local read = registry.get
     if retained then
         local snapshot, snapshot_err = registry.snapshot()
@@ -115,7 +116,7 @@ function M.authorize_mutation(ids: any, gate: string, retained: boolean?): (any?
             end
         end
         return nil
-    end, retained)
+    end, retained, saved and function(id) return saved[id] == true end)
 end
 
 -- Plain rule policies are the only source kind whose bodies flow into

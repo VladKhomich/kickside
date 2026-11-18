@@ -52,6 +52,9 @@ local function define_tests()
                 by_id[policy.id] = policy
             end
             test.is_nil(by_id["app:sample_service"])
+            test.is_nil(by_id["app:sample_infrastructure"])
+            test.is_nil(by_id["kickside.contract.security:module_access"])
+            test.is_nil(by_id["kickside.execution.security:module_access"])
             test.eq(by_id["app:module_access"].title, "Module access")
             test.eq(by_id["app:module_access"].comment, "Opens the sample module.")
             test.eq(by_id["app:manage_samples"].title, "Sample management")

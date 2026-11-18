@@ -3611,7 +3611,7 @@ function cr() {
     e.value = !0, d.value = "";
     try {
       const [l, S] = await Promise.all([
-        at.get("/api/v1/security/scopes"),
+        at.get("/api/v1/security/scopes?include_unavailable=true"),
         at.get("/api/v1/security/policies?assignable=true")
       ]);
       if (B !== r) return;
@@ -4044,7 +4044,10 @@ const pr = {
 }), jr = ["draggable"], Dr = { class: "ks-pcard-row" }, Kr = { class: "ks-pcard-body" }, Ur = { class: "ks-pcard-head" }, Mr = ["title"], Wr = {
   key: 0,
   class: "ks-pcard-comment"
-}, Hr = ["aria-label"], Gr = ["aria-label"], bt = /* @__PURE__ */ D({
+}, Hr = {
+  key: 1,
+  class: "ks-pcard-comment"
+}, Gr = ["aria-label"], qr = ["aria-label"], bt = /* @__PURE__ */ D({
   __name: "PolicyCard",
   props: {
     policy: {},
@@ -4052,7 +4055,7 @@ const pr = {
   },
   emits: ["add", "remove"],
   setup(t, { emit: n }) {
-    const e = t, o = n, d = E(() => e.policy.title && e.policy.title !== e.policy.id ? e.policy.title : "Unnamed permission");
+    const e = t, o = n, d = E(() => e.policy.available === !1 ? e.policy.id : e.policy.title && e.policy.title !== e.policy.id ? e.policy.title : "Unnamed permission");
     function r(h) {
       e.mode === "locked" || !h.dataTransfer || (h.dataTransfer.setData("text/plain", e.policy.id), h.dataTransfer.effectAllowed = e.mode === "palette" ? "copy" : "move");
     }
@@ -4090,7 +4093,7 @@ const pr = {
               title: d.value
             }, x(d.value), 9, Mr)
           ]),
-          t.policy.comment ? (a(), u("div", Wr, x(t.policy.comment), 1)) : y("", !0)
+          t.policy.available === !1 ? (a(), u("div", Wr, "No longer available")) : t.policy.comment ? (a(), u("div", Hr, x(t.policy.comment), 1)) : y("", !0)
         ]),
         t.mode === "palette" ? (a(), u("button", {
           key: 2,
@@ -4102,7 +4105,7 @@ const pr = {
             icon: "tabler:plus",
             "aria-hidden": "true"
           })
-        ], 8, Hr)) : t.mode === "selected" ? (a(), u("button", {
+        ], 8, Gr)) : t.mode === "selected" ? (a(), u("button", {
           key: 3,
           class: "ks-pcard-act remove",
           "aria-label": `Remove permission ${d.value}`,
@@ -4112,47 +4115,47 @@ const pr = {
             icon: "tabler:x",
             "aria-hidden": "true"
           })
-        ], 8, Gr)) : y("", !0)
+        ], 8, qr)) : y("", !0)
       ])
     ], 42, jr));
   }
-}), qr = { class: "ks" }, Zr = { class: "ks-rail-search" }, Jr = { class: "ks-rail-list" }, Qr = {
+}), Zr = { class: "ks" }, Jr = { class: "ks-rail-search" }, Qr = { class: "ks-rail-list" }, Xr = {
   key: 0,
   class: "ks-rail-group"
-}, Xr = ["onClick"], Yr = { class: "ks-scope-name" }, ta = ["onClick"], na = { class: "ks-scope-name" }, ea = {
+}, Yr = ["onClick"], ta = { class: "ks-scope-name" }, na = ["onClick"], ea = { class: "ks-scope-name" }, oa = {
   key: 0,
   class: "ks-builder"
-}, oa = { class: "ks-builder-head" }, ra = { class: "ks-builder-title" }, aa = { class: "ks-builder-acts" }, ia = {
+}, ra = { class: "ks-builder-head" }, aa = { class: "ks-builder-title" }, ia = { class: "ks-builder-acts" }, la = {
   key: 0,
   class: "ks-overlay-warn"
-}, la = {
+}, sa = {
   key: 1,
   class: "ks-view-note"
-}, sa = { class: "ks-fields" }, da = {
+}, da = { class: "ks-fields" }, ua = {
   key: 0,
   class: "ks-pane locked-pane"
-}, ua = { class: "ks-pane-head" }, ca = { class: "ks-pane-sub" }, ba = { class: "ks-pane-body" }, pa = {
+}, ca = { class: "ks-pane-head" }, ba = { class: "ks-pane-sub" }, pa = { class: "ks-pane-body" }, va = {
   key: 0,
   class: "ks-pane-empty"
-}, va = { class: "ks-pane" }, fa = { class: "ks-pane-search" }, ha = { class: "ks-pane-body" }, ga = {
+}, fa = { class: "ks-pane" }, ha = { class: "ks-pane-search" }, ga = { class: "ks-pane-body" }, ma = {
   key: 0,
   class: "ks-pane-empty"
-}, ma = { class: "ks-pane-head" }, ya = { class: "ks-pane-sub" }, ka = { class: "ks-pane-body" }, $a = ["onDrop"], wa = {
+}, ya = { class: "ks-pane-head" }, ka = { class: "ks-pane-sub" }, $a = { class: "ks-pane-body" }, wa = ["onDrop"], xa = {
   key: 0,
   class: "ks-drop-hint"
-}, xa = {
+}, Ca = {
   key: 1,
   class: "ks-view"
-}, Ca = { class: "ks-builder-head" }, Sa = { class: "ks-builder-title" }, Ba = { class: "ks-builder-acts" }, Ta = { class: "ks-pane-body ks-view-list" }, Pa = {
+}, Sa = { class: "ks-builder-head" }, Ba = { class: "ks-builder-title" }, Ta = { class: "ks-builder-acts" }, Pa = { class: "ks-pane-body ks-view-list" }, Ia = {
   key: 0,
   class: "ks-pane-empty"
-}, Ia = {
+}, Aa = {
   key: 0,
   class: "ks-ext-block"
-}, Aa = { class: "ks-ext-head" }, za = { class: "ks-pane-body ks-view-list" }, La = {
+}, za = { class: "ks-ext-head" }, La = { class: "ks-pane-body ks-view-list" }, _a = {
   key: 2,
   class: "kx-system-body"
-}, _a = /* @__PURE__ */ D({
+}, Na = /* @__PURE__ */ D({
   __name: "Security",
   setup(t) {
     const n = cr(), { scopes: e, policies: o, loading: d, saving: r, error: h } = n, w = L(""), z = L(""), B = L(null), l = L(null), S = L("scopes"), R = L(null), W = L(!1);
@@ -4163,15 +4166,15 @@ const pr = {
       await n.load(), S.value === "delegations" && await R.value?.load();
     });
     const K = E(() => {
-      const v = w.value.trim().toLowerCase(), b = (c) => !v || c.label.toLowerCase().includes(v) || c.id.toLowerCase().includes(v);
+      const v = w.value.trim().toLowerCase(), c = (b) => !v || b.label.toLowerCase().includes(v) || b.id.toLowerCase().includes(v);
       return {
-        custom: e.value.filter((c) => c.source === "custom" && b(c)),
-        builtin: e.value.filter((c) => c.source !== "custom" && b(c))
+        custom: e.value.filter((b) => b.source === "custom" && c(b)),
+        builtin: e.value.filter((b) => b.source !== "custom" && c(b))
       };
     }), F = E(() => e.value.find((v) => v.id === B.value) || null), A = E(() => F.value && F.value.source !== "custom" ? F.value : null), it = E(() => {
       if (!l.value) return [];
-      const v = new Set([...l.value.policies, ...l.value.base].map((c) => c.id)), b = z.value.trim().toLowerCase();
-      return o.value.filter((c) => !v.has(c.id) && (!b || (c.title || "").toLowerCase().includes(b) || c.id.toLowerCase().includes(b) || (c.comment || "").toLowerCase().includes(b)));
+      const v = new Set([...l.value.policies, ...l.value.base].map((b) => b.id)), c = z.value.trim().toLowerCase();
+      return o.value.filter((b) => !v.has(b.id) && (!c || (b.title || "").toLowerCase().includes(c) || b.id.toLowerCase().includes(c) || (b.comment || "").toLowerCase().includes(c)));
     });
     function ot(v) {
       B.value = v.id, l.value = v.source === "custom" ? { slug: v.slug || "", label: v.label, description: v.description, policies: [...v.policies], enabled: v.enabled, isNew: !1, target: "", base: [] } : null;
@@ -4183,7 +4186,7 @@ const pr = {
       H(), Object.assign(l.value, {
         label: v.label ? `Copy of ${v.label}` : "",
         description: v.description,
-        policies: [...v.policies, ...v.overlay_policies ?? []]
+        policies: [...v.policies, ...v.overlay_policies ?? []].filter((c) => c.available !== !1)
       });
     }
     function j(v) {
@@ -4202,31 +4205,31 @@ const pr = {
       };
     }
     const I = E(() => !!l.value && l.value.target !== "");
-    function rt(v, b) {
+    function rt(v, c) {
       if (!l.value || l.value.policies.some((V) => V.id === v) || l.value.base.some((V) => V.id === v)) return;
-      const c = o.value.find((V) => V.id === v);
-      c && l.value.policies.splice(b ?? l.value.policies.length, 0, c);
+      const b = o.value.find((V) => V.id === v);
+      b && l.value.policies.splice(c ?? l.value.policies.length, 0, b);
     }
     function ut(v) {
-      l.value && (l.value.policies = l.value.policies.filter((b) => b.id !== v));
+      l.value && (l.value.policies = l.value.policies.filter((c) => c.id !== v));
     }
     function zt(v) {
-      const b = v.dataTransfer?.getData("text/plain");
-      b && rt(b);
-    }
-    function wt(v, b) {
-      v.stopPropagation();
       const c = v.dataTransfer?.getData("text/plain");
-      if (!c || !l.value || c === b) return;
-      const V = l.value.policies, _t = V.findIndex((ct) => ct.id === c);
+      c && rt(c);
+    }
+    function wt(v, c) {
+      v.stopPropagation();
+      const b = v.dataTransfer?.getData("text/plain");
+      if (!b || !l.value || b === c) return;
+      const V = l.value.policies, _t = V.findIndex((ct) => ct.id === b);
       if (_t === -1) {
-        rt(c, V.findIndex((ct) => ct.id === b));
+        rt(b, V.findIndex((ct) => ct.id === c));
         return;
       }
       const [Nt] = V.splice(_t, 1);
-      V.splice(V.findIndex((ct) => ct.id === b), 0, Nt);
+      V.splice(V.findIndex((ct) => ct.id === c), 0, Nt);
     }
-    const Lt = E(() => l.value ? !l.value.isNew || l.value.target ? l.value.slug : `${j(l.value.label.normalize("NFKD").replace(/\p{M}/gu, "")).toLowerCase() || "role"}_${l.value.slug}` : ""), T = E(() => !!l.value && l.value.label.trim() !== "" && l.value.policies.length > 0), p = L("");
+    const Lt = E(() => l.value ? !l.value.isNew || l.value.target ? l.value.slug : `${j(l.value.label.normalize("NFKD").replace(/\p{M}/gu, "")).toLowerCase() || "role"}_${l.value.slug}` : ""), T = E(() => !!l.value && l.value.label.trim() !== "" && (!l.value.isNew || l.value.policies.length > 0)), p = L("");
     let f = null;
     Ln(() => {
       f && clearTimeout(f);
@@ -4238,15 +4241,15 @@ const pr = {
     }
     async function q() {
       if (!l.value || !T.value) return;
-      const v = l.value, b = Lt.value, c = l.value.target, V = l.value.label.trim() || b;
+      const v = l.value, c = Lt.value, b = l.value.target, V = l.value.label.trim() || c;
       await n.saveScope({
-        slug: b,
-        target: c,
+        slug: c,
+        target: b,
         label: l.value.label.trim(),
         description: l.value.description.trim(),
         policies: l.value.policies.map((Nt) => Nt.id),
         enabled: l.value.enabled
-      }) && (v.slug = b, v.isNew = !1, l.value === v && (B.value = c || `kickside.security.scopes:${b}`), X(`Saved “${V}”. The role will be available when assigning users.`));
+      }) && (v.slug = c, v.isNew = !1, l.value === v && (B.value = b || `kickside.security.scopes:${c}`), X(`Saved “${V}”. The role will be available when assigning users.`));
     }
     async function kn() {
       if (!l.value || l.value.isNew) return;
@@ -4264,7 +4267,7 @@ const pr = {
     function st(v) {
       return v.includes(":") ? v.split(":").slice(-1)[0] : v;
     }
-    return (v, b) => (a(), u("div", qr, [
+    return (v, c) => (a(), u("div", Zr, [
       m(ce, {
         value: S.value,
         label: "Security administration",
@@ -4286,7 +4289,7 @@ const pr = {
         key: 1,
         severity: "danger",
         class: "ks-top-notice",
-        onDismiss: b[0] || (b[0] = (c) => h.value = "")
+        onDismiss: c[0] || (c[0] = (b) => h.value = "")
       }, {
         default: C(() => [
           P(x(i(h)), 1)
@@ -4296,7 +4299,7 @@ const pr = {
         key: 2,
         severity: "success",
         class: "ks-top-notice",
-        onDismiss: b[1] || (b[1] = (c) => p.value = "")
+        onDismiss: c[1] || (c[1] = (b) => p.value = "")
       }, {
         default: C(() => [
           P(x(p.value), 1)
@@ -4329,36 +4332,36 @@ const pr = {
             ]),
             _: 1
           }, 8, ["count"]),
-          s("div", Zr, [
+          s("div", Jr, [
             m(i(Xt), {
               modelValue: w.value,
-              "onUpdate:modelValue": b[2] || (b[2] = (c) => w.value = c),
+              "onUpdate:modelValue": c[2] || (c[2] = (b) => w.value = b),
               placeholder: "Find a role…"
             }, null, 8, ["modelValue"])
           ]),
-          s("div", Jr, [
-            K.value.custom.length ? (a(), u("div", Qr, "Custom")) : y("", !0),
-            (a(!0), u(tt, null, nt(K.value.custom, (c) => (a(), u("button", {
-              key: c.id,
-              class: J(["ks-scope-row", { active: c.id === B.value }]),
-              onClick: (V) => ot(c)
+          s("div", Qr, [
+            K.value.custom.length ? (a(), u("div", Xr, "Custom")) : y("", !0),
+            (a(!0), u(tt, null, nt(K.value.custom, (b) => (a(), u("button", {
+              key: b.id,
+              class: J(["ks-scope-row", { active: b.id === B.value }]),
+              onClick: (V) => ot(b)
             }, [
-              s("span", Yr, x(c.label || st(c.id)), 1)
-            ], 10, Xr))), 128)),
-            b[11] || (b[11] = s("div", { class: "ks-rail-group" }, "Default", -1)),
-            (a(!0), u(tt, null, nt(K.value.builtin, (c) => (a(), u("button", {
-              key: c.id,
-              class: J(["ks-scope-row", { active: c.id === B.value }]),
-              onClick: (V) => ot(c)
+              s("span", ta, x(b.label || st(b.id)), 1)
+            ], 10, Yr))), 128)),
+            c[11] || (c[11] = s("div", { class: "ks-rail-group" }, "Default", -1)),
+            (a(!0), u(tt, null, nt(K.value.builtin, (b) => (a(), u("button", {
+              key: b.id,
+              class: J(["ks-scope-row", { active: b.id === B.value }]),
+              onClick: (V) => ot(b)
             }, [
-              s("span", na, x(c.label || st(c.id)), 1)
-            ], 10, ta))), 128))
+              s("span", ea, x(b.label || st(b.id)), 1)
+            ], 10, na))), 128))
           ])
         ]),
         default: C(() => [
-          l.value ? (a(), u("div", ea, [
-            s("div", oa, [
-              s("div", ra, [
+          l.value ? (a(), u("div", oa, [
+            s("div", ra, [
+              s("div", aa, [
                 m(i(O), {
                   icon: I.value ? "tabler:stack-2" : "tabler:shield-lock",
                   "aria-hidden": "true"
@@ -4368,22 +4371,22 @@ const pr = {
                   key: 0,
                   severity: "warn"
                 }, {
-                  default: C(() => [...b[12] || (b[12] = [
+                  default: C(() => [...c[12] || (c[12] = [
                     P("Additional permissions", -1)
                   ])]),
                   _: 1
                 })) : y("", !0)
               ]),
-              s("div", aa, [
+              s("div", ia, [
                 !l.value.isNew && !I.value && F.value ? (a(), $(i(Z), {
                   key: 0,
                   variant: "soft",
                   small: "",
                   icon: "tabler:copy",
                   disabled: i(r),
-                  onClick: b[3] || (b[3] = (c) => g(F.value))
+                  onClick: c[3] || (c[3] = (b) => g(F.value))
                 }, {
-                  default: C(() => [...b[13] || (b[13] = [
+                  default: C(() => [...c[13] || (c[13] = [
                     P("Duplicate", -1)
                   ])]),
                   _: 1
@@ -4416,23 +4419,23 @@ const pr = {
                 }, 8, ["loading", "disabled"])
               ])
             ]),
-            I.value ? (a(), u("div", ia, [
+            I.value ? (a(), u("div", la, [
               m(i(O), {
                 icon: "tabler:alert-triangle",
                 "aria-hidden": "true"
               }),
               s("span", null, [
-                b[14] || (b[14] = P("Adding permissions grants them to ", -1)),
+                c[14] || (c[14] = P("Adding permissions grants them to ", -1)),
                 s("b", null, "everyone assigned " + x(F.value?.label || st(l.value.target)), 1),
-                b[15] || (b[15] = P(". Original permissions cannot be removed here. To restrict access, create a new role with only the permissions needed.", -1))
+                c[15] || (c[15] = P(". Original permissions cannot be removed here. To restrict access, create a new role with only the permissions needed.", -1))
               ])
-            ])) : (a(), u("p", la, "Choose the permissions this role grants, then assign it in System → Users. To restrict a Member, assign this role instead of Member; other assigned roles may still grant access.")),
-            s("div", sa, [
+            ])) : (a(), u("p", sa, "Choose the permissions this role grants, then assign it in System → Users. To restrict a Member, assign this role instead of Member; other assigned roles may still grant access.")),
+            s("div", da, [
               m(i(Tt), { label: "Name" }, {
                 default: C(() => [
                   m(i(Yt), {
                     modelValue: l.value.label,
-                    "onUpdate:modelValue": b[4] || (b[4] = (c) => l.value.label = c),
+                    "onUpdate:modelValue": c[4] || (c[4] = (b) => l.value.label = b),
                     placeholder: "Reviewer"
                   }, null, 8, ["modelValue"])
                 ]),
@@ -4442,7 +4445,7 @@ const pr = {
                 default: C(() => [
                   m(i(Yt), {
                     modelValue: l.value.description,
-                    "onUpdate:modelValue": b[5] || (b[5] = (c) => l.value.description = c),
+                    "onUpdate:modelValue": c[5] || (c[5] = (b) => l.value.description = b),
                     placeholder: "Read-only reviewer role"
                   }, null, 8, ["modelValue"])
                 ]),
@@ -4452,90 +4455,90 @@ const pr = {
             s("div", {
               class: J(["ks-panes", { three: I.value }])
             }, [
-              I.value ? (a(), u("section", da, [
-                s("header", ua, [
-                  b[16] || (b[16] = s("span", null, "Original permissions", -1)),
-                  s("span", ca, x(l.value.base.length) + " · locked", 1)
+              I.value ? (a(), u("section", ua, [
+                s("header", ca, [
+                  c[16] || (c[16] = s("span", null, "Original permissions", -1)),
+                  s("span", ba, x(l.value.base.length) + " · locked", 1)
                 ]),
-                s("div", ba, [
-                  (a(!0), u(tt, null, nt(l.value.base, (c) => (a(), $(bt, {
-                    key: c.id,
-                    policy: c,
+                s("div", pa, [
+                  (a(!0), u(tt, null, nt(l.value.base, (b) => (a(), $(bt, {
+                    key: b.id,
+                    policy: b,
                     mode: "locked"
                   }, null, 8, ["policy"]))), 128)),
-                  l.value.base.length ? y("", !0) : (a(), u("div", pa, "No original permissions."))
+                  l.value.base.length ? y("", !0) : (a(), u("div", va, "No original permissions."))
                 ])
               ])) : y("", !0),
-              s("section", va, [
-                b[17] || (b[17] = s("header", { class: "ks-pane-head" }, [
+              s("section", fa, [
+                c[17] || (c[17] = s("header", { class: "ks-pane-head" }, [
                   s("span", null, "Available permissions"),
                   s("span", { class: "ks-pane-sub" }, "Click + to add")
                 ], -1)),
-                s("div", fa, [
+                s("div", ha, [
                   m(i(Xt), {
                     modelValue: z.value,
-                    "onUpdate:modelValue": b[6] || (b[6] = (c) => z.value = c),
+                    "onUpdate:modelValue": c[6] || (c[6] = (b) => z.value = b),
                     placeholder: "Search permissions…"
                   }, null, 8, ["modelValue"])
                 ]),
-                s("div", ha, [
-                  (a(!0), u(tt, null, nt(it.value, (c) => (a(), $(bt, {
-                    key: c.id,
-                    policy: c,
+                s("div", ga, [
+                  (a(!0), u(tt, null, nt(it.value, (b) => (a(), $(bt, {
+                    key: b.id,
+                    policy: b,
                     mode: "palette",
-                    onAdd: (V) => rt(c.id)
+                    onAdd: (V) => rt(b.id)
                   }, null, 8, ["policy", "onAdd"]))), 128)),
-                  it.value.length ? y("", !0) : (a(), u("div", ga, "No matching permissions."))
+                  it.value.length ? y("", !0) : (a(), u("div", ma, "No matching permissions."))
                 ])
               ]),
               s("section", {
                 class: "ks-pane drop",
-                onDragover: b[8] || (b[8] = vt(() => {
+                onDragover: c[8] || (c[8] = vt(() => {
                 }, ["prevent"])),
                 onDrop: zt
               }, [
-                s("header", ma, [
+                s("header", ya, [
                   s("span", null, x(I.value ? "Added by you" : "In this role"), 1),
-                  s("span", ya, x(l.value.policies.length) + " " + x(l.value.policies.length === 1 ? "permission" : "permissions"), 1)
+                  s("span", ka, x(l.value.policies.length) + " " + x(l.value.policies.length === 1 ? "permission" : "permissions"), 1)
                 ]),
-                s("div", ka, [
-                  (a(!0), u(tt, null, nt(l.value.policies, (c) => (a(), u("div", {
-                    key: c.id,
-                    onDragover: b[7] || (b[7] = vt(() => {
+                s("div", $a, [
+                  (a(!0), u(tt, null, nt(l.value.policies, (b) => (a(), u("div", {
+                    key: b.id,
+                    onDragover: c[7] || (c[7] = vt(() => {
                     }, ["prevent"])),
-                    onDrop: (V) => wt(V, c.id)
+                    onDrop: (V) => wt(V, b.id)
                   }, [
                     m(bt, {
-                      policy: c,
+                      policy: b,
                       mode: "selected",
-                      onRemove: (V) => ut(c.id)
+                      onRemove: (V) => ut(b.id)
                     }, null, 8, ["policy", "onRemove"])
-                  ], 40, $a))), 128)),
-                  l.value.policies.length ? y("", !0) : (a(), u("div", wa, [
+                  ], 40, wa))), 128)),
+                  l.value.policies.length ? y("", !0) : (a(), u("div", xa, [
                     m(i(O), {
                       icon: "tabler:drag-drop",
                       "aria-hidden": "true"
                     }),
-                    b[18] || (b[18] = s("span", null, "Use + on an available permission, or drag it here.", -1))
+                    c[18] || (c[18] = s("span", null, "Use + on an available permission, or drag it here.", -1))
                   ]))
                 ])
               ], 32)
             ], 2)
-          ])) : A.value ? (a(), u("div", xa, [
-            s("div", Ca, [
-              s("div", Sa, [
+          ])) : A.value ? (a(), u("div", Ca, [
+            s("div", Sa, [
+              s("div", Ba, [
                 m(i(O), {
                   icon: "tabler:shield",
                   "aria-hidden": "true"
                 }),
                 s("span", null, x(A.value.label || st(A.value.id)), 1)
               ]),
-              s("div", Ba, [
+              s("div", Ta, [
                 m(i(Z), {
                   variant: "primary",
                   small: "",
                   icon: "tabler:stack-2",
-                  onClick: b[9] || (b[9] = (c) => _(A.value))
+                  onClick: c[9] || (c[9] = (b) => _(A.value))
                 }, {
                   default: C(() => [
                     P(x(A.value.overlay_slug ? "Edit extension" : "Add permissions"), 1)
@@ -4546,31 +4549,31 @@ const pr = {
                   variant: "soft",
                   small: "",
                   icon: "tabler:copy",
-                  onClick: b[10] || (b[10] = (c) => g(A.value))
+                  onClick: c[10] || (c[10] = (b) => g(A.value))
                 }, {
-                  default: C(() => [...b[19] || (b[19] = [
+                  default: C(() => [...c[19] || (c[19] = [
                     P("Copy role", -1)
                   ])]),
                   _: 1
                 })
               ])
             ]),
-            b[21] || (b[21] = s("p", { class: "ks-view-note" }, " Included with the application. Adding permissions affects everyone with this role. For restricted access, create a new role with only the permissions needed and assign it in System → Users instead of this role. Other assigned roles may still grant access. ", -1)),
-            s("div", Ta, [
-              (a(!0), u(tt, null, nt(A.value.policies, (c) => (a(), $(bt, {
-                key: c.id,
-                policy: c,
+            c[21] || (c[21] = s("p", { class: "ks-view-note" }, " Included with the application. Adding permissions affects everyone with this role. For restricted access, create a new role with only the permissions needed and assign it in System → Users instead of this role. Other assigned roles may still grant access. ", -1)),
+            s("div", Pa, [
+              (a(!0), u(tt, null, nt(A.value.policies, (b) => (a(), $(bt, {
+                key: b.id,
+                policy: b,
                 mode: "locked"
               }, null, 8, ["policy"]))), 128)),
-              A.value.policies.length ? y("", !0) : (a(), u("div", Pa, "No permissions in this role."))
+              A.value.policies.length ? y("", !0) : (a(), u("div", Ia, "No permissions in this role."))
             ]),
-            A.value.overlay_policies && A.value.overlay_policies.length ? (a(), u("div", Ia, [
-              s("div", Aa, [
+            A.value.overlay_policies && A.value.overlay_policies.length ? (a(), u("div", Aa, [
+              s("div", za, [
                 m(i(O), {
                   icon: "tabler:stack-2",
                   "aria-hidden": "true"
                 }),
-                b[20] || (b[20] = s("span", null, "Additional permissions", -1)),
+                c[20] || (c[20] = s("span", null, "Additional permissions", -1)),
                 m(i(Pt), { severity: "warn" }, {
                   default: C(() => [
                     P(x(A.value.overlay_policies.length), 1)
@@ -4578,15 +4581,15 @@ const pr = {
                   _: 1
                 })
               ]),
-              s("div", za, [
-                (a(!0), u(tt, null, nt(A.value.overlay_policies, (c) => (a(), $(bt, {
-                  key: c.id,
-                  policy: c,
+              s("div", La, [
+                (a(!0), u(tt, null, nt(A.value.overlay_policies, (b) => (a(), $(bt, {
+                  key: b.id,
+                  policy: b,
                   mode: "locked"
                 }, null, 8, ["policy"]))), 128))
               ])
             ])) : y("", !0)
-          ])) : (a(), u("div", La, [
+          ])) : (a(), u("div", _a, [
             m(i(gn), {
               icon: "tabler:shield-lock",
               title: "Roles",
@@ -4603,11 +4606,11 @@ const pr = {
       ])
     ]));
   }
-}), Ra = {
-  rootComponent: _a,
+}), Ea = {
+  rootComponent: Na,
   plugins: [Bn]
 };
 export {
-  Ra as mountConfig
+  Ea as mountConfig
 };
-//# sourceMappingURL=lazy-mount-Bix5Gexq.js.map
+//# sourceMappingURL=lazy-mount-DFvGlHkj.js.map

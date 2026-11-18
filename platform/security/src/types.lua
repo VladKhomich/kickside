@@ -27,7 +27,8 @@ type PolicySummary = {
     actions: any?,
     resources: any?,
     -- Declaration's meta.private marker.
-    private: boolean,
+    private: boolean?,
+    available: boolean?,
 }
 
 -- A scope/role in the merged catalog: a built-in implicit group, a registry

@@ -197,6 +197,17 @@ entries:
       resources: app:sample_service.endpoint
       effect: allow
 
+  - name: sample_infrastructure
+    kind: security.policy
+    meta:
+      title: Sample infrastructure
+      intent: module_access
+      assignable: false
+    policy:
+      actions: access
+      resources: app:sample_infrastructure.endpoint
+      effect: allow
+
   - name: dep.wippy.test
     kind: ns.dependency
     version: "*"

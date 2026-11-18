@@ -7,6 +7,7 @@ entries:
     title: Contract
     surface: kickside.contract
     intent: module_access
+    assignable: false
     includes:
     - kickside.contract.security:module_runtime
   groups: []

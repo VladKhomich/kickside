@@ -79,7 +79,7 @@ function copyScope(s: Scope) {
   Object.assign(draft.value!, {
     label: s.label ? `Copy of ${s.label}` : '',
     description: s.description,
-    policies: [...s.policies, ...(s.overlay_policies ?? [])],
+    policies: [...s.policies, ...(s.overlay_policies ?? [])].filter(p => p.available !== false),
   })
 }
 
@@ -138,7 +138,8 @@ const draftSlug = computed(() => {
   const base = sanitizeId(draft.value.label.normalize('NFKD').replace(/\p{M}/gu, '')).toLowerCase() || 'role'
   return `${base}_${draft.value.slug}`
 })
-const canSave = computed(() => !!draft.value && draft.value.label.trim() !== '' && draft.value.policies.length > 0)
+const canSave = computed(() => !!draft.value && draft.value.label.trim() !== ''
+  && (!draft.value.isNew || draft.value.policies.length > 0))
 
 // Transient confirmation after a successful save — the save button's spinner
 // alone left it ambiguous whether the change persisted.

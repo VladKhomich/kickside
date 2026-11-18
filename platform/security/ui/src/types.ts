@@ -11,6 +11,7 @@ export interface Policy {
   actions?: unknown
   resources?: unknown
   private?: boolean
+  available?: boolean
 }
 
 // A scope/role in the catalog. Built-in (implicit group), registry security.scope,
