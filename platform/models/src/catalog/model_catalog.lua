@@ -159,7 +159,9 @@ function M.resolve(model_identifier: string): (any?, any?)
         selected.candidates = class_models
         return selected
     end
-    if class_name then return nil, "No models found for class: " .. class_name end
+    if class_name then
+        return nil, errors.new({ kind = errors.NOT_FOUND, message = "No models found for class: " .. class_name })
+    end
     return nil, "Model or class not found: " .. model_identifier
 end
 
