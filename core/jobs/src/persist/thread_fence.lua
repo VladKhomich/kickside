@@ -7,6 +7,32 @@ local sql = require("sql")
 local M = {}
 M.TABLE = "kickside_job_thread_cleanup"
 
+function M.owner_key(dbtype: string, column: string): string
+    if dbtype ~= sql.type.POSTGRES then return column end
+    return "CASE WHEN " .. column .. " ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'"
+        .. " THEN CAST(" .. column .. " AS uuid) END"
+end
+
+-- Limit the indexed candidates before probing owner eligibility. Return the
+-- ineligible rows too so the caller can advance past a full window of them.
+function M.ordered_window(db: sql.DB, source: string, alias: string, keys: {string},
+        predicate: string, eligible: string, after: {any}, limit: integer): (table[]?, error?)
+    local args: {string} = {}
+    local params: {any} = {}
+    for i, value in ipairs(after) do
+        args[i] = "$" .. tostring(i)
+        params[i] = value
+    end
+    params[#params + 1] = limit
+    local columns = table.concat(keys, ",")
+    local seek = #keys == 1 and columns .. ">" .. args[1]
+        or "(" .. columns .. ")>(" .. table.concat(args, ",") .. ")"
+    return db:query("SELECT " .. columns .. ",(" .. eligible .. ") AS eligible FROM (SELECT "
+        .. columns .. " FROM " .. source .. " WHERE " .. predicate .. " AND " .. seek
+        .. " ORDER BY " .. columns .. " LIMIT $" .. tostring(#params) .. ") " .. alias
+        .. " ORDER BY " .. columns, params)
+end
+
 local function invalid_response(field: string, thread_id: string?): error
     return errors.new({message = "thread cleanup fence returned invalid " .. field, kind = errors.INTERNAL,
         retryable = false, details = {code = "job_thread_fence_response", field = field, thread_id = thread_id}})

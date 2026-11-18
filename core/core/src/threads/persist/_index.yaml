@@ -91,6 +91,8 @@ entries:
       autoinit: kickside.component:autoinit
       threads_normalize: kickside.core.threads.persist:normalize
       natural_key: kickside.core.threads.persist:natural_key
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
+      threads_writer: kickside.core.threads.persist:writer
 
   - name: thread_crud
     kind: library.lua

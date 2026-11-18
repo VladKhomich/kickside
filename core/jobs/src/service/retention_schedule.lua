@@ -15,6 +15,7 @@ function schedule.new(dependencies: any): any
     local active_policy: any = nil
     local driver = {}
     local job_cursor: table? = nil
+    local unused_fence_cursor: string? = nil
 
     local function retry_delay_ms(policy: any): number
         retry_count = retry_count + 1
@@ -39,7 +40,7 @@ function schedule.new(dependencies: any): any
         end
         active_policy = policy
 
-        local stats, sweep_err = sweep(job_cursor)
+        local stats, sweep_err = sweep(job_cursor, unused_fence_cursor)
         if sweep_err then
             log:error("job_worker retention sweep failed: " .. tostring(sweep_err))
             deadline_ns = now_ns + retry_delay_ms(policy) * 1000000
@@ -47,7 +48,8 @@ function schedule.new(dependencies: any): any
         end
         retry_count = 0
         job_cursor = stats.job_cursor
-        local full = job_cursor ~= nil or stats.jobs >= policy.retention_batch or stats.job_runs > 0
+        unused_fence_cursor = stats.unused_fence_cursor
+        local full = job_cursor ~= nil or unused_fence_cursor ~= nil or stats.jobs >= policy.retention_batch or stats.job_runs > 0
             or stats.workers >= policy.retention_batch or stats.worker_pulses >= policy.retention_batch
             or stats.wake_rows >= policy.retention_batch
             or stats.thread_cleanup_receipts >= policy.retention_batch

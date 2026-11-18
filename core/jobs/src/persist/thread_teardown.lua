@@ -272,17 +272,12 @@ local function advance_past_receipts(tx: sql.Transaction, thread_id: string, seq
     return latest + 1, nil
 end
 
--- The caller has inserted a new thread on tx. Its first cleanup page follows
--- the old owner's pages so acknowledgments can still identify their receipt.
-function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
-    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
-    if fence_err then return nil, fence_err end
+local function open_locked_tx(tx: sql.Transaction, dbtype: string, thread_id: string, fence: table?): (integer?, error?)
     local sequence = not fence and 0 or math.tointeger(fence.next_page_seq)
     if not sequence or sequence < 0 then return nil, response_error("fence.next_page_seq") end
     if not fence or not fence.started then return advance_past_receipts(tx, thread_id, sequence, fence) end
 
     if fence.completed_at == nil and sequence > 0 then
-        -- The successful insert proves the previous thread is gone.
         local _, ack_err = ack_locked_tx(tx, dbtype, thread_id, sequence - 1, true, fence)
         if ack_err then return nil, ack_err end
     end
@@ -299,6 +294,34 @@ function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string
             retryable = true, details = {reason = "thread_cleanup", thread_id = thread_id}})
     end
     return advance_past_receipts(tx, thread_id, sequence, fence)
+end
+
+-- The caller has inserted a new thread on tx, proving the previous thread is gone.
+function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
+    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
+    if fence_err then return nil, fence_err end
+    return open_locked_tx(tx, dbtype, thread_id, fence)
+end
+
+-- The caller holds the live thread row before locking Jobs. A final page from
+-- before this thread was created belongs to its previous incarnation.
+function M.reopen_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
+    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
+    if fence_err then return nil, fence_err end
+    if not fence or not fence.started then return nil, nil end
+    local sequence = math.tointeger(fence.next_page_seq)
+    if not sequence or sequence < 1 then return nil, response_error("fence.next_page_seq") end
+
+    local prior = "COALESCE(r.created_at,f.completed_at)"
+    if dbtype == sql.type.POSTGRES then prior = "CAST(" .. prior .. " AS timestamptz)" end
+    local rows, read_err = tx:query("SELECT t.id FROM kickside_thread t"
+        .. " JOIN " .. thread_fence.TABLE .. " f ON f.thread_id=$1"
+        .. " LEFT JOIN " .. RECEIPT .. " r ON r.thread_id=f.thread_id AND r.page_seq=f.next_page_seq-1"
+        .. " WHERE t.id=$2 AND t.deleting_at IS NULL AND t.created_at > " .. prior, {thread_id, thread_id})
+    if read_err then return nil, errors.wrap(read_err, "verify replacement thread incarnation") end
+    if type(rows) ~= "table" then return nil, response_error("thread.rows") end
+    if not rows[1] then return nil, nil end
+    return open_locked_tx(tx, dbtype, thread_id, fence)
 end
 
 function M.page(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer): (table?, error?)
