@@ -16,8 +16,8 @@ end
 local function define_tests()
     test.describe("default thread fence retention", function()
         test.it("advances an indexed window across 100000 live default fences", function()
-            local db = required(job_fixture.private_queue("app:private_queue_retention_fences"))
-            local dbtype = tostring(db:type())
+            local queue, dbtype, open_err = job_fixture.private_queue("app:private_queue_retention_fences")
+            local db = required(queue, open_err)
             local postgres = dbtype == sql.type.POSTGRES
             local batch = required(config.policy()).retention_batch
             local numbers = postgres and "SELECT generate_series(1,100001) AS n"
