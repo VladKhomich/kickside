@@ -16,7 +16,7 @@ end
 -- Limit the indexed candidates before probing owner eligibility. Return the
 -- ineligible rows too so the caller can advance past a full window of them.
 function M.ordered_window(db: sql.DB, source: string, alias: string, keys: {string},
-        predicate: string, eligible: string, after: {any}, limit: integer): (table[]?, error?)
+        predicate: string, eligible: string, after: {any}, limit: integer): (table[]?, error?, table?)
     local args: {string} = {}
     local params: {any} = {}
     for i, value in ipairs(after) do
@@ -27,10 +27,12 @@ function M.ordered_window(db: sql.DB, source: string, alias: string, keys: {stri
     local columns = table.concat(keys, ",")
     local seek = #keys == 1 and columns .. ">" .. args[1]
         or "(" .. columns .. ")>(" .. table.concat(args, ",") .. ")"
-    return db:query("SELECT " .. columns .. ",(" .. eligible .. ") AS eligible FROM (SELECT "
+    local rows, err = db:query("SELECT " .. columns .. ",(" .. eligible .. ") AS eligible FROM (SELECT "
         .. columns .. " FROM " .. source .. " WHERE " .. predicate .. " AND " .. seek
         .. " ORDER BY " .. columns .. " LIMIT $" .. tostring(#params) .. ") " .. alias
         .. " ORDER BY " .. columns, params)
+    local last = type(rows) == "table" and #rows == limit and rows[#rows] or nil
+    return rows, err, last
 end
 
 local function invalid_response(field: string, thread_id: string?): error

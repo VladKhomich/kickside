@@ -338,7 +338,7 @@ local function prune_unused_fences(db: sql.DB, dbtype: string, limit: integer, e
         after: string?): (integer?, error?, string?)
     local source = thread_fence.TABLE
     if dbtype == sql.type.SQLITE then source = source .. " INDEXED BY idx_job_cleanup_unused_fence" end
-    local rows, read_err = thread_fence.ordered_window(db, source, "f", {"thread_id"}, UNUSED_FENCE,
+    local rows, read_err, last = thread_fence.ordered_window(db, source, "f", {"thread_id"}, UNUSED_FENCE,
         eligible, {after or ""}, limit)
     if read_err then return nil, errors.wrap(read_err, "unused thread cleanup fence selection failed") end
     if not rows then return nil, response_error("candidates.rows") end
@@ -361,8 +361,7 @@ local function prune_unused_fences(db: sql.DB, dbtype: string, limit: integer, e
             if commit_err then return nil, errors.wrap(commit_err, "thread cleanup fence prune commit failed") end
         end
     end
-    local next_cursor = #rows == limit and rows[#rows].thread_id or nil
-    return total, nil, next_cursor
+    return total, nil, last and last.thread_id
 end
 
 -- One bounded pass over each Jobs-owned retained table. Full batch counts
