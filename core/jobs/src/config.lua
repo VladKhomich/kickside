@@ -351,5 +351,6 @@ M.WAKE_TOPIC = "kickside.core.jobs:wake"
 M.POOL_NAME = "kickside.core.jobs.worker_pool"
 M.IDLE_TOPIC = "kickside.core.jobs:worker_idle"
 M.ASSIGN_TOPIC = "kickside.core.jobs:worker_assign"
+M.SHUTDOWN_TOPIC = "kickside.core.jobs:worker_shutdown"
 
 return M
