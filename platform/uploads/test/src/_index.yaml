@@ -702,6 +702,9 @@ entries:
       upload_tokens: kickside.uploads.persist:upload_tokens
       secret_cipher: kickside.contract:secret_cipher
       upload_query_repo: kickside.uploads.persist:upload_query_repo
+      upload_read_model: kickside.uploads.persist:upload_read_model
+      process_job: kickside.uploads.service:process_dead
+      threads_writer: kickside.core.threads.persist:writer
       jobs_retention: kickside.core.jobs.persist:retention
 
   - name: delete_stage_failure_test

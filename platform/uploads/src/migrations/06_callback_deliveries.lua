@@ -9,7 +9,8 @@ return require("migration").define(function()
                     _, err = db:execute([[CREATE INDEX IF NOT EXISTS idx_upload_checkpoint_candidates
                         ON kickside_uploads (uuid)
                         WHERE storage_state IN ('completed', 'failed')
-                          AND processing_intent_state = 'acknowledged' AND processing_job_id IS NOT NULL]])
+                          AND ((processing_intent_state = 'acknowledged' AND processing_job_id IS NOT NULL)
+                            OR (processing_intent_state IS NULL AND processing_job_id IS NULL))]])
                     if err then error(tostring(err)) end
                 end)
                 down(function()

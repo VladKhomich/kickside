@@ -7,6 +7,8 @@ local trim = require("text_trim").trim
 
 local upload_query_repo = {}
 
+upload_query_repo.INTENTLESS_SQL = "processing_intent_state IS NULL AND processing_job_id IS NULL"
+
 function upload_query_repo.processing_job_identity_sql(upload: string): string
     return "'7:uploads' || CAST(length(" .. upload .. "uuid) AS TEXT) || ':' || " .. upload .. "uuid || '7:process'"
 end
@@ -14,7 +16,7 @@ end
 function upload_query_repo.processing_job_owner_sql(): string
     return [[EXISTS (SELECT 1 FROM kickside_job j WHERE j.id = ? AND
         ((processing_intent_state = 'acknowledged' AND processing_job_id = CAST(j.id AS TEXT))
-         OR (processing_intent_state IS NULL AND processing_job_id IS NULL AND j.job_identity = ]]
+         OR (]] .. upload_query_repo.INTENTLESS_SQL .. [[ AND j.job_identity = ]]
              .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. ")))"
 end
 
@@ -141,22 +143,45 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
     return upload or rows[1], decode_err
 end
 
+-- A newer queue event fences a terminal event or projection from an earlier
+-- attempt. The projection still witnesses publication after event pruning.
+local terminal_projection = "r.status = CASE u.storage_state WHEN 'completed' THEN 'completed' ELSE 'error' END"
+local checkpoint_published = [[(
+    SELECT COALESCE(r.status = 'deleted', FALSE) OR COALESCE((
+        SELECT CASE WHEN e.type = 'kickside.uploads.events:upload.queued'
+            THEN e.seq <= r.last_event_seq AND ]] .. terminal_projection .. [[
+            ELSE e.seq >= COALESCE(r.last_event_seq, 0) END
+        FROM kickside_event e
+        WHERE e.external_source = 'uploads' AND e.external_id = u.uuid
+          AND (r.component_id IS NULL OR CAST(e.thread_id AS TEXT) = r.component_id)
+          AND (e.type = 'kickside.uploads.events:upload.queued'
+            OR (e.type IN ('kickside.uploads.events:upload.completed', 'kickside.uploads.events:upload.failed')
+              AND (u.processing_job_id IS NULL OR e.external_version IN (u.processing_job_id, e.type))))
+        ORDER BY e.seq DESC LIMIT 1
+    ), ]] .. terminal_projection .. [[, FALSE)
+    FROM (SELECT 1) anchor LEFT JOIN kickside_upload_read_model r ON r.upload_id = u.uuid
+)]]
+
+function upload_query_repo.checkpoint_published_tx(tx, uuid: string): (boolean?, any?)
+    local rows, err = tx:query("SELECT " .. checkpoint_published .. " AS published FROM kickside_uploads u WHERE u.uuid = $1",
+        { uuid })
+    if err then return nil, err end
+    local published = rows[1].published
+    return published == true or published == 1, nil
+end
+
 -- Select a bounded index page and check publication without filtering away cursor positions.
 function upload_query_repo.list_checkpoints(limit: integer, cursor: string?, db: any): (table?, any?, string?)
     local after, limit_arg, params = "", "$1", { limit }
-    if cursor then after, limit_arg, params = " AND uuid > $1", "$2", { cursor, limit } end
+    if cursor then after, limit_arg, params = " AND u.uuid > $1", "$2", { cursor, limit } end
     local dbtype, type_err = db:type()
     if type_err then return nil, type_err end
     local index = dbtype == sql.type.SQLITE and " INDEXED BY idx_upload_checkpoint_candidates" or ""
-    local rows, err = db:query([[
-        SELECT u.*, NOT EXISTS (
-            SELECT 1 FROM kickside_upload_read_model r WHERE r.upload_id = u.uuid
-              AND r.status IN ('deleted', CASE u.storage_state WHEN 'completed' THEN 'completed' ELSE 'error' END)
-        ) AS unpublished
-        FROM kickside_uploads u]] .. index .. [[
-        WHERE storage_state IN ('completed', 'failed')
-          AND processing_intent_state = 'acknowledged' AND processing_job_id IS NOT NULL]] .. after .. [[
-        ORDER BY uuid LIMIT ]] .. limit_arg, params)
+    local rows, err = db:query("SELECT u.*, NOT " .. checkpoint_published .. " AS unpublished FROM kickside_uploads u"
+        .. index .. [[
+        WHERE u.storage_state IN ('completed', 'failed')
+          AND ((u.processing_intent_state = 'acknowledged' AND u.processing_job_id IS NOT NULL)
+            OR (]] .. upload_query_repo.INTENTLESS_SQL .. "))" .. after .. " ORDER BY u.uuid LIMIT " .. limit_arg, params)
     if err then return nil, err end
     local checkpoints = {}
     for _, row in ipairs(rows) do

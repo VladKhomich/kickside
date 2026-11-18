@@ -321,13 +321,17 @@ function upload_record_repo.mark_storage_failed(uuid)
 end
 
 -- Lock the owned checkpoint before reading its publication and callback receipts.
-function upload_record_repo.lock_settlement_tx(tx, upload: any, job_id: string, recovering: boolean)
+function upload_record_repo.lock_settlement_tx(tx, upload: any, job_id: string?, recovering: boolean)
     local query = sql.builder.update("kickside_uploads")
         :set("storage_state", sql.builder.expr("storage_state"))
         :where("uuid = ? AND storage_state IN ('uploaded', 'completed', 'failed')", upload.uuid)
     if recovering then
-        query = query:where("storage_state = ? AND processing_intent_state = 'acknowledged' AND processing_job_id = ?",
-            upload.storage_state, job_id)
+        query = query:where("storage_state = ?", upload.storage_state)
+        if job_id then
+            query = query:where("processing_intent_state = 'acknowledged' AND processing_job_id = ?", job_id)
+        else
+            query = query:where(upload_query_repo.INTENTLESS_SQL)
+        end
     else
         query = query:where(upload_query_repo.processing_job_owner_sql(), job_id)
     end
@@ -346,25 +350,6 @@ function upload_record_repo.publish_storage_tx(tx, uuid: string, storage_state: 
         :set("storage_state", storage_state):set("updated_at", now_rfc3339())
         :where("uuid = ?", uuid):run_with(tx):exec()
     return err
-end
-
--- The projection witnesses publication after Core prunes the event. A queued
--- event newer than the projection means its terminal status is from a prior job.
-function upload_record_repo.checkpoint_published_tx(tx, uuid: string, thread_id: string, job_id: string, storage_state: string)
-    local rows, err = tx:query([[
-        SELECT 1 FROM kickside_event
-        WHERE thread_id = $1 AND external_source = 'uploads' AND external_id = $2 AND external_version = $3
-          AND type IN ('kickside.uploads.events:upload.completed', 'kickside.uploads.events:upload.failed')
-        UNION ALL
-        SELECT 1 FROM kickside_upload_read_model r WHERE r.upload_id = $2
-          AND (r.status = 'deleted' OR (r.status = $4 AND NOT EXISTS (
-            SELECT 1 FROM kickside_event q WHERE q.thread_id = $1 AND q.external_source = 'uploads'
-              AND q.external_id = $2 AND q.external_version = $3 AND q.type = 'kickside.uploads.events:upload.queued'
-              AND q.seq > r.last_event_seq)))
-        LIMIT 1
-    ]], { thread_id, uuid, job_id, storage_state == "completed" and "completed" or "error" })
-    if err then return nil, err end
-    return #rows > 0, nil
 end
 
 -- Record delivery against the same terminal upload checkpoint read by the callback.

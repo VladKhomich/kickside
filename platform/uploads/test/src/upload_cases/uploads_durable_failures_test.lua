@@ -949,15 +949,13 @@ local function define_tests()
                 local job = admit_job(db, queued.job_id, checkpoint.dead and 5 or 1)
                 local dbtype = tostring(db:type())
 
-                if checkpoint.delivered then
-                    -- Keep the checkpoint out of the owner pass until its callback is pruned.
-                    assert(db:execute("UPDATE kickside_uploads SET processing_intent_state=NULL, processing_job_id=NULL WHERE uuid=$1", {id}))
-                end
-                -- The published worker commits this state before publishing the event.
-                if checkpoint.failed then
-                    assert(upload_record_repo.mark_storage_failed(id))
-                else
-                    assert(upload_record_repo.mark_storage_completed(id))
+                local function save_checkpoint()
+                    -- The published worker writes storage before it publishes the event.
+                    if checkpoint.failed then
+                        assert(upload_record_repo.mark_storage_failed(id))
+                    else
+                        assert(upload_record_repo.mark_storage_completed(id))
+                    end
                 end
 
                 local function callbacks(): { table }
@@ -977,6 +975,9 @@ local function define_tests()
                     return run.id
                 end
                 if checkpoint.delivered then
+                    -- Keep recovery from claiming the fixture while its callback is delivered and pruned.
+                    assert(db:execute("UPDATE kickside_uploads SET processing_intent_state='pending' WHERE uuid=$1", {id}))
+                    save_checkpoint()
                     assert(pipeline_lib.invoke_upload_token(upload, true, nil))
                     local callback_id = callbacks()[1].id
                     local callback_run_id = deliver_callback(callback_id)
@@ -999,24 +1000,27 @@ local function define_tests()
                 end
                 test.eq(#events(), 0)
 
-                if checkpoint.delivered then
-                    assert(db:execute("UPDATE kickside_uploads SET processing_intent_state='acknowledged', processing_job_id=$2 WHERE uuid=$1",
-                        {id, job.id}))
-                end
                 local expected_status = checkpoint.failed and "error" or "completed"
+                local recovered_by_owner = false
                 if checkpoint.dead then
                     local outcomes = assert(db:query([[SELECT id FROM kickside_job WHERE thread_id=$1 AND
                         job_type='kickside.uploads.service:process_dead']], {queued.thread_id}))
                     test.eq(#outcomes, 1)
                     local outcome = admit_job(db, outcomes[1].id, 1)
+                    save_checkpoint()
                     local result, run_err = worker_dispatch.execute_job(db, dbtype, outcome)
                     test.is_nil(run_err, tostring(run_err))
-                    test.is_true(result.settled)
+                    recovered_by_owner = not result.settled
                     local repeat_outcome, repeat_err = process_job.dead({payload = {job_id = job.id}})
                     test.is_nil(repeat_err, tostring(repeat_err))
                     test.is_false(repeat_outcome.settled)
                 else
                     local resumed = admit_job(db, job.id, 2)
+                    if checkpoint.delivered then
+                        assert(db:execute("UPDATE kickside_uploads SET processing_intent_state='acknowledged' WHERE uuid=$1", {id}))
+                    else
+                        save_checkpoint()
+                    end
                     local result, run_err = process_job.run(assert(worker_dispatch.build_worker_input(resumed)))
                     test.is_nil(run_err, tostring(run_err))
                     if checkpoint.failed then
@@ -1028,7 +1032,12 @@ local function define_tests()
                 end
                 local published = events()
                 test.eq(#published, 1)
-                test.eq(published[1].external_version, job.id)
+                if checkpoint.intent or checkpoint.dead then
+                    test.eq(published[1].external_version, recovered_by_owner and "attempt:1" or job.id)
+                else
+                    -- Either the resumed worker or the Uploads owner can settle this unrecorded intent.
+                    test.is_true(published[1].external_version == job.id or published[1].external_version == "attempt:1")
+                end
                 test.eq(assert(upload_query_repo.get(id)).storage_state, checkpoint.failed and "failed" or "completed")
                 if not checkpoint.failed then
                     test.eq(#assert(db:query("SELECT id FROM kickside_event WHERE external_id=$1 AND type=$2",
