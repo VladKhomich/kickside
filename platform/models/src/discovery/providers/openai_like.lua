@@ -23,6 +23,9 @@ end
 
 local function supports_generation(model_id: string): boolean
     local id = model_id:lower()
+    -- These search models generate through Chat Completions only.
+    if id:find("gpt-4o-search-preview", 1, true) == 1
+        or id:find("gpt-4o-mini-search-preview", 1, true) == 1 then return false end
     for _, operation in ipairs({ "image", "tts", "transcribe", "transcription", "whisper", "audio", "realtime", "moderation", "instruct" }) do
         for segment in id:gmatch("[^%-]+") do
             if segment == operation then return false end

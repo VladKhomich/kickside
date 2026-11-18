@@ -55,10 +55,11 @@ return {run = test.run_cases(function()
         end)
 
         test.it("reports the authenticated model list when no generation model is available", function()
-            prepare_models({ "text-embedding-3-small", "davinci-002" })
+            prepare_models({ "text-embedding-3-small", "davinci-002", "gpt-4o-search-preview",
+                "gpt-4o-mini-search-preview-2025-03-11" })
             local result = assert(openai.test(first_party(), {}))
             test.eq(result.mode, "models")
-            test.eq(result.count, 2)
+            test.eq(result.count, 4)
             test.is_nil(http_fixture.probe())
         end)
 
