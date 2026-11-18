@@ -158,8 +158,42 @@ local function define_tests()
             end
         end)
 
-        test.it("keeps summarization independent of the answer model", function()
-            test.is_nil(kb_answer._resolve_answer_model({ summary_model = "class:fast" }))
+        test.it("uses the default answer model for omitted and empty settings", function()
+            for _, config in ipairs({
+                { summary_model = "summary-only" },
+                { analysis_model = "", summary_model = "summary-only" },
+            }) do
+                for _, driver in ipairs({ "single", "agentic" }) do
+                    config.query_driver = driver
+                    local previous_search = kb_answer._kb_search
+                    local previous_funcs = kb_answer._funcs
+                    local previous_llm = kb_answer._llm
+                    kb_answer._kb_search = {
+                        config = function() return config, {} end,
+                        query = function() return { items = items(1) }, nil end,
+                    }
+                    kb_answer._funcs = { call = function(_, args)
+                        test.eq(args.config.analysis_model, "class:fast")
+                        return { answer = "cited answer [1]" }, nil
+                    end }
+                    kb_answer._llm = { generate = function(_, opts)
+                        test.eq(opts.model, "class:fast")
+                        return { result = "cited answer [1]" }, nil
+                    end }
+
+                    local configured = config.analysis_model
+                    local ok, result, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
+                    kb_answer._kb_search = previous_search
+                    kb_answer._funcs = previous_funcs
+                    kb_answer._llm = previous_llm
+                    if not ok then error(result) end
+                    test.is_nil(err)
+                    test.is_nil(result.mode)
+                    test.eq(result.answer, "cited answer [1]")
+                    test.eq(result.results[1].content, "passage 1")
+                    test.eq(config.analysis_model, configured)
+                end
+            end
         end)
 
         test.it("treats explicit false as passages-only despite a summary model", function()
@@ -233,9 +267,27 @@ local function define_tests()
             if not ok then error(result) end
 
             test.is_nil(err)
-            test.is_nil(result.answer)
+            test.eq(result.mode, "query")
+            test.eq(result.answer, "Answers are disabled. Returning query results.")
             test.eq(result.count, 1)
             test.eq(result.results[1].content, "grounded passage")
+        end)
+
+        test.it("returns query results when the default answer class has no models", function()
+            local previous = kb_answer._kb_search
+            kb_answer._kb_search = {
+                config = function() return { analysis_model = "class:fast" }, {} end,
+                query = function() return { items = items(1), retrieval = { strategy = "plain", analysis = {
+                    status = "unavailable", reason = "no_models_for_class", model = "class:fast",
+                } } }, nil end,
+            }
+            local ok, result, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
+            kb_answer._kb_search = previous
+            if not ok then error(result) end
+            test.is_nil(err)
+            test.eq(result.mode, "query")
+            test.eq(result.answer, "No answer model is available. Returning query results.")
+            test.eq(result.results[1].content, "passage 1")
         end)
     end)
 end

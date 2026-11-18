@@ -89,10 +89,14 @@ the descriptor. Those workers materialize canonical KB content events into the
 engine’s storage. Public content writes go through the KB-owned thread;
 source materialization does not add a public store-mutation contract.
 
-Ask uses only the configured `analysis_model`; document summarization has its own
-model. With no analysis model, Ask returns ranked passages without generation.
+Ask uses `class:fast` when `analysis_model` is unset or empty. An explicit
+`false` disables answers. Document summarization uses its own model.
 The Ask response contains `success`, `query`, `answer`, `results`, and `count`.
 `results` contains the ranked source passages, including their IDs and metadata.
+When answers are disabled or no model is assigned to `class:fast`, Ask returns
+the query results with `mode: "query"` and a short explanation in `answer`.
+MCP AskKB includes that explanation and numbered passages in its `answer` text
+and returns the same source records in `sources`.
 Generated synthesis answers cite these passages with one-based references such
 as `[1]`; the reference identifies `results[0]` in the JSON response. The API
 does not declare a separate top-level `citations` field.

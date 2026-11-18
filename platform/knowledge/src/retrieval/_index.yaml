@@ -32,6 +32,7 @@ entries:
     imports:
       llm: wippy.llm:llm
       kb_search: kickside.knowledge.retrieval:kb_search
+      model_catalog: kickside.models.catalog:model_catalog
       model_failure: kickside.contract:model_failure
 
   # Built-in fallback agent for the agentic query driver.
