@@ -85,6 +85,6 @@ entries:
       timestamp: "2026-11-18T00:00:01Z"
     source: file://06_unset_zero_profile_timeouts.lua
     method: migrate
-    modules: [json, time]
+    modules: [json, logger, time]
     imports:
       migration: wippy.migration:migration

@@ -7,7 +7,7 @@ entries:
     meta: {type: test, suite: kickside_models}
     source: file://provider_timeout_test.lua
     method: run
-    modules: [sql, json]
+    modules: [sql, json, registry]
     imports:
       test: wippy.test:test
       repo: kickside.models.persist:repo

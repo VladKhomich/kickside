@@ -3,6 +3,7 @@ local test = require("test")
 local repo = require("repo")
 local sql = require("sql")
 local json = require("json")
+local registry = require("registry")
 local migration_runner = require("migration_runner")
 local plain_generate = require("plain_generate")
 
@@ -30,6 +31,11 @@ end
 
 local function define_tests()
     test.describe("provider profile timeout", function()
+        test.it("requires the LLM transport version that provides the timeout parser", function()
+            local dependency = assert(registry.get("kickside.models:dep.wippy.llm"))
+            test.eq(dependency.data.version, ">=0.5.14")
+        end)
+
         test.it("rejects invalid timeouts on create and update", function()
             local id = "provider-timeout-validation"
             local profile

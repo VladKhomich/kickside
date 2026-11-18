@@ -1,6 +1,9 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local json = require("json")
+local logger = require("logger")
 local time = require("time")
+
+local log = logger:named("kickside.models.migrations")
 
 local function uses_default(value: any): boolean
     if value == false or tonumber(value) == 0 then return true end
@@ -22,9 +25,9 @@ return require("migration").define(function()
 
                     for _, row in ipairs(rows) do
                         local config, decode_err = json.decode(row.config_json)
-                        -- Profile reload already isolates unreadable rows. Only
-                        -- rewrite configurations the application can read.
-                        if not decode_err and type(config) == "table" and uses_default(config.timeout) then
+                        if decode_err or type(config) ~= "table" then
+                            log:warn("skipping unreadable provider profile configuration", {profile_id = row.id})
+                        elseif uses_default(config.timeout) then
                             config.timeout = nil
                             local encoded, encode_err = json.encode(config)
                             if encode_err then error(encode_err) end
