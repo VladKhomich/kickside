@@ -113,7 +113,7 @@ local function error_identifier(value: any): string?
     return nil
 end
 
-local function public_failure(err: any, code: string, message: string): any
+local function public_failure(err: any, code: string, message: string): (any, any)
     local kind
     if type(err) == "userdata" then
         local native = err :: error
@@ -123,10 +123,10 @@ local function public_failure(err: any, code: string, message: string): any
         kind = error_identifier(err.kind)
         code = error_identifier(err.code) or code
     end
-    return { code = code, kind = kind, error = message }
+    return { code = code, kind = kind, error = message }, { code = code, kind = kind or type(err), message = message }
 end
 
-local function render_call(entry: any, ref: any, pages: { integer }, opts: any): ({ any }?, any?)
+local function render_call(entry: any, ref: any, pages: { integer }, opts: any, attempt: string): ({ any }?, any?, any?)
     local res, call_err = funcs.call(entry.processor_func :: string, {
         ref = ref,
         dpi = opts.dpi,
@@ -136,7 +136,9 @@ local function render_call(entry: any, ref: any, pages: { integer }, opts: any):
     })
     if call_err ~= nil or type(res) ~= "table" or res.err ~= nil then
         local err = call_err or (type(res) == "table" and res.err)
-        return nil, public_failure(err, "render_failed", "Unable to render document pages.")
+        local failure, diagnostic = public_failure(err, "render_failed", "Unable to render document pages.")
+        diagnostic.first_page, diagnostic.last_page, diagnostic.attempt = pages[1], pages[#pages], attempt
+        return nil, failure, diagnostic
     end
     local ok = type(res.ok) == "table" and res.ok or {}
     return ok.pages or {}, nil
@@ -144,10 +146,11 @@ end
 
 -- Probe the first failed batch page by page. If no page renders, report one
 -- document failure and stop; otherwise retain per-page failures and usable pages.
-local function render_pages(params: any, entry: any, ref: any, selected: { integer }, opts: any, source_id: string?, markdown_id: string?, source_checksum: string?): (integer, { any }, string?)
+local function render_pages(params: any, entry: any, ref: any, selected: { integer }, opts: any, source_id: string?, markdown_id: string?, source_checksum: string?): (integer, { any }, string?, any?)
     local rendered = 0
     local failures: { any } = {}
     local diagnosed = false
+    local diagnostic
     local function store_all(pages: { any }): string?
         for _, p in ipairs(pages) do
             local store_err = store_page(params, p, opts.format :: string, source_id, markdown_id, source_checksum)
@@ -162,32 +165,34 @@ local function render_pages(params: any, entry: any, ref: any, selected: { integ
         local selector: { integer } = {}
         for p = page, last do selector[#selector + 1] = selected[p] end
 
-        local pages, render_err = render_call(entry, ref, selector, opts)
+        local pages, render_err, batch_diagnostic = render_call(entry, ref, selector, opts, "batch")
         if render_err == nil then
             local store_err = store_all(pages :: { any })
-            if store_err then return rendered, failures, store_err end
+            if store_err then return rendered, failures, store_err, diagnostic end
         elseif #selector == 1 then
-            if not diagnosed then return rendered, { render_err }, nil end
+            if not diagnosed then return rendered, { render_err }, nil, batch_diagnostic end
+            diagnostic = diagnostic or batch_diagnostic
             render_err.page = selector[1]
             failures[#failures + 1] = render_err
         else
             local before = #failures
             for _, number in ipairs(selector) do
-                local single, single_err = render_call(entry, ref, { number }, opts)
+                local single, single_err, probe_diagnostic = render_call(entry, ref, { number }, opts, "single_page_probe")
                 if single_err ~= nil then
+                    diagnostic = diagnostic or probe_diagnostic
                     single_err.page = number
                     failures[#failures + 1] = single_err
                 else
                     local store_err = store_all(single :: { any })
-                    if store_err then return rendered, failures, store_err end
+                    if store_err then return rendered, failures, store_err, diagnostic end
                 end
             end
-            if not diagnosed and #failures - before == #selector then return rendered, { render_err }, nil end
+            if not diagnosed and #failures - before == #selector then return rendered, { render_err }, nil, batch_diagnostic end
             diagnosed = true
         end
         page = last + 1
     end
-    return rendered, failures, nil
+    return rendered, failures, nil, diagnostic
 end
 
 local function process(params: any): any
@@ -219,9 +224,10 @@ local function process(params: any): any
     local count_res, count_err = funcs.call(entry.processor_func :: string, { ref = ref, count_only = true })
     if count_err ~= nil or type(count_res) ~= "table" or type(count_res.ok) ~= "table" then
         local err = count_err or (type(count_res) == "table" and count_res.err)
-        log:warn("rasterize page count failed", { upload_id = upload_id, error = tostring(err) })
-        return { success = true, completed = false, metadata = { rasterize_failures = {
-            public_failure(err, "page_count_failed", "Unable to count document pages.") } } }
+        local failure, diagnostic = public_failure(err, "page_count_failed", "Unable to count document pages.")
+        diagnostic.attempt = "count"
+        log:warn("rasterize page count failed", { upload_id = upload_id, error = failure.error, diagnostic = diagnostic })
+        return { success = true, completed = false, metadata = { rasterize_failures = { failure } } }
     end
     local total = tonumber(count_res.ok.total)
     if not total then return { success = true, completed = false } end
@@ -285,7 +291,7 @@ local function process(params: any): any
         quality = setting_int("rasterize_quality", 90),
     }
 
-    local rendered, failures, stage_err = render_pages(params, entry, ref, selected, opts, source_id, markdown_id,
+    local rendered, failures, stage_err, diagnostic = render_pages(params, entry, ref, selected, opts, source_id, markdown_id,
         type(primary.artifact) == "table" and type(primary.artifact.locator) == "table"
             and primary.artifact.locator.source_checksum or nil)
     if stage_err ~= nil then
@@ -294,7 +300,9 @@ local function process(params: any): any
     end
     if #failures > 0 then
         log:warn("rasterize render failed", { upload_id = upload_id, rendered = rendered, failed = #failures,
-            total = total, error = failures[1].error })
+            total = total, error = failures[1].error, diagnostic = diagnostic,
+            failed_first_page = failures[1].page or diagnostic.first_page,
+            failed_last_page = failures[#failures].page or selected[#selected] })
     end
 
     log:info("rasterized empty document", {
