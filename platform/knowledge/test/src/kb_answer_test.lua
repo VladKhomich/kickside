@@ -195,12 +195,13 @@ local function define_tests()
             end
         end)
 
-        test.it("uses the selected answer model or Fast independently of Search analysis", function()
+        test.it("answers with the selected model or Fast unless answers are off", function()
             with_default_model(function()
                 for _, case in ipairs({
                     { expected = "class:fast" },
                     { setting = "", expected = "class:fast" },
-                    { setting = false, expected = "class:fast" },
+                    { setting = false, notice = "Answers are disabled. Returning query results." },
+                    { setting = true, notice = "No answer model is available. Returning query results." },
                     { setting = "configured-model", expected = "configured-model" },
                 }) do
                     local config = { analysis_model = case.setting, summary_model = "summary-only" }
@@ -229,8 +230,13 @@ local function define_tests()
                         kb_answer._llm = previous_llm
                         if not ok then error(result) end
                         test.is_nil(err)
-                        test.is_nil(result.mode)
-                        test.eq(result.answer, "cited answer [1]")
+                        if case.notice then
+                            test.eq(result.mode, "query")
+                            test.eq(result.answer, case.notice)
+                        else
+                            test.is_nil(result.mode)
+                            test.eq(result.answer, "cited answer [1]")
+                        end
                         test.eq(result.results[1].content, "passage 1")
                         test.eq(config.analysis_model, configured)
                     end
@@ -293,7 +299,7 @@ local function define_tests()
             kb_answer._kb_search = {
                 config = function(): (any, any)
                     return {
-                        analysis_model = false,
+                        analysis_model = "",
                         summary_model = "class:fast",
                         query_driver = "agentic"
                     }, { is_graph = true }

@@ -90,11 +90,11 @@ engine’s storage. Public content writes go through the KB-owned thread;
 source materialization does not add a public store-mutation contract.
 
 Ask uses the selected `analysis_model` for synthesis and defaults to
-`class:fast` when the setting is omitted, empty, or false. Search analysis
-requires a named model. Document summarization uses its own model.
+`class:fast` when the setting is omitted or empty. `false` disables answers.
+Search analysis requires a named model. Document summarization uses its own model.
 The Ask response contains `success`, `query`, `answer`, `results`, and `count`.
 `results` contains the ranked source passages, including their IDs and metadata.
-When no model is assigned to the default `class:fast`, Ask returns
+When answers are disabled or no model is assigned to the default `class:fast`, Ask returns
 the query results with `mode: "query"` and a short explanation in `answer`.
 MCP AskKB includes that explanation and numbered passages in its `answer` text
 and returns the same source records in `sources`.
