@@ -54,6 +54,9 @@ local function merge_registry_overlay(base: any, overlay: any): any
 end
 
 local function by_name_map(): ({ [string]: any }?, any?)
+    local snapshot, err = models_repo.snapshot()
+    if err then return nil, err end
+    if snapshot.catalog_by_name then return snapshot.catalog_by_name end
     local map = {}
     local registry_cards = registry_models.get_all() or {}
     for _, card in ipairs(registry_cards) do
@@ -61,11 +64,10 @@ local function by_name_map(): ({ [string]: any }?, any?)
         card.enabled = true
         map[card.name] = card
     end
-    local overlays, err = models_repo.list_card_overlays()
-    if err then return nil, err end
-    for _, card in ipairs(overlays) do
+    for _, card in ipairs(snapshot.cards or {}) do
         map[card.name] = merge_registry_overlay(map[card.name], card)
     end
+    snapshot.catalog_by_name = map
     return map
 end
 
