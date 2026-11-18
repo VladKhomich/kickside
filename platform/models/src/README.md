@@ -88,7 +88,12 @@ by the connection-test probe; API keys remain in encrypted profile secrets or
 Profile `timeout` accepts positive seconds or a positive duration string such as
 `"2s"`. An unset timeout uses the provider default. On update, omit the field to
 keep the saved value or send an empty string to clear it. Invalid timeouts return
-HTTP 400 with `kind: "Invalid"` and `details.field: "timeout"`.
+HTTP 400 with `kind: "Invalid"` and `details.field: "timeout"`. Models
+uses the shared timeout parser from `wippy/llm` 0.5.14 or later.
+
+On upgrade, saved zero timeouts and `false` become unset so the profile
+uses the provider default. The catalog continues to report unreadable
+profiles individually.
 
 Retry is provider-level transport policy: `retry.attempts` is the number of
 transient failures to retry after the initial request, and optional

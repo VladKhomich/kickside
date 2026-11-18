@@ -16,6 +16,18 @@ local function assert_invalid_timeout(profile, err)
     test.is_false(err:retryable())
 end
 
+local function execute(db, query, args)
+    local _, err = db:execute(query, args)
+    assert(not err, tostring(err))
+end
+
+local function migrate_timeouts(db)
+    execute(db, "DELETE FROM _migrations WHERE id = $1", {migration_id})
+    local run = migration_runner.setup("app:db"):run({allowed_ids = {migration_id}})
+    assert(run.status == "complete" and run.migrations_failed == 0, json.encode(run))
+    test.eq(run.migrations_applied, 1)
+end
+
 local function define_tests()
     test.describe("provider profile timeout", function()
         test.it("rejects invalid timeouts on create and update", function()
@@ -40,16 +52,14 @@ local function define_tests()
             assert(ok, tostring(failure))
         end)
 
-        test.it("upgrades saved zero to the plain chat default and preserves positive timeouts", function()
+        test.it("upgrades saved default sentinels and preserves positive timeouts", function()
             local db = assert(sql.get("app:db"))
-            local function execute(query, args)
-                local _, err = db:execute(query, args)
-                assert(not err, tostring(err))
-            end
+            local preserved_text = "label" .. string.char(0) .. "suffix"
             local fixtures = {
                 {id = "provider-timeout-zero", timeout = 0, expected = "600000ms"},
                 {id = "provider-timeout-string-zero", timeout = "0", expected = "600000ms"},
                 {id = "provider-timeout-duration-zero", timeout = "0s", expected = "600000ms"},
+                {id = "provider-timeout-default-false", timeout = false, expected = "600000ms"},
                 {id = "provider-timeout-positive", timeout = 1, stored = 1, expected = "1000ms"},
                 {id = "provider-timeout-unset", expected = "600000ms"},
             }
@@ -57,15 +67,13 @@ local function define_tests()
             local original_context, original_http = client._ctx, client._http_client
             local ok, failure = pcall(function()
                 for _, fixture in ipairs(fixtures) do
-                    execute([[INSERT INTO kickside_model_provider_profiles
+                    execute(db, [[INSERT INTO kickside_model_provider_profiles
                         (id, name, provider_id, config_json, created_at, updated_at)
                         VALUES ($1, 'Saved profile', $2, $3, 1, 2)]],
                         {fixture.id, provider, json.encode({timeout = fixture.timeout,
-                            base_url = "https://example.test/v1", custom = {timeout = 0}})})
+                            base_url = "https://example.test/v1", custom = {timeout = 0, label = preserved_text}})})
                 end
-                execute("DELETE FROM _migrations WHERE id = $1", {migration_id})
-                local run = migration_runner.setup("app:db"):run({allowed_ids = {migration_id}})
-                assert(run.status == "complete" and run.migrations_failed == 0, json.encode(run))
+                migrate_timeouts(db)
                 local _, reload_err = repo.reload()
                 test.is_nil(reload_err)
 
@@ -79,6 +87,7 @@ local function define_tests()
                 for _, fixture in ipairs(fixtures) do
                     local profile = assert(repo.get_profile(fixture.id))
                     test.eq(profile.config.custom.timeout, 0)
+                    test.eq(profile.config.custom.label, preserved_text)
                     test.eq(profile.updated_at, 2)
                     client._ctx = {all = function()
                         return {base_url = profile.config.base_url, api_key = "fixture-key", timeout = profile.config.timeout}
@@ -89,12 +98,43 @@ local function define_tests()
                     test.eq(used_timeout, fixture.expected)
                     test.eq(profile.config.timeout, fixture.stored)
                 end
-                test.eq(run.migrations_applied, 1)
+                local previously_false = assert(repo.update_profile("provider-timeout-default-false", {enabled = false}))
+                test.is_false(previously_false.enabled)
+                test.is_nil(previously_false.config.timeout)
             end)
             client._ctx, client._http_client = original_context, original_http
             for _, fixture in ipairs(fixtures) do
-                execute("DELETE FROM kickside_model_provider_profiles WHERE id = $1", {fixture.id})
+                execute(db, "DELETE FROM kickside_model_provider_profiles WHERE id = $1", {fixture.id})
             end
+            db:release()
+            local _, reload_err = repo.reload()
+            test.is_nil(reload_err)
+            assert(ok, tostring(failure))
+        end)
+        test.it("preserves a corrupt profile and migrates healthy profiles after it", function()
+            local db = assert(sql.get("app:db"))
+            local corrupt = "a-provider-timeout-corrupt"
+            local healthy = "z-provider-timeout-healthy"
+            local malformed = "{not valid json"
+            local ok, failure = pcall(function()
+                for _, row in ipairs({{corrupt, malformed}, {healthy, '{"timeout":0}'}}) do
+                    execute(db, [[INSERT INTO kickside_model_provider_profiles
+                        (id, name, provider_id, config_json, created_at, updated_at)
+                        VALUES ($1, 'Saved profile', $2, $3, 1, 2)]], {row[1], provider, row[2]})
+                end
+                migrate_timeouts(db)
+                local rows = assert(db:query([[SELECT id,config_json FROM kickside_model_provider_profiles
+                    WHERE id IN ($1,$2) ORDER BY id]], {corrupt, healthy}))
+                test.eq(rows[1].config_json, malformed)
+                test.eq(rows[2].config_json, "{}")
+                local _, reload_err = repo.reload()
+                test.is_nil(reload_err)
+                local bad, bad_err = repo.get_profile(corrupt)
+                test.is_nil(bad)
+                test.not_nil(bad_err)
+                test.is_nil(assert(repo.get_profile(healthy)).config.timeout)
+            end)
+            execute(db, "DELETE FROM kickside_model_provider_profiles WHERE id IN ($1,$2)", {corrupt, healthy})
             db:release()
             local _, reload_err = repo.reload()
             test.is_nil(reload_err)

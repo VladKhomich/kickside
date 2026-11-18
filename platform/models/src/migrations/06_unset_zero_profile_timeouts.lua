@@ -2,6 +2,13 @@
 local json = require("json")
 local time = require("time")
 
+local function uses_default(value: any): boolean
+    if value == false or tonumber(value) == 0 then return true end
+    if type(value) ~= "string" then return false end
+    local duration = time.parse_duration(value)
+    return duration ~= nil and duration:nanoseconds() == 0
+end
+
 return require("migration").define(function()
     migration("unset zero provider profile timeouts", function()
         for _, engine in ipairs({"sqlite", "postgres"}) do
@@ -13,18 +20,17 @@ return require("migration").define(function()
                     if read_err then error(read_err) end
                     if #rows == 0 then return nil end
 
-                    local remove_timeout = engine == "postgres" and "(config_json::jsonb - 'timeout')::text"
-                        or "json_remove(config_json, '$.timeout')"
                     for _, row in ipairs(rows) do
                         local config, decode_err = json.decode(row.config_json)
-                        if decode_err or type(config) ~= "table" then
-                            error("invalid stored model provider configuration")
-                        end
-                        local timeout = config.timeout
-                        local duration = type(timeout) == "string" and time.parse_duration(timeout)
-                        if tonumber(timeout) == 0 or (duration and duration:seconds() == 0) then
-                            local _, write_err = db:execute("UPDATE kickside_model_provider_profiles SET config_json = "
-                                .. remove_timeout .. " WHERE id = $1", {row.id})
+                        -- Profile reload already isolates unreadable rows. Only
+                        -- rewrite configurations the application can read.
+                        if not decode_err and type(config) == "table" and uses_default(config.timeout) then
+                            config.timeout = nil
+                            local encoded, encode_err = json.encode(config)
+                            if encode_err then error(encode_err) end
+                            local _, write_err = db:execute(
+                                "UPDATE kickside_model_provider_profiles SET config_json = $1 WHERE id = $2",
+                                {encoded, row.id})
                             if write_err then error(write_err) end
                         end
                     end
