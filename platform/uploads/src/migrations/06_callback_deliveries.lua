@@ -6,6 +6,11 @@ return require("migration").define(function()
                 up(function(db)
                     local _, err = db:execute("ALTER TABLE kickside_uploads ADD COLUMN callback_deliveries TEXT")
                     if err then error(tostring(err)) end
+                    _, err = db:execute([[CREATE INDEX IF NOT EXISTS idx_upload_checkpoint_candidates
+                        ON kickside_uploads (uuid)
+                        WHERE storage_state IN ('completed', 'failed')
+                          AND processing_intent_state = 'acknowledged' AND processing_job_id IS NOT NULL]])
+                    if err then error(tostring(err)) end
                 end)
                 down(function()
                     error("Upload callback deliveries cannot be removed")

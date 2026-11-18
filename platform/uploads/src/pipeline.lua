@@ -311,26 +311,26 @@ function pipeline_lib.record_callback_delivery(upload: any, token: string, succe
     return nil
 end
 
-local function upload_token_job(upload, token: string, digest: string, success, error_msg): (table?, CallbackError?)
+local function enqueue_upload_token(upload, token: string, digest: string, success, error_msg, tx, dbtype): CallbackError?
     local payload, err = upload_tokens.unpack(token)
     if err then
         log:warn("upload token unpack failed", { upload_id = upload.uuid, error = err })
-        if type(err) == "userdata" then return nil, err end
-        return nil, errors.new({ message = "upload token unpack failed: " .. tostring(err),
+        if type(err) == "userdata" then return err end
+        return errors.new({ message = "upload token unpack failed: " .. tostring(err),
             kind = errors.INVALID, retryable = false, details = { error_kind = "declaration" } })
     end
 
     if payload.upload_id ~= upload.uuid then
-        return nil, errors.new({ message = "upload callback token does not match upload", kind = errors.INVALID,
+        return errors.new({ message = "upload callback token does not match upload", kind = errors.INVALID,
             retryable = false, details = { error_kind = "declaration" } })
     end
 
-    if not success and payload.on_error_id == nil then return nil, nil end
+    if not success and payload.on_error_id == nil then return nil end
 
     local func_id = payload.on_error_id
     if success then func_id = payload.function_id end
     if type(func_id) ~= "string" or func_id == "" then
-        return nil, errors.new({ message = "upload callback function is required", kind = errors.INVALID,
+        return errors.new({ message = "upload callback function is required", kind = errors.INVALID,
             retryable = false, details = { error_kind = "declaration" } })
     end
 
@@ -340,14 +340,14 @@ local function upload_token_job(upload, token: string, digest: string, success, 
     end
     local component_id = upload_types.component_id_for_owner(owner_actor_id)
     if not component_id then
-        return nil, errors.new({ message = "upload actor has no uploads component id",
+        return errors.new({ message = "upload actor has no uploads component id",
             kind = errors.INVALID, retryable = false, details = { error_kind = "declaration" } })
     end
 
     local actor_id = type(payload.actor_id) == "string" and payload.actor_id or nil
     if not actor_id or actor_id == "" then
         log:warn("upload token missing actor_id", { upload_id = upload.uuid, function_id = func_id })
-        return nil, errors.new({ message = "upload callback authorizer is required", kind = errors.INVALID,
+        return errors.new({ message = "upload callback authorizer is required", kind = errors.INVALID,
             retryable = false, details = { error_kind = "declaration" } })
     end
 
@@ -357,7 +357,7 @@ local function upload_token_job(upload, token: string, digest: string, success, 
         success = success == true,
         error = error_msg,
     }
-    return {
+    local params = {
         namespace = "thread", scope = component_id,
         owner_locator = { kind = "user", id = owner_actor_id :: string },
         key = CALLBACK_JOB_TYPE .. ":" .. tostring(upload.uuid or "") .. ":" .. digest,
@@ -369,18 +369,10 @@ local function upload_token_job(upload, token: string, digest: string, success, 
         concurrency_key = "uploads:callback:" .. component_id,
         immutable_payload = job_payload,
         trace_context = payload.trace_context,
-    }, nil
-end
-
-local function enqueue_upload_callback(params: table, tx: any?, dbtype: string?): CallbackError?
-    local enqueue_err: any = nil
-    if tx ~= nil then
-        local _, tx_err = jobs.enqueue_tx(tx, dbtype :: string, params)
-        enqueue_err = tx_err
-    else
-        local _, direct_err = jobs.enqueue(params)
-        enqueue_err = direct_err
-    end
+    }
+    local _, enqueue_err
+    if tx then _, enqueue_err = jobs.enqueue_tx(tx, dbtype :: string, params)
+    else _, enqueue_err = jobs.enqueue(params) end
     if enqueue_err then
         if type(enqueue_err) == "userdata" then return enqueue_err end
         return errors.new({ message = "upload callback enqueue failed: " .. tostring(enqueue_err),
@@ -397,38 +389,21 @@ local function callback_error(current: CallbackError?, failure: CallbackError): 
     return current
 end
 
-function pipeline_lib.prepare_upload_callbacks(upload, success, error_msg, delivered: table?)
-    local jobs_to_enqueue = {}
-    if not upload or not upload.metadata then return jobs_to_enqueue, nil end
-
+-- Schedule upload completion token callbacks as durable Core jobs.
+function pipeline_lib.invoke_upload_token(upload, success, error_msg, tx: any?, dbtype: string?, delivered: table?)
     local first_err = nil
-    for _, token in ipairs(callback_tokens(upload.metadata)) do
+    for _, token in ipairs(callback_tokens(upload and upload.metadata)) do
         local digest = callback_digest(token, success)
         if not delivered or delivered[digest] ~= true then
-            local params, err = upload_token_job(upload, token, digest, success, error_msg)
-            if params then jobs_to_enqueue[#jobs_to_enqueue + 1] = params end
-            if err then first_err = callback_error(first_err, err) end
-        end
-    end
-    return jobs_to_enqueue, first_err
-end
-
-function pipeline_lib.enqueue_upload_callbacks(upload, callbacks, first_err: CallbackError?, tx: any?, dbtype: string?)
-    for _, params in ipairs(callbacks) do
-        local err = enqueue_upload_callback(params, tx, dbtype)
-        if err then
-            first_err = callback_error(first_err, err)
-            log:warn("upload token callback enqueue failed", { upload_id = upload.uuid, error = tostring(err) })
+            local err = enqueue_upload_token(upload, token, digest, success, error_msg, tx, dbtype)
+            if err then
+                first_err = callback_error(first_err, err)
+                log:warn("upload token callback scheduling failed", { upload_id = upload.uuid, error = tostring(err) })
+            end
         end
     end
     if first_err then return false, first_err end
     return true, nil
-end
-
--- Schedule upload completion token callback(s) as durable core jobs.
-function pipeline_lib.invoke_upload_token(upload, success, error_msg, tx: any?, dbtype: string?, delivered: table?)
-    local callbacks, callback_err = pipeline_lib.prepare_upload_callbacks(upload, success, error_msg, delivered)
-    return pipeline_lib.enqueue_upload_callbacks(upload, callbacks, callback_err, tx, dbtype)
 end
 
 -- Process a single upload using funcs library. Execution authority lives in
