@@ -4,9 +4,8 @@ local M = { DEFAULT = "class:fast" }
 
 function M.configured(config: table?): string?
     local model = config and config.analysis_model
-    if model == false then return nil end
-    if type(model) == "string" and model ~= "" then return model end
-    return M.DEFAULT
+    if type(model) == "string" and model:find("%S") then return model end
+    return nil
 end
 
 function M.class_available(model: string): (boolean?, any?)

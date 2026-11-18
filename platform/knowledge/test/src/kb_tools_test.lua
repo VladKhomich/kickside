@@ -158,14 +158,14 @@ local function define_tests()
         test.it("ask formatter presents query passages with source citations", function()
             local r = kb_tools.format_ask_result({
                 mode = "query",
-                answer = "Answers are disabled. Returning query results.",
+                answer = "No answer model is available. Returning query results.",
                 results = {
                     { id = "first", content = "first passage" },
                     { id = "second", content = "second passage" },
                 },
             })
             test.eq(r.mode, "query")
-            test.eq(r.answer, "Answers are disabled. Returning query results.\n\n[1] first passage\n\n[2] second passage")
+            test.eq(r.answer, "No answer model is available. Returning query results.\n\n[1] first passage\n\n[2] second passage")
             test.eq(r.count, 2)
             test.eq(r.sources[2].id, "second")
         end)

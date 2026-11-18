@@ -105,7 +105,7 @@ function M.ask(kb_id: any, opts: any): (any, any)
     local config, _, config_err = M._kb_search.config(kb_id)
     if config_err then return nil, config_err end
     if type(config) ~= "table" then return nil, "knowledge base config is missing" end
-    local answer_model = analysis_model.configured(config)
+    local answer_model = analysis_model.configured(config) or analysis_model.DEFAULT
 
     local result, q_err = M._kb_search.query(kb_id, { query = query_text, limit = opts.limit or DEFAULT_LIMIT })
     if q_err then
@@ -114,13 +114,10 @@ function M.ask(kb_id: any, opts: any): (any, any)
     local analysis = result and result.retrieval and result.retrieval.analysis
     local items = (result and result.items) or {}
     local response: any = { success = true, query = query_text, results = normalize(items), count = #items }
-    if not answer_model then
-        response.mode, response.answer = "query", "Answers are disabled. Returning query results."
-        return response, nil
-    end
-    local unavailable = analysis and analysis.status == "unavailable" and analysis.reason == "no_models_for_class"
+    local unavailable = analysis and analysis.model == answer_model
+        and analysis.status == "unavailable" and analysis.reason == "no_models_for_class"
     if answer_model == analysis_model.DEFAULT then
-        if not unavailable or analysis.model ~= answer_model then
+        if not unavailable then
             local available, lookup_err = analysis_model.class_available(answer_model)
             if lookup_err then return nil, model_failure.wrap("answer model lookup", lookup_err) end
             unavailable = not available

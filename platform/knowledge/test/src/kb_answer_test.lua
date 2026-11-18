@@ -195,12 +195,15 @@ local function define_tests()
             end
         end)
 
-        test.it("uses the default answer model for omitted and empty settings", function()
+        test.it("uses the selected answer model or Fast independently of Search analysis", function()
             with_default_model(function()
-                for _, config in ipairs({
-                    { summary_model = "summary-only" },
-                    { analysis_model = "", summary_model = "summary-only" },
+                for _, case in ipairs({
+                    { expected = "class:fast" },
+                    { setting = "", expected = "class:fast" },
+                    { setting = false, expected = "class:fast" },
+                    { setting = "configured-model", expected = "configured-model" },
                 }) do
+                    local config = { analysis_model = case.setting, summary_model = "summary-only" }
                     for _, driver in ipairs({ "single", "agentic" }) do
                         config.query_driver = driver
                         local previous_search = kb_answer._kb_search
@@ -211,11 +214,11 @@ local function define_tests()
                             query = function() return { items = items(1) }, nil end,
                         }
                         kb_answer._funcs = { call = function(_, args)
-                            test.eq(args.config.analysis_model, "class:fast")
+                            test.eq(args.config.analysis_model, case.expected)
                             return { answer = "cited answer [1]" }, nil
                         end }
                         kb_answer._llm = { generate = function(_, opts)
-                            test.eq(opts.model, "class:fast")
+                            test.eq(opts.model, case.expected)
                             return { result = "cited answer [1]" }, nil
                         end }
 
@@ -235,11 +238,14 @@ local function define_tests()
             end)
         end)
 
-        test.it("treats explicit false as passages-only despite a summary model", function()
-            test.is_nil(analysis_model.configured({
-                analysis_model = false,
-                summary_model = "class:fast"
-            }))
+        test.it("keeps search analysis off without a named model", function()
+            for _, config in ipairs({
+                { summary_model = "class:fast" },
+                { analysis_model = "", summary_model = "class:fast" },
+                { analysis_model = false, summary_model = "class:fast" },
+            }) do
+                test.is_nil(analysis_model.configured(config))
+            end
         end)
 
         test.it("propagates config failure before querying", function()
@@ -276,7 +282,11 @@ local function define_tests()
             test.contains(tostring(err), "agent model is not registered")
         end)
 
-        test.it("does not invoke agentic or synthesis generation in passages-only mode", function()
+        test.it("does not invoke generation when Search analysis is off and Fast is unassigned", function()
+            local models = require("models_repo")
+            local fixture_model = "app.models:gpt-4.1-mini"
+            local _, disable_err = models.upsert_card({ name = fixture_model, enabled = false })
+            test.is_nil(disable_err, tostring(disable_err))
             local prev_search = kb_answer._kb_search
             local prev_funcs = kb_answer._funcs
             local prev_llm = kb_answer._llm
@@ -303,11 +313,13 @@ local function define_tests()
             kb_answer._kb_search = prev_search
             kb_answer._funcs = prev_funcs
             kb_answer._llm = prev_llm
+            local _, cleanup_err = models.delete_card(fixture_model)
+            test.is_nil(cleanup_err, tostring(cleanup_err))
             if not ok then error(result) end
 
             test.is_nil(err)
             test.eq(result.mode, "query")
-            test.eq(result.answer, "Answers are disabled. Returning query results.")
+            test.eq(result.answer, "No answer model is available. Returning query results.")
             test.eq(result.count, 1)
             test.eq(result.results[1].content, "grounded passage")
         end)
