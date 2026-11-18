@@ -41,23 +41,20 @@ local function handle(args)
     local _, access_err = component.validate_access(component_id, component.ACCESS.READ)
     if access_err then return nil, binding_errors.from(access_err, errors.PERMISSION_DENIED, "access_denied") end
 
-    local artifact_content, artifact_err, primary_artifact
+    local artifact_content, artifact_err
     if args.format ~= "raw" or args.extracted_only == true then
-        artifact_content, artifact_err, primary_artifact = artifact_parts_repo.read_primary_content(upload_id)
+        artifact_content, artifact_err = artifact_parts_repo.read_primary_content(upload_id)
     end
     if args.extracted_only == true then
         if artifact_err or not artifact_content or type(artifact_content.content) ~= "string" then
             local operation = "extracted text is not available"
             local failure = artifact_err or binding_errors.new(errors.INTERNAL, "no primary artifact", "primary_artifact_missing")
-            if primary_artifact or artifact_parts_repo.is_primary_artifact_missing(artifact_err) then
-                local cause = type(failure) == "userdata" and (failure :: error)
-                    or binding_errors.from(failure, errors.UNAVAILABLE, "artifact_read_failed")
-                local message = cause:message()
-                if primary_artifact then
-                    local has_blob = primary_artifact.blob_id and primary_artifact.blob_id ~= ""
-                    message = has_blob and "failed to read artifact blob" or "failed to read artifact bytes"
-                end
-                failure = errors.new({kind = cause:kind(), message = operation .. ": " .. message,
+            local cause = type(failure) == "userdata" and (failure :: error) or nil
+            local read_source = cause and (cause:details() or {}).artifact_read_source
+            local read_message = read_source == "blob" and "failed to read artifact blob"
+                or read_source == "locator" and "failed to read artifact bytes" or nil
+            if cause and (read_message or artifact_parts_repo.is_primary_artifact_missing(artifact_err)) then
+                failure = errors.new({kind = cause:kind(), message = operation .. ": " .. (read_message or cause:message()),
                     retryable = cause:retryable(), details = {code = "artifact_read_failed", cause = error_envelope.encode(cause)}})
             else
                 failure = binding_errors.from(failure, errors.UNAVAILABLE, "artifact_read_failed", operation)

@@ -387,6 +387,24 @@ return {run = test.run_cases(function()
                     end
                 end)
 
+                test.it("extracted-only content preserves storage acquisition errors", function()
+                    for _, fixture in ipairs({
+                        {storage = "app.upload_errors:unavailable_storage", code = "upload_test_storage_unavailable",
+                            message = "upload test storage unavailable"},
+                        {storage = "app.upload_errors:legacy_storage", code = "storage_unavailable",
+                            message = "upload test legacy storage failure"},
+                    }) do
+                        set_location(fixture.storage, path)
+                        local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+                        test.is_nil(err, tostring(err))
+                        test.is_false(value.success)
+                        test.eq(value.state, "unreadable")
+                        check(value.error, errors.UNAVAILABLE, fixture.code)
+                        test.is_true(value.error:retryable())
+                        test.eq(value.error:message(), "extracted text is not available: " .. fixture.message)
+                    end
+                end)
+
                 for _, fixture in ipairs({
                     {name = "invalid storage path", kind = errors.INVALID, path = "fs://", retryable = false,
                         cause_code = "invalid_storage_path", diagnostic = "Packed storage path requires an entry id and path"},

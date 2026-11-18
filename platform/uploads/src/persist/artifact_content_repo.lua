@@ -528,6 +528,23 @@ function artifact_content_repo.get_artifact(upload_id, artifact_id)
     return artifact
 end
 
+local function read_stored_bytes(storage_id, storage_path, source)
+    local storage, storage_err = resources.get_storage(storage_id)
+    if storage_err or not storage then
+        return nil, storage_err or "failed to get artifact storage"
+    end
+
+    local content, read_err = storage:readfile(storage_path)
+    if not read_err and type(content) == "string" then return content end
+
+    local message = source == "blob" and "failed to read artifact blob" or "failed to read artifact bytes"
+    local failure = read_err and errors.wrap(read_err, message) or typed(errors.INVALID, message)
+    local details = failure:details() or {}
+    details.artifact_read_source = source
+    return nil, errors.new({kind = failure:kind(), message = failure:message(),
+        retryable = failure:retryable(), details = details})
+end
+
 function artifact_content_repo.read_blob(blob_id)
     local blob, blob_err = artifact_content_repo.get_blob(blob_id)
     if blob_err then return nil, blob_err end
@@ -536,19 +553,8 @@ function artifact_content_repo.read_blob(blob_id)
         return nil, typed(errors.INVALID, "artifact blob storage location is invalid")
     end
 
-    local storage_id = blob.storage_id :: string
-    local storage_path = blob.storage_path :: string
-
-    local storage, storage_err = resources.get_storage(storage_id)
-    if storage_err or not storage then
-        return nil, storage_err or "failed to get artifact storage"
-    end
-
-    local content, read_err = storage:readfile(storage_path)
-    if read_err then return nil, errors.wrap(read_err, "failed to read artifact blob") end
-    if type(content) ~= "string" then
-        return nil, typed(errors.INVALID, "failed to read artifact blob")
-    end
+    local content, read_err = read_stored_bytes(blob.storage_id, blob.storage_path, "blob")
+    if read_err then return nil, read_err end
     return content, nil, blob
 end
 
@@ -589,15 +595,8 @@ function artifact_content_repo.read_artifact_content(upload_id, artifact_id)
 
     local location, location_err = artifact_content_repo.resolve_storage(artifact)
     if location_err then return nil, location_err end
-    local storage, storage_err = resources.get_storage(location.storage_id)
-    if storage_err or not storage then
-        return nil, storage_err or "failed to get artifact storage"
-    end
-    local content, read_err = storage:readfile(location.storage_path)
-    if read_err then return nil, errors.wrap(read_err, "failed to read artifact bytes") end
-    if type(content) ~= "string" then
-        return nil, typed(errors.INVALID, "failed to read artifact bytes")
-    end
+    local content, read_err = read_stored_bytes(location.storage_id, location.storage_path, "locator")
+    if read_err then return nil, read_err end
     location.size = #content
     return content, nil, location, artifact
 end
