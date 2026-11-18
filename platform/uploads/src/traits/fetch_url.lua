@@ -1,6 +1,7 @@
 local security = require("security")
 local http_client = require("http_client")
 local time = require("time")
+local log = require("logger"):named("kickside.uploads.traits.fetch_url")
 
 local upload_lib = require("upload_lib")
 local upload_read_model = require("upload_read_model")
@@ -148,7 +149,8 @@ local function completed_extras(upload_id, content_type)
 
     local primary, primary_err = M.deps.artifacts.read_primary_content(upload_id)
     if primary_err and not artifact_parts_repo.is_primary_artifact_missing(primary_err) then
-        return nil, primary_err
+        log:warn("Failed to read primary artifact", {upload_id = upload_id, error = tostring(primary_err)})
+        return nil, "primary artifact is unreadable"
     end
     if primary and type(primary.content) == "string" then
         local mime = primary.mime_type or content_type or ""

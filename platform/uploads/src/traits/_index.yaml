@@ -358,6 +358,7 @@ entries:
       - security
       - http_client
       - time
+      - logger
     method: handle
     imports:
       upload_lib: kickside.uploads:uploads

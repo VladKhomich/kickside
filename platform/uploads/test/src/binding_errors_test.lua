@@ -248,6 +248,8 @@ return {run = test.run_cases(function()
             test.eq(value.state, "unreadable")
             check(value.error, errors.NOT_FOUND, "artifact_read_failed")
             test.eq(value.error:message(), "extracted text is not available: primary content artifact not found")
+            test.is_nil(value.error:retryable())
+            test.eq(value.error:details().cause.details.code, "primary_artifact_missing")
         end)
         for _, backing in ipairs({"blob", "locator"}) do
             test.describe(backing .. " artifact reads", function()
@@ -326,6 +328,34 @@ return {run = test.run_cases(function()
                         test.is_nil(err:retryable())
                     end
                 end)
+
+                for _, fixture in ipairs({
+                    {name = "invalid storage path", kind = errors.INVALID, path = "fs://", retryable = false,
+                        cause_code = "invalid_storage_path", diagnostic = "Packed storage path requires an entry id and path"},
+                    {name = "missing backing bytes", kind = errors.NOT_FOUND, path = "private/missing.txt",
+                        diagnostic = "private/missing.txt"},
+                    {name = "unavailable storage", kind = errors.UNAVAILABLE, path = "private/unavailable.txt", retryable = true,
+                        storage_id = "app.upload_errors:unreadable_storage", cause_code = "upload_test_storage_unavailable",
+                        diagnostic = "private/unavailable.txt"},
+                }) do
+                    test.it("extracted-only content preserves the public error for " .. fixture.name, function()
+                        set_location(fixture.storage_id or "app:uploads", fixture.path)
+                        local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+                        test.is_nil(err, tostring(err))
+                        test.is_false(value.success)
+                        test.eq(value.state, "unreadable")
+                        check(value.error, fixture.kind, "artifact_read_failed")
+                        local target = backing == "blob" and "blob" or "bytes"
+                        test.eq(value.error:message(), "extracted text is not available: failed to read artifact " .. target)
+                        test.eq(value.error:retryable(), fixture.retryable)
+                        local native = value.error:details().cause
+                        test.eq(native.kind, fixture.kind)
+                        test.eq(native.retryable, fixture.retryable)
+                        if fixture.cause_code then test.eq(native.details.code, fixture.cause_code) end
+                        test.contains(native.message, fixture.diagnostic)
+                        test.is_nil(value.error:details().operation)
+                    end)
+                end
             end)
         end
         for _, fixture in ipairs({

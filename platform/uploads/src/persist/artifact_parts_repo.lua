@@ -362,7 +362,7 @@ function artifact_parts_repo.read_primary_content(upload_id)
     if artifact_err then return nil, artifact_err end
 
     local content, content_err, blob = artifact_content_repo.read_artifact_content(upload_id, artifact.artifact_id)
-    if content_err then return nil, content_err end
+    if content_err then return nil, content_err, artifact end
     return {
         content = content,
         mime_type = artifact.mime_type,

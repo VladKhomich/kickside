@@ -225,14 +225,16 @@ local function define_tests()
                 end
                 deps.read_model.get_for_actor = function() return { status = "completed", mime_type = "text/markdown" } end
                 deps.artifacts.read_primary_content = function()
-                    return nil, errors.new({ kind = errors.INTERNAL, message = "artifact blob is unavailable" })
+                    return nil, errors.new({ kind = errors.UNAVAILABLE, message = "cannot read private/artifact.txt" })
                 end
             end)
 
             local result, err = handler.handle({ url = "https://example.com/doc.pdf", wait = true })
             test.is_nil(result)
             test.is_true(errors.is(err, errors.INTERNAL))
-            test.contains(tostring(err), "artifact blob is unavailable")
+            test.is_nil(tostring(err):find("private/artifact.txt", 1, true), tostring(err))
+            test.eq(err:message(), "processed upload could not be read: primary artifact is unreadable")
+            test.eq(err:details().upload_id, "upload-1")
         end)
 
         test.it("wait distinguishes no primary artifact from a primary artifact with missing bytes", function()
@@ -261,6 +263,8 @@ local function define_tests()
             result, err = handler.handle(args)
             test.is_nil(result)
             test.is_true(errors.is(err, errors.INTERNAL))
+            test.eq(err:message(), "processed upload could not be read: primary artifact is unreadable")
+            test.eq(err:details().upload_id, upload_id)
         end)
 
         test.it("wait returns a tool error when the derived artifacts cannot be listed", function()
