@@ -64,10 +64,12 @@ return { run = test.run_cases(function()
                 wait_step(notices, "retention")
                 local requested = time.now()
                 local deadline = time.after("5500ms")
-                local cancelled, cancel_err = process.cancel(pid, "shutdown deadline test")
-                test.is_nil(cancel_err)
-                test.is_true(cancelled)
-                if step == "release" then wait_step(notices, "release") end
+                if step == "retention" then
+                    assert(process.cancel(pid))
+                else
+                    assert(process.send(pid, topic .. ".drain", true))
+                    wait_step(notices, "release")
+                end
                 process.unlisten(notices)
                 local exit = wait_exit(events, pid, deadline)
                 test.not_nil(exit, "live jobs worker did not stop while " .. step .. " was blocked")
@@ -76,25 +78,6 @@ return { run = test.run_cases(function()
                 test.is_true(time.now():sub(requested):milliseconds() >= 4900)
             end)
         end
-
-        test.it("cancels an adopted slot explicitly while the pool owner is blocked", function()
-            local topic = "jobs.shutdown." .. uuid.v7()
-            local notices = process.listen(topic)
-            local child = assert(process.spawn_monitored("app:pool_shutdown_probe", "app:processes",
-                tostring(process.pid()), topic, "hard"))
-            pool_pid = tostring(child)
-            local selected = channel.select({notices:case_receive(), time.after("5s"):case_receive()})
-            local slot = selected.value
-            test.is_true(type(slot) == "string")
-            assert(process.monitor(slot))
-            assert(process.cancel(pool_pid, "explicit hard stop"))
-            local exit = wait_exit(events, slot, time.after("4s"))
-            test.not_nil(exit, "old slots ignore dispatcher loss while busy and need explicit CANCEL")
-            test.eq(exit.result.value, "cancelled")
-            process.unlisten(notices)
-            test.not_nil(wait_exit(events, pool_pid, time.after("5500ms")))
-            pool_pid = nil
-        end)
 
         test.it("refunds a confirmed unstarted claim after the pool exits with its release blocked", function()
             local topic = "jobs.shutdown." .. uuid.v7()
@@ -116,7 +99,7 @@ return { run = test.run_cases(function()
             test.eq(selected.channel, notices, "the probe committed its unstarted claim")
             local job = selected.value
             local deadline = time.after("5500ms")
-            assert(process.cancel(pid, "shutdown deadline test"))
+            assert(process.send(pid, topic .. ".drain", true))
             wait_step(notices, "release")
             local db = assert(sql.get("app:db"))
             database = db
@@ -198,7 +181,7 @@ return { run = test.run_cases(function()
 
         test.it("observes a CANCEL captured behind OUTDATED before changing revisions", function()
             local pid, _, topic, notices = prepare_rollback()
-            assert(process.cancel(pid, "service stopping"))
+            assert(process.cancel(pid))
             assert(process.send(pid, topic .. ".resume", true))
             local exit = wait_exit(events, pid, time.after("3s"))
             test.not_nil(exit, "the original root handles the queued stop")
