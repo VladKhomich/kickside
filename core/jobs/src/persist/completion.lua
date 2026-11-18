@@ -57,6 +57,10 @@ local function validate(id: any, lease: any, options: any): error?
     if options.defer_demand and options.rearm == nil then
         return invalid("defer_demand requires rearm")
     end
+    if options.rearm_on_demand ~= nil and (options.rearm_on_demand ~= true
+        or options.rearm == nil or options.defer_demand or options.park) then
+        return invalid("rearm_on_demand requires an ordinary rearm")
+    end
     if options.tier ~= nil and options.tier ~= "live" and options.tier ~= "backfill"
         and options.tier ~= "maintenance" then
         return invalid("tier must be live, backfill or maintenance")
@@ -217,6 +221,8 @@ local function complete_tx_impl(tx: sql.Transaction, id: string, lease: table, o
     local status = pending and "pending" or "done"
     local outcome = scheduled ~= nil and "rearmed" or (pending and "parked" or "completed")
     local wake_enabled = control or (not parked_record and flag(row.wake_enabled))
+    local rearm_on_demand = options.rearm_on_demand == true and slot and wake_enabled
+        and record.status == "completed" and scheduled ~= nil and scheduled == rearm and scheduled > now
     local job_size_err = row_bytes.check_update(tx, "kickside_job", id, {
         status = status, queue_tier = options.tier or row.queue_tier,
         scheduled_at = scheduled or row_bytes.NULL,
@@ -225,6 +231,7 @@ local function complete_tx_impl(tx: sql.Transaction, id: string, lease: table, o
         attempts = 0, lease_token = row_bytes.NULL, lease_until = row_bytes.NULL,
         heartbeat_at = row_bytes.NULL, wake_enabled = wake_enabled,
         wake_demand_at = row_bytes.NULL, wake_control_pending = false,
+        rearm_on_demand = rearm_on_demand and true or row_bytes.NULL,
         dispatch_requested_at = scheduled ~= nil and row.dispatch_requested_at or row_bytes.NULL,
     }, (policy :: any).max_row_bytes, "complete_job", row)
     if job_size_err then return nil, job_size_err end
@@ -257,6 +264,7 @@ local function complete_tx_impl(tx: sql.Transaction, id: string, lease: table, o
         attempts = 0, lease_token = NULL, lease_until = NULL, heartbeat_at = NULL,
         wake_enabled = ]] .. (wake_enabled and "TRUE" or "FALSE") .. [[,
         wake_demand_at = NULL, wake_control_pending = FALSE,
+        rearm_on_demand = ]] .. (rearm_on_demand and "TRUE" or "NULL") .. [[,
         dispatch_requested_at = ]] .. (scheduled ~= nil and "dispatch_requested_at" or "NULL") .. [[
         WHERE id = ]] .. id_sql .. [[ AND status = 'running' AND lease_token = ]] .. token_sql
         .. [[ AND execution_seq = ]] .. seq_sql

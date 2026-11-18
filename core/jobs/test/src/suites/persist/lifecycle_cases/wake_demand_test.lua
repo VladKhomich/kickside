@@ -233,6 +233,61 @@ local function define_tests()
                 test.is_nil(gone.scheduled_at)
             end)
         end)
+
+        for _, addressed in ipairs({ false, true }) do
+            test.it("advances a successful rearm but preserves failure backoff on "
+                .. (addressed and "addressed" or "keyed") .. " wake", function()
+                with_db(function(db: sql.DB)
+                    local dbtype = tostring(db:type())
+                    local function leased_slot()
+                        return assert(job_fixture.enqueue_leased(db, dbtype, {
+                            job_type = "test.event.rearm", slot = true, wake_key = "thread:" .. uuid.v7(),
+                            job_identity = { namespace = "test", scope = uuid.v7(), key = "event-rearm" },
+                        }))
+                    end
+                    local job = leased_slot()
+
+                    local function publish_demand()
+                        if addressed then
+                            test.is_true(assert(wake.wake_job(db, job.id, nil, dbtype)).woken)
+                        else
+                            test.eq(assert(job_fixture.wake_key(db, dbtype, job.wake_key)).touched_count, 1)
+                        end
+                    end
+
+                    local function schedule()
+                        return assert(db:query("SELECT scheduled_at FROM kickside_job WHERE id = $1", { job.id }))[1].scheduled_at
+                    end
+
+                    local function rearm(options)
+                        local lease = { token = job.lease_token, execution_seq = tonumber(job.execution_seq) }
+                        options.rearm = lifecycle.future_string(dbtype, 3600)
+                        assert(jobs.complete(job.id, lease, options))
+                    end
+
+                    rearm({ defer_demand = true })
+                    local debounce = schedule()
+                    publish_demand()
+                    test.eq(schedule(), debounce)
+
+                    job = leased_slot()
+                    rearm({ rearm_on_demand = true })
+                    local rearmed = schedule()
+                    publish_demand()
+                    local due = assert(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE id = $1 AND scheduled_at <= $2",
+                        { job.id, lifecycle.now_string(dbtype) }))
+                    test.eq(tonumber(due[1].n), 1)
+                    test.neq(schedule(), rearmed)
+
+                    job = assert(job_fixture.lease_own(db, dbtype, job.id))
+                    test.is_nil(lifecycle.fail_job(db, job, dbtype, "provider unavailable", "infrastructure",
+                        { retry_after_ms = 900000 }))
+                    local backoff = schedule()
+                    publish_demand()
+                    test.eq(schedule(), backoff)
+                end)
+            end)
+        end
     end)
 end
 local run_cases = test.run_cases(define_tests)

@@ -22,6 +22,32 @@ local function timestamp_param(dbtype)
     return dbtype == sql.type.POSTGRES and "CAST(? AS TIMESTAMPTZ)" or "?"
 end
 
+local function demand_schedule(now: string, ts: string)
+    return sql.builder.expr("CASE WHEN status = 'pending' AND (scheduled_at IS NULL OR "
+        .. "(wake_enabled AND rearm_on_demand AND scheduled_at > " .. ts .. ")) THEN " .. ts
+        .. " ELSE scheduled_at END", now, now)
+end
+
+local function clear_pending_rearm()
+    return sql.builder.expr("CASE WHEN status = 'pending' THEN NULL ELSE rearm_on_demand END")
+end
+
+-- Run the same scheduling decision on the locked row for byte accounting.
+local function demand_schedule_value(row: table, now: string): (any, error?)
+    if row.status == "pending" then
+        if row.scheduled_at == nil then return now, nil end
+        if (row.wake_enabled == true or tonumber(row.wake_enabled) == 1)
+            and (row.rearm_on_demand == true or tonumber(row.rearm_on_demand) == 1) then
+            local due, due_err = clock.parse(row.scheduled_at)
+            if due_err then return nil, due_err end
+            local wake_at, wake_err = clock.parse(now)
+            if wake_err then return nil, wake_err end
+            if due:after(wake_at) then return now, nil end
+        end
+    end
+    return row.scheduled_at or row_bytes.NULL, nil
+end
+
 local function query_error(label: string, err: error): error
     return errors.wrap(err, label)
 end
@@ -109,16 +135,19 @@ local function apply_update(tx, id: string, key: string, generation: number, dbt
     local policy, policy_err = read_policy()
     if policy_err then return 0, policy_err end
     local size_err = row_bytes.check_update(tx, "kickside_job", id, function(row)
+        local schedule, schedule_err = demand_schedule_value(row, now)
+        if schedule_err then return nil, schedule_err end
         return { wake_generation = generation,
-            scheduled_at = row.status == "pending" and row.scheduled_at == nil and now
-                or (row.scheduled_at or row_bytes.NULL),
+            scheduled_at = schedule,
+            rearm_on_demand = row.status == "pending" and row_bytes.NULL or row.rearm_on_demand,
             wake_demand_at = (row.status == "running" or row.scheduled_at ~= nil)
                 and now or (row.wake_demand_at or row_bytes.NULL) }
     end, (policy :: any).max_row_bytes, "wake_job", snapshot)
     if size_err then return 0, size_err end
     local result, err = sql.builder.update("kickside_job")
         :set("wake_generation", generation)
-        :set("scheduled_at", sql.builder.expr("CASE WHEN status = 'pending' AND scheduled_at IS NULL THEN " .. ts .. " ELSE scheduled_at END", now))
+        :set("scheduled_at", demand_schedule(now, ts))
+        :set("rearm_on_demand", clear_pending_rearm())
         :set("wake_demand_at", sql.builder.expr("CASE WHEN status = 'running' OR scheduled_at IS NOT NULL THEN " .. ts .. " ELSE wake_demand_at END", now))
         :where(sql.builder.eq({ id = id, wake_key = key, wake_enabled = true }))
         :where("status IN ('pending','running') AND wake_generation < ?", generation)
@@ -400,16 +429,19 @@ local function wake_job_tx(db, id, opts, dbtype)
         if control then
             return { wake_control_pending = row.status == "running",
                 wake_enabled = true, attempts = row.status == "pending" and 0 or row.attempts,
+                rearm_on_demand = row.status == "pending" and row_bytes.NULL or row.rearm_on_demand,
                 scheduled_at = row.status == "pending" and now or (row.scheduled_at or row_bytes.NULL) }
         end
-        return { wake_demand_at = now,
-            scheduled_at = row.status == "pending" and row.scheduled_at == nil and now
-                or (row.scheduled_at or row_bytes.NULL) }
+        local schedule, schedule_err = demand_schedule_value(row, now)
+        if schedule_err then return nil, schedule_err end
+        return { wake_demand_at = now, scheduled_at = schedule,
+            rearm_on_demand = row.status == "pending" and row_bytes.NULL or row.rearm_on_demand }
     end, (policy :: any).max_row_bytes, "wake_job")
     if size_err then return nil, size_err end
     local update = sql.builder.update("kickside_job")
         :where(sql.builder.eq({ id = id }))
         :where("status IN ('pending','running')")
+        :set("rearm_on_demand", clear_pending_rearm())
     if control then
         update = update
             :set("wake_control_pending", sql.builder.expr("CASE WHEN status = 'running' THEN TRUE ELSE FALSE END"))
@@ -417,10 +449,9 @@ local function wake_job_tx(db, id, opts, dbtype)
             :set("attempts", sql.builder.expr("CASE WHEN status = 'pending' THEN 0 ELSE attempts END"))
             :set("scheduled_at", sql.builder.expr("CASE WHEN status = 'pending' THEN " .. ts .. " ELSE scheduled_at END", now))
     else
-        -- A parked slot (pending with no schedule) becomes due on demand, the
-        -- same rule wake_tx applies; a backoff schedule keeps its pacing.
+        -- Fixed deadlines (including retry and debounce) keep their pacing.
         update = update:set("wake_demand_at", now)
-            :set("scheduled_at", sql.builder.expr("CASE WHEN status = 'pending' AND scheduled_at IS NULL THEN " .. ts .. " ELSE scheduled_at END", now))
+            :set("scheduled_at", demand_schedule(now, ts))
     end
     local result, err = update:run_with(db):exec()
     local count, count_err = boundary.single_row_count(result, err, "job wake failed", "update.rows_affected", response_error)

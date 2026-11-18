@@ -165,3 +165,16 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 29_demand_rearm
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Persists successful slot rearms that ordinary demand may advance.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-18T00:00:29Z"
+    source: file://29_demand_rearm.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
