@@ -11,7 +11,7 @@ function M.reset()
     M.candidates, M.candidate_rows, M.hooks, M.continuations = 0, 0, 0, 0
     M.before_candidate, M.before_select, M.continuation = nil, nil, nil
     M.at, M.delay, M.event_deadline_queries = nil, nil, 0
-    M.before_owner, M.isolated_ids, M.receipt_sink = nil, nil, nil
+    M.before_owner, M.before_commit, M.isolated_ids, M.receipt_sink = nil, nil, nil, nil
 end
 
 M.MILLISECOND, M.RFC3339, M.utc, M.parse = time.MILLISECOND, time.RFC3339, time.utc, time.parse
@@ -71,7 +71,10 @@ function M.get(id: string): (any, error?)
             if err or not tx then return nil, err end
             return {
                 db_type = function(_: any): any return tx:db_type() end,
-                commit = function(_: any): (any, error?) return tx:commit() end,
+                commit = function(_: any): (any, error?)
+                    if M.before_commit then M.before_commit(tx) end
+                    return tx:commit()
+                end,
                 rollback = function(_: any): (any, error?) return tx:rollback() end,
                 query = function(_: any, statement: string, params: any): (any, error?) return query(tx, statement, params) end,
                 execute = function(_: any, statement: string, params: any): (any, error?) return tx:execute(statement, params) end,

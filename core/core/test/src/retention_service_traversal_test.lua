@@ -94,6 +94,26 @@ return {run = test.run_cases(function()
             seed.exec("DELETE FROM kickside_write_receipt WHERE sink_id='review-retention'", {})
         end)
 
+        test.it("releases PostgreSQL prune locks without waiting for synchronous WAL flush", function()
+            if seed.dialect() ~= "postgres" then return end
+            isolate({first})
+            seed.exec("INSERT INTO kickside_thread (id,thread_class) VALUES ($1,'review_retention')", {first})
+            add_event(first, 1, -1)
+            local default = seed.query("SHOW synchronous_commit", {})[1].synchronous_commit
+            local modes = {}
+            fixture.before_commit = function(tx: any)
+                local rows = assert(tx:query("SHOW synchronous_commit", {}))
+                modes[#modes + 1] = rows[1].synchronous_commit
+            end
+
+            local _, err = source.main()
+            test.is_nil(err, tostring(err))
+            test.eq(seed.boundary_of(first), 1)
+            test.eq(#modes, 2)
+            test.eq(modes[1], "off", "background event prune commit mode")
+            test.eq(modes[2], default, "receipt cleanup commit mode")
+        end)
+
         test.it("reuses its cursor across continuation wakes", function()
             add_backlogs()
             local function assert_turn(a: integer, b: integer, c: integer): ()
