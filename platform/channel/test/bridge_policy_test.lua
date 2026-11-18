@@ -8,7 +8,7 @@ local function define_tests()
 
         test.it("only suppresses empty replies", function()
             test.eq(reply_policy.should_send_reply(lazy, ""), false)
-            test.eq(reply_policy.should_send_reply(lazy, "   "), false)
+            test.eq(reply_policy.should_send_reply(lazy, " \v\f\t\r\n"), false)
             test.eq(reply_policy.should_send_reply(lazy, "[[NO_RESPONSE]]"), true)
             test.eq(reply_policy.should_send_reply(immediate, "(No response)"), true)
         end)
@@ -16,6 +16,11 @@ local function define_tests()
         test.it("keeps real lazy replies and immediate replies", function()
             test.eq(reply_policy.should_send_reply(lazy, "I can help with that."), true)
             test.eq(reply_policy.should_send_reply(immediate, "I can help with that."), true)
+        end)
+
+        test.it("allows replies with long internal whitespace", function()
+            local content = "before" .. string.rep(" ", 512 * 1024) .. "after"
+            test.is_true(reply_policy.should_send_reply(lazy, content))
         end)
 
         test.it("defaults the assessor model for lazy policy", function()
