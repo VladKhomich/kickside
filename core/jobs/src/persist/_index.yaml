@@ -237,7 +237,6 @@ entries:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       thread_fence: kickside.core.jobs.persist:thread_fence
       dead_outcome: kickside.core.jobs.persist:dead_outcome
-      lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
 
   - name: wake
     kind: library.lua

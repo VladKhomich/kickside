@@ -5,6 +5,8 @@ local policy = require("uploads_retention_policy")
 local read_model_module = require("upload_read_model_retention")
 local artifact_cleanup = require("artifact_cleanup_repo")
 local processing_hooks = require("processing_hooks")
+local upload_query_repo = require("upload_query_repo")
+local process_job = require("process_job")
 
 local M = {}
 
@@ -16,6 +18,12 @@ end
 function M.run(): any
     local settings, policy_err = policy.policy()
     if policy_err or not settings then return { success = false, error = policy_err or missing("policy") } end
+    local checkpoints, checkpoint_err = upload_query_repo.list_dead_completion_intents(settings.batch_deleted_read_model)
+    if checkpoint_err then return { success = false, error = checkpoint_err } end
+    for _, checkpoint in ipairs(checkpoints) do
+        local _, settle_err = process_job.dead({ payload = { job_id = tostring(checkpoint.id) } })
+        if settle_err then return { success = false, error = settle_err } end
+    end
     local definition, contract_err = contract.get("kickside.core:threads")
     if contract_err or not definition then
         return { success = false, error = errors.new({ message = "Core threads contract unavailable: "
@@ -36,7 +44,8 @@ function M.run(): any
     local placements, placement_err = processing_hooks.prune(blob_cutoff, settings.batch_orphan_blob)
     if placement_err or placements == nil then return { success = false, error = placement_err or missing("extension prune") } end
     return { success = true, deleted = count, blobs_deleted = blobs, placements_deleted = placements,
-        needs_continue = model_progress.needs_continue or blob_progress.needs_continue }
+        needs_continue = #checkpoints == settings.batch_deleted_read_model
+            or model_progress.needs_continue or blob_progress.needs_continue }
 end
 
 return M

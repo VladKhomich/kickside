@@ -400,14 +400,21 @@ local function define_tests()
                 })
                 test.is_nil(admission_err)
                 test.not_nil(admission.result, admission.error)
-                local result, call_err = funcs.new():with_actor(actor):with_scope(actor_scope):call(CALLBACK, {
+                local payload = {
                     upload_id = upload_id, status = "completed", mime_type = original_mime,
                     size = 12, metadata = { filename = "attachment", relative_path = "records/attachment" }, params = { kb_id = component_id },
-                })
+                }
+                local executor = funcs.new():with_actor(actor):with_scope(actor_scope)
+                local result, call_err = executor:call(CALLBACK, payload)
                 test.is_nil(call_err)
                 test.eq(result.success, true)
                 test.is_nil(result.skipped)
                 test.eq(result.external_id, "upload:" .. upload_id)
+                local repeated, repeat_err = executor:call(CALLBACK, payload)
+                test.is_nil(repeat_err, tostring(repeat_err))
+                test.eq(repeated.success, true)
+                test.eq(repeated.external_id, result.external_id)
+                test.eq(repeated.external_version, result.external_version)
                 local page, pull_err = funcs.new():with_actor(actor):with_scope(actor_scope)
                     :call("kickside.core.threads:events_pullable", {
                         config = { thread_id = component_id, event_type = "kickside.knowledge.events:content.upserted" },
