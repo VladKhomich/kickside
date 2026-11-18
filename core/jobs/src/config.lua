@@ -235,6 +235,13 @@ function M.resolve(meta: any): (Resolved?, error?)
     }, nil
 end
 
+-- Worker pulses retain the one-second cadence for ordinary leases and leave
+-- three pulse intervals of scheduling margin for shorter leases.
+function M.worker_liveness(policy: any): (integer, integer)
+    local seconds = policy.lease_timeout_seconds :: integer
+    return seconds, math.min(1000, math.floor(seconds * 1000 / 4)) :: integer
+end
+
 -- Weighted round-robin quotas shared by the pool and durable claim path. `step`
 -- carries rotation across small worker batches so configured minority tiers
 -- receive slots even when each notification only frees one worker.

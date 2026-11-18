@@ -31,6 +31,23 @@ end
 
 local function define_tests()
     test.describe("jobs.config policy", function()
+        test.it("keeps worker pulses inside every accepted lease independently of job retention", function()
+            for _, seconds in ipairs({1, 2, 3, 4, 45}) do
+                for _, heartbeat_ms in ipairs({1, 250, seconds * 1000 - 1}) do
+                    local resolved, err = config.resolve(policy({lease = {
+                        timeout = tostring(seconds) .. "s", heartbeat = tostring(heartbeat_ms) .. "ms"},
+                        retention = {jobs = "1ms"}}))
+                    test.is_nil(err)
+                    test.not_nil(resolved)
+                    local window, interval_ms = config.worker_liveness(resolved)
+                    test.eq(window, seconds)
+                    test.is_true(interval_ms > 0 and interval_ms <= 1000)
+                    test.is_true(interval_ms * 2 < window * 1000, "worker pulses leave scheduling margin")
+                    if seconds == 45 then test.eq(interval_ms, 1000, "ordinary leases keep the existing write rate") end
+                end
+            end
+        end)
+
         test.it("resolves a successful policy once per registry version and returns independent values", function()
             local original = config.resolve
             local resolutions = 0
