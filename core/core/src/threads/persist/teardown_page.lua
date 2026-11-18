@@ -5,6 +5,7 @@ local json = require("json")
 local writer = require("threads_writer")
 local drop_notify = require("threads_drop_notify")
 local jobs = require("jobs")
+local job_teardown = require("job_teardown")
 local jobs_wake = require("jobs_wake")
 local cursor_waiters = require("cursor_waiters")
 local error_envelope = require("error_envelope")
@@ -208,7 +209,7 @@ local function body(tx: any, dbtype: string, id: string, page_seq: integer,
 end
 
 local function finish_absent_tx(tx: sql.Transaction, dbtype: string, id: string): error?
-    local finished, finish_err = jobs.finish_absent_thread_tx(tx, dbtype, id)
+    local finished, finish_err = job_teardown.finish_absent_thread_tx(tx, dbtype, id)
     if finish_err then return finish_err end
     if finished ~= true then return internal("thread cleanup acknowledgment failed", "missing result") end
     return nil
@@ -268,7 +269,7 @@ function M.run(db: any, id: string): (any?, error?)
     local result, run_err = body(tx, dbtype :: string, id, page_seq :: integer, job_page :: table, locked)
     if run_err then tx:rollback(); return nil, run_err end
     if result then
-        local acknowledged, ack_err = jobs.ack_thread_cleanup_page_tx(tx, dbtype :: string, id, page_seq :: integer,
+        local acknowledged, ack_err = job_teardown.ack_tx(tx, dbtype :: string, id, page_seq :: integer,
             not result.pending)
         if ack_err or acknowledged ~= true then
             tx:rollback()

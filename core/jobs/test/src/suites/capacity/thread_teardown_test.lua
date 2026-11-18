@@ -503,13 +503,13 @@ local function define_tests()
 
             local first = assert(jobs.retention_sweep())
             test.eq(acknowledged(), 0)
-            test.eq(first.thread_cleanup_cursor and first.thread_cleanup_cursor.thread_id, prefix .. string.format("%012d", batch))
-            local second = assert(jobs.retention_sweep(first.job_cursor, first.unused_fence_cursor, first.thread_cleanup_cursor))
+            test.eq(first.thread_cleanup_cursors.abandoned[1], prefix .. string.format("%012d", batch))
+            local second = assert(jobs.retention_sweep(first.job_cursor, first.thread_cleanup_cursors))
             test.eq(acknowledged(), batch)
-            test.eq(second.thread_cleanup_cursor.thread_id, prefix .. string.format("%012d", batch * 2))
-            local last = assert(jobs.retention_sweep(second.job_cursor, second.unused_fence_cursor, second.thread_cleanup_cursor))
+            test.eq(second.thread_cleanup_cursors.abandoned[1], prefix .. string.format("%012d", batch * 2))
+            local last = assert(jobs.retention_sweep(second.job_cursor, second.thread_cleanup_cursors))
             test.eq(acknowledged(), batch + 1)
-            test.is_nil(last.thread_cleanup_cursor)
+            test.is_false(last.thread_cleanup_cursors.abandoned)
 
             for i = 1, batch do
                 assert(db:execute("DELETE FROM kickside_components WHERE component_id=$1", {prefix .. string.format("%012d", i)}))

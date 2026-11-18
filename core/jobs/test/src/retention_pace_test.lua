@@ -32,10 +32,10 @@ end
 local function drain(db: any, instant: any): (table, integer)
     local totals: any = {}
     local passes = 0
-    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function(cursor)
-        local stats = required(retention.sweep(db, tostring(db:type()), cursor))
+    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function(cursor, cleanup_cursors)
+        local stats = required(retention.sweep(db, tostring(db:type()), cursor, cleanup_cursors))
         for key, value in pairs(stats) do
-            if key ~= "job_cursor" then totals[key] = (totals[key] or 0) + value end
+            if type(value) == "number" then totals[key] = (totals[key] or 0) + value end
         end
         return stats, nil
     end})
@@ -372,21 +372,21 @@ local function define_tests()
             local instant = time.now()
             local now = instant:unix_nano()
             local policy = required(config.policy())
-            local cursor = {thread_id = "last-thread", page_seq = 0}
+            local cursor = {"last-thread", 0}
             local stats: any = {
                 jobs = 0, job_runs = 0, workers = 0, worker_pulses = 0, wake_rows = 0,
                 thread_cleanup_receipts = 0, thread_cleanup_fences = 0, thread_cleanup_leftovers = 0,
-                thread_cleanup_cursor = cursor,
+                thread_cleanup_cursors = {abandoned = cursor},
             }
             local seen: table? = nil
             local driver = schedule.new({policy = config.policy, now = function() return instant end,
-                sweep = function(_, _, cursor)
-                    seen = cursor
+                sweep = function(_, cursors)
+                    seen = cursors and cursors.abandoned
                     return stats, nil
                 end})
             driver.run(now)
             test.eq(driver.deadline(), now)
-            stats.thread_cleanup_cursor = nil
+            stats.thread_cleanup_cursors = {abandoned = false}
             driver.run(now)
             test.eq(seen, cursor)
             test.eq(driver.deadline(), now + policy.retention_interval_ms * 1000000)

@@ -163,15 +163,42 @@ local function define_tests()
             d2:release()
         end)
 
-        test.it("provisions the same component after its previous thread cleanup completes", function()
-            local teardown = require("threads_teardown")
-            local jobs = require("jobs")
-            local owner_id = "recreate-owner-" .. uuid.v4()
+        local teardown = require("threads_teardown")
+        local jobs = require("jobs")
+
+        local function purged_owner()
+            local owner_id = "provisioned-" .. uuid.v4()
             local owner = assert(security.new_actor(owner_id, {}))
-            local id = autoinit.component_id(owner_id, "test_ws")
             assert(provision.ensure_user(owner, scope(), owner_id))
-            local d = db()
+            local d, id = db(), autoinit.component_id(owner_id, "test_ws")
             assert(teardown.purge_thread(d, id, owner_id))
+            return d, owner, id, owner_id
+        end
+
+        local function drain_cleanup(d, id)
+            assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {id}))
+            assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {id}))
+            assert(jobs.retention_sweep())
+            test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 0)
+            test.eq(count(d, "kickside_job_thread_cleanup", "thread_id", id), 0)
+        end
+
+        local function commit_replacement(d, id)
+            assert(d:execute([[INSERT INTO kickside_thread (id,component_id,thread_class,attrs,created_at)
+                VALUES ($1,$2,'test_ws','{"replacement":true}','2099-01-01 00:00:00.000000')]], {id, id}))
+        end
+
+        local function converge(owner, id)
+            local executor = assert(assert(funcs.new():with_actor(owner)):with_scope(scope()))
+            return executor:call("kickside.core.threads:converge_thread_method", {
+                component_id = id, impl_id = "app:provision_test_decl", thread_class = "test_ws",
+            })
+        end
+
+        test.it("provisions the same component after its previous thread cleanup completes", function()
+            local d, owner, id, owner_id = purged_owner()
             local before = assert(d:query([[SELECT next_page_seq,completed_at FROM kickside_job_thread_cleanup
                 WHERE thread_id=$1 AND started=TRUE]], {id}))
             test.not_nil(before[1].completed_at)
@@ -211,24 +238,12 @@ local function define_tests()
             test.eq(count(d, "kickside_thread", "id", id), 0)
             test.eq(count(d, "kickside_job", "owner_id", id), 0)
             test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 3)
-            assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
-                WHERE thread_id=$1]], {id}))
-            assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
-                WHERE thread_id=$1]], {id}))
-            assert(jobs.retention_sweep())
-            test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 0)
-            test.eq(count(d, "kickside_job_thread_cleanup", "thread_id", id), 0)
+            drain_cleanup(d, id)
             assert(d:release())
         end)
 
         test.it("finishes an interrupted final acknowledgment before provisioning a replacement", function()
-            local teardown = require("threads_teardown")
-            local owner_id = "interrupted-owner-" .. uuid.v4()
-            local owner = assert(security.new_actor(owner_id, {}))
-            local id = autoinit.component_id(owner_id, "test_ws")
-            assert(provision.ensure_user(owner, scope(), owner_id))
-            local d = db()
-            assert(teardown.purge_thread(d, id, owner_id))
+            local d, owner, id, owner_id = purged_owner()
             local fence = assert(d:query([[SELECT next_page_seq FROM kickside_job_thread_cleanup
                 WHERE thread_id=$1 AND started=TRUE AND completed_at IS NOT NULL]], {id}))
             local seq = tonumber(fence[1].next_page_seq) - 1
@@ -258,7 +273,7 @@ local function define_tests()
             local recovered = assert(d:query([[SELECT t.teardown_page_seq,r.acknowledged_at
                 FROM kickside_thread t JOIN kickside_job_thread_cleanup_receipt r ON r.thread_id=$1
                 WHERE t.id=$2 AND r.page_seq=$3]], {id, id, seq}))
-            test.eq(tonumber(recovered[1].teardown_page_seq), seq + 1)
+            test.eq(tonumber(recovered[1].teardown_page_seq), 0)
             test.not_nil(recovered[1].acknowledged_at)
             test.eq(count(d, "kickside_projection", "thread_id", id), 1)
             assert(d:release())
@@ -267,26 +282,16 @@ local function define_tests()
         for _, pending in ipairs({false, true}) do
             local state = pending and "unacknowledged" or "completed"
             test.it("provisions a committed replacement with a prior " .. state .. " fence", function()
-                local teardown = require("threads_teardown")
-                local owner_id = "committed-replacement-" .. uuid.v4()
-                local owner = assert(security.new_actor(owner_id, {}))
-                local id = autoinit.component_id(owner_id, "test_ws")
-                assert(provision.ensure_user(owner, scope(), owner_id))
-                local d = db()
-                assert(teardown.purge_thread(d, id, owner_id))
+                local d, owner, id, owner_id = purged_owner()
                 if pending then
                     assert(d:execute("UPDATE kickside_job_thread_cleanup SET completed_at=NULL WHERE thread_id=$1", {id}))
                     assert(d:execute("UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at=NULL WHERE thread_id=$1", {id}))
                 end
-                assert(d:execute([[INSERT INTO kickside_thread (id,component_id,thread_class,attrs,created_at)
-                    VALUES ($1,$2,'test_ws','{"replacement":true}','2099-01-01 00:00:00.000000')]], {id, id}))
+                commit_replacement(d, id)
                 test.eq(count(d, "kickside_projection", "thread_id", id), 0)
                 assert(d:release())
 
-                local executor = assert(assert(funcs.new():with_actor(owner)):with_scope(scope()))
-                local result, err = executor:call("kickside.core.threads:converge_thread_method", {
-                    component_id = id, impl_id = "app:provision_test_decl", thread_class = "test_ws",
-                })
+                local result, err = converge(owner, id)
                 test.is_nil(err, tostring(err))
                 test.is_false(result.created)
                 assert(provision.ensure_user(owner, scope(), owner_id))
@@ -296,7 +301,7 @@ local function define_tests()
                     JOIN kickside_job_thread_cleanup_receipt r ON r.thread_id=f.thread_id AND r.page_seq=0
                     WHERE t.id=$2]], {id, id}))
                 test.is_true(assert(json.decode(rows[1].attrs)).replacement)
-                test.eq(tonumber(rows[1].teardown_page_seq), 1)
+                test.eq(tonumber(rows[1].teardown_page_seq), 0)
                 test.is_true(rows[1].started == false or rows[1].started == 0)
                 test.is_nil(rows[1].completed_at)
                 test.not_nil(rows[1].acknowledged_at)
@@ -310,14 +315,7 @@ local function define_tests()
         end
 
         test.it("finishes an interrupted final acknowledgment when reaping a deleted component", function()
-            local teardown = require("threads_teardown")
-            local jobs = require("jobs")
-            local owner_id = "deleted-owner-" .. uuid.v4()
-            local owner = assert(security.new_actor(owner_id, {}))
-            local id = autoinit.component_id(owner_id, "test_ws")
-            assert(provision.ensure_user(owner, scope(), owner_id))
-            local d = db()
-            assert(teardown.purge_thread(d, id, owner_id))
+            local d, _, id, owner_id = purged_owner()
             assert(d:execute("DELETE FROM kickside_components WHERE component_id=$1", {id}))
             assert(d:execute([[INSERT INTO kickside_component_thread_reap (component_id,created_at) VALUES ($1,'2000-01-01T00:00:00Z')]], {id}))
             assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at=NULL
@@ -338,56 +336,47 @@ local function define_tests()
                 WHERE f.thread_id=$1 AND r.page_seq=0]], {id}))
             test.not_nil(final[1].completed_at)
             test.not_nil(final[1].acknowledged_at)
-            assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
-                WHERE thread_id=$1]], {id}))
-            assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
-                WHERE thread_id=$1]], {id}))
-            assert(jobs.retention_sweep())
-            test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 0)
-            test.eq(count(d, "kickside_job_thread_cleanup", "thread_id", id), 0)
+            drain_cleanup(d, id)
             test.eq(count(d, "kickside_thread", "id", id), 0)
             test.eq(count(d, "kickside_components", "component_id", id), 0)
             assert(d:release())
         end)
 
-        test.it("purges a replacement after a default fence was recreated beside its retained receipt", function()
-            local teardown = require("threads_teardown")
-            local jobs = require("jobs")
-            local owner_id = "default-fence-owner-" .. uuid.v4()
-            local owner = assert(security.new_actor(owner_id, {}))
-            local id = autoinit.component_id(owner_id, "test_ws")
-            assert(provision.ensure_user(owner, scope(), owner_id))
-            local d = db()
-            assert(teardown.purge_thread(d, id, owner_id))
-            assert(d:execute([[UPDATE kickside_job_thread_cleanup SET started=FALSE,next_page_seq=0,completed_at=NULL
-                WHERE thread_id=$1]], {id}))
-            local retained = assert(d:query([[SELECT acknowledged_at FROM kickside_job_thread_cleanup_receipt
-                WHERE thread_id=$1 AND page_seq=0 AND done=TRUE]], {id}))
-            test.not_nil(retained[1].acknowledged_at)
-            assert(d:release())
+        for _, pending in ipairs({false, true}) do
+            local state = pending and "unacknowledged page one before convergence" or "acknowledged page zero and a default fence"
+            test.it("purges a committed replacement with " .. state, function()
+                local d, owner, id, owner_id = purged_owner()
+                local retained = assert(d:query([[SELECT acknowledged_at FROM kickside_job_thread_cleanup_receipt
+                    WHERE thread_id=$1 AND page_seq=0 AND done=TRUE]], {id}))
+                test.not_nil(retained[1].acknowledged_at)
+                if pending then
+                    assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at=NULL,next_page_seq=2
+                        WHERE thread_id=$1]], {id}))
+                    assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET page_seq=1,acknowledged_at=NULL
+                        WHERE thread_id=$1 AND page_seq=0 AND done=TRUE]], {id}))
+                else
+                    assert(d:execute([[UPDATE kickside_job_thread_cleanup SET started=FALSE,next_page_seq=0,completed_at=NULL
+                        WHERE thread_id=$1]], {id}))
+                end
+                commit_replacement(d, id)
+                if not pending then assert(converge(owner, id)) end
+                local purged, err = teardown.purge_thread(d, id, owner_id)
+                test.is_nil(err, tostring(err))
+                test.is_true(purged.purged)
+                local receipts = assert(d:query([[SELECT page_seq,acknowledged_at FROM kickside_job_thread_cleanup_receipt
+                    WHERE thread_id=$1 ORDER BY page_seq]], {id}))
+                test.eq(#receipts, 2)
+                for i, row in ipairs(receipts) do
+                    test.eq(tonumber(row.page_seq), pending and i or i - 1)
+                    test.not_nil(row.acknowledged_at)
+                end
+                if not pending then test.eq(receipts[1].acknowledged_at, retained[1].acknowledged_at) end
+                drain_cleanup(d, id)
+                test.eq(count(d, "kickside_thread", "id", id), 0)
 
-            assert(provision.ensure_user(owner, scope(), owner_id))
-            d = db()
-            local purged, purge_err = teardown.purge_thread(d, id, owner_id)
-            test.is_nil(purge_err, tostring(purge_err))
-            test.is_true(purged.purged)
-            local receipts = assert(d:query([[SELECT page_seq,acknowledged_at FROM kickside_job_thread_cleanup_receipt
-                WHERE thread_id=$1 ORDER BY page_seq]], {id}))
-            test.eq(#receipts, 2)
-            test.eq(tonumber(receipts[1].page_seq), 0)
-            test.eq(tonumber(receipts[2].page_seq), 1)
-            test.eq(receipts[1].acknowledged_at, retained[1].acknowledged_at)
-            test.not_nil(receipts[2].acknowledged_at)
-            assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
-                WHERE thread_id=$1]], {id}))
-            assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
-                WHERE thread_id=$1]], {id}))
-            assert(jobs.retention_sweep())
-            test.eq(count(d, "kickside_thread", "id", id), 0)
-            test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 0)
-            test.eq(count(d, "kickside_job_thread_cleanup", "thread_id", id), 0)
-            assert(d:release())
-        end)
+                assert(d:release())
+            end)
+        end
 
         test.it("concurrent first provisioning converges on one owned thread", function()
             local id = "prov-race-" .. uuid.v4()

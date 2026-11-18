@@ -2805,6 +2805,7 @@ entries:
       core_types: kickside.core:types
       execution_identity: kickside.execution:execution_identity
       job_lifecycle: app:projection_register_native_job_adapter
+      job_teardown: app:teardown_native_fixture
       jobs_wake: app:projection_register_native_wake_adapter
       retention_notifier: app:register_completion_retention
       retention_pin: app:projection_register_native_fixture
@@ -3057,6 +3058,7 @@ entries:
       autoinit: kickside.component:autoinit
       threads_normalize: kickside.core.threads.persist:normalize
       natural_key: kickside.core.threads.persist:natural_key
+      job_teardown: app:teardown_native_fixture
 
   - name: thread_row_native_test
     kind: function.lua
@@ -3518,6 +3520,8 @@ entries:
     modules: [sql, time, uuid]
     imports:
       contract: app:teardown_fence_native_fixture
+      job_teardown: app:teardown_native_fixture
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
 
   - name: teardown_fence_native_test
     kind: function.lua

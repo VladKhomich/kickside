@@ -14,7 +14,7 @@ function M.result(stage, value)
     if stage == "delete" and M.primary then return nil, M.primary end
     return value, nil
 end
-function M.reclaim_completed(...) return 0, nil end
+function M.reclaim_completed(...) return 0, nil, false end
 function M.database(): any
     local db: any = {}
     function db:type() return M.result("dialect", M.dialect) end
@@ -43,7 +43,16 @@ function M.database(): any
             return M.result("owner_fences", rows)
         end
         if M.mode == "receipts" or M.mode == "fences" then
-            if M.active == M.mode and statement:find("SELECT", 1, true) and M.begins > 0 then
+            if statement:find("AS eligible", 1, true) then
+                if M.mode == "fences" and statement:find("completed_at < $1", 1, true) then
+                    return M.result("candidates", {{thread_id = "thread", eligible = true}})
+                end
+                return {}, nil
+            end
+            if M.mode == "fences" and M.active == "fences" then
+                return {{started = true, next_page_seq = 2, completed_at = "complete"}}, nil
+            end
+            if M.mode == "receipts" and M.active == M.mode and statement:find("SELECT", 1, true) and M.begins > 0 then
                 return M.result("candidates", {{thread_id = "thread", page_seq = 1}})
             end
             return {}, nil

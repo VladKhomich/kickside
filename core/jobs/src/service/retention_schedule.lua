@@ -15,8 +15,7 @@ function schedule.new(dependencies: any): any
     local active_policy: any = nil
     local driver = {}
     local job_cursor: table? = nil
-    local unused_fence_cursor: string? = nil
-    local thread_cleanup_cursor: table? = nil
+    local cleanup_cursors: table? = nil
 
     local function retry_delay_ms(policy: any): number
         retry_count = retry_count + 1
@@ -41,7 +40,7 @@ function schedule.new(dependencies: any): any
         end
         active_policy = policy
 
-        local stats, sweep_err = sweep(job_cursor, unused_fence_cursor, thread_cleanup_cursor)
+        local stats, sweep_err = sweep(job_cursor, cleanup_cursors)
         if sweep_err then
             log:error("job_worker retention sweep failed: " .. tostring(sweep_err))
             deadline_ns = now_ns + retry_delay_ms(policy) * 1000000
@@ -49,15 +48,17 @@ function schedule.new(dependencies: any): any
         end
         retry_count = 0
         job_cursor = stats.job_cursor
-        unused_fence_cursor = stats.unused_fence_cursor
-        thread_cleanup_cursor = stats.thread_cleanup_cursor
-        local full = job_cursor ~= nil or unused_fence_cursor ~= nil or thread_cleanup_cursor ~= nil
-            or stats.jobs >= policy.retention_batch or stats.job_runs > 0
+        cleanup_cursors = stats.thread_cleanup_cursors
+        local full = job_cursor ~= nil or stats.jobs >= policy.retention_batch or stats.job_runs > 0
             or stats.workers >= policy.retention_batch or stats.worker_pulses >= policy.retention_batch
             or stats.wake_rows >= policy.retention_batch
             or stats.thread_cleanup_receipts >= policy.retention_batch
             or stats.thread_cleanup_fences >= policy.retention_batch
             or stats.thread_cleanup_leftovers > 0
+        for _, position in pairs(cleanup_cursors or {}) do
+            if position then full = true end
+        end
+        if not full then cleanup_cursors = nil end
         -- Each pass yields to the pool's dispatch and message handling before
         -- another bounded pass. The idle interval starts only after draining.
         deadline_ns = full and now_ns or now_ns + policy.retention_interval_ms * 1000000

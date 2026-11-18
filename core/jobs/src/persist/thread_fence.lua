@@ -13,15 +13,16 @@ function M.owner_key(dbtype: string, column: string): string
         .. " THEN CAST(" .. column .. " AS uuid) END"
 end
 
--- Limit the indexed candidates before probing owner eligibility. Return the
--- ineligible rows too so the caller can advance past a full window of them.
+-- nil starts a round; false keeps an exhausted scan finished for that round.
 function M.ordered_window(db: sql.DB, source: string, alias: string, keys: {string},
-        predicate: string, eligible: string, after: {any}, limit: integer): (table[]?, error?, table?)
-    local args: {string} = {}
+        predicate: string, eligible: string, after: any, first: {any}, limit: integer, bindings: {any}?): (table[]?, error?, any)
+    if after == false then return {}, nil, false end
     local params: {any} = {}
-    for i, value in ipairs(after) do
-        args[i] = "$" .. tostring(i)
-        params[i] = value
+    local args: {string} = {}
+    for _, value in ipairs(bindings or {}) do params[#params + 1] = value end
+    for i, value in ipairs(after or first) do
+        params[#params + 1] = value
+        args[i] = "$" .. tostring(#params)
     end
     params[#params + 1] = limit
     local columns = table.concat(keys, ",")
@@ -31,8 +32,15 @@ function M.ordered_window(db: sql.DB, source: string, alias: string, keys: {stri
         .. columns .. " FROM " .. source .. " WHERE " .. predicate .. " AND " .. seek
         .. " ORDER BY " .. columns .. " LIMIT $" .. tostring(#params) .. ") " .. alias
         .. " ORDER BY " .. columns, params)
-    local last = type(rows) == "table" and #rows == limit and rows[#rows] or nil
-    return rows, err, last
+    if type(rows) ~= "table" or err then return rows, err, false end
+    local matched = {}
+    for _, row in ipairs(rows) do
+        if row.eligible == true or row.eligible == 1 then matched[#matched + 1] = row end
+    end
+    if #rows < limit then return matched, nil, false end
+    local position: {any} = {}
+    for i, key in ipairs(keys) do position[i] = rows[#rows][key] end
+    return matched, nil, position
 end
 
 local function invalid_response(field: string, thread_id: string?): error

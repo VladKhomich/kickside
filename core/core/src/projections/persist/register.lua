@@ -15,6 +15,7 @@ local types = require("types")
 local core_types = require("core_types")
 local execution_identity = require("execution_identity")
 local job_lifecycle = require("job_lifecycle")
+local job_teardown = require("job_teardown")
 local jobs_wake = require("jobs_wake")
 local retention_notifier = require("retention_notifier")
 local retention_pin = require("retention_pin")
@@ -450,6 +451,8 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             "failed to insert cursor", "cursor.insert", 1, response_error)
         if proof_err then return nil, proof_err end
     end
+    local _, fence_err = job_teardown.reopen_thread_tx(tx, dbtype, thread_id)
+    if fence_err then return nil, fence_err end
     local job_id, job_err = job_lifecycle.enqueue_job(tx, dbtype, {
         owner_locator = { kind = "thread", id = thread_id },
         job_type = "kickside.core.projections:advance",

@@ -5,6 +5,8 @@ local sql = require("sql")
 local time = require("time")
 local uuid = require("uuid")
 local contract = require("contract")
+local job_teardown = require("job_teardown")
+local sql_boundary = require("sql_boundary")
 
 local M = {}
 
@@ -35,10 +37,30 @@ local function pending(message: string, needs_continue: boolean?): error
 end
 
 function M.mark(db: any, id: string): error?
+    local dbtype, type_err = sql_boundary.database_type(db, "thread cleanup dialect", "database.type", response_error)
+    if type_err or not dbtype then return type_err end
+    local tx, begin_err = sql_boundary.begin(db, "thread delete mark begin failed", "mark.transaction", response_error)
+    if begin_err or not tx then return begin_err end
     local stamp = time.now():utc():format(time.RFC3339)
-    local result, err = db:execute("UPDATE kickside_thread SET deleting_at=COALESCE(deleting_at,$1) WHERE id=$2", { stamp, id })
+    local result, err = tx:execute("UPDATE kickside_thread SET deleting_at=$1 WHERE id=$2 AND deleting_at IS NULL",
+        {stamp, id})
     local mark_err = write_error(result, err, "thread delete mark failed", "mark.write")
-    if mark_err then return mark_err end
+    if not mark_err and tonumber(result.rows_affected) == 1 then
+        local sequence, cleanup_err = job_teardown.start_thread_cleanup_tx(tx, dbtype, id)
+        mark_err = cleanup_err
+        if not mark_err and (type(sequence) ~= "number" or sequence < 0 or sequence % 1 ~= 0) then
+            mark_err = response_error("mark.page_seq")
+        elseif not mark_err and (sequence :: integer) > 0 then
+            local saved, save_err = tx:execute("UPDATE kickside_thread SET teardown_page_seq=$1 WHERE id=$2",
+                {sequence, id})
+            local _, proof = sql_boundary.exact_row_count(saved, save_err, "thread cleanup sequence stamp failed",
+                "mark.sequence_write", 1, response_error)
+            mark_err = proof
+        end
+    end
+    if mark_err then return sql_boundary.rollback(tx, mark_err, "thread delete mark rollback failed") end
+    local _, commit_err = tx:commit()
+    if commit_err then return errors.wrap(commit_err, "thread delete mark commit failed") end
     local rows, proof_err = db:query("SELECT deleting_at FROM kickside_thread WHERE id=$1", { id })
     local read_err = rows_error(rows, proof_err, "thread delete mark proof failed", "mark.rows")
     if read_err then return read_err end
