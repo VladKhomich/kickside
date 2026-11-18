@@ -85,6 +85,12 @@ resumes by row ID within the thread and status. The prune transaction rechecks
 protections before deleting events. A PostgreSQL head dated `infinity` has no
 age deadline, and one dated `-infinity` satisfies the age cutoff.
 
+Background PostgreSQL event pruning commits each bounded delete and its prune
+boundary atomically without waiting for a synchronous WAL flush. A database
+crash can restore an unflushed batch. Core rechecks the recovered boundary on
+startup and prunes any eligible events again. Appends, explicit per-thread
+pruning and receipt cleanup use their configured commit mode.
+
 At the end of a rotation, after owner hooks, Core reads the oldest committed
 receipt using its index. It waits for the earliest of the observed event,
 receipt or owner deadlines, or a change wake. Committed component lifecycle
