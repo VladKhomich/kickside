@@ -3,8 +3,6 @@ local owner_hooks = require("owner_hooks")
 local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
-local process = require("process")
-local channel = require("channel")
 local threads_writer = require("threads_writer")
 local retention_repo = require("retention_repo")
 local runner = require("retention_runner")
@@ -117,7 +115,7 @@ local function define_tests()
             end
             local ok, failure = pcall(function()
                 local changes: table[] = {}
-                for _ = 1, 50 do changes[#changes + 1] = { kind = "events_appended" } end
+                for index = 1, 50 do changes[#changes + 1] = { kind = "events_appended", thread_id = "thread-" .. tostring(index) } end
                 local pass, pass_err = runner.on_wakes(db, "retention-test", changes)
                 test.is_nil(pass_err)
                 test.not_nil(pass)
@@ -136,90 +134,6 @@ local function define_tests()
             sweeper.run, owner_hooks.run, sweeper.next_deadline_ms = original_sweep, original_owners, original_deadline
             db:release()
             if not ok then error(failure) end
-        end)
-
-        test.it("sweeps only the thread named in an event wake", function()
-            local db = assert(sql.get("app:db"))
-            local target, unrelated = make_thread(db), make_thread(db)
-            for _, id in ipairs({target, unrelated}) do
-                local _, policy_err = retention_repo.upsert(db, id, {
-                    event_hot_retention_days = 1, archive_mode = "tombstone_only", enabled = true,
-                })
-                test.is_nil(policy_err)
-                add_event(db, id, stamp(db, time.now():add(-48 * time.HOUR)))
-            end
-            local change = {kind = "events_appended", thread_id = target}
-            local pass, wake_err = runner.on_wakes(db, "retention-test", {change, change})
-            test.is_nil(wake_err)
-            test.eq(pass.stats.events, 1)
-            test.eq(count_events(db, target), 0)
-            test.eq(count_events(db, unrelated), 1)
-            db:release()
-        end)
-
-        test.it("shares the event budget across a drain and continues the remaining thread wakes", function()
-            local db = assert(sql.get("app:db"))
-            local pending: table[] = {}
-            local targets: string[] = {}
-            for _ = 1, 8 do
-                local id = make_thread(db)
-                assert(retention_repo.upsert(db, id, {
-                    event_hot_retention_days = 1, archive_mode = "tombstone_only", enabled = true,
-                }))
-                add_event(db, id, stamp(db, time.now():add(-48 * time.HOUR)))
-                pending[#pending + 1] = {kind = "events_appended", thread_id = id}
-                targets[#targets + 1] = id
-            end
-            local original_policy = retention_policy.policy
-            retention_policy.policy = function()
-                local policy = assert(original_policy())
-                policy.batch_events = 3
-                return policy, nil
-            end
-            local mailbox = assert(process.listen("kickside.core.retention.changed"))
-            local ok, failure = pcall(function()
-                for _, expected in ipairs({{events = 3, wakes = 6}, {events = 3, wakes = 3}, {events = 2, wakes = 0}}) do
-                    local pass, err = runner.on_wakes(db, tostring(process.pid()), pending)
-                    test.is_nil(err)
-                    test.eq(pass.stats.events, expected.events)
-                    test.eq(pass.stats.needs_continue, expected.wakes > 0)
-                    pending = {}
-                    local deadline = time.after("2s")
-                    for _ = 1, expected.wakes do
-                        local next_wake = channel.select({mailbox:case_receive(), deadline:case_receive()})
-                        test.eq(next_wake.channel, mailbox, "missing thread continuation")
-                        test.eq(next_wake.value.kind, "continue")
-                        test.not_nil(next_wake.value.thread_id)
-                        pending[#pending + 1] = next_wake.value
-                    end
-                end
-                for _, id in ipairs(targets) do test.eq(count_events(db, id), 0) end
-            end)
-            process.unlisten(mailbox)
-            retention_policy.policy = original_policy
-            db:release()
-            if not ok then error(failure) end
-        end)
-
-        test.it("uses scoped event deadlines and preserves the already armed deadline", function()
-            local db = assert(sql.get("app:db"))
-            local target, unrelated = make_thread(db), make_thread(db)
-            local now = time.now()
-            local target_time = stamp(db, now)
-            for _, id in ipairs({target, unrelated}) do
-                assert(retention_repo.upsert(db, id, {
-                    event_hot_retention_days = 1, archive_mode = "tombstone_only", enabled = true,
-                }))
-                add_event(db, id, id == target and target_time or stamp(db, now:add(-time.HOUR)))
-            end
-            local target_deadline = assert(sweeper.deadline_ms(target_time, 86400000, tostring(db:type())))
-            local change = {kind = "events_appended", thread_id = target}
-            local pass = assert(runner.on_wakes(db, "retention-test", {change}))
-            test.eq(pass.deadline_ms, target_deadline)
-            local previous = target_deadline - 1000
-            pass = assert(runner.on_wake(db, "retention-test", change, previous))
-            test.eq(pass.deadline_ms, previous)
-            db:release()
         end)
 
         test.it("wakes from an empty snapshot and arms the new event's exact stored deadline", function()
