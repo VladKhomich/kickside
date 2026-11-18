@@ -9,6 +9,7 @@ local admin_handler = require("admin_handler")
 local model_catalog = require("model_catalog")
 local funcs = require("funcs")
 local json = require("json")
+local registry = require("registry")
 
 local function with_corrupt_profile(fn, stored_secret, stored_config)
     local db, err = sql.get("app:db")
@@ -53,6 +54,28 @@ end
 
 local function define_tests()
     test.describe("model provider-profile secrets", function()
+        test.it("binds every migration to the configured database", function()
+            local config = assert(registry.get("kickside.models:db_config"))
+            local entries = assert(registry.find({["meta.type"] = "migration"}))
+            local found = false
+            for _, entry in ipairs(entries) do
+                if entry.id:match("^kickside%.models%.migrations:") then
+                    found = true
+                    test.eq(entry.meta.target_db, config.meta.db_id, entry.id)
+                end
+            end
+            test.is_true(found)
+        end)
+        test.it("opens ciphertext written with the existing raw environment key", function()
+            local hex = assert(require("env").get("ENCRYPTION_KEY"))
+            local bytes = ""
+            for i = 1, #hex, 2 do bytes = bytes .. string.char(tonumber(hex:sub(i, i + 1), 16)) end
+            local encrypted = assert(require("crypto").encrypt.aes('{"api_key":"previous-format-secret"}', bytes))
+            local encoded = require("base64").encode(encrypted)
+            local secret, err = catalog_policy.decrypt_secret(encoded)
+            test.is_nil(err, tostring(err))
+            test.eq(secret.api_key, "previous-format-secret")
+        end)
         test.it("migrates legacy custom headers atomically without exposing or losing credentials", function()
             local id = "legacy-header-fixture"
             local secret = "header-credential-sentinel"

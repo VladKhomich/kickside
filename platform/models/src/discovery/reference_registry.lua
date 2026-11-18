@@ -4,7 +4,7 @@ local openrouter = require("reference_openrouter")
 -- this abstraction, not on any concrete source, so additional catalogs (e.g.
 -- models.dev, a static map) can be added here without touching the orchestrator.
 -- Sources are tried in order and merged per field; the first source to supply a
--- field wins. A missing entry is optional; source failures stop discovery.
+-- field wins. Lookup returns source failures to the caller.
 local M = {}
 
 local sources: { any } = { openrouter }

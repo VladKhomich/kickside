@@ -10,6 +10,8 @@ entries:
     includes:
     - kickside.models.security:module_runtime
     - kickside.models.security:models_endpoint_access
+    - kickside.models.security:model_resolution
+    - kickside.models.security:model_resolution_call
   groups: []
   policy:
     resources:
@@ -24,6 +26,7 @@ entries:
     - kickside.models.providers:*
     - kickside.models.providers.google_vertex:*
     - kickside.models.providers.openai_compat_plain:*
+    - kickside.models.providers.profile:*
     - kickside.models.security:*
     - kickside.models.service:*
     actions:
@@ -56,10 +59,10 @@ entries:
     - kickside.models.classes:*
     - kickside.models.discovery:*
     - kickside.models.migrations:*
-    - kickside.models.persist:*
     - kickside.models.providers:*
     - kickside.models.providers.google_vertex:*
     - kickside.models.providers.openai_compat_plain:*
+    - kickside.models.providers.profile:*
     - kickside.models.security:*
     - kickside.models.service:*
     actions:
@@ -84,3 +87,25 @@ entries:
     path: .groups +=
   - entry: kickside.models.security:models_endpoint_access
     path: .groups +=
+  - entry: kickside.models.security:model_resolution
+    path: .groups +=
+  - entry: kickside.models.security:model_resolution_call
+    path: .groups +=
+- name: model_resolution
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources: [wippy.llm:model_resolver]
+    actions: [contract.get]
+    effect: allow
+- name: model_resolution_call
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources: [resolve]
+    actions: [contract.call]
+    effect: allow

@@ -41,8 +41,8 @@ export function sourceLabel(source?: string): string {
   return source || 'model'
 }
 
-export function fmtTokens(value?: number): string {
-  if (!value || value <= 0) return '—'
+export function fmtTokens(value?: number | null): string {
+  if (!value || value <= 0) return 'Unknown'
   if (value >= 1000) return `${Math.round(value / 1000)}k`
   return String(value)
 }

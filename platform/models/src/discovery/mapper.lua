@@ -3,6 +3,10 @@ local models_types = require("models_types")
 
 local M = {}
 
+local CONTEXT_LIMIT_FIELDS = { "context_length", "contextLength", "inputTokenLimit", "max_model_len" }
+
+local OUTPUT_LIMIT_FIELDS = { "outputTokenLimit", "max_output_tokens" }
+
 local DISCOVERED_METADATA_FIELDS = {
     "id",
     "name",
@@ -18,6 +22,7 @@ local DISCOVERED_METADATA_FIELDS = {
     "context_length",
     "contextLength",
     "inputTokenLimit",
+    "max_model_len",
     "outputTokenLimit",
     "max_output_tokens",
     "capabilities",
@@ -192,20 +197,26 @@ function M.public_name(profile_id: string, provider_model: string): string
     return models_types.slug(profile_id) .. "/" .. tostring(provider_model)
 end
 
--- Platform convention: every embedding card runs at 512 dimensions regardless
--- of the size the provider reports or omits.
-local EMBEDDING_DIMENSIONS = 512
-
-function M.model_limits(item: any, capabilities: { string }?): (number, number, number)
-    local max_tokens = tonumber(item.context_length or item.contextLength or item.inputTokenLimit or 0) or 0
-    local output_tokens = tonumber(item.outputTokenLimit or item.max_output_tokens or 0) or 0
-    local dimensions = tonumber(item.dimensions or 0) or 0
-    if max_tokens < 0 then max_tokens = 0 end
-    if output_tokens < 0 then output_tokens = 0 end
-    if common.table_has(capabilities, "embed") then
-        dimensions = EMBEDDING_DIMENSIONS
+local function advertised_limit(item: any, fields: { string }): number?
+    if type(item) ~= "table" then return nil end
+    for _, field in ipairs(fields) do
+        local limit = models_types.positive_limit(item[field])
+        if limit then return limit end
     end
-    return max_tokens, output_tokens, dimensions
+    return nil
+end
+
+function M.context_limit(item: any): number?
+    return advertised_limit(item, CONTEXT_LIMIT_FIELDS)
+end
+
+function M.output_limit(item: any): number?
+    return advertised_limit(item, OUTPUT_LIMIT_FIELDS)
+end
+
+function M.model_limits(item: any): (number?, number?, number?)
+    local dimensions = type(item) == "table" and models_types.positive_limit(item.dimensions) or nil
+    return M.context_limit(item), M.output_limit(item), dimensions
 end
 
 function M.discovered_metadata(item: any): any

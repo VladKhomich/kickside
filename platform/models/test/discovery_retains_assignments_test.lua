@@ -19,7 +19,7 @@ local mapper = require("discovery_mapper")
 
 local function define_tests()
     test.describe("provider rediscovery", function()
-        test.it("leaves an unknown generate model disabled until its limits are supplied", function()
+        test.it("enables an ID-only model with unknown limits and retains explicit edits", function()
             local profile, profile_err = repo.create_profile({
                 name = "Unknown limits",
                 provider_id = "wippy.llm.openai_compat:provider",
@@ -27,42 +27,67 @@ local function define_tests()
             })
             test.is_nil(profile_err)
             local original_adapter, original_lookup = discovery.adapter_for, reference_registry.lookup
+            local item = { id = "unknown-limits" }
             discovery.adapter_for = function() return {
-                fetch = function() return { { id = "unknown-limits", capabilities = { "generate" } } }, nil end,
+                fetch = function() return { item }, nil end,
             } end
             reference_registry.lookup = function() return nil end
             local ok, err = pcall(function()
-                local result, discovery_err = discovery.discover(profile.id)
-                test.is_nil(discovery_err)
-                test.eq(result.count, 1)
-                local discovered = result.models[1]
-                test.eq(discovered.max_tokens, 0)
-                test.eq(discovered.output_tokens, 0)
-                test.is_false(discovered.enabled)
+                local function refresh()
+                    local result, discovery_err = discovery.discover(profile.id)
+                    test.is_nil(discovery_err)
+                    test.eq(result.count, 1)
+                    return result.models[1]
+                end
+                local function assert_unknown_storage(name)
+                    local db, db_err = sql.get("app:db")
+                    test.is_nil(db_err)
+                    local rows, query_err = db:query([[SELECT name FROM kickside_model_cards
+                        WHERE name = $1 AND max_tokens IS NULL AND output_tokens IS NULL AND dimensions IS NULL]], { name })
+                    db:release()
+                    test.is_nil(query_err)
+                    test.eq(#rows, 1, "unknown limits stay NULL in storage")
+                end
 
-                local enabled, enable_err = repo.upsert_card({ name = discovered.name, enabled = true }, discovered)
-                test.is_nil(enabled)
-                test.not_nil(enable_err)
+                local card = refresh()
+                test.is_true(card.enabled)
+                test.eq(table.concat(card.capabilities, ","), "generate")
+                test.is_nil(card.max_tokens)
+                test.is_nil(card.output_tokens)
+                test.is_nil(card.dimensions)
+                assert_unknown_storage(card.name)
+                local assigned = save({ name = card.name, classes = { "fast" }, enabled = true })
+                test.is_true(assigned.enabled)
+                assert_unknown_storage(card.name)
 
-                local configured, configure_err = repo.upsert_card({
-                    name = discovered.name,
-                    max_tokens = 32768,
-                    output_tokens = 4096,
-                    capabilities = discovered.capabilities,
-                    enabled = true,
-                }, discovered)
-                test.is_nil(configure_err, "configure model limits")
-                test.is_true(configured.enabled)
-                local overlays = repo.list_card_overlays()
-                test.eq(overlays[1].name, discovered.name)
-                test.eq(overlays[1].max_tokens, 32768)
-                test.eq(overlays[1].output_tokens, 4096)
-                local rediscovered, rediscovery_err = discovery.discover(profile.id)
-                test.is_nil(rediscovery_err, "rediscover configured model")
-                test.eq(rediscovered.models[1].max_tokens, 32768)
-                test.eq(rediscovered.models[1].output_tokens, 4096)
-                test.is_true(rediscovered.models[1].enabled)
-                repo.delete_card(discovered.name)
+                item.max_model_len = 65536
+                item.pricing = { prompt = "0" }
+                reference_registry.lookup = function() return { output_tokens = 8192 } end
+                card = refresh()
+                test.eq(card.max_tokens, 65536)
+                test.eq(card.output_tokens, 8192)
+                test.eq(card.metadata.discovered.max_model_len, 65536)
+                item.max_model_len = 49152
+                item.max_output_tokens = 16384
+                card = refresh()
+                test.eq(card.max_tokens, 49152, "provider-owned context can change")
+                test.eq(card.output_tokens, 16384, "provider output takes precedence over reference data")
+
+                local configured = save({ name = card.name, max_tokens = 32768, output_tokens = 4096 })
+                test.eq(configured.max_tokens, 32768)
+                test.eq(configured.output_tokens, 4096)
+                item.max_model_len, item.max_output_tokens = 32768, 4096
+                refresh()
+                item.max_model_len, item.max_output_tokens = 65536, 16384
+                card = refresh()
+                test.eq(card.max_tokens, 32768)
+                test.eq(card.output_tokens, 4096)
+                test.is_true(card.enabled)
+                test.eq(table.concat(card.class, ","), "fast")
+                item.max_model_len, item.max_output_tokens = nil, nil
+                card = refresh()
+                test.eq(card.max_tokens, 32768)
+                test.eq(card.output_tokens, 4096)
             end)
             discovery.adapter_for, reference_registry.lookup = original_adapter, original_lookup
             local _, delete_err = repo.delete_profile(profile.id)
@@ -70,7 +95,54 @@ local function define_tests()
             if not ok then error(err, 0) end
         end)
 
-        test.it("returns a reference source failure instead of saving an incomplete discovery", function()
+        test.it("leaves unadvertised embedding dimensions unset and keeps explicit dimensions on rediscovery", function()
+            local profile, profile_err = repo.create_profile({
+                name = "Embedding limits",
+                provider_id = "wippy.llm.openai_compat:provider",
+                config = { base_url = "https://example.invalid/v1" },
+            })
+            test.is_nil(profile_err)
+            local original_adapter, original_lookup = discovery.adapter_for, reference_registry.lookup
+            local item = { id = "sample-embedding" }
+            discovery.adapter_for = function() return {
+                fetch = function() return { item }, nil end,
+            } end
+            reference_registry.lookup = function() return nil end
+            local ok, err = pcall(function()
+                local function refresh()
+                    local result, discovery_err = discovery.discover(profile.id)
+                    test.is_nil(discovery_err)
+                    test.eq(result.count, 1)
+                    return result.models[1]
+                end
+                local card = refresh()
+                test.is_true(card.enabled)
+                test.eq(table.concat(card.capabilities, ","), "embed")
+                test.is_nil(card.dimensions)
+                local db, db_err = sql.get("app:db")
+                test.is_nil(db_err)
+                local rows, query_err = db:query("SELECT name FROM kickside_model_cards WHERE name = $1 AND dimensions IS NULL",
+                    { card.name })
+                db:release()
+                test.is_nil(query_err)
+                test.eq(#rows, 1)
+
+                item.dimensions = 1536
+                test.eq(refresh().dimensions, 1536)
+                item.dimensions = 3072
+                test.eq(refresh().dimensions, 3072)
+                test.eq(save({ name = card.name, dimensions = 768 }).dimensions, 768)
+                test.eq(refresh().dimensions, 768)
+                item.dimensions = nil
+                test.eq(refresh().dimensions, 768)
+            end)
+            discovery.adapter_for, reference_registry.lookup = original_adapter, original_lookup
+            local _, delete_err = repo.delete_profile(profile.id)
+            test.is_nil(delete_err)
+            if not ok then error(err, 0) end
+        end)
+
+        local function assert_discovery_during_reference_failure(failure)
             local profile, profile_err = repo.create_profile({
                 name = "Reference source failure",
                 provider_id = "wippy.llm.openai_compat:provider",
@@ -79,19 +151,54 @@ local function define_tests()
             test.is_nil(profile_err)
             local original_adapter, original_lookup = discovery.adapter_for, reference_registry.lookup
             discovery.adapter_for = function() return {
-                fetch = function() return { { id = "reference-error-model" } }, nil end,
+                fetch = function()
+                    return {
+                        { id = "id-only" },
+                        { id = "advertised-context", max_model_len = 8192, pricing = { prompt = "0" } },
+                    }, nil
+                end,
             } end
-            reference_registry.lookup = function() return nil, "reference source unavailable" end
+            local lookup_calls = 0
+            reference_registry.lookup = function()
+                lookup_calls = lookup_calls + 1
+                return nil, failure
+            end
             local ok, err = pcall(function()
                 local result, discovery_err = discovery.discover(profile.id)
-                test.is_nil(result)
-                test.eq(discovery_err, "reference source unavailable")
-                test.eq(repo.get_profile(profile.id).status, "unknown")
+                test.is_nil(discovery_err)
+                test.eq(result.count, 2)
+                test.eq(lookup_calls, 1, "an unavailable catalog is contacted once per discovery")
+                test.eq(repo.get_profile(profile.id).status, "healthy")
+                local stored_cards, read_err = repo.list_cards_public()
+                test.is_nil(read_err)
+                local by_model = {}
+                for _, stored in ipairs(stored_cards) do
+                    if stored.provider_profile_id == profile.id then
+                        test.is_true(stored.enabled)
+                        test.is_nil(stored.output_tokens)
+                        test.is_nil(stored.dimensions)
+                        local assigned = save({ name = stored.name, classes = { "fast" } })
+                        test.is_true(assigned.enabled)
+                        test.eq(table.concat(assigned.class, ","), "fast")
+                        test.is_nil(assigned.output_tokens)
+                        by_model[stored.provider_model] = stored
+                    end
+                end
+                test.is_nil(by_model["id-only"].max_tokens)
+                test.eq(by_model["advertised-context"].max_tokens, 8192)
             end)
             discovery.adapter_for, reference_registry.lookup = original_adapter, original_lookup
             local _, delete_err = repo.delete_profile(profile.id)
             test.is_nil(delete_err)
             if not ok then error(err, 0) end
+        end
+
+        test.it("saves selectable cards when the reference catalog fails", function()
+            assert_discovery_during_reference_failure("reference source unavailable")
+        end)
+
+        test.it("saves selectable cards when the reference catalog times out", function()
+            assert_discovery_during_reference_failure("reference source timed out")
         end)
 
         test.it("returns a persistence failure instead of marking incomplete discovery healthy", function()
@@ -340,6 +447,25 @@ local function define_tests()
                 for i, row in ipairs(replay) do
                     for key, value in pairs(resumed[i]) do test.eq(row[key], value, row.name .. ":" .. key) end
                 end
+                migrate("04_encrypt_legacy_headers")
+                migrate("05_optional_model_limits")
+                local upgraded, upgrade_err = db:query("SELECT * FROM kickside_model_cards ORDER BY name")
+                test.is_nil(upgrade_err)
+                test.eq(#upgraded, #replay)
+                for i, row in ipairs(upgraded) do
+                    for key, value in pairs(replay[i]) do
+                        if key == "max_tokens" or key == "output_tokens" or key == "dimensions" then
+                            if value == 0 then
+                                test.is_nil(row[key], row.name .. ":" .. key)
+                            else
+                                test.eq(row[key], value, row.name .. ":" .. key)
+                            end
+                        else
+                            test.eq(row[key], value, row.name .. ":" .. key)
+                        end
+                    end
+                end
+                migrate("05_optional_model_limits", "-replay")
             end)
             db:release()
             if not ok then error(err, 0) end

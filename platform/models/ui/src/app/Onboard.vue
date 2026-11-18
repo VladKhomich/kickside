@@ -9,6 +9,7 @@ import { useModelsApi } from './useModelsApi.ts'
 import { makeLookups, profileEndpoint, statusLabel, statusSeverity } from './presenters.ts'
 import { usableFastModelContext } from '../modelReadiness.ts'
 import { Avatar, Button, Notice, SelectField, Spinner } from './shared'
+import ModelEditor from './ModelEditor.vue'
 import ProviderProfileEditor from './ProviderProfileEditor.vue'
 
 // kickside-onboard-models — a focused, onboarding-only screen over the model
@@ -28,6 +29,7 @@ const COMPAT_PROVIDER = 'wippy.llm.openai_compat:provider'
 type Stage = 'pick' | 'connect' | 'review'
 const stage = ref<Stage>('pick')
 const selectedPreset = ref<Preset | null>(null)
+const editingModel = ref<ModelCard | null>(null)
 const connectMsg = ref('')
 const connectFail = ref('')
 // busy spans discovery so the form cannot be resubmitted.
@@ -57,6 +59,7 @@ function isEmbedOnly(m: ModelCard): boolean {
 const generateModels = computed(() => models.value.filter(m => m.enabled !== false && !isEmbedOnly(m)))
 const embedModels = computed(() => models.value.filter(m => m.enabled !== false
   && (hasCap(m, 'embed') || hasCap(m, 'embedding') || hasCap(m, 'embeddings'))))
+const discoveredModels = computed(() => models.value.filter(m => m.source === 'discovered'))
 
 // Class tiers, split by their DECLARED capability (model_class.capability), not by
 // a hardcoded name — a deployment can add tiers of either kind and they slot in.
@@ -67,6 +70,17 @@ function topModelFor(name: string): string {
 }
 function modelOptions(sectionModels: ModelCard[]): { label: string; value: string }[] {
   return sectionModels.map(m => ({ label: m.title || m.name, value: m.name }))
+}
+
+function editDiscoveredModel(name: string) {
+  editingModel.value = discoveredModels.value.find(model => model.name === name) ?? null
+}
+
+async function saveDiscoveredModel(payload: Record<string, unknown>) {
+  if (!await store.saveCard(payload)) return
+  await store.loadClasses()
+  await autoSelectDefaults(false)
+  editingModel.value = null
 }
 
 // One config section per declared capability kind, hidden when it has no tiers.
@@ -155,9 +169,6 @@ function cardWithClasses(m: ModelCard, classList: string[], priority: number): R
     capabilities: [...(m.capabilities ?? [])],
     classes: classList,
     priority,
-    max_tokens: Number(m.max_tokens ?? 0),
-    output_tokens: Number(m.output_tokens ?? 0),
-    dimensions: Number(m.dimensions ?? 0),
     pricing: m.pricing ?? {},
     options: m.options ?? {},
     metadata: m.metadata ?? {},
@@ -220,11 +231,16 @@ const NON_CHAT = /embed|whisper|tts|audio|image|imagen|dall-?e|lyria|veo|sora|mu
 
 // Capability proxy for ranking: completion price (cost tracks capability), then
 // context window. Higher = more capable.
-function capabilityScore(m: ModelCard): number {
+function capabilityScore(m: ModelCard): number | undefined {
   const pr = m.pricing as Record<string, unknown> | undefined
   const price = Number(pr?.completion ?? pr?.output ?? pr?.prompt ?? 0)
   if (Number.isFinite(price) && price > 0) return price
-  return (Number(m.max_tokens) || 0) / 1e6
+  if (m.max_tokens != null) return m.max_tokens / 1e6
+}
+
+function compareOptionalLimit(a?: number | null, b?: number | null): number {
+  if (a == null) return b == null ? 0 : -1
+  return b == null ? 1 : a - b
 }
 
 // Pool to auto-pick generation tiers from. Native /models APIs don't report
@@ -245,12 +261,12 @@ function suggestGenerate(tiers: ClassGroup[]): Map<string, string> {
   const map = new Map<string, string>()
   const pool = chatCandidates()
   if (!pool.length || !tiers.length) return map
-  const ranked = [...pool].sort((a, b) => capabilityScore(a) - capabilityScore(b))
+  const ranked = [...pool].sort((a, b) => compareOptionalLimit(capabilityScore(a), capabilityScore(b)))
   const last = ranked.length - 1
   tiers.forEach((c, i) => {
     const tagged = pool
       .filter(m => (m.class ?? []).includes(c.name))
-      .sort((a, b) => capabilityScore(b) - capabilityScore(a))
+      .sort((a, b) => compareOptionalLimit(capabilityScore(b), capabilityScore(a)))
     if (tagged.length) { map.set(c.name, tagged[0].name); return }
     const at = tiers.length <= 1 ? last : Math.round((i * last) / (tiers.length - 1))
     map.set(c.name, ranked[Math.min(at, last)].name)
@@ -262,7 +278,7 @@ function suggestGenerate(tiers: ClassGroup[]): Map<string, string> {
 function suggestEmbed(): string {
   const pool = [...embedModels.value].sort((a, b) =>
     (isNative(b) ? 1 : 0) - (isNative(a) ? 1 : 0)
-    || (Number(b.dimensions) || 0) - (Number(a.dimensions) || 0))
+    || compareOptionalLimit(b.dimensions, a.dimensions))
   return pool[0]?.name || ''
 }
 
@@ -367,6 +383,18 @@ onMounted(async () => {
         </template>
       </section>
 
+      <section v-else-if="editingModel" class="ob-stage">
+        <h3 class="km-editor-head-title">Configure {{ editingModel.title || editingModel.name }}</h3>
+        <ModelEditor
+          :aria-label="`Configure ${editingModel.title || editingModel.name}`"
+          :model="editingModel"
+          :profiles="profiles"
+          :saving="saving"
+          @save="saveDiscoveredModel"
+          @cancel="editingModel = null"
+        />
+      </section>
+
       <!-- Review: connected providers + per-class default model -->
       <section v-else class="ob-stage">
         <div v-if="connectFail" class="ob-result fail">
@@ -388,6 +416,17 @@ onMounted(async () => {
               <span class="ob-dot" :class="statusSeverity(p.status)" :title="statusLabel(p.status)" />
             </div>
           </div>
+        </div>
+
+        <div v-if="discoveredModels.length" class="ob-block">
+          <div class="ob-block-head"><span>Model settings</span></div>
+          <SelectField
+            model-value=""
+            :options="modelOptions(discoveredModels)"
+            placeholder="Choose a model to configure"
+            aria-label="Model to configure"
+            @update:model-value="editDiscoveredModel"
+          />
         </div>
 
         <div v-if="sections.length" class="ob-autobar">
