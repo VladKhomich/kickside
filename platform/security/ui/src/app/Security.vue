@@ -12,7 +12,7 @@ import { useSecurityApi } from './useSecurityApi.ts'
 
 // kickside-security — roles/scopes admin. Rail lists scopes (built-in groups +
 // registry scopes read-only, DB-backed custom scopes editable). Selecting a
-// custom scope (or New) opens the two-pane builder: drag public policies from the
+// custom scope (or New) opens the two-pane builder: drag assignable permissions from the
 // palette into the scope, reorder, remove. Saving writes the DB row; the projection
 // service materializes it as a security.scope registry entry.
 const store = useSecurityApi()
@@ -38,12 +38,6 @@ useHostVisibilityRefresh(async () => {
   if (activeTab.value === 'delegations') await delegationPanel.value?.load()
 })
 
-const policyById = computed<Record<string, Policy>>(() => {
-  const m: Record<string, Policy> = {}
-  for (const p of policies.value) m[p.id] = p
-  return m
-})
-
 const filteredScopes = computed(() => {
   const q = railSearch.value.trim().toLowerCase()
   const match = (s: Scope) => !q || s.label.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
@@ -60,20 +54,16 @@ const palettePolicies = computed<Policy[]>(() => {
   if (!draft.value) return []
   // Exclude already-chosen extensions and, for an overlay, the locked base
   // policies (base can't be re-added).
-  const chosen = new Set([...draft.value.policies, ...draft.value.base.map(p => p.id)])
+  const chosen = new Set([...draft.value.policies, ...draft.value.base].map(p => p.id))
   const q = paletteSearch.value.trim().toLowerCase()
   return policies.value.filter(p => !chosen.has(p.id)
     && (!q || (p.title || '').toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || (p.comment || '').toLowerCase().includes(q)))
 })
 
-const draftPolicies = computed<Policy[]>(() =>
-  draft.value ? draft.value.policies.map(id => policyById.value[id] || { id }) : [],
-)
-
 function selectScope(s: Scope) {
   selectedId.value = s.id
   draft.value = s.source === 'custom'
-    ? { slug: s.slug || '', label: s.label, description: s.description, policies: s.policies.map(p => p.id), enabled: s.enabled, isNew: false, target: '', base: [] }
+    ? { slug: s.slug || '', label: s.label, description: s.description, policies: [...s.policies], enabled: s.enabled, isNew: false, target: '', base: [] }
     : null
 }
 
@@ -89,7 +79,7 @@ function copyScope(s: Scope) {
   Object.assign(draft.value!, {
     label: s.label ? `Copy of ${s.label}` : '',
     description: s.description,
-    policies: [...s.policies.map(p => p.id), ...(s.overlay_policies ?? []).map(p => p.id)],
+    policies: [...s.policies, ...(s.overlay_policies ?? [])],
   })
 }
 
@@ -105,7 +95,7 @@ function openOverlay(s: Scope) {
     slug: s.overlay_slug || sanitizeId(s.id),
     label: s.label || shortId(s.id),
     description: s.description,
-    policies: (s.overlay_policies ?? []).map(p => p.id),
+    policies: [...(s.overlay_policies ?? [])],
     enabled: true,
     isNew: !s.overlay_slug,
     target: s.id,
@@ -115,11 +105,13 @@ function openOverlay(s: Scope) {
 
 const isOverlay = computed(() => !!draft.value && draft.value.target !== '')
 
-function addPolicy(id: string) {
-  if (draft.value && !draft.value.policies.includes(id)) draft.value.policies.push(id)
+function addPolicy(id: string, index?: number) {
+  if (!draft.value || draft.value.policies.some(p => p.id === id) || draft.value.base.some(p => p.id === id)) return
+  const policy = policies.value.find(p => p.id === id)
+  if (policy) draft.value.policies.splice(index ?? draft.value.policies.length, 0, policy)
 }
 function removePolicy(id: string) {
-  if (draft.value) draft.value.policies = draft.value.policies.filter(p => p !== id)
+  if (draft.value) draft.value.policies = draft.value.policies.filter(p => p.id !== id)
 }
 
 function onPaneDrop(e: DragEvent) {
@@ -130,11 +122,14 @@ function onRowDrop(e: DragEvent, targetId: string) {
   e.stopPropagation()
   const id = e.dataTransfer?.getData('text/plain')
   if (!id || !draft.value || id === targetId) return
-  const arr = draft.value.policies
-  const from = arr.indexOf(id)
-  if (from !== -1) arr.splice(from, 1)
-  const to = arr.indexOf(targetId)
-  arr.splice(to === -1 ? arr.length : to, 0, id)
+  const selected = draft.value.policies
+  const from = selected.findIndex(p => p.id === id)
+  if (from === -1) {
+    addPolicy(id, selected.findIndex(p => p.id === targetId))
+    return
+  }
+  const [policy] = selected.splice(from, 1)
+  selected.splice(selected.findIndex(p => p.id === targetId), 0, policy!)
 }
 
 const draftSlug = computed(() => {
@@ -167,7 +162,7 @@ async function save() {
     target,
     label: draft.value.label.trim(),
     description: draft.value.description.trim(),
-    policies: draft.value.policies,
+    policies: draft.value.policies.map(p => p.id),
     enabled: draft.value.enabled,
   })
   if (ok) {
@@ -318,7 +313,7 @@ function shortId(id: string): string {
             </header>
             <div class="ks-pane-body">
               <div
-                v-for="p in draftPolicies"
+                v-for="p in draft.policies"
                 :key="p.id"
                 @dragover.prevent
                 @drop="onRowDrop($event, p.id)"

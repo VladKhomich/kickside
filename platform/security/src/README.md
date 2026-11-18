@@ -42,7 +42,7 @@ never the reverse:
 | GET | `/security/scopes` | scope/role catalog (internal hidden unless `?include_internal`) |
 | POST | `/security/scopes` | create/update a custom scope |
 | DELETE | `/security/scopes?slug=` | remove a custom scope |
-| GET | `/security/policies` | public policy catalog (`?include_private` to include private) |
+| GET | `/security/policies` | Policy inventory (`?include_private=true` includes private entries). `?assignable=true` lists named module access and management permissions available in the role editor. |
 | GET | `/security/projection` | current scope resolution status |
 
 `GET /security/projection` resolves the caller's native groups and live selected

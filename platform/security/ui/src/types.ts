@@ -1,7 +1,6 @@
 export interface ComponentProps {}
 
-// A grant the admin can compose into a scope. Mirrors the backend PolicySummary;
-// only public policies (meta.private != true) are returned by /security/policies.
+// A permission summary from the assignable catalog or an existing role.
 export interface Policy {
   id: string
   title?: string
@@ -39,7 +38,7 @@ export interface ScopeDraft {
   slug: string
   label: string
   description: string
-  policies: string[]
+  policies: Policy[]
   enabled: boolean
   isNew: boolean
   target: string

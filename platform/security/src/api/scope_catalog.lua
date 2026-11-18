@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- The read model for the scopes admin. Merges the three authorization
 -- surfaces into one catalog:
---   * policies  — every security.policy (the grants a scope can include)
+--   * policies  — policy inventory and declared module permissions
 --   * scopes    — built-in implicit groups (app.security:*), registry-shipped
 --                 security.scope entries, and DB-backed custom scopes
 -- Internal/system scopes (ingress + meta.internal) are classified so the UI can
@@ -20,9 +20,26 @@ local function meta_of(entry: any): { [string]: any }
     return (type(entry) == "table" and type(entry.meta) == "table") and (entry.meta :: { [string]: any }) or {}
 end
 
--- All security.policy entries, normalized to PolicySummary. A policy is private
--- (meta.private = true) when it is an internal/system grant that must not be
--- offered when composing a scope; only public policies are selectable.
+local function policy_summary(entry: any): stypes.PolicySummary
+    local meta = meta_of(entry)
+    local policy = (type(entry.data.policy) == "table") and entry.data.policy or {}
+    return {
+        id = tostring(entry.id),
+        title = (meta.title and tostring(meta.title)) or tostring(entry.id),
+        surface = meta.surface and tostring(meta.surface) or nil,
+        intent = meta.intent and tostring(meta.intent) or nil,
+        comment = meta.comment and tostring(meta.comment) or nil,
+        effect = policy.effect and tostring(policy.effect) or nil,
+        actions = policy.actions,
+        resources = policy.resources,
+        private = meta.private == true,
+    }
+end
+
+local function by_policy_id(a: stypes.PolicySummary, b: stypes.PolicySummary): boolean
+    return a.id < b.id
+end
+
 local function policy_index(): (any?, error?)
     local entries, read_err = registry.find({ [".kind"] = consts.POLICY_KIND })
     if read_err then return nil, read_err end
@@ -30,34 +47,38 @@ local function policy_index(): (any?, error?)
     local list: { stypes.PolicySummary } = {}
     local group_policies = {}
     for _, entry in ipairs(entries :: { any }) do
-        local data = entry.data
-        local meta = meta_of(entry)
-        local policy = (type(data.policy) == "table") and data.policy or {}
-        local summary: stypes.PolicySummary = {
-            id = tostring(entry.id),
-            title = (meta.title and tostring(meta.title)) or tostring(entry.id),
-            surface = meta.surface and tostring(meta.surface) or nil,
-            intent = meta.intent and tostring(meta.intent) or nil,
-            comment = meta.comment and tostring(meta.comment) or nil,
-            effect = policy.effect and tostring(policy.effect) or nil,
-            actions = policy.actions,
-            resources = policy.resources,
-            private = meta.private == true,
-        }
-        for _, group in ipairs(data.groups or {}) do
+        local summary = policy_summary(entry)
+        for _, group in ipairs(entry.data.groups or {}) do
             group_policies[group] = group_policies[group] or {}
-            group_policies[group][#group_policies[group] + 1] = tostring(entry.id)
+            group_policies[group][#group_policies[group] + 1] = summary.id
         end
-        by_id[tostring(entry.id)] = summary
+        by_id[summary.id] = summary
         list[#list + 1] = summary
     end
-    table.sort(list, function(a, b) return tostring(a.id) < tostring(b.id) end)
+    table.sort(list, by_policy_id)
     return {by_id = by_id, list = list, entries = entries, groups = group_policies}, nil
 end
 
--- policies returns the policy catalog (the grants). include_internal defaults false.
+local function assignable_policies(): ({ stypes.PolicySummary }?, error?)
+    local out: { stypes.PolicySummary } = {}
+    for _, intent in ipairs({"module_access", "module_management"}) do
+        local entries, read_err = registry.find({ [".kind"] = consts.POLICY_KIND, ["meta.intent"] = intent })
+        if read_err then return nil, read_err end
+        for _, entry in ipairs(entries :: { any }) do
+            local meta = meta_of(entry)
+            if meta.private ~= true and meta.internal ~= true and meta.service_only ~= true
+                and type(meta.title) == "string" and meta.title:find("%S") and meta.title ~= tostring(entry.id) then
+                out[#out + 1] = policy_summary(entry)
+            end
+        end
+    end
+    table.sort(out, by_policy_id)
+    return out, nil
+end
+
 function M.policies(opts: any?): ({ stypes.PolicySummary }?, error?)
     opts = opts or {}
+    if opts.assignable == true then return assignable_policies() end
     local index, read_err = policy_index()
     if read_err then return nil, read_err end
     local list = index.list

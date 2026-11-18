@@ -26,8 +26,7 @@ type PolicySummary = {
     effect: string?,
     actions: any?,
     resources: any?,
-    -- A private policy (meta.private = true) is excluded from the picker; only
-    -- public policies are selectable when composing a scope.
+    -- Declaration's meta.private marker.
     private: boolean,
 }
 

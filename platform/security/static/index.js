@@ -33,7 +33,7 @@ class p extends n {
   static get vueConfig() {
     return {
       lazyConfig: f(
-        () => import("./lazy-mount-B5iLzLvg.js").then((r) => r.mountConfig),
+        () => import("./lazy-mount-Bix5Gexq.js").then((r) => r.mountConfig),
         "Could not load Security. Reload the page to try again.",
         c
       )
