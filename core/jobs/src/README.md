@@ -25,10 +25,11 @@ drain of an in-flight execution is bounded by that execution's own declared
 apply. An upgrade never terminates or re-runs an execution.
 
 The pool has five seconds for shutdown coordination, including dispatch,
-assignment release and cleanup waits in the database or runtime. A service
-stop or replacement closes admission and lets each running execution settle
-under its own execution ceiling. Explicit process cancellation also asks
-each slot to cancel through its existing termination fence. If coordination
+assignment release and cleanup waits in the database or runtime. A CANCEL
+event, including during service stop, replacement or context cancellation,
+closes admission and lets each running execution settle under its own
+execution ceiling. A drain triggered by the pool's registry subscription closing
+asks each slot to cancel through its existing termination fence. If coordination
 exceeds the deadline, the pool exits with an error. Shutdown cleanup can
 finish separately, reusing confirmed slot exits and the original claim and
 run-owner fences to refund assignments that never started.

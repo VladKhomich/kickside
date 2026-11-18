@@ -879,7 +879,6 @@ entries:
       - registry
       - events
       - logger
-      - system
     imports:
       test: wippy.test:test
       job_types: kickside.core.jobs:types
