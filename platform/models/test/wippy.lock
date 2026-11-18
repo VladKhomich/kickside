@@ -4,15 +4,14 @@ directories:
 modules:
     - name: kickside/contract
       version: 0.3.8
-      hash: c297c02ca276a5963bd688b6b022e54fcfe03450e30cf496481c14f963ae8134
     - name: kickside/models
       version: 0.0.0
     - name: wippy/bootloader
       version: 0.3.18
       hash: c7e71b358539b450b49b55e725f60f2dac8218e1c596cf3a473ce71e36b10a9b
     - name: wippy/llm
-      version: 0.5.20
-      hash: 7e998e27a8d543adcff7f77b99d9f71325124479251c46ce9f4933fcb028f473
+      version: 0.5.21
+      hash: 30124ba7cf941c9eea67cd79787ac6dafabba7350a61883632fd4849851f4249
     - name: wippy/migration
       version: 0.3.26
       hash: cf4848ad3f8ba8d31d944b2f3a7274bc2b7cf2888dd80f0db63b2c71a85f89c1

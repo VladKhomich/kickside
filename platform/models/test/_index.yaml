@@ -149,6 +149,14 @@ entries:
       actions: '*'
       effect: allow
 
+  - name: other_members_probe
+    kind: security.policy
+    groups: [app:other_members]
+    policy:
+      resources: [kickside.models.test.module_access:resolve_probe]
+      actions: [funcs.call]
+      effect: allow
+
   - name: models_smoke_test
     kind: function.lua
     meta:
@@ -177,6 +185,8 @@ entries:
     component: kickside/models
     version: '*'
     parameters:
+    - name: kickside.models.security:user_security_scope
+      value: app:selected_model_members
     - name: kickside.models:target_db
       value: app:db
     - name: kickside.models:api_router
@@ -287,7 +297,7 @@ entries:
     kind: function.lua
     meta: { type: test, suite: kickside_models }
     source: file://models_secret_decode_test.lua
-    modules: [sql, funcs, json]
+    modules: [sql, funcs, env, crypto, base64, json, registry]
     method: run
     imports:
       test: wippy.test:test
@@ -349,10 +359,10 @@ entries:
 
   - name: profile_reload_fixture
     kind: library.lua
-    source: file://fixtures/profile_reload.lua
-    modules: [sql]
+    source: file://fixtures/profile_repo.lua
+    modules: [sql, uuid, funcs, process]
     imports:
-      models_repo: kickside.models.persist:repo
+      models_types: kickside.models:models_types
       models_cache: kickside.models.service:models_cache
       catalog_policy: kickside.models.catalog:policy
       catalog_card_policy: kickside.models.catalog:card_policy
@@ -371,6 +381,73 @@ entries:
       fake_http: app:card_save_fake_http
       admin_handler: app:card_save_admin
 
+  - name: profile_driver_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_models}
+    source: file://profile_driver_test.lua
+    method: run
+    modules: [base64, json]
+    imports:
+      test: wippy.test:test
+      models_repo: kickside.models.persist:repo
+      driver: app:profile_driver_fixture
+      fixture: app:profile_execution_fixture
+      registry_models: wippy.llm.discovery:models
+      resolver: app:profile_resolver_fixture
+      context: app:profile_context_fixture
+
+  - name: profile_execution_fixture
+    kind: library.lua
+    source: file://profile_driver_fixture.lua
+    modules: [sql, json]
+
+  - name: profile_driver_fixture
+    kind: library.lua
+    source: file://fixtures/profile_driver.lua
+    modules: [base64, registry]
+    imports:
+      model_catalog: app:profile_catalog_fixture
+      ctx: app:profile_context_fixture
+      models_repo: app:profile_repo_fixture
+      catalog_policy: kickside.models.catalog:policy
+      providers: app:profile_execution_fixture
+
+  - name: profile_repo_fixture
+    kind: library.lua
+    source: file://fixtures/profile_repo.lua
+    modules: [uuid, funcs, process]
+    imports:
+      sql: app:profile_execution_fixture
+      models_types: kickside.models:models_types
+      models_cache: app:profile_cache_fixture
+      catalog_policy: kickside.models.catalog:policy
+      catalog_card_policy: kickside.models.catalog:card_policy
+
+  - name: profile_context_fixture
+    kind: library.lua
+    source: file://profile_context_fixture.lua
+
+  - name: profile_catalog_fixture
+    kind: library.lua
+    source: file://fixtures/profile_catalog.lua
+    imports:
+      registry_models: wippy.llm.discovery:models
+      models_repo: app:profile_repo_fixture
+      catalog_card_policy: kickside.models.catalog:card_policy
+
+  - name: profile_resolver_fixture
+    kind: library.lua
+    source: file://fixtures/profile_resolver.lua
+    imports:
+      model_catalog: app:profile_catalog_fixture
+
+  - name: profile_cache_fixture
+    kind: library.lua
+    source: file://fixtures/profile_cache.lua
+    modules: [store]
+    imports:
+      json: app:profile_execution_fixture
+      models_types: kickside.models:models_types
   - name: secret_headers_test
     kind: function.lua
     meta: {type: test, suite: kickside_models}
