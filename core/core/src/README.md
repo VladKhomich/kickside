@@ -33,6 +33,15 @@ The `threads` slice additionally consumes the `kickside.component:component_serv
 contract (the component module is a sibling dependency) for ownership, access, and
 hierarchy.
 
+## Projection worker attempts
+
+The worker input carries the previous cursor diagnostic in `cursor.last_error`
+when one exists. Supervised process workers also receive
+`execution_deadline_ns`, the Unix nanosecond deadline enforced by Core.
+The budget starts immediately before process spawn. A worker can stop before
+that deadline and return the last sequence whose effects are complete as
+`last_seq`.
+
 ## Unicode case folding
 
 Import `kickside.core:casefold` and call `fold(s)` to build case-insensitive
