@@ -997,7 +997,11 @@ local function define_tests()
 
                 local expected_status = checkpoint.failed and "error" or "completed"
                 if checkpoint.dead then
-                    local result, run_err = process_job.dead({payload = {job_id = job.id}})
+                    local outcomes = assert(db:query([[SELECT id FROM kickside_job WHERE thread_id=$1 AND
+                        job_type='kickside.uploads.service:process_dead']], {queued.thread_id}))
+                    test.eq(#outcomes, 1)
+                    local outcome = admit_job(db, outcomes[1].id, 1)
+                    local result, run_err = worker_dispatch.execute_job(db, dbtype, outcome)
                     test.is_nil(run_err, tostring(run_err))
                     test.is_true(result.settled)
                     local repeat_outcome, repeat_err = process_job.dead({payload = {job_id = job.id}})

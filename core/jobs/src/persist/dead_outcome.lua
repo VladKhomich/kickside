@@ -58,6 +58,12 @@ function M.is_outcome(row: table): boolean
     return type(row.job_identity) == "string" and row.job_identity:sub(1, #prefix) == prefix
 end
 
+function M.identity_sql(parent_id: string): string
+    local id = "CAST(" .. parent_id .. " AS TEXT)"
+    return string.format("'%d:%s' || LENGTH(%s) || ':' || %s || '%d:%s'",
+        #M.NAMESPACE, M.NAMESPACE, id, id, #M.KEY, M.KEY)
+end
+
 -- Enqueue parameters of the outcome of dead job `row` for `handler`. The payload
 -- carries only the dead job's id: the handler reads the dead row itself.
 function M.params(row: table, handler: string): table

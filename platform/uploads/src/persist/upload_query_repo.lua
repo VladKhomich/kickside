@@ -4,6 +4,7 @@ local sql = require("sql")
 local resources = require("uploads_resources")
 local persisted_json = require("persisted_json")
 local trim = require("text_trim").trim
+local dead_outcome = require("dead_outcome")
 
 local upload_query_repo = {}
 
@@ -11,11 +12,26 @@ function upload_query_repo.processing_job_identity_sql(upload: string): string
     return "'7:uploads' || CAST(length(" .. upload .. "uuid) AS TEXT) || ':' || " .. upload .. "uuid || '7:process'"
 end
 
+local function processing_job_owner(job: string): string
+    return "((processing_intent_state = 'acknowledged' AND processing_job_id = CAST(" .. job .. ".id AS TEXT)) OR "
+        .. "(processing_intent_state IS NULL AND processing_job_id IS NULL AND " .. job .. ".job_identity = "
+        .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. "))"
+end
+
 function upload_query_repo.processing_job_owner_sql(): string
-    return [[((processing_intent_state = 'acknowledged' AND processing_job_id = ?) OR
-        (processing_intent_state IS NULL AND processing_job_id IS NULL AND EXISTS (
-            SELECT 1 FROM kickside_job j WHERE j.id = ? AND j.job_identity = ]]
-        .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. ")))"
+    return "EXISTS (SELECT 1 FROM kickside_job owner_job WHERE owner_job.id = ? AND "
+        .. processing_job_owner("owner_job") .. ")"
+end
+
+function upload_query_repo.completion_unpublished_sql(thread_id: string): string
+    return [[NOT EXISTS (
+        SELECT 1 FROM kickside_upload_read_model r
+        WHERE r.upload_id = kickside_uploads.uuid AND r.status IN ('completed', 'deleted')
+    ) AND NOT EXISTS (
+        SELECT 1 FROM kickside_event e WHERE e.thread_id = ]] .. thread_id .. [[
+          AND e.external_source = 'uploads' AND e.external_id = kickside_uploads.uuid
+          AND e.type = 'kickside.uploads.events:upload.completed'
+    )]]
 end
 
 local function select_upload_columns()
@@ -127,7 +143,7 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
     local query = select_upload_columns():from("kickside_uploads"):where("uuid = ?", upload_id)
     local statement, params, build_err = query
         :where("actor_id = ?", actor_id)
-        :where(upload_query_repo.processing_job_owner_sql(), job_id, job_id)
+        :where(upload_query_repo.processing_job_owner_sql(), job_id)
         :limit(1)
         :placeholder_format(sql.builder.dollar):to_sql()
     if build_err then db:release(); return nil, build_err end
@@ -138,6 +154,29 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
     end
     if #rows == 0 then return nil, nil end
     return parse_upload_row(rows[1])
+end
+
+-- A published worker can die after saving completed storage but before publishing.
+-- The read model still witnesses publication after Core prunes the event.
+function upload_query_repo.list_dead_completion_intents(limit: integer): (table?, any?)
+    local db, err = resources.get_db()
+    if err then return nil, err end
+    local rows, read_err = db:query([[
+        SELECT j.id FROM kickside_job j
+        JOIN kickside_uploads ON kickside_uploads.uuid = (j.payload ->> 'upload_id')
+            AND kickside_uploads.actor_id = j.owner_id
+        WHERE j.job_type = 'kickside.uploads.service:process_job_proc' AND j.owner_kind = 'user'
+          AND j.status = 'dead' AND kickside_uploads.storage_state = 'completed'
+          AND NOT EXISTS (
+              SELECT 1 FROM kickside_job outcome
+              WHERE outcome.thread_id = j.thread_id AND outcome.job_type = 'kickside.uploads.service:process_dead'
+                AND outcome.job_identity = ]] .. dead_outcome.identity_sql("j.id") .. [[
+          )
+          AND ]] .. processing_job_owner("j") .. " AND " .. upload_query_repo.completion_unpublished_sql("j.thread_id") .. [[
+        ORDER BY j.id LIMIT $1
+    ]], { limit })
+    db:release()
+    return rows, read_err
 end
 
 -- Authorization needs the stored owner, without loading content metadata.

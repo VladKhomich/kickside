@@ -334,7 +334,7 @@ function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: s
         :set("updated_at", now_rfc3339())
         :where("uuid = ?", uuid)
         :where("(storage_state = 'uploaded' OR (storage_state = ? AND "
-            .. upload_query_repo.processing_job_owner_sql() .. "))", storage_state, job_id, job_id)
+            .. upload_query_repo.processing_job_owner_sql() .. "))", storage_state, job_id)
     if dead_processing ~= nil then
         if dead_processing.processing_intent_state == nil then
             query = query:where("processing_intent_state IS NULL")
@@ -346,8 +346,11 @@ function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: s
         else
             query = query:where("processing_job_id = ?", dead_processing.processing_job_id)
         end
-        query = query:where("EXISTS (SELECT 1 FROM kickside_job j WHERE j.id=? AND j.status='dead')",
-            job_id)
+        local dead_job = "SELECT 1 FROM kickside_job j WHERE j.id = ? AND j.status = 'dead'"
+        if storage_state == "completed" then
+            dead_job = dead_job .. " AND " .. upload_query_repo.completion_unpublished_sql("j.thread_id")
+        end
+        query = query:where("EXISTS (" .. dead_job .. ")", job_id)
     end
     local statement, params, build_err = query:placeholder_format(sql.builder.dollar):to_sql()
     if build_err then return nil, build_err end

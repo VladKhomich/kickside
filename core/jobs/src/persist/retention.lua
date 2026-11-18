@@ -10,13 +10,10 @@ local thread_teardown = require("thread_teardown")
 local sql_boundary = require("sql_boundary")
 local thread_fence = require("thread_fence")
 local dead_outcome = require("dead_outcome")
-local enqueue = require("lifecycle_enqueue")
 
-local job_id = "CAST(kickside_job.id AS TEXT)"
-local outcome_identity = "'" .. enqueue.encode_part(dead_outcome.NAMESPACE) .. "' || LENGTH("
-    .. job_id .. ") || ':' || " .. job_id .. " || '" .. enqueue.encode_part(dead_outcome.KEY) .. "'"
 local no_live_outcome = [[ AND (status <> 'dead' OR (SELECT 1 FROM kickside_job outcome
-    WHERE outcome.status IN ('pending','running') AND outcome.job_identity=]] .. outcome_identity .. [[) IS NULL)]]
+    WHERE outcome.status IN ('pending','running') AND outcome.job_identity=]]
+    .. dead_outcome.identity_sql("kickside_job.id") .. [[) IS NULL)]]
 
 local function bounded(limit: integer?, maximum: integer): integer
     return math.max(0, math.min(maximum, limit or maximum))
