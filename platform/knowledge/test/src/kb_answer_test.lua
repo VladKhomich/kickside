@@ -5,6 +5,7 @@
 -- fake llm seam, so the regression cannot return.
 local test = require("test")
 local kb_answer = require("kb_answer")
+local model_catalog = require("model_catalog")
 
 local function with_llm(fake: any, fn: any)
     local prev = kb_answer._llm
@@ -168,10 +169,15 @@ local function define_tests()
                     local previous_search = kb_answer._kb_search
                     local previous_funcs = kb_answer._funcs
                     local previous_llm = kb_answer._llm
+                    local previous_models = model_catalog.get_by_class
                     kb_answer._kb_search = {
                         config = function() return config, {} end,
                         query = function() return { items = items(1) }, nil end,
                     }
+                    model_catalog.get_by_class = function(class_name)
+                        test.eq(class_name, "fast")
+                        return { { name = "answer-model" } }, nil
+                    end
                     kb_answer._funcs = { call = function(_, args)
                         test.eq(args.config.analysis_model, "class:fast")
                         return { answer = "cited answer [1]" }, nil
@@ -186,6 +192,7 @@ local function define_tests()
                     kb_answer._kb_search = previous_search
                     kb_answer._funcs = previous_funcs
                     kb_answer._llm = previous_llm
+                    model_catalog.get_by_class = previous_models
                     if not ok then error(result) end
                     test.is_nil(err)
                     test.is_nil(result.mode)

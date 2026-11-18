@@ -21,6 +21,7 @@ entries:
     imports:
       test: wippy.test:test
       kb_answer: kickside.knowledge.retrieval:kb_answer
+      model_catalog: kickside.models.catalog:model_catalog
 
   - name: answer_flow_fixture
     kind: library.lua
