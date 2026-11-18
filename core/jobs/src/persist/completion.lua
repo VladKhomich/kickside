@@ -223,6 +223,12 @@ local function complete_tx_impl(tx: sql.Transaction, id: string, lease: table, o
     local wake_enabled = control or (not parked_record and flag(row.wake_enabled))
     local rearm_on_demand = options.rearm_on_demand == true and slot and wake_enabled
         and record.status == "completed" and scheduled ~= nil and scheduled == rearm and scheduled > now
+    local rearm_change = ""
+    if rearm_on_demand then
+        rearm_change = ", rearm_on_demand = TRUE"
+    elseif flag(row.rearm_on_demand) then
+        rearm_change = ", rearm_on_demand = NULL"
+    end
     local job_size_err = row_bytes.check_update(tx, "kickside_job", id, {
         status = status, queue_tier = options.tier or row.queue_tier,
         scheduled_at = scheduled or row_bytes.NULL,
@@ -264,8 +270,7 @@ local function complete_tx_impl(tx: sql.Transaction, id: string, lease: table, o
         attempts = 0, lease_token = NULL, lease_until = NULL, heartbeat_at = NULL,
         wake_enabled = ]] .. (wake_enabled and "TRUE" or "FALSE") .. [[,
         wake_demand_at = NULL, wake_control_pending = FALSE,
-        rearm_on_demand = ]] .. (rearm_on_demand and "TRUE" or "NULL") .. [[,
-        dispatch_requested_at = ]] .. (scheduled ~= nil and "dispatch_requested_at" or "NULL") .. [[
+        dispatch_requested_at = ]] .. (scheduled ~= nil and "dispatch_requested_at" or "NULL") .. rearm_change .. [[
         WHERE id = ]] .. id_sql .. [[ AND status = 'running' AND lease_token = ]] .. token_sql
         .. [[ AND execution_seq = ]] .. seq_sql
     -- Every claim has lifetime history, including a self-completing idle slot.

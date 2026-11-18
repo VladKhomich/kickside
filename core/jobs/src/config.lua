@@ -1,6 +1,6 @@
 -- The jobs runtime configuration (design §8): one registry entry,
--- kickside.core.jobs:policy, whose data carries defaults and whose meta
--- carries explicit host overrides. A host overrides any value through .wippy.yaml
+-- kickside.core.jobs:policy, whose meta carries the defaults and host
+-- assignments. A host overrides any value through .wippy.yaml
 -- "kickside.core.jobs:policy:meta.<path>". resolve validates the shape into the
 -- runtime values; a malformed policy is a declaration fault and never falls
 -- back to a code default.
@@ -264,38 +264,9 @@ function M.copy(value: any): any
     return result
 end
 
-local function merge(defaults: any, host: any): table
-    local out = type(defaults) == "table" and M.copy(defaults) or {}
-    for key, value in pairs(host or {}) do
-        if type(value) == "table" and type(out[key]) == "table" then
-            out[key] = merge(out[key], value)
-        else
-            out[key] = M.copy(value)
-        end
-    end
-    return out
-end
-
 function M.editable(key: any): boolean
     for _, field in ipairs(policy_fields) do if field.key == key then return true end end
     return false
-end
-
--- Registry meta contains only explicit host values; admin overrides from
--- Settings apply over them and the shipped defaults.
-local function layers(host: any, defaults: any, overrides: table): (any?, error?)
-    if type(host) ~= "table" then return nil, invalid("meta must be an object") end
-    local fallback = merge(defaults, host)
-    local meta = M.copy(fallback)
-    for key, value in pairs(overrides) do
-        if not M.editable(key) then return nil, invalid("key is not live-editable: " .. tostring(key)) end
-        local group, field = key:match("^([^.]+)%.(.+)$")
-        if type(meta[group]) ~= "table" then return nil, invalid(group .. " is required") end
-        meta[group][field] = M.copy(value)
-    end
-    local resolved, err = M.resolve(meta)
-    if err then return nil, err end
-    return {policy = resolved, meta = meta, fallback = fallback}, nil
 end
 
 function M.declaration(): (any?, error?)
@@ -310,8 +281,15 @@ end
 function M.runtime(overrides: table): (Resolved?, error?)
     local entry, err = M.declaration()
     if err then return nil, err end
-    local result, resolve_err = layers(entry.meta, entry.data and entry.data.defaults, overrides)
-    return result and result.policy, resolve_err
+    if type(entry.meta) ~= "table" then return nil, invalid("meta must be an object") end
+    local meta = M.copy(entry.meta)
+    for key, value in pairs(overrides) do
+        if not M.editable(key) then return nil, invalid("key is not live-editable: " .. tostring(key)) end
+        local group, field = key:match("^([^.]+)%.(.+)$")
+        if type(meta[group]) ~= "table" then return nil, invalid(group .. " is required") end
+        meta[group][field] = M.copy(value)
+    end
+    return M.resolve(meta)
 end
 
 -- An execution carries only the editable values it consumes. Fixed limits

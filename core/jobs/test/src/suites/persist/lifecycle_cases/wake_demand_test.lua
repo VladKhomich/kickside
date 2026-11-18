@@ -67,6 +67,47 @@ end
 
 local function define_tests()
     test.describe("jobs wake demand", function()
+        for _, operation in ipairs({ "complete", "keyed wake", "direct wake", "control wake" }) do
+            test.it("accepts ordinary " .. operation .. " before migration 29", function()
+                with_db(function(db: sql.DB)
+                    local dbtype = tostring(db:type())
+                    local key = "thread:" .. uuid.v7()
+                    local params = {
+                        owner_locator = { kind = "test", id = "pre_migration" },
+                        job_identity = { namespace = "test", scope = uuid.v7(), key = "live-upgrade" },
+                        job_type = "test.watcher", wake_key = key, parked = operation ~= "complete",
+                    }
+                    local id = assert(lifecycle.enqueue_job(db, dbtype, params))
+                    local job = operation == "complete" and assert(job_fixture.lease_own(db, dbtype, id)) or nil
+                    -- Keeper may publish the new registry before the database is
+                    -- migrated. Roll back the schema change with each probe.
+                    for _, before in ipairs({ false, true }) do
+                        local tx = assert(db:begin())
+                        if before then
+                            local _, ddl_err = tx:execute("ALTER TABLE kickside_job DROP COLUMN rearm_on_demand")
+                            if ddl_err then
+                                tx:rollback()
+                                error(ddl_err)
+                            end
+                        end
+                        local result, err
+                        if job then
+                            result, err = jobs.complete_tx(tx, id, {
+                                token = job.lease_token, execution_seq = tonumber(job.execution_seq)
+                            }, {})
+                        elseif operation == "keyed wake" then
+                            result, err = jobs.wake_tx(tx, key)
+                        else
+                            result, err = wake.wake_job(tx, id, { control = operation == "control wake" }, dbtype)
+                        end
+                        local _, rollback_err = tx:rollback()
+                        test.is_nil(rollback_err)
+                        test.is_nil(err, (before and "pre-migration: " or "control: ") .. tostring(err))
+                        test.not_nil(result)
+                    end
+                end)
+            end)
+        end
         test.it("drains bounded fan-out and acknowledges a newer demand after continuation", function()
             with_db(function(db: sql.DB)
                 local dbtype = tostring(db:type())
@@ -274,7 +315,8 @@ local function define_tests()
                     rearm({ rearm_on_demand = true })
                     local rearmed = schedule()
                     publish_demand()
-                    local due = assert(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE id = $1 AND scheduled_at <= $2",
+                    local due = assert(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE id = $1"
+                        .. " AND scheduled_at <= $2 AND rearm_on_demand IS NULL",
                         { job.id, lifecycle.now_string(dbtype) }))
                     test.eq(tonumber(due[1].n), 1)
                     test.neq(schedule(), rearmed)
