@@ -70,6 +70,45 @@ component. Google Vertex token refresh follows that shape at
   from the profile connector.
 - `PUT /models/cards` — create/update a DB model card overlay.
 - `DELETE /models/cards?name=<name>` — delete a DB model card.
+- `GET /models/export` — provider profiles and stored model cards as one
+  document (see Import and export).
+- `POST /models/import` — merge an export document; reports created, updated,
+  and unchanged profiles and cards.
+
+## Import and export
+
+The export document (`version: 1`) lists every provider profile with its
+public config, `*_env` pointers included, and every stored model card in the
+admin card shape. Secret values are never exported: a profile's
+`secret_fields` names the stored secrets left out, so the destination sets
+them on the profile or points an `*_env` variable at them. Registry cards are
+not exported; they ship with code.
+
+Profile config is stored and exported in plain text, so a URL in it may not
+carry a credential: a profile save that puts userinfo (`https://user:pass@...`)
+or a secret-named query parameter (`key`, `api_key`, `token`, `password`, ...)
+in any config URL is refused. A stored profile that predates this rule fails
+the export with that reason until its URL is corrected.
+
+Import merges by profile `id` and card `name` through the same cleaning and
+validation as the admin endpoints, in one transaction. It never deletes a
+profile or card and keeps stored secrets; a document that carries or clears a
+secret is refused. Any invalid item refuses the whole document. Importing an
+unchanged document writes nothing. A host applies its setup on deploy with one
+authenticated `POST /models/import` of the document.
+
+Discovery updates cards by the same names: it keeps an imported card's
+classes and enabled state, keeps its token limits where the provider reports
+none, and rewrites the other discovered fields.
+
+A card's `capability_ownership` (its inferred capabilities and administrator
+overrides) is imported as the card's saved ownership, and the card's
+`capabilities` are recorded against it as an admin save records them, so an
+unedited document reproduces the source's overrides, removals included.
+
+Discovery updates cards by the same names: it keeps an imported card's
+classes, enabled state, and capability overrides, keeps its token limits where
+the provider reports none, and rewrites the other discovered fields.
 
 ## Cards contract
 

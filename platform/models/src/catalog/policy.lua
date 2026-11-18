@@ -121,7 +121,7 @@ local function env_ref_key(key: any): boolean
 end
 
 local function sensitive_config_key(key: any): boolean
-    return sensitive_key(key) and not env_ref_key(key)
+    return (SECRET_KEYS[key] == true or sensitive_key(key)) and not env_ref_key(key)
 end
 
 local function scrub_sensitive(value: any): any
@@ -180,6 +180,54 @@ local function merge_config(base: any, patch: any): any
     return out
 end
 
+-- A URL carries credentials when it has userinfo or a secret-named query
+-- parameter (`key`, or any name the sensitive-key rule matches).
+local function url_has_credentials(value: string): boolean
+    local rest = value:match("^%a[%w+.-]*://(.*)$")
+    if not rest then return false end
+    local authority = rest:match("^([^/?#]*)") or ""
+    if authority:find("@", 1, true) then return true end
+    local query = rest:match("^[^?#]*%?([^#]*)")
+    if not query then return false end
+    for pair in query:gmatch("[^&;]+") do
+        local name = (pair:match("^([^=]*)") or ""):gsub("%%(%x%x)", function(hex: string): string
+            return string.char(tonumber(hex, 16) :: integer)
+        end):lower()
+        if name == "key" or sensitive_key(name) then return true end
+    end
+    return false
+end
+
+local function credential_url_path(config: any, prefix: string): string?
+    if type(config) ~= "table" then return nil end
+    for k, v in pairs(config) do
+        local path = prefix .. tostring(k)
+        if type(v) == "string" and url_has_credentials(v) then return path end
+        local nested = type(v) == "table" and credential_url_path(v, path .. ".") or nil
+        if nested then return nested end
+    end
+    return nil
+end
+
+-- Profile config is stored and exported in plain text, so a URL in it must not
+-- carry a credential. Returns the refusal, or nil.
+local function config_credential_error(config: any): string?
+    local path = credential_url_path(config, "")
+    if not path then return nil end
+    return "config " .. path .. " carries a credential in its URL; store the credential as a profile secret or an *_env pointer"
+end
+
+local function same_value(a: any, b: any): boolean
+    if type(a) ~= "table" or type(b) ~= "table" then return a == b end
+    for k, v in pairs(a) do
+        if not same_value(v, b[k]) then return false end
+    end
+    for k, _ in pairs(b) do
+        if a[k] == nil then return false end
+    end
+    return true
+end
+
 local function clear_headers(secret: any)
     for k, v in pairs(secret) do
         if tostring(k):lower() == "headers" then secret[k] = nil
@@ -216,6 +264,20 @@ local function public_profile(profile: any): any
         has_api_key = type(profile.secret_config) == "table" and type(profile.secret_config.api_key) == "string" and profile.secret_config.api_key ~= "",
         has_api_key_env = type(config.api_key_env) == "string" and config.api_key_env ~= "",
         secret_fields = secret_fields,
+    }
+end
+
+-- A profile in the export document: its public settings and the names of the
+-- stored secrets the document leaves out.
+local function export_profile(profile: any): any
+    local public = public_profile(profile)
+    return {
+        id = public.id,
+        name = public.name,
+        provider_id = public.provider_id,
+        enabled = public.enabled,
+        config = public.config,
+        secret_fields = #public.secret_fields > 0 and public.secret_fields or nil,
     }
 end
 
@@ -301,14 +363,15 @@ local function copy_config(input: any, existing_config: any?): any
     if type(input.config) == "table" then
         for k, v in pairs(public_config(input.config)) do
             local key = tostring(k)
-            if not SECRET_KEYS[key] and not sensitive_config_key(key) then
-                config[key] = v
+            if not sensitive_config_key(key) then
+                config[key] = type(v) == "table" and public_config(v) or v
             end
         end
     end
     for _, key in ipairs(CONFIG_KEYS) do
-        if input[key] ~= nil and not SECRET_KEYS[key] and not sensitive_config_key(key) then
-            config[key] = input[key]
+        local v = input[key]
+        if v ~= nil and not sensitive_config_key(key) then
+            config[key] = type(v) == "table" and public_config(v) or v
         end
     end
     for k, v in pairs(config) do
@@ -423,7 +486,8 @@ local function provider_context(profile: any): any
     return merge_config(config, secret)
 end
 
-local function clean_profile_input(input: any, existing: any?): (any?, string?)
+-- Public imports supply the stored secret context without editing it.
+local function clean_profile_input(input: any, existing: any?, secret_config: any?): (any?, string?)
     if type(input) ~= "table" then return nil, "profile body must be an object" end
     local name = input.name or (existing and existing.name)
     if type(name) ~= "string" or name == "" then return nil, "name is required" end
@@ -431,8 +495,12 @@ local function clean_profile_input(input: any, existing: any?): (any?, string?)
     if type(provider_id) ~= "string" or provider_id == "" then return nil, "provider_id is required" end
 
     local config = copy_config(input, existing and existing.config or {})
-    local secret_config = copy_secret_config(input, existing and existing.secret_config or {})
+    if secret_config == nil then
+        secret_config = copy_secret_config(input, existing and existing.secret_config or {})
+    end
     config = apply_provider_normalization(provider_id, config, secret_config)
+    local url_err = config_credential_error(config)
+    if url_err then return nil, url_err end
     local verr = validate_profile_config(provider_id, config, secret_config)
     if verr then return nil, verr end
 
@@ -472,6 +540,9 @@ M.decrypt_secret = decrypt_secret
 M.secret_keys = SECRET_KEYS
 M.provider_context = provider_context
 M.public_profile = public_profile
+M.export_profile = export_profile
+M.same_value = same_value
+M.config_credential_error = config_credential_error
 M.clean_profile_input = clean_profile_input
 
 return M

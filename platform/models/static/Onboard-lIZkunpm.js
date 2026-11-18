@@ -1,7 +1,7 @@
 import { defineComponent as Oe, ref as P, computed as p, onMounted as Ve, openBlock as a, createElementBlock as l, unref as s, createBlock as j, withCtx as ee, createTextVNode as q, toDisplayString as k, createCommentVNode as M, Fragment as I, createVNode as b, createElementVNode as n, renderList as G, normalizeClass as xe } from "vue";
 import { Icon as x } from "@iconify/vue";
 import { u as De } from "./wc-runtime-CHL0PH8L.js";
-import { u as Fe, j as Te, k as pe, l as Le, n as Be, p as Re, a as ze, b as Ue, _ as me, m as je } from "./useModelsApi-BTuIZy29.js";
+import { u as Fe, j as Te, k as pe, l as Le, n as Be, p as Re, a as ze, b as Ue, _ as me, m as je } from "./useModelsApi-BtZ1Y9Nh.js";
 import { d as qe, i as Ge, c as He, a as be, _ as Ke } from "./ProviderProfileEditor.vue_vue_type_script_setup_true_lang-CIcOG-gh.js";
 const We = () => De();
 function Ye(D, h, u) {
@@ -462,4 +462,4 @@ const Qe = { class: "ob" }, Xe = {
 export {
   Tt as default
 };
-//# sourceMappingURL=Onboard-DH6tTvaE.js.map
+//# sourceMappingURL=Onboard-lIZkunpm.js.map

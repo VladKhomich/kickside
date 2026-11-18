@@ -9,7 +9,7 @@ local function scenario(fn, cards)
     registry_models.get_all = function() return {} end
     local snapshot = {cards = cards or {
             { name = "low", class = { "ranked" }, priority = 10, providers = { { id = "provider.low" } } },
-            { name = "disabled", class = { "ranked" }, priority = 100, enabled = false },
+            { name = "disabled", class = { "ranked" }, priority = 100, enabled = false, available = false },
             { name = "high", class = { "ranked" }, priority = 90, providers = { { id = "provider.high" } } },
         }}
     models_repo.snapshot = function() return snapshot end
@@ -36,11 +36,11 @@ local function define_tests()
         end)
         test.it("orders equal numeric priorities by model name", function()
             local cards = {
-                { name = "a-low", class = { "ranked" }, priority = 0 },
-                { name = "z-high", class = { "ranked" }, priority = 90 },
+                { available = true, name = "a-low", class = { "ranked" }, priority = 0 },
+                { available = true, name = "z-high", class = { "ranked" }, priority = 90 },
             }
             for _, name in ipairs({ "foxtrot", "echo", "delta", "charlie", "bravo", "alpha" }) do
-                table.insert(cards, { name = name, class = { "ranked" }, priority = "20" })
+                table.insert(cards, { available = true, name = name, class = { "ranked" }, priority = "20" })
             end
             scenario(function()
                 local card, err = model_catalog.resolve("class:ranked")
@@ -62,7 +62,7 @@ local function define_tests()
                 test.eq(#card.candidates, 1)
                 test.eq(card.candidates[1].name, "only")
                 test.is_nil(card.candidates[1].candidates)
-            end, { { name = "only", class = { "ranked" } } })
+            end, { { available = true, name = "only", class = { "ranked" } } })
         end)
         test.it("retains empty class errors and lists", function()
             scenario(function()
