@@ -12,6 +12,17 @@ entries:
     component: wippy/test
     version: "*"
 
+  - name: casefold_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kickside_core
+    source: file://casefold_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      casefold: kickside.core:casefold
+
   - name: dep.kickside.realtime
     kind: ns.dependency
     component: kickside/realtime
