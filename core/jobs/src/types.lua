@@ -267,7 +267,7 @@ M.MAX_WORKERS = 256
 -- Registry id of the claim-loop process the pool root spawns per slot.
 M.LOOP_PROCESS_ID = "kickside.core.jobs.service:loop"
 
--- Grace period a loop child gets to finish its current job on pool cancel.
+-- Time available for pool shutdown coordination after cancellation.
 M.LOOP_CANCEL_GRACE = "5s"
 
 -- Minimum lifetime of a loop child before its replacement starts at once; a

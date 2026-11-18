@@ -8,6 +8,7 @@ local channel = require("channel")
 local registry = require("registry")
 local events = require("events")
 local logger = require("logger")
+local system = require("system")
 local job_types = require("job_types")
 local reclaim = require("reclaim")
 local lifecycle = require("lifecycle")
@@ -535,12 +536,12 @@ local function define_tests()
             test.is_nil(cancel_err)
         end)
 
-        local function enqueue_probe(topic: string, extra: table?): table
+        local function enqueue_probe(topic: string, extra: table?, max_attempts: integer?): table
             local payload: table = { reply_pid = tostring(process.pid()), reply_topic = topic }
             for key, value in pairs(extra or {}) do payload[key] = value end
             local queued, enqueue_err = jobs.enqueue({ namespace = "jobs-service-test", scope = "upgrade",
                 owner_locator = { kind = "test", id = "loop_test" },
-                key = uuid.v7(), job_type = "app:live_job_probe", max_attempts = 1,
+                key = uuid.v7(), job_type = "app:live_job_probe", max_attempts = max_attempts or 1,
                 immutable_payload = payload })
             test.is_nil(enqueue_err)
             return queued :: table
@@ -584,6 +585,112 @@ local function define_tests()
             test.is_nil(upgrade_err)
             return upgraded_version
         end
+
+        local function block_pool(pid: string, topic: string): ()
+            local gated = process.listen(topic)
+            assert(process.send(pid, "jobs.service.probe.block", { observer = tostring(process.pid()), topic = topic }))
+            assert(process.send(pid, "kickside.core.jobs:wake", true))
+            local reached = channel.select({ gated:case_receive(), time.after("5s"):case_receive() })
+            process.unlisten(gated)
+            test.eq(reached.channel, gated, "the old pool is blocked in coordination")
+        end
+
+        test.it("finishes a running execution once when the supervisor replaces the pool service", function()
+            local started = start_upgrade_service()
+            local signal_topic = "jobs.restart.inflight." .. uuid.v7()
+            local signal = process.listen(signal_topic, { message = true })
+            local queued = enqueue_probe(signal_topic, { max_execution_ms = 20000 }, 2)
+            local execution = await_signal(signal, "the in-flight probe", queued.id)
+            local db = open_db()
+            local roots = assert(db:query("SELECT pid FROM jobs_service_probe"))
+            db:release()
+            test.eq(#roots, 1)
+            local lifecycle_events = process.events()
+            assert(process.monitor(roots[1].pid))
+
+            block_pool(roots[1].pid, signal_topic .. ".coordination")
+
+            local entry = assert(registry.get("app:jobs_service_upgrade_probe"))
+            local changes = assert(registry.snapshot()):changes()
+            -- Changing the service lifecycle replaces its supervised process.
+            entry.data.lifecycle.restart.initial_delay = "2s"
+            changes:update({ id = entry.id, kind = entry.kind, meta = entry.meta, data = entry.data })
+            local restarted, restart_err = changes:apply()
+            test.is_nil(restart_err)
+            test.not_nil(restarted)
+            wait_for_exit(lifecycle_events, roots[1].pid)
+
+            local _, ack_err = process.send(execution.sender_pid, execution.ack_topic, { job_id = queued.id })
+            test.is_nil(ack_err, "the original execution still accepts its acknowledgment after dispatcher EXIT")
+            local deadline = time.now():add(10 * time.SECOND)
+            local check = open_db()
+            local row = job_row(check, queued.id)
+            while row and row.status == "running" and time.now():before(deadline) do
+                time.sleep("50ms")
+                row = job_row(check, queued.id)
+            end
+            local runs = assert(check:query("SELECT status,execution_seq,attempt_no FROM kickside_job_run WHERE job_id=$1", { queued.id }))
+            check:release()
+            test.eq(row and row.status, job_types.JOB_STATE.DONE)
+            test.eq(#runs, 1)
+            test.eq(runs[1].status, "completed")
+            test.eq(tonumber(runs[1].execution_seq), tonumber(execution.execution_seq))
+            test.eq(tonumber(runs[1].attempt_no), 1)
+            process.unlisten(signal)
+            stop_upgrade_service(started)
+        end)
+
+        test.it("hard-stops the running execution and slot adopted from an older registry version", function()
+            local started = start_upgrade_service()
+            local topic = "jobs.hard-stop." .. uuid.v7()
+            local signal = process.listen(topic, { message = true })
+            local queued = enqueue_probe(topic, { max_execution_ms = 20000 })
+            local execution = await_signal(signal, "the in-flight probe", queued.id)
+            local updated = upgrade_worker_code()
+
+            local db = open_db()
+            local deadline = time.now():add(5 * time.SECOND)
+            local root: table
+            repeat
+                local roots = assert(db:query(
+                    "SELECT pid FROM jobs_service_probe WHERE started_version=$1", { tostring(updated:id()) }))
+                root = roots[1]
+                if root then break end
+                time.sleep("25ms")
+            until not time.now():before(deadline)
+            local old_root = assert(db:query("SELECT pid FROM jobs_service_probe WHERE started_version=$1",
+                { tostring(started.service_version:id()) }))[1]
+            local run = assert(db:query("SELECT worker_pid FROM kickside_job_run WHERE job_id=$1", { queued.id }))[1]
+            db:release()
+            test.not_nil(root, "the new root incarnation adopted the running slot")
+            test.eq(root.pid, old_root.pid)
+            test.eq(tostring(execution.registry_version), tostring(started.service_version:id()))
+            block_pool(root.pid, topic .. ".coordination")
+
+            local lifecycle_events = process.events()
+            local pending = { [execution.worker_id] = true, [run.worker_pid] = true }
+            local heartbeats: table = {}
+            for _, proc in ipairs(assert(system.hosts.processes("app:processes"))) do
+                if (proc.parent == execution.worker_id and proc.source == "kickside.core.jobs.service:worker_heartbeat")
+                    or (proc.parent == run.worker_pid and proc.source == "kickside.core.jobs.persist:lease_heartbeat") then
+                    heartbeats[proc.source] = proc.pid
+                    pending[proc.pid] = true
+                end
+            end
+            test.not_nil(heartbeats["kickside.core.jobs.service:worker_heartbeat"])
+            test.not_nil(heartbeats["kickside.core.jobs.persist:lease_heartbeat"])
+            for pid in pairs(pending) do assert(process.monitor(pid)) end
+            local hard_limit = time.after("4s")
+            assert(process.cancel(root.pid, "explicit hard stop"))
+            while next(pending) do
+                local selected = channel.select({ lifecycle_events:case_receive(), hard_limit:case_receive() })
+                test.eq(selected.channel, lifecycle_events, "the inherited slot, execution and heartbeats exit before the pool times out")
+                local event = selected.value
+                if event.kind == process.event.EXIT then pending[tostring(event.from)] = nil end
+            end
+            process.unlisten(signal)
+            stop_upgrade_service(started)
+        end)
 
         test.it("finishes an in-flight execution exactly once under its old code while new work runs on the new code", function()
             local started = start_upgrade_service()
