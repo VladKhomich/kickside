@@ -43,7 +43,7 @@ entries:
     component: kickside/core
 
   - name: dep.kickside.jobs
-    version: '>=0.1.83'
+    version: '>=0.1.84'
     kind: ns.dependency
     meta:
       comment: Event rounds use demand-advanceable completion deadlines in Jobs.
