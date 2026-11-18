@@ -340,8 +340,6 @@ end
 local function complete_thread(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
     maintenance: boolean?): (CreateResult?, error?)
     params = type(params) == "table" and params or {}
-    local access_err = authorize_completion(thread_id, params, maintenance)
-    if access_err then return nil, access_err end
     local declaration_impl_id: string? = normalize.trim(params.impl_id) ~= "" and (params.impl_id :: string) or nil
 
     if declaration_impl_id then
@@ -385,6 +383,8 @@ end
 
 function M.finish(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
     maintenance: boolean?): (CreateResult?, error?)
+    local access_err = authorize_completion(thread_id, type(params) == "table" and params or {}, maintenance)
+    if access_err then return nil, access_err end
     return complete_thread(db,thread_id,params,actor_id,identity,maintenance)
 end
 
@@ -392,14 +392,16 @@ end
 -- that row propagates failures without tearing down the source or its consumers.
 function M.complete(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
     maintenance: boolean?): error?
+    local access_err = authorize_completion(thread_id, params, maintenance)
+    if access_err then return access_err end
+    local reopen_err = thread_row.reopen_cleanup(db, thread_id)
+    if reopen_err then return reopen_err end
     local policy, policy_err = retention_repo.find_by_thread(db, thread_id)
     if policy_err then return policy_err end
     if not policy then
         local _, complete_err = complete_thread(db, thread_id, params, actor_id, identity, maintenance)
         return complete_err
     end
-    local access_err = authorize_completion(thread_id, params, maintenance)
-    if access_err then return access_err end
     local declaration_err = M.apply_thread_declaration(db, thread_id, params.impl_id, identity)
     if declaration_err then return declaration_err end
     -- Output-authorized emits and audit writes intentionally skip public markers.
@@ -424,7 +426,7 @@ end
 -- caller removes the component it registers for the failed creation.
 function M.attach(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
     maintenance: boolean?): (CreateResult?, error?)
-    local result, complete_err = complete_thread(db, thread_id, params, actor_id, identity, maintenance)
+    local result, complete_err = M.finish(db, thread_id, params, actor_id, identity, maintenance)
     if not complete_err then return result, nil end
     local err = error_envelope.cleanup(function()
         local purged, purge_err = teardown.purge_thread(db, thread_id, trim(actor_id))

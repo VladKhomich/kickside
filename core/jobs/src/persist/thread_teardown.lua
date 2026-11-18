@@ -279,17 +279,12 @@ local function advance_past_receipts(tx: sql.Transaction, thread_id: string, seq
     return latest + 1, nil
 end
 
--- The caller has inserted a new thread on tx. Its first cleanup page follows
--- the old owner's pages so acknowledgments can still identify their receipt.
-function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
-    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
-    if fence_err then return nil, fence_err end
+local function open_locked_tx(tx: sql.Transaction, dbtype: string, thread_id: string, fence: table?): (integer?, error?)
     local sequence = not fence and 0 or math.tointeger(fence.next_page_seq)
     if not sequence or sequence < 0 then return nil, response_error("fence.next_page_seq") end
     if not fence or not fence.started then return advance_past_receipts(tx, thread_id, sequence, fence) end
 
     if fence.completed_at == nil and sequence > 0 then
-        -- The successful insert proves the previous thread is gone.
         local _, ack_err = ack_locked_tx(tx, dbtype, thread_id, sequence - 1, true, fence)
         if ack_err then return nil, ack_err end
     end
@@ -306,6 +301,34 @@ function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string
             retryable = true, details = {reason = "thread_cleanup", thread_id = thread_id}})
     end
     return advance_past_receipts(tx, thread_id, sequence, fence)
+end
+
+-- The caller has inserted a new thread on tx, proving the previous thread is gone.
+function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
+    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
+    if fence_err then return nil, fence_err end
+    return open_locked_tx(tx, dbtype, thread_id, fence)
+end
+
+-- The caller holds the live thread row before locking Jobs. A final page from
+-- before this thread was created belongs to its previous incarnation.
+function M.reopen_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
+    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
+    if fence_err then return nil, fence_err end
+    if not fence or not fence.started then return nil, nil end
+    local sequence = math.tointeger(fence.next_page_seq)
+    if not sequence or sequence < 1 then return nil, response_error("fence.next_page_seq") end
+
+    local prior = "COALESCE(r.created_at,f.completed_at)"
+    if dbtype == sql.type.POSTGRES then prior = "CAST(" .. prior .. " AS timestamptz)" end
+    local rows, read_err = tx:query("SELECT t.id FROM kickside_thread t"
+        .. " JOIN " .. thread_fence.TABLE .. " f ON f.thread_id=$1"
+        .. " LEFT JOIN " .. RECEIPT .. " r ON r.thread_id=f.thread_id AND r.page_seq=f.next_page_seq-1"
+        .. " WHERE t.id=$2 AND t.deleting_at IS NULL AND t.created_at > " .. prior, {thread_id, thread_id})
+    if read_err then return nil, errors.wrap(read_err, "verify replacement thread incarnation") end
+    if type(rows) ~= "table" then return nil, response_error("thread.rows") end
+    if not rows[1] then return nil, nil end
+    return open_locked_tx(tx, dbtype, thread_id, fence)
 end
 
 function M.page(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer): (table?, error?)
@@ -441,10 +464,8 @@ function M.reclaim_abandoned(db: sql.DB, dbtype: string, limit: integer, after: 
     local source = RECEIPT
     if dbtype == sql.type.SQLITE then source = source .. " INDEXED BY idx_job_cleanup_pending_final_receipt" end
     local pending = "done=TRUE AND acknowledged_at IS NULL"
-    local rows, read_err = db:query("SELECT r.thread_id,r.page_seq,(" .. eligible .. ") AS eligible FROM ("
-        .. "SELECT thread_id,page_seq FROM " .. source .. " WHERE " .. pending
-        .. " AND (thread_id,page_seq)>($1,$2) ORDER BY thread_id,page_seq LIMIT $3) r ORDER BY r.thread_id,r.page_seq",
-        {after and after.thread_id or "", after and after.page_seq or 0, limit})
+    local rows, read_err, last = thread_fence.ordered_window(db, source, "r", {"thread_id", "page_seq"},
+        pending, eligible, {after and after.thread_id or "", after and after.page_seq or 0}, limit)
     if read_err then return nil, errors.wrap(read_err, "abandoned thread cleanup selection failed") end
     if type(rows) ~= "table" then return nil, response_error("owners.rows") end
     for _, row in ipairs(rows) do
@@ -475,8 +496,7 @@ function M.reclaim_abandoned(db: sql.DB, dbtype: string, limit: integer, after: 
             if commit_err then return nil, errors.wrap(commit_err, "abandoned thread cleanup commit failed") end
         end
     end
-    if #rows < limit then return nil, nil end
-    local last = rows[#rows]
+    if not last then return nil, nil end
     return {thread_id = last.thread_id, page_seq = last.page_seq}, nil
 end
 

@@ -241,7 +241,7 @@ function pool.main(handover: any?): (any?, error?)
     local retention_driver = pool_retention_schedule.new({
         policy = policy_read,
         now = pool_time.now,
-        sweep = function(cursor, thread_cursor) return pool_jobs.retention_sweep(cursor, thread_cursor) end,
+        sweep = pool_jobs.retention_sweep,
         logger = logger,
         fallback_retry_ms = function() return dispatch_retry_delay_ms end,
     })

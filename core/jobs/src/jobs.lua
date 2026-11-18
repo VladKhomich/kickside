@@ -269,15 +269,19 @@ function jobs.complete(id: string, lease: table, options: table): (table?, error
 end
 
 -- Jobs-owned, bounded retention entry point consumed by the maintenance slot.
-function jobs.retention_sweep(cursor: table?, thread_cursor: table?): (table?, error?)
+function jobs.retention_sweep(cursor: table?, unused_fence_cursor: string?, thread_cursor: table?): (table?, error?)
     return with_db(function(db: sql.DB, dbtype: string): (table?, error?)
-        return retention.sweep(db, dbtype, cursor, thread_cursor)
+        return retention.sweep(db, dbtype, cursor, unused_fence_cursor, thread_cursor)
     end, true)
 end
 
 -- Thread teardown uses page ids persisted in the Core thread row.
 function jobs.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
     return thread_teardown.open_thread_tx(tx, dbtype, thread_id)
+end
+
+function jobs.reopen_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
+    return thread_teardown.reopen_thread_tx(tx, dbtype, thread_id)
 end
 
 -- A Jobs page commits independently and stores its exact result until Core acknowledges it.
