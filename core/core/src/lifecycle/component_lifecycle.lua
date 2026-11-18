@@ -8,6 +8,8 @@ local autoinit = require("autoinit")
 local lifecycle_log = require("component_lifecycle_log")
 local writer = require("proj_writer")
 local jobs_wake = require("jobs_wake")
+local retention_notifier = require("retention_notifier")
+local logger = require("logger")
 local sql_boundary = require("sql_boundary")
 local thread_row = require("threads_thread_row")
 local component_meta = require("component_meta")
@@ -196,10 +198,12 @@ function M.deleted(args: any): (any?, error?)
     return handle(lifecycle_log.KIND.DELETED, args)
 end
 
--- Lifecycle appends and projection attachment publish durable wake demand in
--- the component transaction; the committed caller notifies the job worker pool.
+-- The component transaction stores the lifecycle event and job demand. Wake
+-- retention independently of Jobs because a lifecycle thread can have no projections.
 function M.committed(): (any?, error?)
     local _, nudge_err = jobs_wake.nudge_workers()
+    local _, retention_err = retention_notifier.notify({kind = "events_appended"})
+    if retention_err then logger:error("component lifecycle retention wake failed: " .. tostring(retention_err)) end
     if nudge_err then return nil, nudge_err end
     return { success = true }, nil
 end

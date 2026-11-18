@@ -3,7 +3,7 @@ local runner = require("runner")
 local fixture = require("fixture")
 return {run = test.run_cases(function()
     test.describe("native retention pass failures", function()
-        for _, stage in ipairs({"sweep", "owner", "send"}) do
+        for _, stage in ipairs({"sweep", "owner", "send", "receipt"}) do
             for _, kind in ipairs({errors.NOT_FOUND, errors.ALREADY_EXISTS, errors.INVALID,
                 errors.PERMISSION_DENIED, errors.UNAVAILABLE, errors.INTERNAL, errors.CANCELED,
                 errors.CONFLICT, errors.TIMEOUT, errors.RATE_LIMITED, errors.UNKNOWN}) do
@@ -45,8 +45,8 @@ return {run = test.run_cases(function()
         for _, method in ipairs({"recover", "on_deadline", "on_wake", "on_wakes"}) do
             test.it("retains healthy pass/" .. method, function()
                 fixture.reset("", nil, false, nil)
-                local change = method == "on_wakes" and {{kind = "changed"}, {kind = "other"}} or {kind = "changed"}
-                local result, err = runner[method]({} :: any, "retention-pid", change)
+                local change: any = method == "on_wakes" and {{kind = "changed"}, {kind = "other"}} or {kind = "changed"}
+                local result, err = (runner :: any)[method]({} :: any, "retention-pid", change)
                 test.is_nil(err)
                 test.eq(result.stats.events, 0)
                 test.eq(result.stats.write_receipts, 0)
@@ -79,7 +79,7 @@ return {run = test.run_cases(function()
                     fixture.core_deadline, fixture.owner_deadline = case.core, case.owner
                     local changes = method == "on_wakes" and {{kind = "changed", owner_locator = {id = "first"}},
                         {kind = "changed", owner_locator = {id = "second"}}} or {kind = "changed"}
-                    local result, err = runner[method]({} :: any, "retention-pid", changes)
+                    local result, err = (runner :: any)[method]({} :: any, "retention-pid", changes)
                     test.is_nil(err); test.eq(result.deadline_ms, case.expected)
                     local passes = method == "on_wakes" and 2 or 1
                     test.eq(fixture.sweeps, passes); test.eq(fixture.owners, passes)

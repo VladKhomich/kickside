@@ -57,10 +57,10 @@ return {run = test.run_cases(function()
             end
         end
         for _, response in ipairs({{}, {value = false}, {value = {false}}, {value = {unexpected = {}}}}) do
-            test.it("run/receipts/" .. tostring(response.value), function()
-                fixture.reset("run", "", nil, sql.type.SQLITE)
+            test.it("next_receipt_deadline_ms/" .. tostring(response.value), function()
+                fixture.reset("next_receipt_deadline_ms", "", nil, sql.type.SQLITE)
                 fixture.responses.receipts = response
-                local ok, result, err = pcall(methods.run, fixture.database())
+                local ok, result, err = pcall(sweeper.next_receipt_deadline_ms, fixture.database())
                 test.is_true(ok)
                 test.is_nil(result)
                 test.eq(err:kind(), errors.INTERNAL)

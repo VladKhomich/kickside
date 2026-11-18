@@ -68,17 +68,28 @@ sparse installation still reads only one candidate page.
 Boot recovery starts a rotation immediately. The service keeps the last
 visited ID and the rotation's highest ID in memory. It schedules the next
 page immediately until it reaches the endpoint. For a stable set of threads,
-one rotation takes `ceil(threads / 256)` passes when the deletion cap allows
-each page to finish. A pass that hits the cap resumes after its last processed
-thread, even if that thread has since been deleted.
+one rotation takes `ceil(threads / 256)` passes when the deletion and projection
+budgets allow each page to finish. A pass that reaches a budget resumes from
+its last processed thread ID, even if that thread has since been deleted.
 
 Each page contributes the earliest eligibility time among the event heads it
 visits. Core uses the inherited or per-thread retention window and skips heads
-blocked by a pin or a non-invalid projection cursor. The service stores the
-minimum for the current rotation and the last completed rotation. At the end
-of a rotation it waits for that rotation's minimum, the oldest committed
-receipt's deadline, an owner deadline, or a change wake, whichever comes
-first. A due head can trigger an early follow-up rotation to discover its
+blocked by a pin or a non-invalid projection cursor. The candidate page samples
+up to five cursors from each head's indexed thread range before checking their
+sequences. If more cursors could protect a head, the service checks up to 256
+additional cursor rows per pass and continues immediately while the check is
+unfinished. PostgreSQL resumes at the thread's projection key and then at the
+cursor key within that projection. It opens at most 16 projection ranges per
+pass and releases the read connection before receipt and owner work. SQLite
+resumes by row ID within the thread and status. The prune transaction rechecks
+protections before deleting events. A PostgreSQL head dated `infinity` has no
+age deadline, and one dated `-infinity` satisfies the age cutoff.
+
+At the end of a rotation, after owner hooks, Core reads the oldest committed
+receipt using its index. It waits for the earliest of the observed event,
+receipt or owner deadlines, or a change wake. Committed component lifecycle
+appends wake retention even when the thread has no projections. A due head
+can trigger an early follow-up rotation to discover its
 successor after pruning. A change wake during a rotation also brings the next
 rotation forward so changes to earlier IDs and newly created higher IDs are
 seen before the service sleeps. Each new rotation starts at the first ID.

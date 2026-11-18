@@ -5,6 +5,7 @@ local sql = require("sql")
 local methods = {
     run = function(db: sql.DB) return sweeper.run(db, {}) end,
     run_for_thread = function(db: sql.DB) return sweeper.run_for_thread(db, "thread") end,
+    next_receipt_deadline_ms = sweeper.next_receipt_deadline_ms,
 }
 local cases = {
     {method = "run", stage = "policy", policies = 1, types = 0, queries = 0, prunes = 0, purges = 0},
@@ -12,7 +13,7 @@ local cases = {
     {method = "run", stage = "heads", policies = 1, types = 1, queries = 1, prunes = 0, purges = 0},
     {method = "run", stage = "prune", policies = 1, types = 1, queries = 1, prunes = 1, purges = 0},
     {method = "run", stage = "purge", policies = 1, types = 1, queries = 1, prunes = 1, purges = 1},
-    {method = "run", stage = "receipts", policies = 1, types = 1, queries = 2, prunes = 1, purges = 1},
+    {method = "next_receipt_deadline_ms", stage = "receipts", policies = 1, types = 1, queries = 1, prunes = 0, purges = 0},
     {method = "run_for_thread", stage = "type", policies = 0, types = 1, queries = 0, prunes = 0, purges = 0},
     {method = "run_for_thread", stage = "heads", policies = 0, types = 1, queries = 1, prunes = 0, purges = 0},
     {method = "run_for_thread", stage = "policy", policies = 1, types = 1, queries = 1, prunes = 0, purges = 0},
@@ -54,7 +55,7 @@ return {run = test.run_cases(function()
                     test.eq(result.events, 1)
                     test.eq(fixture.prunes, 1)
                     if method == "run" then
-                        test.eq(fixture.queries, 2)
+                        test.eq(fixture.queries, 1)
                         test.eq(fixture.purges, 1)
                         test.eq(result.write_receipts, 0)
                         test.eq(result.needs_continue, false)

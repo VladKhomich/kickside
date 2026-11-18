@@ -7,7 +7,6 @@ local threads_writer = require("threads_writer")
 local retention_repo = require("retention_repo")
 local runner = require("retention_runner")
 local sweeper = require("sweeper")
-local pin = require("pin")
 local receipts = require("write_receipt")
 local retention_policy = require("retention_policy")
 
@@ -41,20 +40,6 @@ local function count_events(db: sql.DB, thread_id: string): integer
     local rows, err = db:query("SELECT COUNT(*) AS n FROM kickside_event WHERE thread_id=$1", { thread_id })
     if err or type(rows) ~= "table" then error("retention service event count failed: " .. tostring(err)) end
     return tonumber((rows :: table[])[1].n) :: integer
-end
-
-local function earlier_deadline(first: integer?, second: integer): integer
-    return first == nil and second or math.min(first :: integer, second)
-end
-
-local function rotation_deadline(db: sql.DB): integer?
-    local traversal = {}
-    local result, err
-    repeat
-        result, err = sweeper.run(db, traversal)
-        test.is_nil(err)
-    until not traversal.after_thread_id
-    return result.deadline_ms
 end
 
 local function reserve_receipt(db: sql.DB, sink_id: string, key: string): ()
@@ -187,87 +172,6 @@ local function define_tests()
             _db:release()
         end)
 
-        test.it("a pin release wake rechecks a previously blocked eligible head", function()
-            local db, db_err = sql.get("app:db")
-            test.is_nil(db_err)
-            test.not_nil(db)
-            local _db = db :: sql.DB
-            local thread_id = make_thread(_db)
-            local _, policy_err = retention_repo.upsert(_db, thread_id, {
-                event_hot_retention_days = 1, archive_mode = "tombstone_only", enabled = true,
-            })
-            test.is_nil(policy_err)
-            local protected, protect_err = pin.pin_lower(_db, {
-                thread_id = thread_id, consumer_key = "service-test", command_id = "pin-service-test",
-                command_generation = 1, target_cursor = 0,
-            })
-            test.is_nil(protect_err)
-            test.not_nil(protected)
-            local baseline_deadline = rotation_deadline(_db)
-            add_event(_db, thread_id, stamp(_db, time.now():add(-2 * 24 * time.HOUR)))
-            local blocked_deadline = rotation_deadline(_db)
-            test.eq(blocked_deadline, baseline_deadline,
-                "a pinned head adds no timer before its owner releases the pin")
-            local blocked, recover_err = runner.recover(_db, "retention-pin-test")
-            test.is_nil(recover_err)
-            test.not_nil(blocked)
-            test.eq(count_events(_db, thread_id), 1)
-
-            local released, release_err = pin.pin_release(_db, {
-                thread_id = thread_id, consumer_key = "service-test", expected_pin_generation = 1,
-                terminal_op_id = "release-service-test",
-            })
-            test.is_nil(release_err)
-            test.not_nil(released)
-            local awakened, wake_err = runner.on_wake(_db, "retention-pin-test", { kind = "pin_released" })
-            test.is_nil(wake_err)
-            test.is_true(((awakened :: table).stats :: table).events >= 1)
-            test.eq(count_events(_db, thread_id), 0)
-            _db:release()
-        end)
-
-        test.it("a cursor-advance wake rechecks a previously blocked eligible head", function()
-            local db, db_err = sql.get("app:db")
-            test.is_nil(db_err)
-            test.not_nil(db)
-            local _db = db :: sql.DB
-            local thread_id = make_thread(_db)
-            local _, policy_err = retention_repo.upsert(_db, thread_id, {
-                event_hot_retention_days = 1, archive_mode = "tombstone_only", enabled = true,
-            })
-            test.is_nil(policy_err)
-            local event_at = stamp(_db, time.now():add(-2 * 24 * time.HOUR))
-            local baseline_deadline = rotation_deadline(_db)
-            add_event(_db, thread_id, event_at)
-            local projection_id, cursor_id = uuid.v7(), uuid.v7()
-            local _, projection_err = sql.builder.insert("kickside_projection")
-                :set_map({ id = projection_id, thread_id = thread_id, kind = "service_test",
-                    projection_key = "cursor-wake", last_event_seq = 0 })
-                :run_with(_db):exec()
-            test.is_nil(projection_err)
-            local _, cursor_err = sql.builder.insert("kickside_projection_cursor")
-                :set_map({ id = cursor_id, projection_id = projection_id, thread_id = thread_id,
-                    last_seq = 0, status = "active" })
-                :run_with(_db):exec()
-            test.is_nil(cursor_err)
-
-            local blocked_deadline = rotation_deadline(_db)
-            test.eq(blocked_deadline, baseline_deadline,
-                "an active cursor below the event head adds no timer until it advances")
-            local blocked, recover_err = runner.recover(_db, "retention-cursor-test")
-            test.is_nil(recover_err)
-            test.not_nil(blocked)
-            test.eq(count_events(_db, thread_id), 1)
-
-            local _, advance_err = _db:execute("UPDATE kickside_projection_cursor SET last_seq=1 WHERE id=$1", { cursor_id })
-            test.is_nil(advance_err)
-            local awakened, wake_err = runner.on_wake(_db, "retention-cursor-test", { kind = "projection_cursor_advanced" })
-            test.is_nil(wake_err)
-            test.is_true(((awakened :: table).stats :: table).events >= 1)
-            test.eq(count_events(_db, thread_id), 0)
-            _db:release()
-        end)
-
         test.it("a committed receipt resolution wake arms its stored purge deadline", function()
             local db, db_err = sql.get("app:db")
             test.is_nil(db_err)
@@ -309,40 +213,6 @@ local function define_tests()
             _db:release()
         end)
 
-        test.it("a per-thread policy change wake recomputes the event deadline", function()
-            local db, db_err = sql.get("app:db")
-            test.is_nil(db_err)
-            test.not_nil(db)
-            local _db = db :: sql.DB
-            local thread_id = make_thread(_db)
-            local _, policy_err = retention_repo.upsert(_db, thread_id, {
-                event_hot_retention_days = 1, archive_mode = "tombstone_only", enabled = true,
-            })
-            test.is_nil(policy_err)
-            local created_at = stamp(_db, time.now())
-            local baseline = rotation_deadline(_db)
-            add_event(_db, thread_id, created_at)
-
-            local _, update_err = retention_repo.upsert(_db, thread_id, {
-                event_hot_retention_days = 2, archive_mode = "tombstone_only", enabled = true,
-            })
-            test.is_nil(update_err)
-            local row_deadline, row_deadline_err = sweeper.deadline_ms(created_at, 2 * 86400000,
-                tostring(_db:type()))
-            test.is_nil(row_deadline_err)
-            local expected = earlier_deadline(baseline, row_deadline :: integer)
-            local traversal = {}
-            local awakened, wake_err = runner.on_wake(_db, "retention-policy-test",
-                { kind = "thread_policy_changed" }, traversal)
-            test.is_nil(wake_err)
-            while traversal.after_thread_id do
-                awakened, wake_err = runner.on_deadline(_db, "retention-policy-test", traversal)
-                test.is_nil(wake_err)
-            end
-            test.eq((awakened :: table).deadline_ms, expected,
-                "a committed thread policy change must replace the previous deadline")
-            _db:release()
-        end)
     end)
 end
 

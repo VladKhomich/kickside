@@ -13,6 +13,10 @@ function M.sweep(db: any, _traversal: table?): (any, error?)
     end
     return {events = 0, write_receipts = 0, needs_continue = M.stage == "send", deadline_ms = M.core_deadline}, nil
 end
+function M.receipt_deadline(_db: any): (integer?, error?)
+    if M.stage == "receipt" then return nil, M.source end
+    return nil, nil
+end
 function M.owner_run(change: table?): (any, error?)
     M.owners = M.owners + 1
     if M.stage == "owner" then
