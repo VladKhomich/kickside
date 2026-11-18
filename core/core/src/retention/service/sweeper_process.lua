@@ -48,7 +48,8 @@ local function pass_deadline(value: any, field: string): (integer?, error?)
     return deadline :: integer?, nil
 end
 
-local function close(db: sql.DB?, subscription: any?, changes: any?, releases: any?): ()
+local function close(db: sql.DB?, subscription: any?, changes: any?, releases: any?, timer: any?): ()
+    if timer then timer:stop() end
     process.registry.unregister(notifier.NAME, process.registry.CONSISTENT)
     if subscription then subscription:close() end
     if changes then process.unlisten(changes) end
@@ -120,6 +121,8 @@ local function main(): (any?, error?)
         return nil, initial_report_err
     end
 
+    local timer: any = nil
+    local timer_deadline: integer? = nil
     while true do
         local cases = {
             process_events:case_receive(),
@@ -127,40 +130,69 @@ local function main(): (any?, error?)
             changes:case_receive(),
             releases:case_receive(),
         }
-        local timer: any = nil
+        local timer_channel: any = nil
+        local elapsed = false
         if deadline_ms ~= nil then
             local now_ms = math.floor(time.now():unix_nano() / 1000000)
-            local delay_ms = math.max(1, math.ceil((deadline_ms :: integer) - now_ms))
-            timer = time.after(tostring(delay_ms) .. "ms")
-            cases[#cases + 1] = timer:case_receive()
+            elapsed = deadline_ms ~= 0 and (deadline_ms :: integer) <= now_ms
+            if timer_deadline ~= deadline_ms then
+                if timer then timer:stop() end
+                local timer_err
+                timer, timer_err = time.timer(tostring(math.max(1, (deadline_ms :: integer) - now_ms)) .. "ms")
+                if timer_err then
+                    close(db :: sql.DB, subscription, changes, releases, timer)
+                    return nil, errors.wrap(timer_err, "Core retention timer creation failed")
+                end
+                timer_deadline = deadline_ms
+            end
+            timer_channel = timer:response()
+            cases[#cases + 1] = timer_channel:case_receive()
+        elseif timer then
+            timer:stop()
+            timer, timer_deadline = nil, nil
         end
 
         local selected = channel.select(cases)
         if selected.channel == process_events then
             local event = selected.value
             if type(event) == "table" and event.kind == process.event.CANCEL then
-                close(db :: sql.DB, subscription, changes, releases)
+                close(db :: sql.DB, subscription, changes, releases, timer)
                 return nil, nil
             elseif type(event) == "table" and event.kind == process.event.OUTDATED then
-                close(db :: sql.DB, subscription, changes, releases)
+                close(db :: sql.DB, subscription, changes, releases, timer)
                 return nil, unavailable("Core retention process is outdated", nil)
             end
         elseif selected.channel == registry_events then
             if selected.ok == false then
-                close(db :: sql.DB, subscription, changes, releases)
+                close(db :: sql.DB, subscription, changes, releases, timer)
                 return nil, unavailable("Core retention registry subscription closed", nil)
             end
         elseif selected.channel == changes or selected.channel == releases then
             if selected.ok == false then
-                close(db :: sql.DB, subscription, changes, releases)
+                close(db :: sql.DB, subscription, changes, releases, timer)
                 return nil, unavailable("Core retention process mailbox closed", nil)
             end
         end
 
-        local next_pass, pass_err
-        if timer and selected.channel == timer then
-            next_pass, pass_err = runner.on_deadline(db :: sql.DB, pid, traversal)
-        else
+        local timer_fired = timer_channel ~= nil and selected.channel == timer_channel
+        -- A broad wake already advances retention for every owner. A scoped
+        -- wake can leave the due owner untouched, so run the deadline first.
+        local scoped = (selected.channel == changes or selected.channel == releases)
+            and type(selected.value) == "table" and selected.value.owner_locator ~= nil
+        if timer_fired or (elapsed and scoped) then
+            if timer then timer:stop() end
+            timer, timer_deadline = nil, nil
+            local pass, err = runner.on_deadline(db :: sql.DB, pid, traversal)
+            if not err then deadline_ms, err = pass_deadline(pass, "runner.on_deadline") end
+            if err then
+                close(db :: sql.DB, subscription, changes, releases)
+                return nil, err
+            end
+        end
+
+        if not timer_fired then
+            local previous = deadline_ms
+            local next_pass, pass_err
             local change: table = { kind = "process_event" }
             if selected.channel == registry_events then
                 change = { kind = "registry_commit" }
@@ -174,7 +206,7 @@ local function main(): (any?, error?)
                     local queued = channel.select({ changes:case_receive(), releases:case_receive(), default = true })
                     if queued.default then break end
                     if queued.ok == false then
-                        close(db :: sql.DB, subscription, changes, releases)
+                        close(db :: sql.DB, subscription, changes, releases, timer)
                         return nil, unavailable("Core retention process mailbox closed", nil)
                     end
                     local value = queued.value
@@ -185,17 +217,16 @@ local function main(): (any?, error?)
             else
                 next_pass, pass_err = runner.on_wake(db :: sql.DB, pid, change, traversal)
             end
+            if not pass_err then deadline_ms, pass_err = pass_deadline(next_pass, "runner.pass") end
+            if pass_err then
+                close(db :: sql.DB, subscription, changes, releases, timer)
+                return nil, pass_err
+            end
+            if scoped and previous ~= nil and previous > 0
+                and (deadline_ms == nil or previous < deadline_ms) then
+                deadline_ms = previous
+            end
         end
-        if pass_err then
-            close(db :: sql.DB, subscription, changes, releases)
-            return nil, pass_err
-        end
-        local next_deadline, report_err = pass_deadline(next_pass, "runner.pass")
-        if report_err then
-            close(db :: sql.DB, subscription, changes, releases)
-            return nil, report_err
-        end
-        deadline_ms = next_deadline
     end
 end
 
