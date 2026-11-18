@@ -330,7 +330,7 @@ function upload_record_repo.lock_settlement_tx(tx, upload: any, job_id: string?,
         if job_id then
             query = query:where("processing_intent_state = 'acknowledged' AND processing_job_id = ?", job_id)
         else
-            query = query:where(upload_query_repo.INTENTLESS_SQL)
+            query = query:where(upload_query_repo.intentless_checkpoint_sql("kickside_uploads.uuid"))
         end
     else
         query = query:where(upload_query_repo.processing_job_owner_sql(), job_id)
