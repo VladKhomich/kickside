@@ -128,6 +128,41 @@ local function define_tests()
                 "the claimed round delivered the event: " .. queue_state(main.job_id))
         end)
 
+        test.it("delivers new source input before an existing item's redelivery deadline", function()
+            local fixture = h.setup("round_wake_redelivery")
+            local installed = fixture.caller:call(MANAGE_TOOL, { action = "install",
+                type = "kickside.automation.round.fixture:event_kind",
+                input = { thread_id = fixture.thread_id, start = "all" } })
+            test.is_true(installed.success, tostring(installed.error))
+            local job_id = h.read_drive(installed.id, "main").job_id
+            local probe_key = h.probe_key_for(job_id)
+            live_worker = h.start_worker()
+            h.await_worker_pass(probe_key, job_id)
+
+            local held_round = listen(installed.id, "main")
+            fixture.append("wait")
+            local held = h.receive_logged(held_round, "15s", function() return queue_state(job_id) end)
+            h.await_worker_pass(probe_key)
+            close(held_round)
+            local retry = assert(h.ledger_row(installed.id, held.item_key))
+            test.eq(retry.state, "waiting")
+            local retry_at = assert(time.parse(time.RFC3339, retry.next_attempt_at))
+            test.is_true(retry_at:after(time.now()))
+            local pending = h.query("SELECT status, scheduled_at FROM kickside_job WHERE id = $1", { job_id })[1]
+            test.eq(pending.status, "pending")
+            test.not_nil(pending.scheduled_at)
+
+            local fresh_round = listen(installed.id, "main")
+            fixture.append("fresh event before redelivery")
+            local fresh = h.receive_logged(fresh_round, "5s", function() return queue_state(job_id) end)
+            h.await_worker_pass(probe_key)
+            test.neq(fresh.item_key, held.item_key)
+            local still_waiting = assert(h.ledger_row(installed.id, held.item_key))
+            test.eq(still_waiting.state, "waiting")
+            test.eq(still_waiting.next_attempt_at, retry.next_attempt_at)
+            test.eq(still_waiting.attempts, retry.attempts)
+        end)
+
         -- A hub install or update changes the registry while automations run:
         -- the jobs worker recycles its loop on the new version and keeps claiming.
         test.it("keeps claiming woken slots after an unrelated registry change", function()
