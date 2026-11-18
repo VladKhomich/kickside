@@ -45,6 +45,7 @@ entries:
       jobs: kickside.core.jobs:jobs
       job_types: kickside.core.jobs:types
       processing_hooks: kickside.uploads.binding:processing_hooks_default
+      trace_context: kickside.execution:trace
     method: main
 
   - name: process_dead
@@ -70,6 +71,7 @@ entries:
       jobs: kickside.core.jobs:jobs
       job_types: kickside.core.jobs:types
       processing_hooks: kickside.uploads.binding:processing_hooks_default
+      trace_context: kickside.execution:trace
     method: dead
 
   - name: callback_job

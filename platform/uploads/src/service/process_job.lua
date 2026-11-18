@@ -11,6 +11,7 @@ local upload_types = require("types")
 local jobs = require("jobs")
 local job_types = require("job_types")
 local processing_hooks = require("processing_hooks")
+local trace_context = require("trace_context")
 
 local log = logger:named("upload_job")
 
@@ -50,8 +51,7 @@ local function ensure_running(job: any): (boolean, string?)
     return true, nil
 end
 
--- Lifecycle events dedupe per processing attempt: the job that emits them.
-local function upload_event(job_id: string, upload: any, etype: string, body: any, trace_context: any?): table
+local function upload_event(version: string, upload: any, etype: string, body: any, trace_context: any?): table
     return {
         type = etype,
         body = body,
@@ -59,13 +59,13 @@ local function upload_event(job_id: string, upload: any, etype: string, body: an
         external = {
             external_source = upload_types.EVENT_SOURCE,
             external_id = tostring(upload.uuid),
-            external_version = job_id,
+            external_version = version,
         },
     }
 end
 
-local function completed_event(job_id: string, upload: any, trace_context: any?): table
-    return upload_event(job_id, upload, upload_types.EVENT.COMPLETED, {
+local function completed_event(version: string, upload: any, trace_context: any?): table
+    return upload_event(version, upload, upload_types.EVENT.COMPLETED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -74,8 +74,8 @@ local function completed_event(job_id: string, upload: any, trace_context: any?)
     }, trace_context)
 end
 
-local function failed_event(job_id: string, upload: any, error_text: string, trace_context: any?): table
-    return upload_event(job_id, upload, upload_types.EVENT.FAILED, {
+local function failed_event(version: string, upload: any, error_text: string, trace_context: any?): table
+    return upload_event(version, upload, upload_types.EVENT.FAILED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -96,7 +96,9 @@ end
 -- Settle storage, callback jobs and the thread event in the same transaction.
 local function settle(job: any, upload: any, outcome: table, source: string?): (boolean, any?)
     local success, error_text = outcome.success == true, outcome.error_text
-    local job_id, thread_id = tostring(job.id), tostring(job.thread_id or "")
+    local job_id, thread_id = job.id and tostring(job.id), tostring(job.thread_id or "")
+    -- Explicit Retry records a job ID, so only the initial attempt can be intentless.
+    local version = job_id or "attempt:1"
     local prepared
     if success then
         local prepare_err
@@ -120,8 +122,7 @@ local function settle(job: any, upload: any, outcome: table, source: string?): (
     local published = false
     if checkpoint.storage_state ~= "uploaded" then
         local publication_err
-        published, publication_err = upload_record_repo.checkpoint_published_tx(tx, upload.uuid, thread_id,
-            job_id, checkpoint.storage_state)
+        published, publication_err = upload_query_repo.checkpoint_published_tx(tx, upload.uuid)
         if publication_err then return abort(publication_err) end
         if published and source then return abort(nil) end
     end
@@ -141,8 +142,8 @@ local function settle(job: any, upload: any, outcome: table, source: string?): (
                 return settle(job, upload, outcome, source)
             end
         end
-        local event = success and completed_event(job_id, upload, upload.trace_context)
-            or failed_event(job_id, upload, tostring(error_text), upload.trace_context)
+        local event = success and completed_event(version, upload, upload.trace_context)
+            or failed_event(version, upload, tostring(error_text), upload.trace_context)
         if callback_err then event.body.callback_error = tostring(callback_err) end
         local body_json, encode_err = json.encode(event.body)
         if encode_err then return abort(encode_err) end
@@ -258,7 +259,12 @@ local function run(input: any): (any, any?)
 end
 
 local function settle_checkpoint(job: any, upload: any, decode_err: any?, source: string): (boolean, any?)
-    if decode_err then upload.metadata, upload.trace_context = nil, nil end
+    if decode_err then
+        upload.metadata, upload.trace_context = nil, nil
+    else
+        local _, trace_err = trace_context.normalize(upload.trace_context)
+        if trace_err then upload.trace_context, decode_err = nil, trace_err end
+    end
     local outcome = upload.storage_state == "completed" and not decode_err
             and { success = true, output = completion_output(upload) }
         or { success = false, error_text = tostring(decode_err or job.last_error or "upload processing failed") }

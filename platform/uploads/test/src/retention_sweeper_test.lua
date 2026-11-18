@@ -15,6 +15,9 @@ local upload_types = require("types")
 local upload_tokens = require("upload_tokens")
 local secret_cipher = require("secret_cipher")
 local upload_query_repo = require("upload_query_repo")
+local upload_read_model = require("upload_read_model")
+local process_job = require("process_job")
+local threads_writer = require("threads_writer")
 local jobs_retention = require("jobs_retention")
 
 local DB = "app:db"
@@ -80,18 +83,136 @@ local function model(component_id: string, seq: integer): string
     return id
 end
 
-local function checkpoint(component_id: string, owner: string, upload_id: string, job_id: string, metadata: string, state: string?)
+local function checkpoint(component_id: string, owner: string, upload_id: string, job_id: string?, metadata: string, state: string?)
     exec([[INSERT INTO kickside_uploads
         (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata,
             processing_intent_state,processing_job_id)
-        VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text',$3,$4,'acknowledged',$5)]],
-        { upload_id, owner, state or "completed", metadata, job_id })
+        VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text',$3,$4,$5,$6)]],
+        { upload_id, owner, state or "completed", metadata, job_id and "acknowledged" or sql.as.null(),
+            job_id or sql.as.null() })
     exec([[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
         VALUES ($1,$2,'processing')]], { upload_id, component_id })
 end
 
+local function terminal_events(component_id: string, upload_id: string): { table }
+    return query([[SELECT id,type,seq,body,external_version,created_at FROM kickside_event
+        WHERE thread_id=$1 AND external_source='uploads' AND external_id=$2 AND type IN ($3,$4)
+        ORDER BY seq]], { component_id, upload_id, upload_types.EVENT.COMPLETED, upload_types.EVENT.FAILED })
+end
+
+local function lifecycle_event(component_id: string, upload_id: string, etype: string, version: string)
+    local body = assert(json.encode({ upload_id = upload_id, mime_type = "text/plain", size = 1, type_id = "text" }))
+    local db = assert(sql.get(DB))
+    local tx = assert(db:begin())
+    local _, append_err = threads_writer.append_system_tx(tx, tostring(db:type()), component_id, {
+        { type = etype, body_json = body,
+            external = { external_source = "uploads", external_id = upload_id, external_version = version } },
+    })
+    if append_err then tx:rollback(); db:release(); error(tostring(append_err)) end
+    local _, commit_err = tx:commit()
+    db:release()
+    test.is_nil(commit_err, tostring(commit_err))
+end
+
 return test.run_cases(function()
     test.describe("uploads retention under the Core retention sweeper service", function()
+        test.it("recognizes a committed released completion while its projection is processing", function()
+            local component_id, owner = user_container()
+            local upload_id, job_id = uuid.v4(), uuid.v4()
+            local token = assert(upload_tokens.pack({ upload_id = upload_id, function_id = "app:callback_probe",
+                actor_id = owner, actor_context = "{}" }))
+            checkpoint(component_id, owner, upload_id, job_id, assert(json.encode({ __upload_token = token })), "uploaded")
+            lifecycle_event(component_id, upload_id, upload_types.EVENT.QUEUED, upload_types.EVENT.QUEUED)
+            lifecycle_event(component_id, upload_id, upload_types.EVENT.COMPLETED, upload_types.EVENT.COMPLETED)
+            exec("UPDATE kickside_uploads SET storage_state='completed' WHERE uuid=$1", { upload_id })
+
+            test.eq(assert(upload_read_model.get_for_actor(owner, upload_id)).status, "processing")
+            local db = assert(sql.get(DB))
+            local page, read_err = upload_query_repo.list_checkpoints(500, upload_id:sub(1, -2), db)
+            db:release()
+            test.is_nil(read_err, tostring(read_err))
+            for _, row in ipairs(page) do
+                test.is_false(row.uuid == upload_id, "discovery recognizes the committed completion")
+            end
+            -- Also pass a candidate captured before publication to exercise the locked recheck.
+            local row = query("SELECT * FROM kickside_uploads WHERE uuid=$1", { upload_id })[1]
+            local _, recover_err = process_job.recover(row)
+            test.is_nil(recover_err, tostring(recover_err))
+            local events = terminal_events(component_id, upload_id)
+            test.eq(#events, 1)
+            test.eq(events[1].external_version, upload_types.EVENT.COMPLETED)
+            test.eq(#query("SELECT id FROM kickside_job WHERE thread_id=$1 AND job_type=$2",
+                { component_id, "kickside.uploads.service:callback_job" }), 0)
+            if type(events[1].body) == "string" then events[1].body = assert(json.decode(events[1].body)) end
+            local _, apply_err = upload_read_model.apply_events(component_id, events)
+            test.is_nil(apply_err, tostring(apply_err))
+            test.eq(assert(upload_read_model.get_for_actor(owner, upload_id)).status, "completed")
+        end)
+
+        test.it("does not mistake a prior attempt's event or projection for the current completion", function()
+            local component_id, owner = user_container()
+            local upload_id, job_id = uuid.v4(), uuid.v4()
+            checkpoint(component_id, owner, upload_id, job_id, "{}", "uploaded")
+            lifecycle_event(component_id, upload_id, upload_types.EVENT.COMPLETED, upload_types.EVENT.COMPLETED)
+            local previous = terminal_events(component_id, upload_id)[1]
+            exec("UPDATE kickside_upload_read_model SET status='completed',last_event_seq=$1 WHERE upload_id=$2",
+                { previous.seq, upload_id })
+            lifecycle_event(component_id, upload_id, upload_types.EVENT.QUEUED, job_id)
+            exec("UPDATE kickside_uploads SET storage_state='completed' WHERE uuid=$1", { upload_id })
+
+            local result = assert(funcs.call("kickside.uploads:retention", {}))
+            test.is_true(result.success, tostring(result.error))
+            local events = terminal_events(component_id, upload_id)
+            test.eq(#events, 2)
+            test.eq(events[2].external_version, job_id)
+            test.eq(events[2].type, upload_types.EVENT.COMPLETED)
+        end)
+
+        test.it("recovers intentless completed uploads with a present or pruned parent and fails invalid checkpoints", function()
+            local component_id, owner = user_container()
+            local fixtures = { {}, { pruned = true }, { invalid = true } }
+            for _, fixture in ipairs(fixtures) do
+                local upload_id, job_id = uuid.v4(), uuid.v4()
+                fixture.upload_id, fixture.job_id = upload_id, job_id
+                exec([[INSERT INTO kickside_job
+                    (id,thread_id,job_type,payload,job_identity,owner_kind,owner_id,status,finished_at)
+                    VALUES ($1,$2,'kickside.uploads.service:process_job_proc',$3,$4,'user',$5,'dead',$6)]],
+                    { job_id, component_id, assert(json.encode({ upload_id = upload_id })),
+                        "7:uploads" .. #upload_id .. ":" .. upload_id .. "7:process", owner, stamp(fixture.pruned and -40 or 0) })
+                checkpoint(component_id, owner, upload_id, nil, "{}", "uploaded")
+                lifecycle_event(component_id, upload_id, upload_types.EVENT.QUEUED, upload_types.EVENT.QUEUED)
+                if fixture.invalid then
+                    exec("UPDATE kickside_uploads SET trace_context=$1 WHERE uuid=$2", { '{"unknown":"field"}', upload_id })
+                    test.eq(assert(upload_query_repo.get(upload_id)).trace_context.unknown, "field")
+                end
+            end
+            local db = assert(sql.get(DB))
+            assert(jobs_retention.sweep(db, tostring(db:type())))
+            db:release()
+            test.eq(#query("SELECT id FROM kickside_job WHERE id=$1", { fixtures[1].job_id }), 1)
+            test.eq(#query("SELECT id FROM kickside_job WHERE id=$1", { fixtures[2].job_id }), 0)
+            for _, fixture in ipairs(fixtures) do
+                exec("UPDATE kickside_uploads SET storage_state='completed' WHERE uuid=$1", { fixture.upload_id })
+            end
+
+            for _ = 1, 2 do
+                local result = assert(funcs.call("kickside.uploads:retention", {}))
+                test.is_true(result.success, tostring(result.error))
+            end
+            for _, fixture in ipairs(fixtures) do
+                local events = terminal_events(component_id, fixture.upload_id)
+                test.eq(#events, 1)
+                test.eq(events[1].external_version, "attempt:1")
+                test.eq(events[1].type, fixture.invalid and upload_types.EVENT.FAILED or upload_types.EVENT.COMPLETED)
+                if fixture.invalid then
+                    local body = type(events[1].body) == "table" and events[1].body or assert(json.decode(events[1].body))
+                    test.contains(body.error, "is not canonical")
+                    test.eq(query("SELECT storage_state FROM kickside_uploads WHERE uuid=$1", { fixture.upload_id })[1].storage_state,
+                        "failed")
+                end
+            end
+        end)
+
         test.it("settles permanent callback errors as failures and continues recovery and cleanup in the same pass", function()
             local component_id, owner = user_container()
             local expired, invalid, good = uuid.v4(), uuid.v4(), uuid.v4()
@@ -258,7 +379,8 @@ return test.run_cases(function()
             assert(jobs_retention.sweep(db, tostring(db:type())))
             db:release()
             for i = 1, 2 do
-                test.eq(#query("SELECT id FROM kickside_job WHERE id=$1", {checkpoints[i].job_id}), 0)
+                test.eq(#query("SELECT id FROM kickside_job WHERE id=$1", {checkpoints[i].job_id}), 0,
+                    "the expired parent is pruned before checkpoint recovery")
             end
 
             await_sweeper()
@@ -278,7 +400,9 @@ return test.run_cases(function()
             end
             local repeated = assert(funcs.call("kickside.uploads:retention", {}))
             test.is_true(repeated.success, tostring(repeated.error))
-            for _, checkpoint in ipairs(checkpoints) do test.eq(#outcomes(checkpoint.upload_id), 1) end
+            for _, checkpoint in ipairs(checkpoints) do
+                test.eq(#outcomes(checkpoint.upload_id), 1, "repeated recovery keeps one event per checkpoint")
+            end
             local jobs = query("SELECT job_type FROM kickside_job WHERE thread_id=$1 AND job_type IN ($2,$3)",
                 { component_id, "kickside.uploads.service:process_dead", "kickside.uploads.service:callback_job" })
             local outcomes_count = 0
