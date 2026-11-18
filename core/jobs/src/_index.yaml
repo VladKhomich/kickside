@@ -57,9 +57,9 @@ entries:
   # .wippy.yaml "kickside.core.jobs:policy:meta.<path>".
   - name: policy
     kind: registry.entry
-    # Defaults stay outside meta so explicit host assignments retain presence,
-    # including assignments whose value equals the shipped default.
-    defaults:
+    # Old workers still read this entry while their executions drain.
+    meta:
+      comment: Jobs runtime policy defaults and host configuration.
       worker:
         count_sqlite: 2
         count_postgres: 4
@@ -95,19 +95,6 @@ entries:
         sweep_interval: 1h
         batch: 500
         thread_cleanup_batch: 100
-
-    meta:
-      comment: Jobs runtime policy defaults with explicit host overrides under meta.
-      worker: {}
-      lease: {}
-      retry: {}
-      slot_retry: {}
-      fairness: {}
-      wake: {}
-      proc: {}
-      health: {}
-      limits: {}
-      retention: {}
 
   - name: process_host
     kind: ns.requirement

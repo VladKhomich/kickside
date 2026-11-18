@@ -28,7 +28,7 @@ const form = reactive({
   name: '', title: '', description: '',
   provider_id: '', provider_profile_id: '', provider_model: '',
   capabilities: [] as string[], classes: [] as string[],
-  priority: 10, max_tokens: 0, output_tokens: 0, dimensions: 0,
+  priority: 10, max_tokens: '', output_tokens: '', dimensions: '',
   reasoning_model_request: false, thinking_effort: '' as string | number, temperature: '',
   options_json: '{}', source: 'overlay', enabled: true,
 })
@@ -47,9 +47,9 @@ watch(() => props.model, (model) => {
   form.capabilities = [...(model.capabilities ?? [])]
   form.classes = [...(model.class ?? [])]
   form.priority = Number(model.priority ?? 10)
-  form.max_tokens = Number(model.max_tokens ?? 0)
-  form.output_tokens = Number(model.output_tokens ?? 0)
-  form.dimensions = Number(model.dimensions ?? 0)
+  form.max_tokens = String(model.max_tokens ?? '')
+  form.output_tokens = String(model.output_tokens ?? '')
+  form.dimensions = String(model.dimensions ?? '')
   form.reasoning_model_request = options.reasoning_model_request === true
   form.thinking_effort = typeof options.thinking_effort === 'string' || typeof options.thinking_effort === 'number'
     ? options.thinking_effort
@@ -108,9 +108,9 @@ function submit() {
     capabilities: [...form.capabilities],
     classes: [...form.classes],
     priority: Number(form.priority),
-    max_tokens: Number(form.max_tokens),
-    output_tokens: Number(form.output_tokens),
-    dimensions: Number(form.dimensions),
+    max_tokens: form.max_tokens === String(props.model?.max_tokens ?? '') ? undefined : form.max_tokens,
+    output_tokens: form.output_tokens === String(props.model?.output_tokens ?? '') ? undefined : form.output_tokens,
+    dimensions: form.dimensions === String(props.model?.dimensions ?? '') ? undefined : form.dimensions,
     options,
     source: form.source,
     enabled: form.enabled,
@@ -157,8 +157,8 @@ function submit() {
         <FormField label="Temperature" help="0–2; blank to leave unset."><TextInput v-model="form.temperature" type="number" :min="0" :max="2" :step="0.1" :disabled="saving" /></FormField>
       </div>
       <div class="km-form-grid">
-        <FormField label="Context"><TextInput v-model="form.max_tokens" type="number" :min="0" :disabled="saving" /></FormField>
-        <FormField label="Output"><TextInput v-model="form.output_tokens" type="number" :min="0" :disabled="saving" /></FormField>
+        <FormField label="Context"><TextInput v-model="form.max_tokens" type="number" placeholder="Unknown" :min="1" :disabled="saving" /></FormField>
+        <FormField label="Output"><TextInput v-model="form.output_tokens" type="number" placeholder="Unknown" :min="1" :disabled="saving" /></FormField>
       </div>
     </section>
 
@@ -172,7 +172,7 @@ function submit() {
           <FormField label="Provider id"><TextInput v-model="form.provider_id" :disabled="saving" /></FormField>
           <FormField label="Source"><TextInput v-model="form.source" :disabled="saving" /></FormField>
           <FormField label="Priority"><TextInput v-model="form.priority" type="number" :disabled="saving" /></FormField>
-          <FormField label="Dimensions"><TextInput v-model="form.dimensions" type="number" :min="0" :disabled="saving" /></FormField>
+          <FormField label="Dimensions"><TextInput v-model="form.dimensions" type="number" placeholder="Unknown" :min="1" :disabled="saving" /></FormField>
         </div>
         <FormField label="Options JSON" help="Raw provider options; merged with the controls above.">
           <textarea v-model="form.options_json" class="km-input mono km-textarea" :disabled="saving" />

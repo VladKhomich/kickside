@@ -33,7 +33,12 @@ local function query(filter: component_types.QueryFilter?, secrets: boolean): (c
     end
     if type(f.include) == "table" then
         local inc = f.include
-        reader = reader:include_options({ meta = inc.meta, private_context = inc.private_context, secrets = secrets })
+        reader = reader:include_options({
+            meta = inc.meta,
+            private_context = inc.private_context,
+            placement = inc.placement,
+            secrets = secrets,
+        })
     end
     if type(f.order_by) == "table" and type(f.order_by.field) == "string" then
         reader = reader:order_by(f.order_by.field, f.order_by.direction)

@@ -75,6 +75,11 @@ A blank result commits a blank page only when it has no usable text layer.
 Changing the setting does not reprocess completed uploads. Incomplete stages
 read the current policy on retry; a new processing job starts every stage.
 
+Page-count failures produce one warning. When renderer failures leave pages
+without images, the stage emits one warning with the affected page range and
+the classification of a representative batch or page probe. Both warnings use
+fixed messages and bounded error classifications.
+
 Work that depends on a processed file attaches a completion callback instead of
 polling upload status. A callback is an upload token minted by the module that
 owns the follow-up work:

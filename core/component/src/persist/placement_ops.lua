@@ -29,6 +29,11 @@ local identity = require("identity_ops")
 local execution_identity = require("execution_identity")
 local audit_policy = require("audit_policy")
 
+local function already_exists(): error
+    return errors.new({message = "component already exists", kind = errors.CONFLICT,
+        retryable = false, details = {code = "component_already_exists"}})
+end
+
 -- CREATE_COMPONENT payload: { component_id?, impl_id, private_context?,
 -- initial_meta?, actor_id, parent_id?, position? }. parent_id omitted =>
 -- root; position omitted => append after last sibling.
@@ -116,6 +121,12 @@ local function create_component(tx: Executor, db: Executor, command: component_t
 
     local lock_err = placement.lock_tree(tx)
     if lock_err then return nil, lock_err end
+    -- A component row precedes its parent row in every lock order: a writer of an
+    -- existing component re-locks its parent through the parent_id foreign key.
+    -- An existing id therefore resolves before the parent row is locked.
+    local exists, exists_err = placement.key_exists(tx, component_id)
+    if exists_err then return nil, exists_err end
+    if exists then return nil, already_exists() end
     local rule, rule_err = placement_rules.for_impl(payload.impl_id :: string)
     if rule_err then return nil, rule_err end
 
@@ -177,10 +188,7 @@ local function create_component(tx: Executor, db: Executor, command: component_t
         return nil, errors.wrap(err, "failed to create component")
     end
     local count = inserted and tonumber(inserted.rows_affected)
-    if count == 0 then
-        return nil, errors.new({message = "component already exists", kind = errors.CONFLICT,
-            retryable = false, details = {code = "component_already_exists"}})
-    end
+    if count == 0 then return nil, already_exists() end
     if count ~= 1 then
         return nil, errors.new({message = "component insert returns no affected-row proof", kind = errors.INTERNAL,
             retryable = false, details = {code = "component_insert_result_invalid"}})

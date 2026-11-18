@@ -50,7 +50,7 @@ function M.run(db: any, cutoff: string, limit: integer): (table?, error?)
     end
     local rows, query_err = db:query([[SELECT sink_id,idempotency_key
         FROM kickside_write_receipt WHERE status='committed' AND completed_at < $1
-        ORDER BY completed_at,sink_id,idempotency_key LIMIT $2]], { cutoff, limit })
+        ORDER BY completed_at LIMIT $2]], { cutoff, limit })
     if query_err then return nil, errors.wrap(query_err, "failed to list settled receipts") end
     local settled, rows_err = receipt_rows(rows)
     if rows_err then return nil, rows_err end

@@ -1,11 +1,13 @@
 local models_repo = require("models_repo")
 local models_types = require("models_types")
+local logger = require("logger")
 local common = require("discovery_common")
 local mapper = require("model_mapper")
 local provider_registry = require("provider_registry")
 local reference_registry = require("reference_registry")
 
 local M = {}
+local log = logger:named("kickside.models.discovery")
 
 function M.adapter_for(provider_id: string): any?
     return provider_registry.adapter_for(provider_id)
@@ -34,6 +36,7 @@ function M.discover(profile_id: string): (any?, any?, any?)
     end
 
     local saved = {}
+    local reference_error
     local existing_cards = {}
     local overlays, overlay_err = models_repo.list_card_overlays()
     if overlay_err then return nil, overlay_err end
@@ -49,29 +52,25 @@ function M.discover(profile_id: string): (any?, any?, any?)
             local name = mapper.public_name(profile.id, provider_model)
             local existing = existing_cards[name]
             if existing then classes = existing.class end
-            -- Fill context window / pricing the provider's own /models API does not
-            -- report (OpenAI, Anthropic, Bedrock) from the reference catalog. Only
-            -- absent fields are filled -- provider-supplied values always win.
-            local has_ctx = tonumber(item.context_length or item.contextLength or item.inputTokenLimit) ~= nil
+            local has_ctx = mapper.context_limit(item) ~= nil
+            local has_output = mapper.output_limit(item) ~= nil
             local has_price = type(item.pricing) == "table" and next(item.pricing :: any) ~= nil
-            if not has_ctx or not has_price then
-                local ref, reference_err = reference_registry.lookup(provider_id, provider_model)
-                if reference_err then return nil, reference_err end
-                if type(ref) == "table" then
-                    if not has_ctx and ref.context_length then item.context_length = ref.context_length end
+            if not reference_error and
+                (not has_ctx or not has_price or (not has_output and common.table_has(capabilities, "generate"))) then
+                local ref
+                ref, reference_error = reference_registry.lookup(provider_id, provider_model)
+                if reference_error then
+                    log:warn("model reference catalog enrichment failed", {
+                        profile_id = profile_id,
+                        provider_id = provider_id,
+                        error = tostring(reference_error),
+                    })
+                elseif type(ref) == "table" then
+                    if not has_ctx then item.context_length = ref.context_length end
                     if not has_price and ref.pricing then item.pricing = ref.pricing end
-                    if ref.output_tokens and not (item.outputTokenLimit or item.max_output_tokens) then
-                        item.max_output_tokens = ref.output_tokens
-                    end
+                    if not has_output then item.max_output_tokens = ref.output_tokens end
                 end
             end
-            local max_tokens, output_tokens, dimensions = mapper.model_limits(item, capabilities)
-            if existing then
-                if max_tokens == 0 then max_tokens = existing.max_tokens end
-                if output_tokens == 0 then output_tokens = existing.output_tokens end
-            end
-            local enabled = models_types.limits_configured(max_tokens, output_tokens, capabilities)
-            if existing then enabled = existing.enabled ~= false end
             local metadata = {
                 discovered = mapper.discovered_metadata(item),
                 discovery_provider = profile.provider_id,
@@ -87,15 +86,11 @@ function M.discover(profile_id: string): (any?, any?, any?)
                 capabilities = capabilities,
                 classes = classes,
                 priority = common.table_has(capabilities, "embed") and not common.table_has(capabilities, "generate") and 10 or 20,
-                max_tokens = max_tokens,
-                output_tokens = output_tokens,
-                dimensions = dimensions,
                 pricing = type(item.pricing) == "table" and item.pricing or {},
                 options = mapper.infer_options(provider_model, classes, capabilities),
                 source = models_types.SOURCE_DISCOVERED,
                 metadata = metadata,
             }
-            if not existing then card_input.enabled = enabled end
             local card, save_err = models_repo.upsert_card(card_input, nil, capabilities)
             if save_err then return nil, save_err end
             table.insert(saved, card)

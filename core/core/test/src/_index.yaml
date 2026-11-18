@@ -12,6 +12,17 @@ entries:
     component: wippy/test
     version: "*"
 
+  - name: casefold_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kickside_core
+    source: file://casefold_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      casefold: kickside.core:casefold
+
   - name: dep.kickside.realtime
     kind: ns.dependency
     component: kickside/realtime
@@ -2601,7 +2612,7 @@ entries:
   - name: audit_publication_native_source
     kind: library.lua
     source: file://audit_publication_native_source.lua
-    modules: [uuid, process]
+    modules: [uuid, process, logger]
     imports:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       sql: app:audit_publication_native_sql_adapter
@@ -2609,6 +2620,7 @@ entries:
       component_lifecycle_log: app:audit_publication_native_log_adapter
       proj_writer: kickside.core.projections.persist:writer
       jobs_wake: kickside.core.jobs.persist:wake
+      retention_notifier: kickside.core.retention:notifier
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
       component_meta: kickside.component.persist:meta_ops

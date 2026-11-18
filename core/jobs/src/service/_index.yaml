@@ -117,6 +117,18 @@ entries:
       clock: kickside.core.jobs:clock
       migration_runner: wippy.migration:runner
 
+  - name: worker_shutdown
+    kind: process.lua
+    meta:
+      comment: Finishes fenced assignment release after the pool root exits.
+    source: file://worker_shutdown.lua
+    method: main
+    modules: [channel, process, sql, logger]
+    imports:
+      config: kickside.core.jobs:config
+      claim_execution: kickside.core.jobs.persist:claim_execution
+      wake: kickside.core.jobs.persist:wake
+
   - name: worker_pool
     kind: library.lua
     meta:

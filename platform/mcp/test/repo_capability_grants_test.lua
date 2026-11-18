@@ -112,6 +112,7 @@ local function define_tests()
                 { name = "call_tool", arguments = { id = "schema_probe", arguments = { ids = { "id:one" } } } } }) do
                 local response = rpc("tools/call", request, raw_token)
                 test.eq(response.result.isError, false)
+                test.is_nil(response.result.structuredContent)
                 local payload = json.decode(response.result.content[1].text)
                 test.eq(payload.echoed.ids[1], "id:one")
             end
@@ -152,6 +153,47 @@ local function define_tests()
             local detail = rpc("tools/call", { name = "describe_trait", arguments = { id = "app:trait_dummy" } }, raw_token)
             local payload = json.decode(detail.result.content[1].text)
             test.eq(payload.prompt, "Use the declared fixture tool.")
+        end)
+
+        test.it("returns schema-valid structuredContent and JSON text for direct and proxied tools", function()
+            local trait = "app:trait_dummy"
+            for _, policy in ipairs({
+                { allowed_tool_ids = { DUMMY_TOOL_ID } },
+                { allowed_trait_ids = { trait } },
+            }) do
+                seed(consts.STATUS.ACTIVE, nil, policy)
+                if policy.allowed_trait_ids then
+                    local activation = rpc("tools/call", { name = "use_trait", arguments = { id = trait } }, raw_token)
+                    test.is_false(activation.result.isError)
+                end
+                local listing = rpc("tools/list", {}, raw_token)
+                local output_schema
+                for _, descriptor in ipairs(listing.result.tools) do
+                    if descriptor.name == "dummy" then output_schema = descriptor.outputSchema end
+                end
+                test.not_nil(output_schema)
+                for _, request in ipairs({
+                    { name = "dummy", arguments = { value = 7 } },
+                    { name = "call_tool", arguments = { id = "dummy", arguments = { value = 7 } } },
+                }) do
+                    local response, status = rpc("tools/call", request, raw_token)
+                    test.eq(status, 200)
+                    local encoded, encode_err = json.encode(response)
+                    test.is_nil(encode_err, tostring(encode_err))
+                    local wire, decode_err = json.decode(encoded)
+                    test.is_nil(decode_err, tostring(decode_err))
+                    test.is_false(wire.result.isError)
+                    test.eq(wire.result.content[1].type, "text")
+                    local structured = wire.result.structuredContent
+                    test.not_nil(structured, request.name .. " omitted structuredContent for the declared output schema")
+                    local valid, validation_err = json.validate_string(output_schema, (json.encode(structured)))
+                    test.is_true(valid, tostring(validation_err))
+                    test.eq(structured.ok, true)
+                    test.eq(structured.echoed.value, 7)
+                    local from_text = json.decode(wire.result.content[1].text)
+                    test.eq(canonical_json.encode(structured), (canonical_json.encode(from_text)))
+                end
+            end
         end)
 
         test.it("isolates transport identity without inventing a domain connection on direct and meta calls", function()

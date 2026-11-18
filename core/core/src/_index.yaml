@@ -85,6 +85,12 @@ entries:
       comment: The per-row size refusal every row-storing module applies under its own row byte limit.
     source: file://row_size.lua
 
+  - name: casefold
+    kind: library.lua
+    meta:
+      comment: Unicode 17.0.0 default full case folding for UTF-8 strings.
+    source: file://casefold.lua
+
   # The job-worker, scheduler, and their read endpoints moved to kickside/jobs,
   # which declares its own process_host / api_router requirements. The remaining
   # core services (retention sweeper, lifecycle reaper, projection proc-runner)
