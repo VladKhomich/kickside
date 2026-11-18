@@ -101,6 +101,7 @@ local sql_get = dependencies.sql_get
 local policy_read = dependencies.policy
 local pool_process = dependencies.process or process
 local pool_channel = dependencies.channel or channel
+local native_lifecycle = pool_process == process and pool_channel == channel
 local pool_events = dependencies.events or events
 local pool_registry = dependencies.registry or registry
 local pool_claim = dependencies.claim or claim
@@ -175,13 +176,35 @@ function pool.respawn_after_ns(lived_ns: number, delay_ns: number): number
     return delay_ns - lived_ns
 end
 
--- main(handover) starts the root; handover is the slot state an outdated root
--- passes to its upgraded code.
-function pool.main(handover: any?): (any?, error?)
+type Slots = { children: { [string]: boolean }, assigned: { [string]: table } }
+type Shutdown = {
+    begin: () -> any,
+    requested: () -> boolean,
+    planned: () -> boolean,
+    preserve_assignment: ((string) -> ())?,
+    cancel_new_slot: ((string) -> ())?,
+}
+
+local function slot_state(handover: any?): Slots
+    local state: Slots = { children = {}, assigned = {} }
+    if type(handover) == "table" then
+        for _, records in ipairs({ handover.slots or {}, handover.retired or {} }) do
+            for _, record in ipairs(records) do
+                local pid = type(record) == "table" and tostring(record.pid) or tostring(record)
+                state.children[pid] = true
+                if type(record) == "table" and type(record.assignment) == "table" then
+                    state.assigned[pid] = record.assignment
+                end
+            end
+        end
+    end
+    return state
+end
+
+-- The owner serializes claims, slot state and durable settlement.
+local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: Shutdown): (any?, error?, table?)
     local size = 0
     local pid = tostring(pool_process.pid())
-    local events_ch = pool_process.events()
-    pool_process.set_options({ trap_links = true, upgradable = true })
     local subscription, subscription_err = pool_events.subscribe("registry", "registry.commit")
     if subscription_err or not subscription then
         return nil, unavailable("job worker pool registry subscription unavailable", subscription_err)
@@ -191,10 +214,11 @@ function pool.main(handover: any?): (any?, error?)
     local wake_ch = pool_process.listen(cfg.WAKE_TOPIC)
     local registered, standby_stopped, register_err, stop_kind = proc_supervisor.claim_singleton(cfg.POOL_NAME, events_ch, { process = pool_process, registry = pool_names, channel = pool_channel })
     if standby_stopped or register_err or not registered then
+        if stop_kind == pool_process.event.OUTDATED and native_lifecycle then return nil, nil, {} end
         subscription:close()
         pool_process.unlisten(idle_ch)
         pool_process.unlisten(wake_ch)
-        if stop_kind == pool_process.event.OUTDATED then return pool_process.upgrade() end
+        if stop_kind == pool_process.event.OUTDATED then return nil, nil, {} end
         if standby_stopped then return nil, nil end
         return nil, unavailable("job worker pool process registration failed", register_err)
     end
@@ -219,7 +243,7 @@ function pool.main(handover: any?): (any?, error?)
     local slot_of: { [string]: integer } = {}
     local live: { [integer]: string } = {}
     -- Retired slots remain children until their monitored EXIT arrives.
-    local children: { [string]: boolean } = {}
+    local children = state.children
     local retiring: { [string]: boolean } = {}
     local draining = false
     local admitted = false
@@ -227,7 +251,7 @@ function pool.main(handover: any?): (any?, error?)
     local started_ns: { [integer]: number } = {}
     local due_ns: { [integer]: number } = {}
     local idle: { [string]: string } = {}
-    local assigned: { [string]: table } = {}
+    local assigned = state.assigned
     local assignment_epoch: { [string]: integer } = {}
     local deadline_ns: number? = nil
     local deadline_kind: string? = nil
@@ -361,7 +385,7 @@ function pool.main(handover: any?): (any?, error?)
     -- due_evidence is a due backlog read before this dispatch's claim: every row
     -- it counts was committed before the claim read its candidates.
     local function dispatch_idle(reclaim_due: boolean, due_evidence: table?): ()
-        if draining or not admitted then return end
+        if draining or not admitted or shutdown.requested() then return end
         local policy = active_policy
         if not policy then return end
         -- Apply queued capacity reports before the authoritative scan, under
@@ -401,18 +425,18 @@ function pool.main(handover: any?): (any?, error?)
             repeat
                 local count, pass_err = pool_reclaim.reclaim_expired(db, dbtype, reclaim_limit)
                 if pass_err then reclaim_err = pass_err; break end
-            until count < reclaim_limit
-            if not reclaim_err then
+            until count < reclaim_limit or shutdown.requested()
+            if not reclaim_err and not shutdown.requested() then
                 repeat
                     local _, pass_err, processed = pool_reclaim.reclaim_terminated(db, dbtype, reclaim_limit)
                     if pass_err then reclaim_err = pass_err; break end
-                until processed < reclaim_limit
+                until processed < reclaim_limit or shutdown.requested()
             end
-            if not reclaim_err then
+            if not reclaim_err and not shutdown.requested() then
                 repeat
                     local count, pass_err = pool_reclaim.close_lost_runs(db, dbtype, reclaim_limit)
                     if pass_err then reclaim_err = pass_err; break end
-                until (count or 0) < reclaim_limit
+                until (count or 0) < reclaim_limit or shutdown.requested()
             end
             if reclaim_err then logger:warn("job_worker reclaim failed: " .. tostring(reclaim_err)) end
         end
@@ -422,7 +446,8 @@ function pool.main(handover: any?): (any?, error?)
         local claim_at: string? = nil
         local refused_ids: { string } = {}
         local function assign(batch: table[]): ()
-            for _, job in ipairs(batch) do
+            local offers: { table } = {}
+            for i, job in ipairs(batch) do
                 local worker_id = tostring(job.worker_id)
                 idle[worker_id] = nil
                 local run_ctx = job.run_ctx
@@ -430,24 +455,33 @@ function pool.main(handover: any?): (any?, error?)
                 local epoch = (assignment_epoch[worker_id] or 0) + 1
                 assignment_epoch[worker_id] = epoch
                 assigned[worker_id] = { job = job, run_id = run_ctx.id, epoch = epoch }
-                local _, send_err = pool_process.send(worker_id, cfg.ASSIGN_TOPIC,
-                    { job = job, run_ctx = run_ctx, epoch = epoch })
-                if send_err and errors.is(send_err, errors.NOT_FOUND) then
-                    -- A slot recycles itself on a new registry version; one that
-                    -- exited after its idle report is settled by its monitored
-                    -- EXIT, which releases this unstarted assignment.
-                    logger:info("job_worker slot exited before its assignment worker=" .. worker_id)
-                elseif send_err then
-                    logger:error("job_worker assignment send failed worker=" .. worker_id .. ": " .. tostring(send_err))
-                    pool_process.cancel(worker_id, job_types.LOOP_CANCEL_GRACE)
+                offers[i] = { job = job, run_ctx = run_ctx, epoch = epoch }
+            end
+            -- Publish every committed claim before a send can yield. If the
+            -- claim returned during shutdown, transfer its proof as well.
+            if shutdown.requested() and shutdown.preserve_assignment then
+                for _, offer in ipairs(offers) do shutdown.preserve_assignment(tostring(offer.job.worker_id)) end
+                return
+            end
+            for _, offer in ipairs(offers) do
+                if not shutdown.requested() then
+                    local worker_id = tostring(offer.job.worker_id)
+                    local _, send_err = pool_process.send(worker_id, cfg.ASSIGN_TOPIC, offer)
+                    if send_err and errors.is(send_err, errors.NOT_FOUND) then
+                        -- EXIT releases the assignment if the slot has recycled.
+                        logger:info("job_worker slot exited before its assignment worker=" .. worker_id)
+                    elseif send_err then
+                        logger:error("job_worker assignment send failed worker=" .. worker_id .. ": " .. tostring(send_err))
+                        pool_process.cancel(worker_id, job_types.LOOP_CANCEL_GRACE)
+                    end
                 end
             end
         end
-        if #worker_ids > 0 then
+        if #worker_ids > 0 and not shutdown.requested() then
             local awaited, awaited_err = awaited_types()
             if awaited_err or not awaited then
                 claim_err = awaited_err
-            else
+            elseif not shutdown.requested() then
                 local awaited_set: { [string]: boolean } = {}
                 for _, job_type in ipairs(awaited) do awaited_set[job_type] = true end
                 local busy = 0
@@ -472,6 +506,10 @@ function pool.main(handover: any?): (any?, error?)
                     assign(batch)
                 end
             end
+        end
+        if shutdown.requested() then
+            db:release()
+            return
         end
         -- An idle general slot claims any claimable due row, so a dispatch that
         -- leaves such work unclaimed is a fault to surface at once. A backlog
@@ -540,40 +578,46 @@ function pool.main(handover: any?): (any?, error?)
     local function release_exited_assignment(worker_id: string): error?
         local assignment = assigned[worker_id]
         if not assignment then return end
-        assigned[worker_id] = nil
         local db, db_err = sql_get()
         if db_err or not db then
+            assigned[worker_id] = nil
             logger:error("job_worker exited assignment db unavailable: " .. tostring(db_err))
             return unavailable("job worker exited assignment database unavailable", db_err)
         end
         local released, release_err = pool_claim_execution.release_unstarted(db, assignment.job, worker_id, assignment.run_id)
         db:release()
+        assigned[worker_id] = nil
         if release_err then
             logger:error("job_worker exited assignment release failed: " .. tostring(release_err))
             return release_err
-        elseif released then
-            dispatch_idle(false)
         end
+        if released then dispatch_idle(false) end
     end
 
     local function drain(): error?
         draining = true
-        local deadline = pool_time.after(job_types.LOOP_CANCEL_GRACE)
-        for child_pid in pairs(children) do
-            -- Idle retirees already have their exit request. Busy retirees
-            -- still need cancellation when the whole service shuts down.
-            if not retiring[child_pid] or assigned[child_pid] then
-                local _, cancel_err = pool_process.cancel(child_pid, "job worker pool draining")
-                -- A child can exit before its queued EXIT is consumed. Its monitor
-                -- still confirms the exit; every other cancellation error fails drain.
-                if cancel_err and not errors.is(cancel_err, errors.NOT_FOUND) then
-                    return unavailable("job worker pool drain cancellation failed", cancel_err)
+        local deadline = shutdown.begin()
+        if not native_lifecycle then
+            for child_pid in pairs(children) do
+                if not retiring[child_pid] or assigned[child_pid] then
+                    local _, cancel_err = pool_process.cancel(child_pid, "job worker pool draining")
+                    if cancel_err and not errors.is(cancel_err, errors.NOT_FOUND) then
+                        return unavailable("job worker pool drain cancellation failed", cancel_err)
+                    end
                 end
             end
         end
-        while next(children) ~= nil do
-            local selected = pool_channel.select({ events_ch:case_receive(), idle_ch:case_receive(), deadline:case_receive() })
-            if selected.channel == deadline then
+        local function coordinating_slots(): boolean
+            for child_pid in pairs(children) do
+                if not shutdown.planned() or not assigned[child_pid] then return true end
+            end
+            return false
+        end
+        while coordinating_slots() do
+            local cases = { events_ch:case_receive(), idle_ch:case_receive() }
+            if deadline then cases[#cases + 1] = deadline:case_receive() end
+            local selected = pool_channel.select(cases)
+            if deadline and selected.channel == deadline then
                 return unavailable("job worker pool drain timed out", nil)
             elseif selected.channel == events_ch then
                 local event = selected.value
@@ -609,9 +653,11 @@ function pool.main(handover: any?): (any?, error?)
         assignment_epoch[tostring(child_pid)] = 0
         started_ns[slot] = now
         due_ns[slot] = nil
+        if shutdown.requested() and shutdown.cancel_new_slot then shutdown.cancel_new_slot(tostring(child_pid)) end
     end
 
     refresh_size = function(now: number, candidate: table?): error?
+        if shutdown.requested() then return nil end
         if not admitted then
             if size_retry_ns ~= nil and now < size_retry_ns then return nil end
             local ready, schema_err = pool_schema_ready()
@@ -633,10 +679,12 @@ function pool.main(handover: any?): (any?, error?)
             size_retry_ns = now + delay_ns
             return detect_err or unavailable("Pool size is unavailable", nil)
         end
+        if shutdown.requested() then return nil end
         active_policy = policy
         dispatch_retry_delay_ms = (policy :: any).slot_retry_after_ms
         size_retry_ns = nil
         for _, slot in ipairs(pool.resize_slots(size, desired)) do
+            if shutdown.requested() then return nil end
             if desired > size then
                 spawn(slot)
             else
@@ -667,17 +715,14 @@ function pool.main(handover: any?): (any?, error?)
             local child_pid = tostring(record.pid)
             slot_of[child_pid] = slot
             live[slot] = child_pid
-            children[child_pid] = true
             started_ns[slot] = tonumber(record.started_ns) or 0
             assignment_epoch[child_pid] = math.floor(tonumber(record.epoch) or 0) :: integer
-            if type(record.assignment) == "table" then assigned[child_pid] = record.assignment end
             if type(record.idle_version) == "string" then idle[child_pid] = record.idle_version end
         end
         for _, record in ipairs(state.retired or {}) do
             local child_pid = type(record) == "table" and tostring(record.pid) or tostring(record)
-            children[child_pid], retiring[child_pid] = true, true
+            retiring[child_pid] = true
             if type(record) == "table" then
-                assigned[child_pid] = record.assignment
                 assignment_epoch[child_pid] = record.epoch
             end
         end
@@ -720,7 +765,7 @@ function pool.main(handover: any?): (any?, error?)
     -- Recover due work and leases before processing messages. There is no idle
     -- rescan timer; only durable deadlines discovered here can arm one.
     dispatch_idle(true)
-    if admitted then retention_driver.run(pool_time.now():unix_nano()) end
+    if admitted and not shutdown.requested() then retention_driver.run(pool_time.now():unix_nano()) end
 
     local wait_timer: any = nil
     local wait_timer_at: number? = nil
@@ -797,10 +842,12 @@ function pool.main(handover: any?): (any?, error?)
                 return nil, drain_err
             elseif event.kind == pool_process.event.OUTDATED then
                 logger:info("job_worker pool root is outdated, upgrading in place with its slots")
-                subscription:close()
-                pool_process.unlisten(idle_ch)
-                pool_process.unlisten(wake_ch)
-                return pool_process.upgrade(nil, handover_state())
+                if not native_lifecycle then
+                    subscription:close()
+                    pool_process.unlisten(idle_ch)
+                    pool_process.unlisten(wake_ch)
+                end
+                return nil, nil, handover_state()
             elseif event.kind == pool_process.event.EXIT then
                 local from = tostring(event.from)
                 children[from] = nil
@@ -840,8 +887,9 @@ function pool.main(handover: any?): (any?, error?)
                 retention_driver.run(now)
             end
         end
-        if admitted then
+        if admitted and not shutdown.requested() then
             for slot, at in pairs(due_ns) do
+                if shutdown.requested() then break end
                 if at <= now then spawn(slot) end
             end
         end
@@ -852,8 +900,170 @@ function pool.main(handover: any?): (any?, error?)
             dispatch_idle(reclaim_due)
         end
         local retention_deadline = retention_driver.deadline()
-        if admitted and retention_deadline ~= nil and retention_deadline <= now then
+        if admitted and not shutdown.requested() and retention_deadline ~= nil and retention_deadline <= now then
             retention_driver.run(now)
+        end
+    end
+end
+
+-- main(handover) keeps the shutdown deadline selectable while the owner
+-- yields to SQL, process operations or subscription cleanup.
+function pool.main(handover: any?): (any?, error?)
+    local lifecycle = pool_process.events()
+    pool_process.set_options({ trap_links = true, upgradable = true })
+    local state = slot_state(handover)
+    if not native_lifecycle then
+        -- Injected schedulers drive their own event and timer selection.
+        local result, err, upgrade = run_pool(handover, lifecycle, state, {
+            begin = function() return pool_time.after(job_types.LOOP_CANCEL_GRACE) end,
+            requested = function() return false end,
+            planned = function() return false end,
+        })
+        if upgrade then
+            if next(upgrade) == nil then return pool_process.upgrade() end
+            return pool_process.upgrade(nil, upgrade)
+        end
+        return result, err
+    end
+
+    local events_ch = channel.new(0)
+    local drain_started = channel.new(1)
+    local finished = channel.new(1)
+    local cleanup_ready = channel.new(0)
+    local pending: { table } = {}
+    local head, tail = 1, 0
+    local outdated: table? = nil
+    local upgrading = false
+    local deadline: any = nil
+    local shutdown_at: number? = nil
+    local planned = false
+    local cleanup_pid: string? = nil
+    local cleanup_err: error? = nil
+    local cleanup_requested = false
+    local cleanup_started = false
+    local function assignment_proof(assignment: table?): table?
+        if not assignment or not assignment.job.lease_token then return nil end
+        local job = assignment.job
+        return { run_id = assignment.run_id,
+            job = { id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq } }
+    end
+
+    local function start_cleanup(assignments: table): ()
+        cleanup_requested = true
+        coroutine.spawn(function()
+            local pid, err = process.spawn("kickside.core.jobs.service:worker_shutdown", cfg.process_host(),
+                tostring(process.pid()), not planned, assignments)
+            if pid then cleanup_pid = tostring(pid) end
+            cleanup_err = err
+            cleanup_started = true
+            cleanup_ready:close()
+        end)
+    end
+
+    local function stop_slot(pid: string): ()
+        -- The deadline owner can cancel slots while dispatch is blocked and
+        -- while a rollback removes the shutdown process definition.
+        coroutine.spawn(function()
+            local _, err = process.cancel(pid, "job worker pool draining")
+            if err and not errors.is(err, errors.NOT_FOUND) then
+                logger:error("job worker pool slot cancellation failed: " .. tostring(err))
+            end
+        end)
+    end
+
+    local function start_shutdown(reason: string?): ()
+        if shutdown_at then return end
+        -- The supervisor uses the same stop event for service replacement and
+        -- service stop, so it cannot authorize killing a running execution.
+        planned = reason == "service stopping" or reason == "service context canceled"
+        local grace = assert(time.parse_duration(job_types.LOOP_CANCEL_GRACE))
+        shutdown_at = pool_time.now():unix_nano() + grace:nanoseconds()
+        deadline = pool_time.after(job_types.LOOP_CANCEL_GRACE)
+        for pid in pairs(state.children) do
+            if not planned or not state.assigned[pid] then stop_slot(pid) end
+        end
+        local assignments: table = {}
+        for pid, assignment in pairs(state.assigned) do assignments[pid] = assignment_proof(assignment) end
+        if next(assignments) then start_cleanup(assignments) end
+    end
+
+    local function preserve_assignment(pid: string): ()
+        local proof = assignment_proof(state.assigned[pid])
+        if not proof then return end
+        local assignment = { [pid] = proof }
+        if not cleanup_requested then
+            start_cleanup(assignment)
+            return
+        end
+        if not cleanup_started then cleanup_ready:receive() end
+        if not cleanup_pid then return end
+        local _, err = process.send(cleanup_pid, cfg.SHUTDOWN_TOPIC, assignment)
+        if err then logger:error("job worker shutdown assignment handoff failed: " .. tostring(err)) end
+    end
+    local result: any = nil
+    local err: error? = nil
+    local upgrade: table? = nil
+    coroutine.spawn(function()
+        result, err, upgrade = run_pool(handover, events_ch, state, {
+            begin = function() drain_started:send(true) end,
+            requested = function() return shutdown_at ~= nil end,
+            planned = function() return planned end,
+            preserve_assignment = preserve_assignment,
+            cancel_new_slot = stop_slot,
+        })
+        finished:send(true)
+    end)
+
+    local owner_finished = false
+    while true do
+        if shutdown_at and pool_time.now():unix_nano() >= shutdown_at then
+            return nil, unavailable("job worker pool drain timed out", nil)
+        end
+        if owner_finished and (not cleanup_requested or cleanup_started) then
+            if cleanup_err then return nil, unavailable("job worker pool shutdown start failed", cleanup_err) end
+            if upgrade then return pool_process.upgrade(nil, upgrade) end
+            return result, err
+        end
+
+        local cases = { finished:case_receive(), drain_started:case_receive() }
+        if not upgrading then cases[#cases + 1] = lifecycle:case_receive() end
+        if head <= tail then
+            cases[#cases + 1] = events_ch:case_send(pending[head])
+        elseif outdated and not shutdown_at then
+            cases[#cases + 1] = events_ch:case_send(outdated)
+        end
+        if deadline then cases[#cases + 1] = deadline:case_receive() end
+        if owner_finished and not cleanup_started then cases[#cases + 1] = cleanup_ready:case_receive() end
+
+        local selected = channel.select(cases)
+        if selected.channel == finished then
+            owner_finished = true
+        elseif selected.channel == lifecycle then
+            local event = selected.value
+            if selected.ok == false then return nil, unavailable("job worker pool lifecycle channel closed", nil) end
+            if type(event) == "table" then
+                if event.kind == process.event.OUTDATED then
+                    outdated = event
+                else
+                    if event.kind == process.event.CANCEL then start_shutdown(event.reason) end
+                    tail = tail + 1
+                    pending[tail] = event
+                end
+            end
+        elseif selected.channel == events_ch then
+            if head <= tail then
+                pending[head] = nil
+                head = head + 1
+            else
+                -- The owner has reached the upgrade boundary. All captured
+                -- events were delivered. Any newer events stay on the runtime
+                -- mailbox, which the previous revision can read directly.
+                outdated, upgrading = nil, true
+            end
+        elseif selected.channel == drain_started then
+            start_shutdown(nil)
+        elseif selected.channel == deadline then
+            return nil, unavailable("job worker pool drain timed out", nil)
         end
     end
 end
