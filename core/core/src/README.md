@@ -36,9 +36,9 @@ hierarchy.
 ## Unicode case folding
 
 Import `kickside.core:casefold` and call `fold(s)` to build case-insensitive
-keys or search text. It uses the Unicode 17.0.0 default full mappings and
-preserves accents and combining marks as supplied. Malformed UTF-8 returns
-`nil` and a native `INVALID` error.
+keys or search text. It applies the Unicode 17.0.0 default full mappings
+independently of Unicode normalization. Malformed UTF-8 returns `nil` and a
+native `INVALID` error.
 
 ## Per-user provisioning
 
