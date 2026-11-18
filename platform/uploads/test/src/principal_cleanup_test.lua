@@ -86,6 +86,10 @@ local run_cases = test.run_cases(function()
             test.eq(count(other), 1)
             db, open_err = sql.get("app:db")
             test.is_nil(open_err, tostring(open_err))
+            local events, events_err = db:query("SELECT external_id FROM kickside_event WHERE external_id IN ($1, $2)",
+                owned_ids)
+            test.is_nil(events_err, tostring(events_err))
+            test.eq(#events, 0, "principal teardown does not emit foreground upload events")
             for _, spec in ipairs({ { "kickside_upload_artifacts", "artifact_id", artifact_id },
                 { "kickside_upload_chunks", "chunk_id", chunk_id },
                 { "kickside_upload_artifact_blobs", "blob_id", blob_id } }) do

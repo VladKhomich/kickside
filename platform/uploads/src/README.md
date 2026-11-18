@@ -135,6 +135,15 @@ Knowledge ingestion uses this flow: `kickside.knowledge.api:upload_token` mints
 a token for `kickside.knowledge.injection:on_upload_complete`, and the
 Knowledge URL fetch tool attaches one before it stores fetched content.
 
+## Deletion
+
+Deleting a single upload publishes its deletion on the owner's Uploads thread.
+Deleting an Uploads component or principal drains the stored owner's upload rows,
+artifacts, bytes, and read model without provisioning a thread. Type-specific
+delete stages that only cascade to another upload of the same owner can declare
+`delete_scope: single_upload`. The owner sweep visits those uploads directly.
+Other registered delete stages retain their stored uploader execution identity.
+
 ## Packed storage and delivery
 
 Available starting with Uploads 0.3.2. The default storage adapter accepts

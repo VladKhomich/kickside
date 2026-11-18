@@ -380,6 +380,7 @@ entries:
     source: file://uploads.lua
     modules: [uuid, time, hash, logger]
     imports:
+      binding_errors: kickside.uploads.binding:binding_errors
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       upload_response: kickside.uploads.api:upload_response

@@ -3,6 +3,7 @@ local time = require("time")
 local hash = require("hash")
 local logger = require("logger")
 local execution_identity = require("execution_identity")
+local binding_errors = require("binding_errors")
 
 local upload_record_repo = require("upload_record_repo")
 local upload_query_repo = require("upload_query_repo")
@@ -155,12 +156,12 @@ local function release_storage(upload: any, storage_override: any?): error?
     return nil
 end
 
-local function invoke_on_delete(upload): error?
+local function invoke_on_delete(upload, owner_teardown: boolean): error?
     if not upload.type_id or upload.type_id == "" then
         return nil
     end
 
-    local on_delete, err = upload_type.get_on_delete(upload.type_id)
+    local on_delete, err = upload_type.get_on_delete(upload.type_id, owner_teardown)
     if err then return typed(err, errors.UNAVAILABLE, "infrastructure", "upload delete stages unavailable: ") end
     if type(on_delete) ~= "table" then
         return failure("upload delete stages returned no result", errors.INTERNAL, "infrastructure", true)
@@ -424,7 +425,7 @@ function upload_lib.retry_upload(uuid)
     return upload
 end
 
-function upload_lib.delete_upload(uuid)
+local function delete_upload(uuid, teardown_owner: string?)
     local upload, err = upload_query_repo.get(uuid)
     if err then
         if errors.is(err, errors.NOT_FOUND) then
@@ -433,9 +434,12 @@ function upload_lib.delete_upload(uuid)
         return nil, typed(err, errors.UNAVAILABLE, "infrastructure", "")
     end
     if not upload then return nil, failure("upload lookup returned no result", errors.INTERNAL, "infrastructure", true) end
+    if teardown_owner and upload.actor_id ~= teardown_owner then
+        return nil, failure("upload is owned by another principal", errors.PERMISSION_DENIED, "subject")
+    end
 
     cancel_processing_job(upload)
-    local stage_err = invoke_on_delete(upload)
+    local stage_err = invoke_on_delete(upload, teardown_owner ~= nil)
     if stage_err then return nil, stage_err end
 
     -- Release the original bytes plus this upload's artifacts/chunks first. A cleanup
@@ -445,15 +449,62 @@ function upload_lib.delete_upload(uuid)
         return nil, release_err
     end
 
-    -- Project the deletion onto the actor's uploads thread (automation source).
-    local emitted, emit_err = uploads_events.emit(tostring(upload.actor_id), upload_types.EVENT.DELETED,
-        { upload_id = uuid }, uuid, upload.trace_context)
-    if emit_err then return nil, typed(emit_err, errors.UNAVAILABLE, "infrastructure", "upload deletion event failed: ") end
-    if emitted ~= true then
-        return nil, failure("upload deletion event reported no result", errors.UNAVAILABLE, "infrastructure", true)
+    -- Only a foreground deletion changes the projection of a live Uploads thread.
+    -- Component and principal teardown erase their owner read model directly.
+    if not teardown_owner then
+        local emitted, emit_err = uploads_events.emit(tostring(upload.actor_id), upload_types.EVENT.DELETED,
+            { upload_id = uuid }, uuid, upload.trace_context)
+        if emit_err then return nil, typed(emit_err, errors.UNAVAILABLE, "infrastructure", "upload deletion event failed: ") end
+        if emitted ~= true then
+            return nil, failure("upload deletion event reported no result", errors.UNAVAILABLE, "infrastructure", true)
+        end
     end
 
     return upload_record_repo.delete(uuid)
+end
+
+function upload_lib.delete_upload(uuid)
+    return delete_upload(uuid)
+end
+
+-- Trusted component and principal lifecycle callers supply the stored owner.
+function upload_lib.purge_owner(actor_id: string): any
+    local deleted = 0
+    while true do
+        local rows, list_err = upload_query_repo.list_by_actor(actor_id, 100, 0)
+        if list_err or type(rows) ~= "table" then
+            local err = list_err and binding_errors.from(list_err, errors.UNAVAILABLE, "upload_list_failed", "list uploads")
+                or binding_errors.new(errors.INTERNAL, "upload owner scan returned no rows result", "upload_list_failed", true)
+            return { success = false, error = err, deleted = deleted }
+        end
+        if #rows == 0 then break end
+        for _, row in ipairs(rows) do
+            local upload_id = tostring(row.uuid)
+            local result, delete_err = delete_upload(upload_id, actor_id)
+            if errors.is(delete_err, errors.NOT_FOUND) then
+                -- A delete stage can report NOT_FOUND while the upload still exists.
+                local remaining, read_err = upload_query_repo.get(upload_id)
+                if not remaining and errors.is(read_err, errors.NOT_FOUND) then
+                    result, delete_err = { deleted = true }, nil
+                end
+            end
+            if delete_err or not result then
+                local err = delete_err and binding_errors.from(delete_err, errors.UNAVAILABLE, "upload_delete_failed")
+                    or binding_errors.new(errors.INTERNAL, "upload deletion returned no result", "upload_delete_failed", true)
+                return { success = false, error = err, deleted = deleted }
+            end
+            deleted = deleted + 1
+        end
+    end
+
+    local read_rows, read_err = upload_read_model.delete_for_actor(actor_id)
+    if read_err or read_rows == nil then
+        local err = read_err and binding_errors.from(read_err, errors.UNAVAILABLE, "read_model_cleanup_failed")
+            or binding_errors.new(errors.INTERNAL, "upload read-model owner cleanup returned no result",
+                "read_model_cleanup_missing", true)
+        return { success = false, error = err, deleted = deleted }
+    end
+    return { success = true, deleted = deleted, read_rows_deleted = read_rows }
 end
 
 return require("uploads_presigned").attach(upload_lib, {

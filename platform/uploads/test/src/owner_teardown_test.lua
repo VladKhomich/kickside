@@ -2,7 +2,7 @@ local test = require("test")
 local uuid = require("uuid")
 local records = require("records")
 local query = require("query")
-local uploads = require("uploads")
+local upload_type = require("upload_type")
 local pipeline = require("pipeline")
 local teardown = require("teardown")
 local context = require("context")
@@ -17,7 +17,11 @@ return {run = test.run_cases(function()
             test.is_nil(create_err)
             test.not_nil(created)
             local original = pipeline.upload_stage_executor
+            local original_stages = upload_type.get_on_delete
             local calls = 0
+            upload_type.get_on_delete = function()
+                return {{func = "app:test_delete_stage"}}, nil
+            end
             pipeline.upload_stage_executor = function()
                 return {call = function()
                     calls = calls + 1
@@ -28,6 +32,7 @@ return {run = test.run_cases(function()
             end
             local ok, result = pcall(teardown.handle, {})
             pipeline.upload_stage_executor = original
+            upload_type.get_on_delete = original_stages
             local retained, read_err = query.get(id)
             local _, cleanup_err = records.delete(id)
             test.is_nil(cleanup_err)
@@ -45,16 +50,23 @@ return {run = test.run_cases(function()
             context.owner = "teardown-concurrent:" .. uuid.v4()
             test.not_nil((records.create(id, context.owner, 1, "text/plain",
                 "app:uploads", id .. ".txt", "text", {}, "completed")))
-            local original = uploads.delete_upload
+            local original = pipeline.upload_stage_executor
+            local original_stages = upload_type.get_on_delete
             local calls = 0
-            uploads.delete_upload = function(upload_id: string)
-                calls = calls + 1
-                local _, err = records.delete(upload_id)
-                if err then return nil, err end
-                return nil, errors.new({kind = errors.NOT_FOUND, message = "concurrently removed"})
+            upload_type.get_on_delete = function()
+                return {{func = "app:test_delete_stage"}}, nil
+            end
+            pipeline.upload_stage_executor = function()
+                return {call = function()
+                    calls = calls + 1
+                    local _, err = records.delete(id)
+                    if err then return nil, err end
+                    return nil, errors.new({kind = errors.NOT_FOUND, message = "concurrently removed"})
+                end}, nil
             end
             local ok, result = pcall(teardown.handle, {})
-            uploads.delete_upload = original
+            pipeline.upload_stage_executor = original
+            upload_type.get_on_delete = original_stages
             test.is_true(ok, tostring(result))
             test.is_true(result.success)
             test.eq(result.deleted, 1)

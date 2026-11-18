@@ -242,11 +242,15 @@ function upload_type.get_archive_preparers()
 end
 
 -- Get on_delete lifecycle stages for a type
-function upload_type.get_on_delete(type_id)
+function upload_type.get_on_delete(type_id, owner_teardown: boolean?)
     local list = {}
     local entry = upload_type.get_by_id(type_id)
     if entry and entry.data and type(entry.data.on_delete) == "table" then
-        for _, s in ipairs(entry.data.on_delete) do list[#list + 1] = s end
+        for _, stage in ipairs(entry.data.on_delete) do
+            if not owner_teardown or stage.delete_scope ~= "single_upload" then
+                list[#list + 1] = stage
+            end
+        end
     end
     -- Universally-dropped-in delete stages run on every upload delete (e.g. reap the
     -- workspace file component that pointed at it).
