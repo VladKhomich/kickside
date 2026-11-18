@@ -209,12 +209,8 @@ end
 -- The caller has inserted a new thread on tx. Its first cleanup page follows
 -- the old owner's pages so acknowledgments can still identify their receipt.
 function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
-    local lock = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local rows, err = tx:query("SELECT started,next_page_seq FROM " .. thread_fence.TABLE
-        .. " WHERE thread_id=$1" .. lock, {thread_id})
-    if err then return nil, errors.wrap(err, "read prior thread cleanup fence") end
-    if type(rows) ~= "table" then return nil, response_error("fence.rows") end
-    local fence = rows[1]
+    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
+    if fence_err then return nil, fence_err end
     if not fence then
         local retained, read_err = tx:query("SELECT MAX(page_seq) AS page_seq FROM " .. RECEIPT
             .. " WHERE thread_id=$1", {thread_id})
@@ -232,7 +228,14 @@ function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string
     end
     local sequence = math.tointeger(fence.next_page_seq)
     if not sequence or sequence < 0 then return nil, response_error("fence.next_page_seq") end
-    if fence.started ~= true and fence.started ~= 1 then return sequence, nil end
+    if not fence.started then return sequence, nil end
+
+    if fence.completed_at == nil and sequence > 0 then
+        -- The successful insert proves the old thread is gone. Published Core
+        -- could commit that deletion before acknowledging its final Jobs page.
+        local _, ack_err = M.ack_tx(tx, dbtype, thread_id, sequence - 1, true)
+        if ack_err then return nil, ack_err end
+    end
 
     local reopened, update_err = tx:query([[UPDATE kickside_job_thread_cleanup SET started=FALSE,completed_at=NULL
         WHERE thread_id=$1 AND completed_at IS NOT NULL
@@ -354,10 +357,9 @@ function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer): (integ
         local tx, begin_err = sql_boundary.begin(db, "completed cleanup leftover transaction failed", "transaction", response_error)
         if begin_err then return nil, begin_err end
         if not tx then return nil, response_error("transaction") end
-        local fence, lock_err = thread_fence.lock(tx, thread_id)
+        local fence, lock_err = thread_fence.lock_existing(tx, dbtype, thread_id)
         if lock_err then return nil, sql_boundary.rollback(tx, lock_err, "thread cleanup rollback failed") end
-        if not fence then return nil, sql_boundary.rollback(tx, response_error("fence"), "thread cleanup rollback failed") end
-        if fence.completed_at ~= nil then
+        if fence and fence.completed_at ~= nil then
             local result, run_err = run_page(tx, dbtype, thread_id, limit)
             if run_err then return nil, sql_boundary.rollback(tx, run_err, "thread cleanup rollback failed") end
             total = total + (result :: table).processed
@@ -370,9 +372,8 @@ end
 
 function M.ack_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_seq: integer,
         thread_done: boolean): (boolean?, error?)
-    local fence, fence_err = thread_fence.lock(tx, thread_id)
+    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
     if fence_err then return nil, fence_err end
-    if not fence then return nil, response_error("fence") end
     local rows, read_err = tx:query("SELECT acknowledged_at,done FROM " .. RECEIPT
         .. " WHERE thread_id=$1 AND page_seq=$2", {thread_id, page_seq})
     if read_err then return nil, errors.wrap(read_err, "thread cleanup acknowledgment receipt read failed") end
@@ -381,14 +382,14 @@ function M.ack_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_s
         return nil, errors.new({message = "unfinished thread cleanup page cannot complete its owner",
             kind = errors.CONFLICT, retryable = true})
     end
-    if rows[1].acknowledged_at == nil then
-        local result, update_err = tx:execute("UPDATE " .. RECEIPT
-            .. " SET acknowledged_at=$1 WHERE thread_id=$2 AND page_seq=$3 AND acknowledged_at IS NULL",
-            {clock.now(dbtype), thread_id, page_seq})
-        if update_err then return nil, errors.wrap(update_err, "thread cleanup receipt acknowledgment failed") end
-        local _, proof_err = affected(result, "thread cleanup receipt acknowledgment", 1)
-        if proof_err then return nil, proof_err end
-    end
+    if rows[1].acknowledged_at ~= nil then return true, nil end
+    if not fence then return nil, response_error("fence") end
+    local acknowledged, ack_err = tx:execute("UPDATE " .. RECEIPT
+        .. " SET acknowledged_at=$1 WHERE thread_id=$2 AND page_seq=$3 AND acknowledged_at IS NULL",
+        {clock.now(dbtype), thread_id, page_seq})
+    if ack_err then return nil, errors.wrap(ack_err, "thread cleanup receipt acknowledgment failed") end
+    local _, ack_proof = affected(acknowledged, "thread cleanup receipt acknowledgment", 1)
+    if ack_proof then return nil, ack_proof end
     if thread_done and fence.started and fence.completed_at == nil and tonumber(fence.next_page_seq) == page_seq + 1 then
         local result, update_err = tx:execute("UPDATE " .. thread_fence.TABLE
             .. " SET completed_at=$1 WHERE thread_id=$2", {clock.now(dbtype), thread_id})

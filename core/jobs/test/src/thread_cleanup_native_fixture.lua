@@ -1,10 +1,14 @@
-local M: any = {}
+local M: any = {TABLE = "kickside_job_thread_cleanup"}
 function M.reset(api, mode, stage, source)
     M.api, M.mode, M.stage, M.source = api, mode, stage, source
     M.primary, M.missing, M.value = nil, false, nil
     M.rollbacks, M.commits, M.writes = 0, 0, 0
     M.candidates, M.continuations, M.mutations, M.encodes, M.decodes = 0, 0, 0, 0, 0
     M.fence = {next_page_seq = (mode == "replay" or mode == "prior") and 1 or 0}
+    if api == "ack" or api == "reclaim" then
+        M.fence.started, M.fence.next_page_seq = true, 1
+    end
+    if api == "reclaim" then M.fence.completed_at = "completed" end
     M.row = {thread_id = "thread", page_seq = 0, processed = 1, done = true,
         discarded_json = '{"kickside_job":1}', unresolved_json = '{}',
         acknowledged_at = mode == "already" and "acknowledged" or nil}
@@ -19,6 +23,7 @@ function M.result(stage, value)
     return value, nil
 end
 function M.lock(...): (any?, error?) return M.result("fence", M.fence) end
+M.lock_existing = M.lock
 function M.database(): any
     local db: any = {}
     function db:begin() return M.result("begin", self) end

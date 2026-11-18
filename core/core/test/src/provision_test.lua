@@ -199,8 +199,11 @@ local function define_tests()
             test.not_nil(after[1].completed_at)
             test.eq(tonumber(after[1].next_page_seq), tonumber(before[1].next_page_seq) + 1)
 
-            -- A published retention pass can prune the fence while acknowledged receipts remain.
-            assert(d:execute("DELETE FROM kickside_job_thread_cleanup WHERE thread_id=$1", {id}))
+            -- The fence can age out while acknowledged receipts are still retained.
+            assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {id}))
+            assert(jobs.retention_sweep())
+            test.eq(count(d, "kickside_job_thread_cleanup", "thread_id", id), 0)
             assert(d:release())
             assert(provision.ensure_user(owner, scope(), owner_id))
             d = db()
@@ -208,6 +211,56 @@ local function define_tests()
             test.eq(count(d, "kickside_thread", "id", id), 0)
             test.eq(count(d, "kickside_job", "owner_id", id), 0)
             test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 3)
+            assert(d:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {id}))
+            assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {id}))
+            assert(jobs.retention_sweep())
+            test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 0)
+            test.eq(count(d, "kickside_job_thread_cleanup", "thread_id", id), 0)
+            assert(d:release())
+        end)
+
+        test.it("finishes an interrupted final acknowledgment before provisioning a replacement", function()
+            local teardown = require("threads_teardown")
+            local owner_id = "interrupted-owner-" .. uuid.v4()
+            local owner = assert(security.new_actor(owner_id, {}))
+            local id = autoinit.component_id(owner_id, "test_ws")
+            assert(provision.ensure_user(owner, scope(), owner_id))
+            local d = db()
+            assert(teardown.purge_thread(d, id, owner_id))
+            local fence = assert(d:query([[SELECT next_page_seq FROM kickside_job_thread_cleanup
+                WHERE thread_id=$1 AND started=TRUE AND completed_at IS NOT NULL]], {id}))
+            local seq = tonumber(fence[1].next_page_seq) - 1
+            assert(d:execute("UPDATE kickside_job_thread_cleanup SET completed_at=NULL WHERE thread_id=$1", {id}))
+            assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET done=FALSE,acknowledged_at=NULL
+                WHERE thread_id=$1 AND page_seq=$2]], {id, seq}))
+            test.eq(count(d, "kickside_components", "component_id", id), 1)
+            test.eq(count(d, "kickside_thread", "id", id), 0)
+            assert(d:release())
+
+            local refused, unfinished_err = provision.ensure_user(owner, scope(), owner_id)
+            test.is_nil(refused)
+            test.not_nil(unfinished_err)
+            d = db()
+            test.eq(count(d, "kickside_thread", "id", id), 0)
+            local unfinished = assert(d:query([[SELECT acknowledged_at FROM kickside_job_thread_cleanup_receipt
+                WHERE thread_id=$1 AND page_seq=$2]], {id, seq}))
+            test.is_nil(unfinished[1].acknowledged_at)
+            assert(d:execute([[UPDATE kickside_job_thread_cleanup_receipt SET done=TRUE
+                WHERE thread_id=$1 AND page_seq=$2]], {id, seq}))
+            assert(d:release())
+
+            local ids, err = provision.ensure_user(owner, scope(), owner_id)
+            test.is_nil(err, tostring(err))
+            test.not_nil(ids)
+            d = db()
+            local recovered = assert(d:query([[SELECT t.teardown_page_seq,r.acknowledged_at
+                FROM kickside_thread t JOIN kickside_job_thread_cleanup_receipt r ON r.thread_id=$1
+                WHERE t.id=$2 AND r.page_seq=$3]], {id, id, seq}))
+            test.eq(tonumber(recovered[1].teardown_page_seq), seq + 1)
+            test.not_nil(recovered[1].acknowledged_at)
+            test.eq(count(d, "kickside_projection", "thread_id", id), 1)
             assert(d:release())
         end)
 

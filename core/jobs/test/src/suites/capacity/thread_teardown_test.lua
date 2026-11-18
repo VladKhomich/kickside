@@ -370,6 +370,69 @@ local function define_tests()
             verify:release()
         end)
 
+        test.it("acknowledges a retained receipt again after its fence is pruned", function()
+            local thread_id = uuid.v7()
+            local page = assert(jobs.cleanup_thread_page(thread_id, 0))
+            test.is_true(page.done)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            local db = open_db()
+            assert(db:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {thread_id}))
+            assert(jobs.retention_sweep())
+            local function fences()
+                return assert(db:query("SELECT started FROM kickside_job_thread_cleanup WHERE thread_id=$1", {thread_id}))
+            end
+            test.eq(#fences(), 0)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            local receipts = assert(db:execute([[UPDATE kickside_job_thread_cleanup_receipt
+                SET acknowledged_at='2000-01-01T00:00:00Z' WHERE thread_id=$1 AND acknowledged_at IS NOT NULL]], {thread_id}))
+            test.eq(tonumber(receipts.rows_affected), 1)
+            assert(jobs.retention_sweep())
+            local remaining = assert(db:query([[SELECT page_seq FROM kickside_job_thread_cleanup_receipt
+                WHERE thread_id=$1]], {thread_id}))
+            test.eq(#remaining, 0)
+            test.eq(#fences(), 0)
+            db:release()
+        end)
+
+        test.it("skips a completed owner drained and pruned by a competing sweep", function()
+            local thread_id = uuid.v7()
+            local page = assert(jobs.cleanup_thread_page(thread_id, 0))
+            test.is_true(page.done)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            local db = open_db()
+            local dbtype = assert(db:type())
+            insert_owned_slot(db, thread_id)
+            assert(db:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {thread_id}))
+            local competing = open_db()
+            local observed: any = {
+                query = function(_, statement, args)
+                    local owners = assert(db:query(statement, args))
+                    test.eq(#owners, 1)
+                    test.eq(owners[1].thread_id, thread_id)
+                    assert(retention.sweep(competing, dbtype))
+                    test.eq(owned_count(competing, thread_id), 0)
+                    local fences = assert(competing:query([[SELECT started FROM kickside_job_thread_cleanup
+                        WHERE thread_id=$1]], {thread_id}))
+                    test.eq(#fences, 0)
+                    return owners, nil
+                end,
+                begin = function() return db:begin() end,
+            }
+            local reclaimed, reclaim_err = thread_teardown.reclaim_completed(observed, dbtype, 10)
+            test.is_nil(reclaim_err, tostring(reclaim_err))
+            test.eq(reclaimed, 0)
+            assert(competing:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {thread_id}))
+            assert(retention.sweep(competing, dbtype))
+            local remaining = assert(competing:query([[SELECT thread_id FROM kickside_job_thread_cleanup WHERE thread_id=$1
+                UNION ALL SELECT thread_id FROM kickside_job_thread_cleanup_receipt WHERE thread_id=$1]], {thread_id}))
+            test.eq(#remaining, 0)
+            competing:release()
+            db:release()
+        end)
+
         test.it("preserves surviving-owner jobs and reports only discarded evidence", function()
             local thread_id, owner_id = uuid.v7(), uuid.v7()
             local job_id, run_id = uuid.v7(), uuid.v7()

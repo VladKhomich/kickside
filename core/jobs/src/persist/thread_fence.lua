@@ -16,6 +16,10 @@ local function flag(value: any): boolean
     return value == true or value == 1
 end
 
+local function state(row: table): table
+    return { started = flag(row.started), next_page_seq = row.next_page_seq, completed_at = row.completed_at }
+end
+
 -- lock(tx, thread_id) -> { started, next_page_seq, completed_at } with the
 -- thread's cleanup row created when absent and held until the caller commits.
 function M.lock_many(tx: sql.Transaction, thread_ids: { string }): ({ [string]: table }?, error?)
@@ -36,8 +40,7 @@ function M.lock_many(tx: sql.Transaction, thread_ids: { string }): ({ [string]: 
     local states: { [string]: table } = {}
     for _, row in ipairs(rows) do
         if type(row) ~= "table" then return nil, invalid_response("rows") end
-        states[tostring(row.thread_id)] = { started = flag(row.started), next_page_seq = row.next_page_seq,
-            completed_at = row.completed_at }
+        states[tostring(row.thread_id)] = state(row)
     end
     for _, id in ipairs(sorted) do
         if not states[id] then return nil, invalid_response("thread_id", id) end
@@ -49,6 +52,21 @@ function M.lock(tx: sql.Transaction, thread_id: string): (table?, error?)
     local states, err = M.lock_many(tx, { thread_id })
     if err or not states then return nil, err end
     return states[thread_id], nil
+end
+
+-- SQLite takes the write lock with the update. Neither engine creates a row.
+function M.lock_existing(tx: sql.Transaction, dbtype: string, thread_id: string): (table?, error?)
+    local fields = "started,next_page_seq,completed_at"
+    local statement = dbtype == sql.type.POSTGRES
+        and "SELECT " .. fields .. " FROM " .. M.TABLE .. " WHERE thread_id=$1 FOR UPDATE"
+        or "UPDATE " .. M.TABLE .. " SET thread_id=thread_id WHERE thread_id=$1 RETURNING " .. fields
+    local rows, err = tx:query(statement, {thread_id})
+    if err then return nil, errors.wrap(err, "thread cleanup fence lock failed") end
+    if type(rows) ~= "table" then return nil, invalid_response("rows") end
+    local row = rows[1]
+    if row == nil then return nil, nil end
+    if type(row) ~= "table" then return nil, invalid_response("rows") end
+    return state(row), nil
 end
 
 -- admit(tx, owner, operation) refuses new work for a thread owner whose
