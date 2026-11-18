@@ -7,6 +7,13 @@ local sql = require("sql")
 local M = {}
 M.TABLE = "kickside_job_thread_cleanup"
 
+function M.owner_key(dbtype: string, column: string): string
+    if dbtype ~= sql.type.POSTGRES then return column end
+    -- Core uses UUID keys. Cast the Jobs ID to keep owner lookups on those keys.
+    return "CASE WHEN " .. column .. " ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'"
+        .. " THEN CAST(" .. column .. " AS uuid) END"
+end
+
 local function invalid_response(field: string, thread_id: string?): error
     return errors.new({message = "thread cleanup fence returned invalid " .. field, kind = errors.INTERNAL,
         retryable = false, details = {code = "job_thread_fence_response", field = field, thread_id = thread_id}})

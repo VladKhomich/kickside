@@ -283,22 +283,27 @@ end
 
 local UNUSED_FENCE = "f.started=FALSE AND f.next_page_seq=0 AND f.completed_at IS NULL"
 
-local function unused_fence_predicate(db: sql.DB, dbtype: string): (string?, error?)
+local function thread_cleanup_schema(db: sql.DB, dbtype: string): (table?, error?)
     local postgres = dbtype == sql.type.POSTGRES
     -- Jobs can run without the Core schema.
-    local statement = postgres and "SELECT to_regclass('kickside_thread') IS NOT NULL AS present"
-        or "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='kickside_thread') AS present"
+    local statement = postgres and [[SELECT to_regclass('kickside_thread') IS NOT NULL AS present,
+        to_regclass('kickside_components') IS NOT NULL
+        AND to_regclass('kickside_component_thread_reap') IS NOT NULL AS component_reap]]
+        or [[SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='kickside_thread') AS present,
+            (SELECT COUNT(*) FROM sqlite_master WHERE type='table'
+                AND name IN ('kickside_components','kickside_component_thread_reap'))=2 AS component_reap]]
     local rows, err = db:query(statement)
     if err then return nil, errors.wrap(err, "thread cleanup owner schema lookup failed") end
     if type(rows) ~= "table" or not rows[1] then return nil, response_error("thread_schema.rows") end
-    local present = rows[1].present
-    if present == false or present == 0 then return UNUSED_FENCE, nil end
-    if present ~= true and present ~= 1 then return nil, response_error("thread_schema.present") end
-
-    -- Keep the lookup on the Core primary key, including when a Jobs owner ID is not a UUID.
-    local id = postgres and [[CASE WHEN f.thread_id ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
-        THEN CAST(f.thread_id AS uuid) END]] or "f.thread_id"
-    return UNUSED_FENCE .. " AND NOT EXISTS (SELECT 1 FROM kickside_thread t WHERE t.id=" .. id .. ")", nil
+    local schema = {}
+    for _, field in ipairs({"present", "component_reap"}) do
+        local value = rows[1][field]
+        if value ~= true and value ~= false and value ~= 0 and value ~= 1 then
+            return nil, response_error("thread_schema." .. field)
+        end
+        schema[field] = value == true or value == 1
+    end
+    return schema, nil
 end
 
 local function prune_thread_fences(db: sql.DB, cutoff: string, limit: integer,
@@ -340,7 +345,7 @@ end
 
 -- One bounded pass over each Jobs-owned retained table. Full batch counts
 -- keep the worker pool retention deadline due until the backlog drains.
-function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
+function M.sweep(db: any, dbtype: string, cursor: table?, thread_cursor: table?): (table?, error?)
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
     local batch = (policy :: any).retention_batch :: integer
@@ -382,8 +387,20 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
     if leftovers_err then return nil, leftovers_err end
     local cleanup_fences, fences_err = prune_thread_fences(db, receipt_cutoff, batch, dbtype)
     if fences_err then return nil, fences_err end
-    local unused, schema_err = unused_fence_predicate(db, dbtype)
+    local schema, schema_err = thread_cleanup_schema(db, dbtype)
     if schema_err then return nil, schema_err end
+    local unused = UNUSED_FENCE
+    local next_thread: table? = nil
+    if schema.present then
+        local id = thread_fence.owner_key(dbtype, "f.thread_id")
+        unused = unused .. " AND NOT EXISTS (SELECT 1 FROM kickside_thread t WHERE t.id=" .. id .. ")"
+        if schema.component_reap then
+            local reclaim_err: error?
+            next_thread, reclaim_err = thread_teardown.reclaim_abandoned(
+                db, dbtype, (policy :: any).thread_cleanup_batch, thread_cursor)
+            if reclaim_err then return nil, reclaim_err end
+        end
+    end
     local unused_fences, unused_err = prune_thread_fences(db, receipt_cutoff, batch, dbtype, unused)
     if unused_err then return nil, unused_err end
     return {
@@ -392,6 +409,7 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
         thread_cleanup_receipts = cleanup_receipts :: integer,
         thread_cleanup_fences = (cleanup_fences :: integer) + (unused_fences :: integer),
         thread_cleanup_leftovers = leftovers :: integer,
+        thread_cleanup_cursor = next_thread,
     }, nil
 end
 

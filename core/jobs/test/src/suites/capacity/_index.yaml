@@ -66,6 +66,7 @@ entries:
       slot_purge: kickside.core.jobs.persist:slot_purge
       claim_execution: kickside.core.jobs.persist:claim_execution
       retention: kickside.core.jobs.persist:retention
+      config: kickside.core.jobs:config
 
   - name: enqueue_notification_test
     kind: function.lua

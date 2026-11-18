@@ -37,6 +37,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:28_unused_thread_fences
         path: .meta.target_db
+      - entry: kickside.core.jobs.migrations:29_pending_final_receipts
+        path: .meta.target_db
       - entry: kickside.core.jobs.migrations:26_owner_listing
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:25_retention_order

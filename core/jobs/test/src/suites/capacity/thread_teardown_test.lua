@@ -11,6 +11,7 @@ local jobs = require("jobs")
 local thread_fence = require("thread_fence")
 local thread_teardown = require("thread_teardown")
 local job_fixture = require("job_fixture")
+local config = require("config")
 
 local function open_db(): sql.DB
     local db, err = sql.get("app:db")
@@ -426,6 +427,95 @@ local function define_tests()
             forget_thread(db, pending)
             forget_thread(db, live)
             assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {live}))
+            db:release()
+        end)
+
+        test.it("drains an interrupted final page after the reaper loses its pointer", function()
+            local db = open_db()
+            local orphan, live_thread, live_component, live_page, pointed, unfinished =
+                uuid.v7(), uuid.v7(), uuid.v7(), uuid.v7(), uuid.v7(), uuid.v7()
+            local protected = {live_thread, live_component, live_page, pointed, unfinished}
+            for _, id in ipairs({orphan, live_thread, live_component, live_page, pointed, unfinished}) do
+                test.is_true(assert(jobs.cleanup_thread_page(id, 0)).done)
+            end
+            assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
+                VALUES ($1,'jobs-cleanup',$2,0)]], {live_thread, live_thread}))
+            assert(db:execute("INSERT INTO kickside_components (component_id,impl_id) VALUES ($1,'test.cleanup')",
+                {live_component}))
+            local slot = insert_owned_slot(db, live_page)
+            assert(db:execute([[INSERT INTO kickside_component_thread_reap (component_id,created_at)
+                VALUES ($1,'2000-01-01T00:00:00Z')]], {pointed}))
+            assert(db:execute("UPDATE kickside_job_thread_cleanup_receipt SET done=FALSE WHERE thread_id=$1", {unfinished}))
+
+            local function state(id: string): table
+                return assert(db:query([[SELECT f.completed_at,r.acknowledged_at FROM kickside_job_thread_cleanup f
+                    JOIN kickside_job_thread_cleanup_receipt r ON r.thread_id=f.thread_id
+                    WHERE f.thread_id=$1]], {id}))[1]
+            end
+            assert(jobs.retention_sweep())
+            local recovered = state(orphan)
+            test.not_nil(recovered.acknowledged_at)
+            test.not_nil(recovered.completed_at)
+            for _, id in ipairs(protected) do
+                test.is_nil(state(id).acknowledged_at)
+                test.is_nil(state(id).completed_at)
+            end
+
+            assert(db:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {orphan}))
+            assert(db:execute([[UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {orphan}))
+            assert(jobs.retention_sweep())
+            local remaining = assert(db:query([[SELECT thread_id FROM kickside_job_thread_cleanup WHERE thread_id=$1
+                UNION ALL SELECT thread_id FROM kickside_job_thread_cleanup_receipt WHERE thread_id=$1]], {orphan}))
+            test.eq(#remaining, 0)
+
+            assert(db:execute("DELETE FROM kickside_job_run WHERE job_id=$1", {slot}))
+            assert(db:execute("DELETE FROM kickside_job WHERE id=$1", {slot}))
+            assert(db:execute("DELETE FROM kickside_components WHERE component_id=$1", {live_component}))
+            assert(db:execute("DELETE FROM kickside_component_thread_reap WHERE component_id=$1", {pointed}))
+            for _, id in ipairs(protected) do forget_thread(db, id) end
+            db:release()
+        end)
+
+        test.it("examines one indexed window of final receipts per sweep and drains later owners", function()
+            local db = open_db()
+            local batch = assert(config.policy()).thread_cleanup_batch
+            local prefix = uuid.v7():sub(1, 24)
+            local tx = assert(db:begin())
+            for i = 1, batch * 2 + 1 do
+                local id = prefix .. string.format("%012d", i)
+                assert(tx:execute([[INSERT INTO kickside_job_thread_cleanup (thread_id,started,next_page_seq)
+                    VALUES ($1,TRUE,1)]], {id}))
+                assert(tx:execute([[INSERT INTO kickside_job_thread_cleanup_receipt
+                    (thread_id,page_seq,processed,done,discarded_json,unresolved_json,created_at)
+                    VALUES ($1,0,0,TRUE,'{}','{}','2000-01-01T00:00:00Z')]], {id}))
+                if i <= batch then
+                    assert(tx:execute("INSERT INTO kickside_components (component_id,impl_id) VALUES ($1,'test.cleanup')", {id}))
+                end
+            end
+            assert(tx:commit())
+            local function acknowledged(): integer
+                local rows = assert(db:query([[SELECT COUNT(*) AS n FROM kickside_job_thread_cleanup_receipt
+                    WHERE thread_id LIKE $1 AND acknowledged_at IS NOT NULL]], {prefix .. "%"}))
+                return math.floor(tonumber(rows[1].n))
+            end
+
+            local first = assert(jobs.retention_sweep())
+            test.eq(acknowledged(), 0)
+            test.eq(first.thread_cleanup_cursor and first.thread_cleanup_cursor.thread_id, prefix .. string.format("%012d", batch))
+            local second = assert(jobs.retention_sweep(first.job_cursor, first.thread_cleanup_cursor))
+            test.eq(acknowledged(), batch)
+            test.eq(second.thread_cleanup_cursor.thread_id, prefix .. string.format("%012d", batch * 2))
+            local last = assert(jobs.retention_sweep(second.job_cursor, second.thread_cleanup_cursor))
+            test.eq(acknowledged(), batch + 1)
+            test.is_nil(last.thread_cleanup_cursor)
+
+            for i = 1, batch do
+                assert(db:execute("DELETE FROM kickside_components WHERE component_id=$1", {prefix .. string.format("%012d", i)}))
+            end
+            assert(db:execute("DELETE FROM kickside_job_thread_cleanup_receipt WHERE thread_id LIKE $1", {prefix .. "%"}))
+            assert(db:execute("DELETE FROM kickside_job_thread_cleanup WHERE thread_id LIKE $1", {prefix .. "%"}))
             db:release()
         end)
 

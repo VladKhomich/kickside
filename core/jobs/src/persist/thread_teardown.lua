@@ -154,12 +154,19 @@ local function erase(tx: sql.Transaction, slice: table, thread_id: string, rows:
     return count_discarded(slice, rows, count, result)
 end
 
+local function linked_rows(table_name: string, thread_key: string, owner_key: string): string
+    return "SELECT id FROM " .. table_name .. " WHERE thread_id=" .. thread_key
+        .. " UNION ALL SELECT id FROM " .. table_name
+        .. " WHERE owner_kind='thread' AND owner_id=" .. owner_key .. " LIMIT 1"
+end
+
+local LINKED_ROWS = {
+    linked_rows("kickside_job_run", "$1", "$2"),
+    linked_rows("kickside_job", "$1", "$2"),
+}
+
 local function has_rows(tx: sql.Transaction, thread_id: string): (boolean?, error?)
-    local checks = {
-        "SELECT id FROM kickside_job_run WHERE thread_id=$1 OR (owner_kind='thread' AND owner_id=$2) LIMIT 1",
-        "SELECT id FROM kickside_job WHERE thread_id=$1 OR (owner_kind='thread' AND owner_id=$2) LIMIT 1",
-    }
-    for _, statement in ipairs(checks) do
+    for _, statement in ipairs(LINKED_ROWS) do
         local rows, err = tx:query(statement, { thread_id, thread_id })
         if err then return nil, errors.wrap(err, "thread cleanup continuation read failed") end
         if type(rows) ~= "table" then return nil, response_error("continuation.rows") end
@@ -418,6 +425,59 @@ function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer): (integ
         if commit_err then return nil, errors.wrap(commit_err, "completed cleanup leftover commit failed") end
     end
     return total, nil
+end
+
+-- Take the receipt window before checking owners. Live purges can occupy
+-- a full window, so advance by the last receipt examined.
+function M.reclaim_abandoned(db: sql.DB, dbtype: string, limit: integer, after: table?): (table?, error?)
+    local owner_id = thread_fence.owner_key(dbtype, "r.thread_id")
+    local eligible = "(SELECT 1 FROM " .. thread_fence.TABLE .. [[ f WHERE f.thread_id=r.thread_id
+            AND f.started=TRUE AND f.completed_at IS NULL AND f.next_page_seq=r.page_seq+1 LIMIT 1) IS NOT NULL
+        AND (SELECT 1 FROM kickside_thread t WHERE t.id=]] .. owner_id .. [[ LIMIT 1) IS NULL
+        AND (SELECT 1 FROM kickside_components c WHERE c.component_id=]] .. owner_id .. [[ LIMIT 1) IS NULL
+        AND (SELECT 1 FROM kickside_component_thread_reap p WHERE p.component_id=r.thread_id LIMIT 1) IS NULL
+        AND NOT EXISTS (]] .. linked_rows("kickside_job_run", owner_id, "r.thread_id") .. [[)
+        AND NOT EXISTS (]] .. linked_rows("kickside_job", owner_id, "r.thread_id") .. ")"
+    local source = RECEIPT
+    if dbtype == sql.type.SQLITE then source = source .. " INDEXED BY idx_job_cleanup_pending_final_receipt" end
+    local pending = "done=TRUE AND acknowledged_at IS NULL"
+    local rows, read_err = db:query("SELECT r.thread_id,r.page_seq,(" .. eligible .. ") AS eligible FROM ("
+        .. "SELECT thread_id,page_seq FROM " .. source .. " WHERE " .. pending
+        .. " AND (thread_id,page_seq)>($1,$2) ORDER BY thread_id,page_seq LIMIT $3) r ORDER BY r.thread_id,r.page_seq",
+        {after and after.thread_id or "", after and after.page_seq or 0, limit})
+    if read_err then return nil, errors.wrap(read_err, "abandoned thread cleanup selection failed") end
+    if type(rows) ~= "table" then return nil, response_error("owners.rows") end
+    for _, row in ipairs(rows) do
+        if row.eligible == true or row.eligible == 1 then
+            local page_seq = math.tointeger(row.page_seq)
+            if not page_seq or page_seq < 0 then return nil, response_error("receipt.page_seq") end
+            local tx, begin_err = sql_boundary.begin(db, "abandoned thread cleanup transaction failed", "transaction", response_error)
+            if begin_err then return nil, begin_err end
+            if not tx then return nil, response_error("transaction") end
+            local thread_id = row.thread_id
+            local fence, lock_err = thread_fence.lock_existing(tx, dbtype, thread_id)
+            if lock_err then return nil, sql_boundary.rollback(tx, lock_err, "thread cleanup rollback failed") end
+            if fence and fence.started and fence.completed_at == nil
+                and tonumber(fence.next_page_seq) == page_seq + 1 then
+                -- Attachment can commit while this sweep waits for the fence.
+                local owners, owner_err = tx:query("SELECT r.thread_id FROM " .. RECEIPT
+                    .. " r WHERE r.thread_id=$1 AND r.page_seq=$2 AND " .. pending .. " AND " .. eligible, {thread_id, page_seq})
+                if owner_err then return nil, sql_boundary.rollback(tx,
+                    errors.wrap(owner_err, "verify abandoned thread cleanup owner"), "thread cleanup rollback failed") end
+                if type(owners) ~= "table" then return nil, sql_boundary.rollback(tx,
+                    response_error("owners.rows"), "thread cleanup rollback failed") end
+                if owners[1] then
+                    local _, ack_err = ack_locked_tx(tx, dbtype, thread_id, page_seq, true, fence)
+                    if ack_err then return nil, sql_boundary.rollback(tx, ack_err, "thread cleanup rollback failed") end
+                end
+            end
+            local _, commit_err = tx:commit()
+            if commit_err then return nil, errors.wrap(commit_err, "abandoned thread cleanup commit failed") end
+        end
+    end
+    if #rows < limit then return nil, nil end
+    local last = rows[#rows]
+    return {thread_id = last.thread_id, page_seq = last.page_seq}, nil
 end
 
 function M.ack_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_seq: integer,

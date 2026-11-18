@@ -368,6 +368,30 @@ local function define_tests()
             end)
         end
 
+        test.it("re-arms retention and forwards the thread fence cursor after a full candidate window", function()
+            local instant = time.now()
+            local now = instant:unix_nano()
+            local policy = required(config.policy())
+            local cursor = {thread_id = "last-thread", page_seq = 0}
+            local stats: any = {
+                jobs = 0, job_runs = 0, workers = 0, worker_pulses = 0, wake_rows = 0,
+                thread_cleanup_receipts = 0, thread_cleanup_fences = 0, thread_cleanup_leftovers = 0,
+                thread_cleanup_cursor = cursor,
+            }
+            local seen: table? = nil
+            local driver = schedule.new({policy = config.policy, now = function() return instant end,
+                sweep = function(_, cursor)
+                    seen = cursor
+                    return stats, nil
+                end})
+            driver.run(now)
+            test.eq(driver.deadline(), now)
+            stats.thread_cleanup_cursor = nil
+            driver.run(now)
+            test.eq(seen, cursor)
+            test.eq(driver.deadline(), now + policy.retention_interval_ms * 1000000)
+        end)
+
         test.it("adds indexes to populated tables idempotently without changing rows", function()
             local db = open_queue()
             local dbtype = tostring(db:type())

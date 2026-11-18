@@ -178,3 +178,15 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 29_pending_final_receipts
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-17T00:00:29Z"
+    source: file://29_pending_final_receipts.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
