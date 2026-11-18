@@ -297,14 +297,24 @@ local function has_primary_text(upload_id: any): boolean
     return (primary.content :: string):match("%S") ~= nil
 end
 
-local function callback_idempotency_key(upload: any, token: string, success: any): string
-    local digest = hash.sha256(token .. ":" .. callback_status(success))
-    return CALLBACK_JOB_TYPE .. ":" .. tostring(upload.uuid or "") .. ":" .. tostring(digest or "")
+local function callback_digest(token: string, success: any): string
+    return hash.sha256(token .. ":" .. callback_status(success))
+end
+
+function pipeline_lib.record_callback_delivery(upload: any, token: string, success: boolean): any?
+    if upload.storage_state ~= (success and "completed" or "failed") then return nil end
+    for _, declared_token in ipairs(callback_tokens(upload.metadata)) do
+        if declared_token == token then
+            return upload_record_repo.record_callback_delivery(upload, callback_digest(token, success))
+        end
+    end
+    return nil
 end
 
 -- tx/dbtype enqueue the callback inside the caller's transaction; the caller
 -- nudges the workers after it commits.
-local function enqueue_upload_token_once(upload, token: string, success, error_msg, tx: any?, dbtype: string?): (boolean, CallbackError?)
+local function enqueue_upload_token_once(upload, token: string, digest: string, success, error_msg,
+        tx: any?, dbtype: string?): (boolean, CallbackError?)
     local payload, err = upload_tokens.unpack(token)
     if err then
         log:warn("upload token unpack failed", { upload_id = upload.uuid, error = err })
@@ -349,18 +359,10 @@ local function enqueue_upload_token_once(upload, token: string, success, error_m
         success = success == true,
         error = error_msg,
     }
-    local key = callback_idempotency_key(upload, token, success)
-    if tx ~= nil and upload.storage_state == (success and "completed" or "failed") then
-        local existing, lookup_err = tx:query([[SELECT id FROM kickside_job
-            WHERE thread_id=$1 AND job_type=$2 AND idempotency_key=$3 LIMIT 1]],
-            {component_id, CALLBACK_JOB_TYPE, key})
-        if lookup_err then return false, lookup_err end
-        if #existing > 0 then return true, nil end
-    end
     local params = {
         namespace = "thread", scope = component_id,
         owner_locator = { kind = "user", id = owner_actor_id :: string },
-        key = key,
+        key = CALLBACK_JOB_TYPE .. ":" .. tostring(upload.uuid or "") .. ":" .. digest,
         thread_id = component_id,
         job_type = CALLBACK_JOB_TYPE,
         queue_tier = "live",
@@ -387,23 +389,26 @@ local function enqueue_upload_token_once(upload, token: string, success, error_m
 end
 
 -- Schedule upload completion token callback(s) as durable core jobs.
-function pipeline_lib.invoke_upload_token(upload, success, error_msg, tx: any?, dbtype: string?)
+function pipeline_lib.invoke_upload_token(upload, success, error_msg, tx: any?, dbtype: string?, delivered: table?)
     if not upload or not upload.metadata then return true, nil end
 
     local first_err = nil
     for _, token in ipairs(callback_tokens(upload.metadata)) do
-        local ok, err = enqueue_upload_token_once(upload, token, success, error_msg, tx, dbtype)
-        if not ok then
-            local failure = err or errors.new({ message = "failed to enqueue upload callback",
-                kind = errors.INTERNAL, retryable = true, details = { error_kind = "infrastructure" } })
-            if first_err == nil or (type(first_err) == "userdata" and not first_err:retryable()
-                    and (type(failure) ~= "userdata" or failure:retryable())) then
-                first_err = failure
+        local digest = callback_digest(token, success)
+        if not delivered or delivered[digest] ~= true then
+            local ok, err = enqueue_upload_token_once(upload, token, digest, success, error_msg, tx, dbtype)
+            if not ok then
+                local failure = err or errors.new({ message = "failed to enqueue upload callback",
+                    kind = errors.INTERNAL, retryable = true, details = { error_kind = "infrastructure" } })
+                if first_err == nil or (type(first_err) == "userdata" and not first_err:retryable()
+                        and (type(failure) ~= "userdata" or failure:retryable())) then
+                    first_err = failure
+                end
+                log:warn("upload token callback enqueue failed", {
+                    upload_id = upload.uuid,
+                    error = tostring(err),
+                })
             end
-            log:warn("upload token callback enqueue failed", {
-                upload_id = upload.uuid,
-                error = tostring(err),
-            })
         end
     end
     if first_err then return false, first_err end
