@@ -320,7 +320,11 @@ return {run = test.run_cases(function()
                     local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
                     test.is_nil(content)
                     check(err, errors.INVALID)
-                    test.is_false(err:retryable() == true)
+                    if backing == "blob" then
+                        test.is_false(err:retryable())
+                    else
+                        test.is_nil(err:retryable())
+                    end
                 end)
             end)
         end

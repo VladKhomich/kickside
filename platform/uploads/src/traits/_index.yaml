@@ -232,6 +232,7 @@ entries:
       - security
       - contract
       - base64
+      - logger
     method: handle
     imports:
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo

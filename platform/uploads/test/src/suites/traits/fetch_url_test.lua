@@ -1,5 +1,10 @@
 local test = require("test")
 local handler = require("handler")
+local artifacts = require("artifacts")
+local parts = require("parts")
+local records = require("records")
+local fs = require("fs")
+local uuid = require("uuid")
 
 local function fake_actor(id)
     local actor = {}
@@ -48,7 +53,8 @@ local function base_deps(overrides)
         },
         artifacts = {
             read_primary_content = function()
-                return nil, errors.new({ kind = errors.NOT_FOUND, message = "primary content artifact not found" })
+                return nil, errors.new({ kind = errors.NOT_FOUND, message = "primary content artifact not found",
+                    details = {code = "primary_artifact_missing"} })
             end,
             list_artifacts = function() return {} end,
         },
@@ -227,6 +233,34 @@ local function define_tests()
             test.is_nil(result)
             test.is_true(errors.is(err, errors.INTERNAL))
             test.contains(tostring(err), "artifact blob is unavailable")
+        end)
+
+        test.it("wait distinguishes no primary artifact from a primary artifact with missing bytes", function()
+            local upload_id = uuid.v4()
+            assert(records.create(upload_id, "fetch-user", 4, "application/pdf", "app:uploads", upload_id,
+                "kickside.uploads:types.generic", {filename = "document.pdf"}, "completed"))
+            base_deps(function(deps)
+                deps.http.get = function()
+                    return {status_code = 200, headers = {["content-type"] = "application/pdf"}, body = "%PDF"}, nil
+                end
+                deps.uploads.upload_file = function() return {uuid = upload_id} end
+                deps.read_model.get_for_actor = function() return {status = "completed", mime_type = "application/pdf"} end
+                deps.artifacts = parts
+            end)
+            local args = {url = "https://example.com/doc.pdf", wait = true}
+            local result, err = handler.handle(args)
+            test.is_nil(err, tostring(err))
+            test.eq(result.status, "completed")
+            test.is_nil(result.markdown)
+
+            local artifact = assert(artifacts.create_artifact({upload_id = upload_id, kind = "markdown", role = "primary",
+                mime_type = "text/markdown", content = "# " .. upload_id}))
+            local blob = assert(artifacts.get_blob(artifact.blob_id))
+            assert(assert(fs.get(blob.storage_id)):remove(blob.storage_path))
+
+            result, err = handler.handle(args)
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.INTERNAL))
         end)
 
         test.it("wait returns a tool error when the derived artifacts cannot be listed", function()

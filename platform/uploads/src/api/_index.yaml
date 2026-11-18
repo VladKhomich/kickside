@@ -309,6 +309,7 @@ entries:
     modules:
       - http
       - security
+      - logger
     pool:
       size: 4
 
@@ -347,6 +348,7 @@ entries:
     modules:
       - http
       - security
+      - logger
     pool:
       size: 4
 

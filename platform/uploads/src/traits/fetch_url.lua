@@ -147,7 +147,7 @@ local function completed_extras(upload_id, content_type)
     local result = { content_type = content_type }
 
     local primary, primary_err = M.deps.artifacts.read_primary_content(upload_id)
-    if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
+    if primary_err and not artifact_parts_repo.is_primary_artifact_missing(primary_err) then
         return nil, primary_err
     end
     if primary and type(primary.content) == "string" then

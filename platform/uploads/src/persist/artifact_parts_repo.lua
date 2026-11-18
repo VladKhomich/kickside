@@ -9,6 +9,7 @@ local artifact_schema = require("artifact_schema")
 local artifact_content_repo = require("artifact_content_repo")
 
 local artifact_parts_repo = {}
+local PRIMARY_ARTIFACT_MISSING = "primary_artifact_missing"
 
 local function typed(kind: any, message: string): any
     return errors.new({ message = message, kind = kind })
@@ -348,7 +349,12 @@ function artifact_parts_repo.get_primary_content_artifact(upload_id)
             return artifact
         end
     end
-    return nil, typed(errors.NOT_FOUND, "primary content artifact not found")
+    return nil, errors.new({kind = errors.NOT_FOUND, message = "primary content artifact not found",
+        details = {code = PRIMARY_ARTIFACT_MISSING}})
+end
+
+function artifact_parts_repo.is_primary_artifact_missing(err)
+    return errors.is(err, errors.NOT_FOUND) and (err:details() or {}).code == PRIMARY_ARTIFACT_MISSING
 end
 
 function artifact_parts_repo.read_primary_content(upload_id)

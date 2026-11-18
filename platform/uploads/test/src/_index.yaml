@@ -74,7 +74,7 @@ entries:
   - name: upload_artifacts_fixture
     kind: library.lua
     source: file://fixtures/artifacts.lua
-    modules: [security]
+    modules: [security, logger]
     imports:
       http: app:upload_http_probe
       upload_response: app:signed_upload_response
@@ -1109,6 +1109,7 @@ entries:
       records: kickside.uploads.persist:upload_record_repo
       types: kickside.uploads:types
       upload_tokens: kickside.uploads.persist:upload_tokens
+      artifacts: kickside.uploads.persist:artifact_content_repo
 
   - name: reference_api
     kind: http.router

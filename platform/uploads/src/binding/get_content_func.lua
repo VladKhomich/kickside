@@ -1,4 +1,5 @@
 local binding_errors = require("binding_errors")
+local error_envelope = require("error_envelope")
 local upload_query_repo = require("upload_query_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
 local security = require("security")
@@ -46,12 +47,20 @@ local function handle(args)
     end
     if args.extracted_only == true then
         if artifact_err or not artifact_content or type(artifact_content.content) ~= "string" then
+            local operation = "extracted text is not available"
+            local failure = artifact_err or binding_errors.new(errors.INTERNAL, "no primary artifact", "primary_artifact_missing")
+            if artifact_parts_repo.is_primary_artifact_missing(artifact_err) then
+                -- Keep the published content provider code and retain the repository code in the cause.
+                failure = binding_errors.with_message(error_envelope.wrap(artifact_err, operation,
+                    {code = "artifact_read_failed"}), operation .. ": " .. tostring(artifact_err))
+            else
+                failure = binding_errors.from(failure, errors.UNAVAILABLE, "artifact_read_failed", operation)
+            end
             return {
                 success = false,
                 state = "unreadable",
                 filename = metadata_sanitizer.public(upload.metadata).filename or "attachment",
-                error = binding_errors.from(artifact_err or binding_errors.new(errors.INTERNAL, "no primary artifact", "primary_artifact_missing"),
-                    errors.UNAVAILABLE, "artifact_read_failed", "extracted text is not available"),
+                error = failure,
             }
         end
         local limit = math.max(1, math.min(math.floor(tonumber(args.limit) or MAX_EXTRACTED_BYTES), MAX_EXTRACTED_BYTES))

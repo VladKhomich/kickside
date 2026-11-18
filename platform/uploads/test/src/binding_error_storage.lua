@@ -2,8 +2,10 @@
 local adapter = require("adapter")
 local M = {}
 
-local function failure(operation: string): error
-    return errors.new({kind = errors.UNAVAILABLE, message = "upload test storage unavailable",
+local function failure(operation: string, path: string?): error
+    local message = "upload test storage unavailable"
+    if path then message = message .. ": " .. path end
+    return errors.new({kind = errors.UNAVAILABLE, message = message,
         retryable = true, details = {code = "upload_test_storage_unavailable", operation = operation}})
 end
 
@@ -15,7 +17,7 @@ function M.get(storage_id, db_id, staging_id, cloud_id, query_db)
         return nil, "upload test legacy storage failure"
     end
     if storage_id == "app.upload_errors:unreadable_storage" then
-        return {readfile = function() return nil, failure("read") end}, nil
+        return {readfile = function(_, path) return nil, failure("read", path) end}, nil
     end
     return adapter.get(storage_id, db_id, staging_id, cloud_id, query_db)
 end

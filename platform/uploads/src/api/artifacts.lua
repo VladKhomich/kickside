@@ -9,6 +9,7 @@ local metadata_sanitizer = require("metadata_sanitizer")
 local upload_tokens = require("upload_tokens")
 local original_read = require("original_read")
 local http_errors = require("http_errors")
+local log = require("logger"):named("kickside.uploads.api.artifacts")
 
 local function json_error(res: any, status: any, message: string, details: any?)
     res:set_status(status)
@@ -256,7 +257,10 @@ local function artifact_raw_handler()
     end
     local content, content_err, blob = artifact_content_repo.read_artifact_content(upload.uuid, artifact_id)
     if content_err or type(content) ~= "string" then
-        json_error(res, http.STATUS.NOT_FOUND, "Artifact bytes not found", content_err)
+        log:warn("Failed to read artifact", {upload_id = upload.uuid, artifact_id = artifact_id, error = tostring(content_err)})
+        local status = http_errors.classify(content_err)
+        local message = status == http.STATUS.NOT_FOUND and "Artifact bytes not found" or "Failed to read artifact"
+        json_error(res, status, message)
         return
     end
 
