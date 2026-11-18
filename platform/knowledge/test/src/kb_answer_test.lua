@@ -5,7 +5,9 @@
 -- fake llm seam, so the regression cannot return.
 local test = require("test")
 local kb_answer = require("kb_answer")
-local model_catalog = require("model_catalog")
+local analysis_model = require("analysis_model")
+local funcs = require("funcs")
+local security = require("security")
 
 local function with_llm(fake: any, fn: any)
     local prev = kb_answer._llm
@@ -19,6 +21,18 @@ local function items(n: number): any
     local out = {}
     for i = 1, n do out[i] = { content = "passage " .. tostring(i) } end
     return out
+end
+
+local function with_default_model(fn: any)
+    local models = require("models_repo")
+    local name = "ask-answer-model"
+    local _, create_err = models.upsert_card({ name = name, class = { "fast" },
+        capabilities = { "generate" }, max_tokens = 4096, output_tokens = 1024 })
+    test.is_nil(create_err, tostring(create_err))
+    local ok, err = pcall(fn)
+    local _, delete_err = models.delete_card(name)
+    test.is_nil(delete_err, tostring(delete_err))
+    if not ok then error(err) end
 end
 
 local function define_tests()
@@ -134,6 +148,28 @@ local function define_tests()
     end)
 
     test.describe("kb_answer query mode", function()
+        test.it("resolves the default model in a member scope without catalog permissions", function()
+            local scope = assert(security.new_scope({
+                assert(security.policy("kickside.knowledge.retrieval:member_ask_call")),
+                assert(security.policy("kickside.knowledge.retrieval:member_model_binding")),
+                assert(security.policy("kickside.models.security:model_resolution")),
+                assert(security.policy("kickside.models.security:model_resolution_call")),
+            }))
+            local actor = security.new_actor("ask-member", {})
+            test.eq(scope:evaluate(actor, "registry.get", "kickside.models.catalog:model_catalog"), "undefined")
+            test.eq(scope:evaluate(actor, "store.get", "kickside.models:cache"), "undefined")
+            test.eq(scope:evaluate(actor, "funcs.call", "kickside.models.persist:reload_profiles"), "undefined")
+            test.eq(scope:evaluate(actor, "funcs.security", "kickside.models.persist:reload_profiles"), "undefined")
+            with_default_model(function()
+                local result, err = funcs.new():with_actor(actor):with_scope(scope)
+                    :call("kickside.knowledge.retrieval:member_ask_probe", {})
+                test.is_nil(err, tostring(err))
+                test.eq(result.answer, "cited answer [1]")
+                test.is_nil(result.mode)
+                test.eq(result.results[1].content, "passage 1")
+            end)
+        end)
+
         test.it("reports an unavailable analysis class even without passages for either answer driver", function()
             for _, driver in ipairs({ "single", "agentic" }) do
                 for _, passages in ipairs({ {}, items(1) }) do
@@ -160,51 +196,47 @@ local function define_tests()
         end)
 
         test.it("uses the default answer model for omitted and empty settings", function()
-            for _, config in ipairs({
-                { summary_model = "summary-only" },
-                { analysis_model = "", summary_model = "summary-only" },
-            }) do
-                for _, driver in ipairs({ "single", "agentic" }) do
-                    config.query_driver = driver
-                    local previous_search = kb_answer._kb_search
-                    local previous_funcs = kb_answer._funcs
-                    local previous_llm = kb_answer._llm
-                    local previous_models = model_catalog.get_by_class
-                    kb_answer._kb_search = {
-                        config = function() return config, {} end,
-                        query = function() return { items = items(1) }, nil end,
-                    }
-                    model_catalog.get_by_class = function(class_name)
-                        test.eq(class_name, "fast")
-                        return { { name = "answer-model" } }, nil
-                    end
-                    kb_answer._funcs = { call = function(_, args)
-                        test.eq(args.config.analysis_model, "class:fast")
-                        return { answer = "cited answer [1]" }, nil
-                    end }
-                    kb_answer._llm = { generate = function(_, opts)
-                        test.eq(opts.model, "class:fast")
-                        return { result = "cited answer [1]" }, nil
-                    end }
+            with_default_model(function()
+                for _, config in ipairs({
+                    { summary_model = "summary-only" },
+                    { analysis_model = "", summary_model = "summary-only" },
+                }) do
+                    for _, driver in ipairs({ "single", "agentic" }) do
+                        config.query_driver = driver
+                        local previous_search = kb_answer._kb_search
+                        local previous_funcs = kb_answer._funcs
+                        local previous_llm = kb_answer._llm
+                        kb_answer._kb_search = {
+                            config = function() return config, {} end,
+                            query = function() return { items = items(1) }, nil end,
+                        }
+                        kb_answer._funcs = { call = function(_, args)
+                            test.eq(args.config.analysis_model, "class:fast")
+                            return { answer = "cited answer [1]" }, nil
+                        end }
+                        kb_answer._llm = { generate = function(_, opts)
+                            test.eq(opts.model, "class:fast")
+                            return { result = "cited answer [1]" }, nil
+                        end }
 
-                    local configured = config.analysis_model
-                    local ok, result, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
-                    kb_answer._kb_search = previous_search
-                    kb_answer._funcs = previous_funcs
-                    kb_answer._llm = previous_llm
-                    model_catalog.get_by_class = previous_models
-                    if not ok then error(result) end
-                    test.is_nil(err)
-                    test.is_nil(result.mode)
-                    test.eq(result.answer, "cited answer [1]")
-                    test.eq(result.results[1].content, "passage 1")
-                    test.eq(config.analysis_model, configured)
+                        local configured = config.analysis_model
+                        local ok, result, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
+                        kb_answer._kb_search = previous_search
+                        kb_answer._funcs = previous_funcs
+                        kb_answer._llm = previous_llm
+                        if not ok then error(result) end
+                        test.is_nil(err)
+                        test.is_nil(result.mode)
+                        test.eq(result.answer, "cited answer [1]")
+                        test.eq(result.results[1].content, "passage 1")
+                        test.eq(config.analysis_model, configured)
+                    end
                 end
-            end
+            end)
         end)
 
         test.it("treats explicit false as passages-only despite a summary model", function()
-            test.is_nil(kb_answer._resolve_answer_model({
+            test.is_nil(analysis_model.configured({
                 analysis_model = false,
                 summary_model = "class:fast"
             }))
@@ -300,4 +332,17 @@ local function define_tests()
 end
 
 local run_cases = test.run_cases(define_tests)
-return { run = function(options) return run_cases(options) end }
+return {
+    run = function(options) return run_cases(options) end,
+    member_ask = function()
+        kb_answer._kb_search = {
+            config = function() return { analysis_model = "" }, {} end,
+            query = function() return { items = items(1) }, nil end,
+        }
+        kb_answer._llm = { generate = function(_, opts)
+            test.eq(opts.model, "class:fast")
+            return { result = "cited answer [1]" }, nil
+        end }
+        return kb_answer.ask("kb-id", { query = "question" })
+    end,
+}

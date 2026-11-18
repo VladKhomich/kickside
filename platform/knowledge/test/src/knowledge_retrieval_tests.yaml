@@ -18,10 +18,36 @@ entries:
     meta: { type: test, suite: knowledge }
     source: file://kb_answer_test.lua
     method: run
+    modules: [funcs, security]
     imports:
       test: wippy.test:test
       kb_answer: kickside.knowledge.retrieval:kb_answer
-      model_catalog: kickside.models.catalog:model_catalog
+      analysis_model: kickside.knowledge.retrieval:analysis_model
+      models_repo: kickside.models.persist:repo
+
+  - name: member_ask_probe
+    kind: function.lua
+    source: file://kb_answer_test.lua
+    method: member_ask
+    modules: [funcs, security]
+    imports:
+      test: wippy.test:test
+      kb_answer: kickside.knowledge.retrieval:kb_answer
+      analysis_model: kickside.knowledge.retrieval:analysis_model
+
+  - name: member_ask_call
+    kind: security.policy
+    policy:
+      resources: [kickside.knowledge.retrieval:member_ask_probe]
+      actions: [funcs.call, funcs.security]
+      effect: allow
+
+  - name: member_model_binding
+    kind: security.policy
+    policy:
+      resources: [kickside.models:model_resolver]
+      actions: [contract.open]
+      effect: allow
 
   - name: answer_flow_fixture
     kind: library.lua
