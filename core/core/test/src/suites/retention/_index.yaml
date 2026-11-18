@@ -180,7 +180,7 @@ entries:
       comment: Deterministic service wake, exact rearm, and restart recovery coverage.
     source: file://service_test.lua
     method: run
-    modules: [sql, uuid, time]
+    modules: [sql, uuid, time, process, channel]
     imports:
       owner_hooks: kickside.core.retention.service:owner_hooks
       test: wippy.test:test
@@ -191,6 +191,7 @@ entries:
       pin: kickside.core.retention:pin
       write_receipt: kickside.core:write_receipt
       retention_policy: kickside.core:policy_config
+      receipt_purge: kickside.core:write_receipt_purge
 
   - name: owner_probe_first
     kind: function.lua

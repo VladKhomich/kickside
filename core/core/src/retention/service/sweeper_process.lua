@@ -107,7 +107,8 @@ local function main(): (any?, error?)
         return nil, response_failure("Core retention SQL acquisition returns no database", "sql.get")
     end
 
-    local initial, initial_err = runner.recover(db :: sql.DB, pid)
+    local scan = {}
+    local initial, initial_err = runner.recover(db :: sql.DB, pid, scan)
     if initial_err then
         close(db :: sql.DB, subscription, changes, releases)
         return nil, initial_err
@@ -118,6 +119,8 @@ local function main(): (any?, error?)
         return nil, initial_report_err
     end
 
+    local timer: any = nil
+    local timer_deadline: integer? = nil
     while true do
         local cases = {
             process_events:case_receive(),
@@ -125,12 +128,19 @@ local function main(): (any?, error?)
             changes:case_receive(),
             releases:case_receive(),
         }
-        local timer: any = nil
+        local due = false
         if deadline_ms ~= nil then
-            local now_ms = math.floor(time.now():unix_nano() / 1000000)
-            local delay_ms = math.max(1, math.ceil((deadline_ms :: integer) - now_ms))
-            timer = time.after(tostring(delay_ms) .. "ms")
-            cases[#cases + 1] = timer:case_receive()
+            local delay_ms = (deadline_ms :: integer) - math.floor(time.now():unix_nano() / 1000000)
+            due = delay_ms <= 0
+            if due then
+                cases.default = true
+            else
+                if timer_deadline ~= deadline_ms then
+                    timer = time.after(tostring(delay_ms) .. "ms")
+                    timer_deadline = deadline_ms
+                end
+                cases[#cases + 1] = timer:case_receive()
+            end
         end
 
         local selected = channel.select(cases)
@@ -155,12 +165,24 @@ local function main(): (any?, error?)
             end
         end
 
-        local next_pass, pass_err
-        if timer and selected.channel == timer then
-            next_pass, pass_err = runner.on_deadline(db :: sql.DB, pid)
-        else
+        -- A ready mailbox still gets a turn when a deadline is due. The due
+        -- page runs first, even if select receives a message instead of a timer.
+        local timer_fired = timer ~= nil and selected.channel == timer
+        if due or timer_fired then
+            timer, timer_deadline = nil, nil
+            local pass, err = runner.on_deadline(db :: sql.DB, pid, scan)
+            if not err then deadline_ms, err = pass_deadline(pass, "runner.pass") end
+            if err then
+                close(db :: sql.DB, subscription, changes, releases)
+                return nil, err
+            end
+        end
+
+        if not timer_fired and not selected.default then
+            local next_pass, pass_err
             local change: table = { kind = "process_event" }
             if selected.channel == registry_events then
+                scan = {}
                 change = { kind = "registry_commit" }
             elseif (selected.channel == changes or selected.channel == releases) and type(selected.value) == "table"
                 and type(selected.value.kind) == "string" then
@@ -179,21 +201,19 @@ local function main(): (any?, error?)
                     pending[#pending + 1] = type(value) == "table" and type(value.kind) == "string"
                         and value or { kind = "process_event" }
                 end
-                next_pass, pass_err = runner.on_wakes(db :: sql.DB, pid, pending)
+                for _, wake in ipairs(pending) do
+                    if wake.kind == "migrations_applied" then scan = {}; break end
+                end
+                next_pass, pass_err = runner.on_wakes(db :: sql.DB, pid, pending, scan, deadline_ms)
             else
-                next_pass, pass_err = runner.on_wake(db :: sql.DB, pid, change)
+                next_pass, pass_err = runner.on_wake(db :: sql.DB, pid, change, scan, deadline_ms)
+            end
+            if not pass_err then deadline_ms, pass_err = pass_deadline(next_pass, "runner.pass") end
+            if pass_err then
+                close(db :: sql.DB, subscription, changes, releases)
+                return nil, pass_err
             end
         end
-        if pass_err then
-            close(db :: sql.DB, subscription, changes, releases)
-            return nil, pass_err
-        end
-        local next_deadline, report_err = pass_deadline(next_pass, "runner.pass")
-        if report_err then
-            close(db :: sql.DB, subscription, changes, releases)
-            return nil, report_err
-        end
-        deadline_ms = next_deadline
     end
 end
 

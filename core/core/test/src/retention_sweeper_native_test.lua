@@ -7,14 +7,14 @@ local cases = {
     {method = "run", stage = "type", policies = 1, types = 1, queries = 0, prunes = 0, purges = 0},
     {method = "run", stage = "heads", policies = 1, types = 1, queries = 1, prunes = 0, purges = 0},
     {method = "run", stage = "prune", policies = 1, types = 1, queries = 1, prunes = 1, purges = 0},
-    {method = "run", stage = "purge", policies = 1, types = 1, queries = 1, prunes = 1, purges = 1},
+    {method = "run", stage = "purge", policies = 1, types = 1, queries = 2, prunes = 1, purges = 1},
     {method = "next_deadline_ms", stage = "policy", policies = 1, types = 0, queries = 0, prunes = 0, purges = 0},
     {method = "next_deadline_ms", stage = "type", policies = 1, types = 1, queries = 0, prunes = 0, purges = 0},
     {method = "next_deadline_ms", stage = "heads", policies = 1, types = 1, queries = 1, prunes = 0, purges = 0},
     {method = "next_deadline_ms", stage = "receipts", policies = 1, types = 1, queries = 2, prunes = 0, purges = 0},
     {method = "run_for_thread", stage = "type", policies = 0, types = 1, queries = 0, prunes = 0, purges = 0},
-    {method = "run_for_thread", stage = "heads", policies = 0, types = 1, queries = 1, prunes = 0, purges = 0},
-    {method = "run_for_thread", stage = "policy", policies = 1, types = 1, queries = 1, prunes = 0, purges = 0},
+    {method = "run_for_thread", stage = "heads", policies = 1, types = 1, queries = 1, prunes = 0, purges = 0},
+    {method = "run_for_thread", stage = "policy", policies = 1, types = 1, queries = 0, prunes = 0, purges = 0},
     {method = "run_for_thread", stage = "prune", policies = 1, types = 1, queries = 1, prunes = 1, purges = 0},
 }
 return {run = test.run_cases(function()
@@ -28,7 +28,7 @@ return {run = test.run_cases(function()
                         local source = errors.new({kind = kind, message = "retention sweeper dependency failure",
                             retryable = options.retryable, details = {code = "retention_sweeper_dependency", nested = {stage = case.stage}}})
                         fixture.reset(case.method, case.stage, source, sql.type.SQLITE)
-                        local result, err = sweeper[case.method](fixture.database(), "thread")
+                        local result, err = (sweeper[case.method] :: any)(fixture.database(), case.method == "run_for_thread" and "thread" or nil)
                         test.is_nil(result)
                         test.eq(type(err), "userdata")
                         test.eq(err:kind(), source:kind())
@@ -48,7 +48,7 @@ return {run = test.run_cases(function()
             for _, method in ipairs({"run", "run_for_thread", "next_deadline_ms"}) do
                 test.it("retains healthy sweep/deadline behavior/" .. dialect .. "/" .. method, function()
                     fixture.reset(method, "", nil, dialect)
-                    local result, err = sweeper[method](fixture.database(), "thread")
+                    local result, err = (sweeper[method] :: any)(fixture.database(), method == "run_for_thread" and "thread" or nil)
                     test.is_nil(err)
                     if method == "next_deadline_ms" then
                         test.eq(type(result), "number")
@@ -57,7 +57,7 @@ return {run = test.run_cases(function()
                         test.eq(fixture.purges, 0)
                     else
                         test.eq(result.events, 1)
-                        test.eq(fixture.queries, 1)
+                        test.eq(fixture.queries, 2)
                         test.eq(fixture.prunes, 1)
                         test.eq(fixture.purges, method == "run" and 1 or 0)
                         if method == "run" then

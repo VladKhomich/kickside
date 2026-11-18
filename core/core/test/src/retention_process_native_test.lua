@@ -10,6 +10,17 @@ local cases = {
 }
 return {run = test.run_cases(function()
     test.describe("native retention process dependencies", function()
+        test.it("runs an already-due deadline with a continuously ready scoped mailbox", function()
+            fixture.reset("busy", nil)
+            fixture.responses.recover = {value = {deadline_ms = 0}}
+            fixture.responses.wake = {value = {deadline_ms = 0}}
+            local result, err = source.main()
+            test.is_nil(result)
+            test.is_nil(err)
+            test.eq(fixture.deadlines, 1)
+            test.eq(fixture.wakes, 1)
+            test.eq(fixture.deadlines_at_wake, 1, "the deadline runs before the ready mailbox")
+        end)
         for _, case in ipairs(cases) do
             for _, kind in ipairs({errors.NOT_FOUND, errors.ALREADY_EXISTS, errors.INVALID,
                 errors.PERMISSION_DENIED, errors.UNAVAILABLE, errors.INTERNAL, errors.CANCELED,

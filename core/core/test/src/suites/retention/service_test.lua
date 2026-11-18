@@ -3,6 +3,8 @@ local owner_hooks = require("owner_hooks")
 local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
+local process = require("process")
+local channel = require("channel")
 local threads_writer = require("threads_writer")
 local retention_repo = require("retention_repo")
 local runner = require("retention_runner")
@@ -10,6 +12,7 @@ local sweeper = require("sweeper")
 local pin = require("pin")
 local receipts = require("write_receipt")
 local retention_policy = require("retention_policy")
+local receipt_purge = require("receipt_purge")
 
 local function stamp(db: sql.DB, instant: any): string
     local dbtype = tostring(db:type())
@@ -63,8 +66,210 @@ local function reserve_receipt(db: sql.DB, sink_id: string, key: string): ()
     if commit_err then error("receipt reservation commit failed: " .. tostring(commit_err)) end
 end
 
+local function policy_with_batch(load, batch)
+    return function()
+        local policy, err = load()
+        if err then return nil, err end
+        local result = {}
+        for key, value in pairs(policy) do result[key] = value end
+        result.batch_events = batch
+        return result, nil
+    end
+end
+
 local function define_tests()
     test.describe("Core retention service runner", function()
+        test.it("bounds global discovery and visits later pages even when the first page deletes nothing", function()
+            local db = assert(sql.get("app:db"))
+            local dialect = tostring(db:type())
+            local id = "'00000000-0000-0000-0000-' || substr('000000000000' || CAST(n AS text), length(CAST(n AS text)) + 1)"
+            local thread_id = dialect == sql.type.POSTGRES and "(" .. id .. ")::uuid" or id
+            local table_size, batch = 4096, 8
+            local final_id = "00000000-0000-0000-0000-000000004096"
+            local first_id = "00000000-0000-0000-0000-000000000001"
+            local old, recent = stamp(db, time.now():add(-60 * 24 * time.HOUR)), stamp(db, time.now())
+            assert(db:execute([[WITH RECURSIVE numbers(n) AS
+                (SELECT 1 UNION ALL SELECT n+1 FROM numbers WHERE n<]] .. table_size .. [[)
+                INSERT INTO kickside_thread (id, thread_class) SELECT ]] .. thread_id ..
+                ", 'retention_discovery_test' FROM numbers"))
+            assert(db:execute([[INSERT INTO kickside_event (id, thread_id, type, seq, created_at)
+                SELECT id,id,'retention.discovery',1,CASE WHEN id=$1 THEN CAST($2 AS ]] ..
+                (dialect == sql.type.POSTGRES and "timestamptz" or "text") ..
+                [[) ELSE $3 END FROM kickside_thread WHERE thread_class='retention_discovery_test']],
+                { final_id, old, recent }))
+            assert(db:execute([[INSERT INTO kickside_projection (id,thread_id,kind,projection_key)
+                VALUES($1,$1,'retention_discovery','plan')]], {first_id}))
+            assert(db:execute([[INSERT INTO kickside_projection_cursor
+                (id,projection_id,thread_id,cursor_key,last_seq)
+                SELECT id,$1,$1,CAST(id AS text),1 FROM kickside_thread
+                WHERE thread_class='retention_discovery_test']], {first_id}))
+            assert(db:execute("ANALYZE kickside_thread"))
+            assert(db:execute("ANALYZE kickside_event"))
+            assert(db:execute("ANALYZE kickside_projection_cursor"))
+
+            local original_policy = retention_policy.policy
+            retention_policy.policy = policy_with_batch(original_policy, batch)
+            local reads = 0
+            local probe = {
+                type = function() return db:type() end,
+                begin = function() return db:begin() end,
+                execute = function(_, statement, params) return db:execute(statement, params) end,
+                query = function(_, statement, params)
+                    local rows = assert(db:query(statement, params))
+                    if string.find(statement, "kickside_thread", 1, true) and string.find(statement, "kickside_event", 1, true) then
+                        reads = reads + 1
+                        test.is_true(#rows <= batch, "discovery returns more than a page")
+                        if reads <= 2 then
+                            local plan = assert(db:query((dialect == sql.type.POSTGRES
+                                and "EXPLAIN ANALYZE " or "EXPLAIN QUERY PLAN ") .. statement, params))
+                            local protection_seek = false
+                            for _, row in ipairs(plan) do
+                                local detail = tostring(row["QUERY PLAN"] or row.detail)
+                                if dialect == sql.type.POSTGRES then
+                                    local returned, loops = string.match(detail, "actual time=[^ ]+ rows=(%d+) loops=(%d+)")
+                                    local removed = tonumber((string.match(detail, "Rows Removed by [%a ]+: (%d+)"))) or 0
+                                    test.is_true(removed <= batch, detail)
+                                    local visited, repeats = tonumber(returned), tonumber(loops)
+                                    if visited and repeats then test.is_true(visited * repeats <= batch, detail) end
+                                    test.is_nil(string.find(detail, "Seq Scan on kickside_", 1, true), detail)
+                                    if string.find(detail, "Index Cond:", 1, true)
+                                        and string.find(detail, "last_seq <", 1, true) then protection_seek = true end
+                                else
+                                    test.is_nil(string.find(detail, "SCAN e ", 1, true), detail)
+                                    if reads == 2 then
+                                        test.is_nil(string.find(detail, "SCAN kickside_thread", 1, true), detail)
+                                    end
+                                    if string.find(detail, "last_seq<?", 1, true) then protection_seek = true end
+                                end
+                            end
+                            if reads == 1 then test.is_true(protection_seek, "cursor eligibility uses a bounded index seek") end
+                        end
+                    end
+                    return rows, nil
+                end,
+            }
+            local ok, failure = pcall(function()
+                local state = {}
+                local pass = assert(runner.recover(probe :: any, tostring(process.pid()), state))
+                test.eq(pass.stats.events, 0)
+                test.eq(reads, 1, "recovery and deadline discovery share one page")
+                test.is_true(pass.stats.needs_continue)
+                local now_ms = math.floor(time.now():unix_nano() / 1000000)
+                for _ = 2, table_size / batch + 2 do
+                    test.is_true(pass.deadline_ms <= now_ms, "another page runs immediately")
+                    pass = assert(runner.on_deadline(probe :: any, tostring(process.pid()), state))
+                    if pass.stats.events > 0 then break end
+                end
+                test.eq(count_events(db, final_id), 0)
+                test.is_true(reads >= table_size / batch)
+                if pass.stats.needs_continue then
+                    pass = assert(runner.on_deadline(probe :: any, tostring(process.pid()), state))
+                end
+                test.is_true(not pass.stats.needs_continue)
+                local expected = assert(sweeper.deadline_ms(recent, assert(original_policy()).events_ms, dialect))
+                test.is_true(pass.deadline_ms <= expected, "the final page includes earlier head deadlines")
+                test.eq(pass.deadline_ms, assert(sweeper.next_deadline_ms(db)))
+            end)
+            retention_policy.policy = original_policy
+            assert(db:execute("DELETE FROM kickside_thread WHERE thread_class='retention_discovery_test'"))
+            db:release()
+            if not ok then error(failure) end
+        end)
+
+        test.it("shares the event batch across distinct scoped wakes and skips unrelated heads", function()
+            local db = assert(sql.get("app:db"))
+            local old = stamp(db, time.now():add(-60 * 24 * time.HOUR))
+            local unrelated = make_thread(db)
+            add_event(db, unrelated, old)
+            local changes: table[] = {}
+            local thread_ids: {string} = {}
+            for index = 1, 7 do
+                local id = make_thread(db)
+                add_event(db, id, old)
+                thread_ids[index] = id
+                changes[index] = index == 1 and {kind = "events_appended", thread_ids = {"thread:" .. id, id}}
+                    or {kind = "events_appended", thread_id = id}
+            end
+            local original_policy, original_run = retention_policy.policy, sweeper.run
+            local global_calls = 0
+            retention_policy.policy = policy_with_batch(original_policy, 3)
+            sweeper.run = function(handle)
+                global_calls = global_calls + 1
+                return original_run(handle)
+            end
+            local mailbox = process.listen("kickside.core.retention.changed")
+            local ok, failure = pcall(function()
+                local pid = tostring(process.pid())
+                local armed = math.floor(time.now():unix_nano() / 1000000) - 1
+                local pass = assert(runner.on_wakes(db, pid, changes, {}, armed))
+                local remaining = 0
+                for _, id in ipairs(thread_ids) do remaining = remaining + count_events(db, id) end
+                test.eq(pass.stats.events, 3)
+                test.eq(remaining, 4)
+                test.eq(count_events(db, unrelated), 1)
+                test.eq(global_calls, 0)
+                test.eq(pass.deadline_ms, armed)
+                test.is_true(pass.stats.needs_continue)
+                local deleted = pass.stats.events
+                for _ = 1, #changes do
+                    if not pass.stats.needs_continue then break end
+                    local next_wake = channel.select({mailbox:case_receive(), default = true})
+                    test.eq(next_wake.channel, mailbox)
+                    pass = assert(runner.on_wakes(db, pid, {next_wake.value}, {}, armed))
+                    test.is_true(pass.stats.events <= 3)
+                    deleted = deleted + pass.stats.events
+                end
+                test.eq(deleted, #changes)
+                test.eq(count_events(db, unrelated), 1)
+                test.eq(global_calls, 0)
+            end)
+            process.unlisten(mailbox)
+            retention_policy.policy, sweeper.run = original_policy, original_run
+            assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {unrelated}))
+            for _, id in ipairs(thread_ids) do
+                assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {id}))
+            end
+            db:release()
+            if not ok then error(failure) end
+        end)
+
+        test.it("bounds receipt discovery when many rows share a completion timestamp", function()
+            local db = assert(sql.get("app:db"))
+            local dialect = tostring(db:type())
+            local sink = "retention-service:" .. uuid.v7()
+            assert(db:execute([[WITH RECURSIVE numbers(n) AS
+                (SELECT 1 UNION ALL SELECT n+1 FROM numbers WHERE n<4096)
+                INSERT INTO kickside_write_receipt
+                    (sink_id,idempotency_key,identity_key,payload_hash,status,created_at,completed_at)
+                SELECT $1,CAST(n AS text),'receipt','retention','committed','1980-01-01T00:00:00Z',
+                    '1980-01-01T00:00:00Z' FROM numbers]], {sink}))
+            assert(db:execute("ANALYZE kickside_write_receipt"))
+            local checked = false
+            local probe = {
+                begin = function() return db:begin() end,
+                query = function(_, statement, params)
+                    local plan = assert(db:query((dialect == sql.type.POSTGRES
+                        and "EXPLAIN ANALYZE " or "EXPLAIN QUERY PLAN ") .. statement, params))
+                    for _, row in ipairs(plan) do
+                        local detail = tostring(row["QUERY PLAN"] or row.detail)
+                        local actual = tonumber((string.match(detail, "actual time=[^ ]+ rows=(%d+)")))
+                        if actual then test.is_true(actual <= 8, detail) end
+                        test.is_nil(string.find(detail, "TEMP B-TREE", 1, true), detail)
+                        if string.find(detail, "idx_write_receipt_committed", 1, true) then checked = true end
+                    end
+                    return db:query(statement, params)
+                end,
+            }
+            local ok, failure = pcall(function()
+                local purged = assert(receipt_purge.run(probe, "1990-01-01T00:00:00Z", 8))
+                test.eq(purged.deleted, 8)
+                test.is_true(checked)
+            end)
+            assert(db:execute("DELETE FROM kickside_write_receipt WHERE sink_id=$1", {sink}))
+            db:release()
+            if not ok then error(failure) end
+        end)
+
         test.it("keeps recent event heads inside Postgres storage during a recovery pass", function()
             local db = assert(sql.get("app:db"))
             local recent: { [string]: boolean } = {}
@@ -98,14 +303,14 @@ local function define_tests()
             local db, db_err = sql.get("app:db")
             test.is_nil(db_err)
             if not db then error("retention database is absent") end
-            local original_sweep, original_owners, original_deadline = sweeper.run, owner_hooks.run, sweeper.next_deadline_ms
+            local original_sweep, original_owners, original_deadline = sweeper.run, owner_hooks.run, sweeper.next_receipt_deadline_ms
             local sweeps, deadlines = 0, 0
             local requests: table[] = {}
             sweeper.run = function(handle)
                 sweeps = sweeps + 1
                 return original_sweep(handle)
             end
-            sweeper.next_deadline_ms = function(handle)
+            sweeper.next_receipt_deadline_ms = function(handle)
                 deadlines = deadlines + 1
                 return original_deadline(handle)
             end
@@ -115,7 +320,7 @@ local function define_tests()
             end
             local ok, failure = pcall(function()
                 local changes: table[] = {}
-                for index = 1, 50 do changes[#changes + 1] = { kind = "events_appended", thread_id = "thread-" .. tostring(index) } end
+                for _ = 1, 50 do changes[#changes + 1] = { kind = "events_appended" } end
                 local pass, pass_err = runner.on_wakes(db, "retention-test", changes)
                 test.is_nil(pass_err)
                 test.not_nil(pass)
@@ -131,7 +336,7 @@ local function define_tests()
                 test.eq(deadlines, 2)
                 test.eq(requests[2].change.owner_locator.id, "scope")
             end)
-            sweeper.run, owner_hooks.run, sweeper.next_deadline_ms = original_sweep, original_owners, original_deadline
+            sweeper.run, owner_hooks.run, sweeper.next_receipt_deadline_ms = original_sweep, original_owners, original_deadline
             db:release()
             if not ok then error(failure) end
         end)

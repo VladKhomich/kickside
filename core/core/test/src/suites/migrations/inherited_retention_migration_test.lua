@@ -79,6 +79,16 @@ return test.run_cases(function()
             test.is_nil(replay_err)
             test.eq(replay.skipped,1)
             test.eq(replay.retention.converted,0)
+            local projection_id, cursor_id = uuid.v7(), uuid.v7()
+            scratch.exec([[INSERT INTO kickside_projection (id,thread_id,kind,projection_key)
+                VALUES($1,$2,'retention_upgrade','preexisting')]], {projection_id,declared})
+            scratch.exec([[INSERT INTO kickside_projection_cursor
+                (id,projection_id,thread_id,last_seq,status) VALUES($1,$2,$3,12,'paused')]],
+                {cursor_id,projection_id,declared})
+            local cursor_before = scratch.query("SELECT * FROM kickside_projection_cursor WHERE id=$1", {cursor_id})[1]
+            scratch.migrate("kickside.core.migrations:15_retention_cursor_floor")
+            local cursor_after = scratch.query("SELECT * FROM kickside_projection_cursor WHERE id=$1", {cursor_id})[1]
+            for key, value in pairs(cursor_before) do test.eq(cursor_after[key],value,key) end
             local at = time.now():add(-60*24*time.HOUR):utc()
             local stamp = scratch.postgres() and at:format(time.RFC3339) or at:format("2006-01-02 15:04:05.000000")
             for _,id in ipairs({implicit,declared,api,disabled}) do

@@ -7,6 +7,7 @@ M.process_events = mailbox()
 function M.reset(stage: string, source: any)
     M.stage, M.source = stage, source
     M.responses, M.wakes = {}, 0
+    M.deadlines, M.deadlines_at_wake = 0, nil
     M.claims, M.registers, M.subscribes, M.acquisitions, M.recoveries = 0, 0, 0, 0, 0
     M.unregisters, M.unlistens, M.closes, M.releases, M.selects = 0, 0, 0, 0, 0
 end
@@ -45,7 +46,7 @@ function M.get(id: string): (any, error?)
     if M.stage == "acquire" then return nil, M.source end
     return {release = function(self: any): () M.releases = M.releases + 1 end}, nil
 end
-function M.recover(db: any, pid: string): (any, error?)
+function M.recover(db: any, pid: string, scan: table?): (any, error?)
     M.recoveries = M.recoveries + 1
     if M.responses.recover then return M.responses.recover.value, nil end
     if M.stage == "recover" then return nil, M.source end
@@ -53,11 +54,21 @@ function M.recover(db: any, pid: string): (any, error?)
 end
 function M.select(cases: table): table
     M.selects = M.selects + 1
+    if cases.default and #cases == 2 and M.deadlines > 0 then return {default = true} end
+    if M.stage == "busy" and M.selects <= 300 and M.deadlines == 0 then
+        return {channel = cases[#cases >= 3 and 3 or 1].channel,
+            value = {kind = "events_appended", thread_id = "busy-thread"}, ok = true}
+    end
     return {channel = M.process_events,
         value = {kind = M.stage == "wake" and M.selects == 1 and "wake" or "cancel"}, ok = true}
 end
-function M.wake(db: any, pid: string, change: table): (any, error?)
+function M.deadline(db: any, pid: string, scan: table?): (any, error?)
+    M.deadlines = M.deadlines + 1
+    return {}, nil
+end
+function M.wake(db: any, pid: string, change: table, scan: table?, deadline: integer?): (any, error?)
     M.wakes = M.wakes + 1
+    M.deadlines_at_wake = M.deadlines
     if M.responses.wake then return M.responses.wake.value, nil end
     return {}, nil
 end

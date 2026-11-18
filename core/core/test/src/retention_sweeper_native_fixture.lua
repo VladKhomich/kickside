@@ -38,7 +38,9 @@ function M.database(): any
             end
             local response = M.responses[M.queries == 2 and "receipts" or "heads"]
             if response then return response.value, nil end
-            if M.queries == 2 then return {{completed_at = "2000-01-01T00:00:00Z"}}, nil end
+            if M.queries == 2 then
+                return M.method == "next_deadline_ms" and {{completed_at = "2000-01-01T00:00:00Z"}} or {}, nil
+            end
             return {{id = "thread", seq = 1, pin_floor = 1, projection_floor = 1,
                 eligibility_ms = 1000, created_at = "2000-01-01 00:00:00", head_created_at = "2000-01-01 00:00:00"}}, nil
         end,

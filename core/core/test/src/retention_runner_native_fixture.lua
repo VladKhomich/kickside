@@ -5,13 +5,13 @@ function M.reset(stage: string, source: any, missing: boolean?, value: any)
     M.sweeps, M.owners, M.sends, M.deadlines = 0, 0, 0, 0
     M.core_deadline, M.owner_deadline = 12345, nil
 end
-function M.sweep(db: any): (any, error?)
+function M.sweep(db: any, after: string?): (any, error?)
     M.sweeps = M.sweeps + 1
     if M.stage == "sweep" then
         if M.source then return nil, M.source end
         if M.missing then return M.value, nil end
     end
-    return {events = 0, write_receipts = 0, needs_continue = M.stage == "send"}, nil
+    return {events = 0, write_receipts = 0, needs_continue = M.stage == "continue"}, nil
 end
 function M.owner_run(change: table?): (any, error?)
     M.owners = M.owners + 1
@@ -19,7 +19,7 @@ function M.owner_run(change: table?): (any, error?)
         if M.source then return nil, M.source end
         if M.missing then return M.value, nil end
     end
-    return {deleted = 0, needs_continue = false, failures = {}, blocked = {}, deadline_ms = M.owner_deadline}, nil
+    return {deleted = 0, needs_continue = M.stage == "send", failures = {}, blocked = {}, deadline_ms = M.owner_deadline}, nil
 end
 function M.send(pid: string, topic: string, change: any): (any, error?)
     M.sends = M.sends + 1

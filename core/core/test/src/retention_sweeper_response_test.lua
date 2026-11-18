@@ -72,7 +72,7 @@ return {run = test.run_cases(function()
             {method = "run_for_thread", value = head({event_hot_retention_days = "invalid"}), field = "event_hot_retention_days"},
             {method = "next_deadline_ms", value = head({seq = "invalid"}), field = "event.seq"},
             {method = "run", value = head({head_created_at = "invalid"}), field = "timestamp"},
-            {method = "next_deadline_ms", value = head({created_at = "invalid"}), field = "timestamp"},
+            {method = "next_deadline_ms", value = head({head_created_at = "invalid"}), field = "timestamp"},
         }) do
             test.it(case.method .. "/" .. case.field, function()
                 fixture.reset(case.method, "", nil, sql.type.SQLITE)
@@ -104,7 +104,7 @@ return {run = test.run_cases(function()
                 test.it("retains empty candidates/" .. dialect .. "/" .. method, function()
                     fixture.reset(method, "", nil, dialect)
                     fixture.responses.heads, fixture.responses.receipts = {value = {}}, {value = {}}
-                    local result, err = sweeper[method](fixture.database(), "thread")
+                    local result, err = (sweeper[method] :: any)(fixture.database(), method == "run_for_thread" and "thread" or nil)
                     test.is_nil(err)
                     if method ~= "next_deadline_ms" then test.eq(result.events, 0) else test.is_nil(result) end
                     test.eq(fixture.prunes, 0)
