@@ -188,7 +188,7 @@ function M.handler(contract_args: any)
     end
 
     local request_options = {
-        timeout = contract_args.timeout or 600,
+        timeout = contract_args.timeout,
         retry = contract_args.retry,
     }
     local stream_config = nil

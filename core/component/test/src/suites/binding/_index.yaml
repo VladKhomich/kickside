@@ -89,6 +89,7 @@ entries:
     imports:
       test: wippy.test:test
       placement: kickside.component.persist:placement
+      component: kickside.component:component
 
   - name: canonical_register_test
     kind: function.lua

@@ -971,11 +971,9 @@ function pool.main(handover: any?): (any?, error?)
         end)
     end
 
-    local function start_shutdown(reason: string?): ()
+    local function start_shutdown(preserve_running: boolean): ()
         if shutdown_at then return end
-        -- The supervisor uses the same stop event for service replacement and
-        -- service stop, so it cannot authorize killing a running execution.
-        planned = reason == "service stopping" or reason == "service context canceled"
+        planned = preserve_running
         local grace = assert(time.parse_duration(job_types.LOOP_CANCEL_GRACE))
         shutdown_at = pool_time.now():unix_nano() + grace:nanoseconds()
         deadline = pool_time.after(job_types.LOOP_CANCEL_GRACE)
@@ -1045,7 +1043,9 @@ function pool.main(handover: any?): (any?, error?)
                 if event.kind == process.event.OUTDATED then
                     outdated = event
                 else
-                    if event.kind == process.event.CANCEL then start_shutdown(event.reason) end
+                    if event.kind == process.event.CANCEL then
+                        start_shutdown(true)
+                    end
                     tail = tail + 1
                     pending[tail] = event
                 end
@@ -1061,7 +1061,7 @@ function pool.main(handover: any?): (any?, error?)
                 outdated, upgrading = nil, true
             end
         elseif selected.channel == drain_started then
-            start_shutdown(nil)
+            start_shutdown(false)
         elseif selected.channel == deadline then
             return nil, unavailable("job worker pool drain timed out", nil)
         end
