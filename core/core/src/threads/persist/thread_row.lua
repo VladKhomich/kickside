@@ -12,9 +12,7 @@ local consts = require("threads_consts")
 local masks = require("core_types")
 local autoinit = require("autoinit")
 local normalize = require("threads_normalize")
-local jobs = require("jobs")
-local sql_boundary = require("sql_boundary")
-local writer = require("threads_writer")
+local job_teardown = require("job_teardown")
 
 local natural_key = require("natural_key")
 
@@ -121,32 +119,6 @@ function M.prepare(params: table, impl_id: string, actor_id: string?, owner_prin
     })
 end
 
-local function stamp_cleanup_sequence(tx: sql.Transaction, thread_id: string, sequence: integer): error?
-    if sequence == 0 then return nil end
-    local stamped, err = tx:execute("UPDATE kickside_thread SET teardown_page_seq=$1 WHERE id=$2", {sequence, thread_id})
-    if err then return errors.wrap(err, "store thread cleanup sequence") end
-    if not stamped or tonumber(stamped.rows_affected) ~= 1 then return invalid_response("cleanup.rows_affected") end
-    return nil
-end
-
-function M.reopen_cleanup(db: sql.DB, thread_id: string): error?
-    local dbtype, type_err = sql_boundary.database_type(db, "thread cleanup dialect", "database.type", invalid_response)
-    if type_err or not dbtype then return type_err end
-    local tx, begin_err = sql_boundary.begin(db, "thread cleanup reopen begin", "transaction", invalid_response)
-    if begin_err or not tx then return begin_err end
-    local lock_err = writer.lock_threads_tx(tx, dbtype, {thread_id})
-    if lock_err then return sql_boundary.rollback(tx, lock_err, "thread cleanup reopen rollback") end
-    local sequence, reopen_err = jobs.reopen_thread_tx(tx, dbtype, thread_id)
-    if reopen_err then return sql_boundary.rollback(tx, reopen_err, "thread cleanup reopen rollback") end
-    if sequence then
-        local stamp_err = stamp_cleanup_sequence(tx, thread_id, sequence)
-        if stamp_err then return sql_boundary.rollback(tx, stamp_err, "thread cleanup reopen rollback") end
-    end
-    local _, commit_err = tx:commit()
-    if commit_err then return errors.wrap(commit_err, "thread cleanup reopen commit") end
-    return nil
-end
-
 -- insert writes the thread row under thread_id (== its component id) and its parent
 -- edge on tx. A row already present under that id is a CONFLICT.
 function M.insert(tx: sql.Transaction, dbtype: string, thread_id: string, row: any): error?
@@ -179,11 +151,8 @@ function M.insert(tx: sql.Transaction, dbtype: string, thread_id: string, row: a
     end
     if count ~= 1 then return invalid_response("insert.rows_affected") end
 
-    local cleanup_sequence, cleanup_err = jobs.open_thread_tx(tx, dbtype, thread_id)
+    local _, cleanup_err = job_teardown.reopen_thread_tx(tx, dbtype, thread_id)
     if cleanup_err then return cleanup_err end
-    if type(cleanup_sequence) ~= "number" then return invalid_response("cleanup.page_seq") end
-    local stamp_err = stamp_cleanup_sequence(tx, thread_id, cleanup_sequence)
-    if stamp_err then return stamp_err end
 
     if checked.natural_key then
         local key = checked.natural_key

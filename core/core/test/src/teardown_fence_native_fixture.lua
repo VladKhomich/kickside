@@ -13,7 +13,10 @@ function M.result(stage: string, value: any): (any, error?)
     return value, nil
 end
 function M.executor(): any
-    return {
+    local db: any = {
+        begin = function(self) return self, nil end,
+        commit = function() return true, nil end,
+        rollback = function() return true, nil end,
         type = function() return M.result("dialect", M.dialect) end,
         query = function(self, statement, args)
             if statement:find("SELECT deleting_at", 1, true) then
@@ -33,6 +36,7 @@ function M.executor(): any
             return M.result(statement:find("SET deleting_at", 1, true) and "mark" or "stamp", {rows_affected = 1})
         end,
     }
+    return db
 end
 function M.get(id: string): (any, error?)
     return M.result("contract", {open = function(self)

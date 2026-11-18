@@ -30,7 +30,7 @@ function M.database(): any
     function db:rollback() M.rollbacks = M.rollbacks + 1; return M.result("rollback", true) end
     function db:commit() M.commits = M.commits + 1; return M.result("commit", true) end
     function db:query(statement, params)
-        if statement:find("SELECT f.thread_id", 1, true) then return M.result("owners", {{thread_id = "thread"}}) end
+        if statement:find("AS eligible", 1, true) then return M.result("owners", {{thread_id = "thread", eligible = true}}) end
         if statement:find("FROM kickside_job_thread_cleanup_receipt", 1, true) then
             return M.result(M.mode == "prior" and "previous" or "receipt", {M.row})
         end

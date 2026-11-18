@@ -40,4 +40,6 @@ function M.remove(id): (any, error?, any)
     local value, err = M.result("remove", true)
     return value, err, M.warning
 end
+function M.reopen_thread_tx() return true, nil end
+function M.start_thread_cleanup_tx() return 0, nil end
 return M

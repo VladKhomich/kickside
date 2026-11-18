@@ -251,64 +251,39 @@ function M.finish_absent_thread_tx(tx: sql.Transaction, dbtype: string, thread_i
     return ack_locked_tx(tx, dbtype, thread_id, sequence - 1, true, fence)
 end
 
-local function advance_past_receipts(tx: sql.Transaction, thread_id: string, sequence: integer,
-        fence: table?): (integer?, error?)
-    local retained, read_err = tx:query("SELECT MAX(page_seq) AS page_seq FROM " .. RECEIPT
-        .. " WHERE thread_id=$1", {thread_id})
-    if read_err then return nil, errors.wrap(read_err, "read retained thread cleanup sequence") end
-    if type(retained) ~= "table" or not retained[1] then return nil, response_error("retained.rows") end
-    if retained[1].page_seq == nil then return sequence, nil end
-    local latest = math.tointeger(retained[1].page_seq)
-    if not latest or latest < 0 then return nil, response_error("retained.page_seq") end
-    if latest < sequence then return sequence, nil end
-
-    local statement = fence
-        and "UPDATE " .. thread_fence.TABLE .. " SET next_page_seq=$1 WHERE thread_id=$2"
-        or "INSERT INTO " .. thread_fence.TABLE .. " (next_page_seq,thread_id) VALUES($1,$2)"
-    local updated, update_err = tx:execute(statement, {latest + 1, thread_id})
-    if update_err then return nil, errors.wrap(update_err, "advance thread cleanup sequence") end
-    local _, proof = affected(updated, "advance thread cleanup sequence", 1)
-    if proof then return nil, proof end
-    return latest + 1, nil
-end
-
-local function open_locked_tx(tx: sql.Transaction, dbtype: string, thread_id: string, fence: table?): (integer?, error?)
-    local sequence = not fence and 0 or math.tointeger(fence.next_page_seq)
+-- Core has just marked the thread. Any retained page belongs to an earlier
+-- incarnation because the new thread has not yet started its teardown.
+function M.start_thread_cleanup_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
+    local fence, lock_err = thread_fence.lock(tx, thread_id)
+    if lock_err then return nil, lock_err end
+    local sequence = fence and math.tointeger(fence.next_page_seq)
     if not sequence or sequence < 0 then return nil, response_error("fence.next_page_seq") end
-    if not fence or not fence.started then return advance_past_receipts(tx, thread_id, sequence, fence) end
-
-    if fence.completed_at == nil and sequence > 0 then
-        local _, ack_err = ack_locked_tx(tx, dbtype, thread_id, sequence - 1, true, fence)
-        if ack_err then return nil, ack_err end
+    local rows, read_err = tx:query("SELECT page_seq,acknowledged_at FROM " .. RECEIPT
+        .. " WHERE thread_id=$1 ORDER BY page_seq DESC LIMIT 1", {thread_id})
+    if read_err then return nil, errors.wrap(read_err, "read retained thread cleanup sequence") end
+    if type(rows) ~= "table" then return nil, response_error("retained.rows") end
+    if rows[1] then
+        local latest = math.tointeger(rows[1].page_seq)
+        if not latest or latest < 0 then return nil, response_error("retained.page_seq") end
+        if rows[1].acknowledged_at == nil then
+            local _, ack_err = ack_locked_tx(tx, dbtype, thread_id, latest, true, fence)
+            if ack_err then return nil, ack_err end
+        end
+        sequence = math.max(sequence, latest + 1)
     end
-
-    local reopened, update_err = tx:query([[UPDATE kickside_job_thread_cleanup SET started=FALSE,completed_at=NULL
-        WHERE thread_id=$1 AND completed_at IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM kickside_job WHERE owner_kind='thread' AND owner_id=$1)
-          AND NOT EXISTS (SELECT 1 FROM kickside_job_run WHERE owner_kind='thread' AND owner_id=$1)
-        RETURNING thread_id]], {thread_id})
-    if update_err then return nil, errors.wrap(update_err, "open completed thread cleanup fence") end
-    if type(reopened) ~= "table" then return nil, response_error("reopen.rows") end
-    if not reopened[1] then
-        return nil, errors.new({message = "the previous thread cleanup is still pending", kind = errors.CONFLICT,
-            retryable = true, details = {reason = "thread_cleanup", thread_id = thread_id}})
-    end
-    return advance_past_receipts(tx, thread_id, sequence, fence)
+    local updated, update_err = tx:execute("UPDATE " .. thread_fence.TABLE
+        .. " SET started=TRUE,completed_at=NULL,next_page_seq=$1 WHERE thread_id=$2", {sequence, thread_id})
+    if update_err then return nil, errors.wrap(update_err, "start thread cleanup fence") end
+    local _, proof_err = affected(updated, "start thread cleanup fence", 1)
+    if proof_err then return nil, proof_err end
+    return sequence, nil
 end
 
--- The caller has inserted a new thread on tx, proving the previous thread is gone.
-function M.open_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
+-- A newer live thread can admit work once the prior teardown is complete.
+function M.reopen_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (boolean?, error?)
     local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
     if fence_err then return nil, fence_err end
-    return open_locked_tx(tx, dbtype, thread_id, fence)
-end
-
--- The caller holds the live thread row before locking Jobs. A final page from
--- before this thread was created belongs to its previous incarnation.
-function M.reopen_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (integer?, error?)
-    local fence, fence_err = thread_fence.lock_existing(tx, dbtype, thread_id)
-    if fence_err then return nil, fence_err end
-    if not fence or not fence.started then return nil, nil end
+    if not fence or not fence.started then return true, nil end
     local sequence = math.tointeger(fence.next_page_seq)
     if not sequence or sequence < 1 then return nil, response_error("fence.next_page_seq") end
 
@@ -320,8 +295,24 @@ function M.reopen_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: stri
         .. " WHERE t.id=$2 AND t.deleting_at IS NULL AND t.created_at > " .. prior, {thread_id, thread_id})
     if read_err then return nil, errors.wrap(read_err, "verify replacement thread incarnation") end
     if type(rows) ~= "table" then return nil, response_error("thread.rows") end
-    if not rows[1] then return nil, nil end
-    return open_locked_tx(tx, dbtype, thread_id, fence)
+    if not rows[1] then return true, nil end
+
+    if fence.completed_at == nil then
+        local _, ack_err = ack_locked_tx(tx, dbtype, thread_id, sequence - 1, true, fence)
+        if ack_err then return nil, ack_err end
+    end
+    local reopened, update_err = tx:query([[UPDATE kickside_job_thread_cleanup SET started=FALSE,completed_at=NULL
+        WHERE thread_id=$1 AND completed_at IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM kickside_job WHERE owner_kind='thread' AND owner_id=$1)
+          AND NOT EXISTS (SELECT 1 FROM kickside_job_run WHERE owner_kind='thread' AND owner_id=$1)
+        RETURNING thread_id]], {thread_id})
+    if update_err then return nil, errors.wrap(update_err, "open completed thread cleanup fence") end
+    if type(reopened) ~= "table" then return nil, response_error("reopen.rows") end
+    if not reopened[1] then
+        return nil, errors.new({message = "the previous thread cleanup is still pending", kind = errors.CONFLICT,
+            retryable = true, details = {reason = "thread_cleanup", thread_id = thread_id}})
+    end
+    return true, nil
 end
 
 function M.page(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer): (table?, error?)
@@ -416,12 +407,15 @@ end
 -- Thread teardown removes every owned row before it completes, so such rows
 -- were left by a teardown that missed them; each owner's rows go in one bounded
 -- transaction under its cleanup fence. Returns the number of rows removed.
-function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer): (integer?, error?)
-    local rows, read_err = db:query([[SELECT f.thread_id FROM kickside_job_thread_cleanup f
-        WHERE f.completed_at IS NOT NULL
-          AND (EXISTS (SELECT 1 FROM kickside_job j WHERE j.owner_kind='thread' AND j.owner_id=f.thread_id)
-            OR EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.owner_kind='thread' AND r.owner_id=f.thread_id))
-        ORDER BY f.thread_id LIMIT $1]], { limit })
+function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer, after: any): (integer?, error?, any)
+    local first = {"", ""}
+    local source = thread_fence.TABLE
+    if dbtype == sql.type.SQLITE then source = source .. " INDEXED BY idx_job_cleanup_completed_order" end
+    local rows, read_err, position = thread_fence.ordered_window(db, source, "f", {"completed_at", "thread_id"},
+        "completed_at IS NOT NULL", [[
+          EXISTS (SELECT 1 FROM kickside_job j WHERE j.owner_kind='thread' AND j.owner_id=f.thread_id)
+          OR EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.owner_kind='thread' AND r.owner_id=f.thread_id)
+        ]], after, first, limit)
     if read_err then return nil, errors.wrap(read_err, "completed cleanup leftover read failed") end
     if type(rows) ~= "table" then return nil, response_error("owners.rows") end
     local total = 0
@@ -436,11 +430,12 @@ function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer): (integ
             local result, run_err = run_page(tx, dbtype, thread_id, limit)
             if run_err then return nil, sql_boundary.rollback(tx, run_err, "thread cleanup rollback failed") end
             total = total + (result :: table).processed
+            if not (result :: table).done then position = after or first end
         end
         local _, commit_err = tx:commit()
         if commit_err then return nil, errors.wrap(commit_err, "completed cleanup leftover commit failed") end
     end
-    return total, nil
+    return total, nil, position
 end
 
 function M.ack_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_seq: integer,

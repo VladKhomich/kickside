@@ -32,10 +32,10 @@ end
 local function drain(db: any, instant: any): (table, integer)
     local totals: any = {}
     local passes = 0
-    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function(cursor)
-        local stats = required(retention.sweep(db, tostring(db:type()), cursor))
+    local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function(cursor, cleanup_cursors)
+        local stats = required(retention.sweep(db, tostring(db:type()), cursor, cleanup_cursors))
         for key, value in pairs(stats) do
-            if key ~= "job_cursor" then totals[key] = (totals[key] or 0) + value end
+            if type(value) == "number" then totals[key] = (totals[key] or 0) + value end
         end
         return stats, nil
     end})

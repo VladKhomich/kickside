@@ -85,14 +85,12 @@ entries:
       - json
     imports:
       clock: kickside.core.jobs:clock
-      jobs: kickside.core.jobs:jobs
+      job_teardown: kickside.core.jobs.persist:thread_teardown
       threads_consts: kickside.core.threads:consts
       core_types: kickside.core:types
       autoinit: kickside.component:autoinit
       threads_normalize: kickside.core.threads.persist:normalize
       natural_key: kickside.core.threads.persist:natural_key
-      sql_boundary: kickside.core.jobs.persist:sql_boundary
-      threads_writer: kickside.core.threads.persist:writer
 
   - name: thread_crud
     kind: library.lua
@@ -155,6 +153,9 @@ entries:
       comment: Durable bounded fence of surviving retention consumers before thread reap.
     source: file://teardown_fence.lua
     modules: [sql, time, uuid, contract]
+    imports:
+      job_teardown: kickside.core.jobs.persist:thread_teardown
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
 
   - name: teardown_page
     kind: library.lua
@@ -167,6 +168,7 @@ entries:
       threads_drop_notify: kickside.core.threads.persist:drop_notify
       jobs_wake: kickside.core.jobs.persist:wake
       jobs: kickside.core.jobs:jobs
+      job_teardown: kickside.core.jobs.persist:thread_teardown
       cursor_waiters: kickside.core.threads:cursor_waiters
       error_envelope: kickside.contract:error_envelope
 
