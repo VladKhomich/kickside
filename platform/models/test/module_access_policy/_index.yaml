@@ -11,5 +11,81 @@ entries:
   modules:
   - registry
   - security
+  - funcs
+  - json
+  - store
+  - ctx
   imports:
     test: wippy.test:test
+    models_repo: kickside.models.persist:repo
+    models_cache: kickside.models.service:models_cache
+    llm: wippy.llm:llm
+    contract: contract
+    providers: wippy.llm.discovery:providers
+
+- name: store_probe
+  kind: function.lua
+  source: file://test.lua
+  method: store_probe
+  modules: [registry, security, funcs, json, store, ctx]
+  imports:
+    test: wippy.test:test
+    models_repo: kickside.models.persist:repo
+    models_cache: kickside.models.service:models_cache
+    llm: wippy.llm:llm
+    contract: contract
+    providers: wippy.llm.discovery:providers
+- name: resolve_probe
+  kind: function.lua
+  source: file://test.lua
+  method: resolve_probe
+  modules: [registry, security, funcs, json, store, ctx]
+  imports:
+    test: wippy.test:test
+    models_repo: kickside.models.persist:repo
+    models_cache: kickside.models.service:models_cache
+    llm: wippy.llm:llm
+    contract: contract
+    providers: wippy.llm.discovery:providers
+
+- name: execution_probe
+  kind: function.lua
+  source: file://test.lua
+  method: execution_probe
+  modules: [registry, security, funcs, json, store, ctx]
+  imports:
+    test: wippy.test:test
+    models_repo: kickside.models.persist:repo
+    models_cache: kickside.models.service:models_cache
+    llm: wippy.llm:llm
+    providers: wippy.llm.discovery:providers
+    contract: contract
+- name: member_provider_contract
+  kind: security.policy
+  groups: [app:selected_model_members]
+  policy:
+    resources: [wippy.llm:provider]
+    actions: [contract.get]
+    effect: allow
+- name: member_provider_call
+  kind: security.policy
+  groups: [app:selected_model_members]
+  policy:
+    resources: [status, generate, embed, structured_output, evaluate]
+    actions: [contract.call]
+    effect: allow
+- name: member_provider_context
+  kind: security.policy
+  groups: [app:selected_model_members]
+  policy:
+    resources: [context]
+    actions: [contract.context]
+    effect: allow
+
+- name: deadline_probe
+  kind: function.lua
+  source: file://deadline_probe.lua
+  method: run
+  modules: [time]
+  imports:
+    llm: wippy.llm:llm

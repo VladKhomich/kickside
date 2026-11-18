@@ -59,6 +59,8 @@ entries:
     imports:
       migration: wippy.migration:migration
       catalog_policy: kickside.models.catalog:policy
+    security:
+      policies: [kickside.models:secret_key_access]
 
   - name: 05_optional_model_limits
     kind: function.lua

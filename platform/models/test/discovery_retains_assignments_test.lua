@@ -40,7 +40,7 @@ local function define_tests()
                     return result.models[1]
                 end
                 local function assert_unknown_storage(name)
-                    local db, db_err = repo.open_db()
+                    local db, db_err = sql.get("app:db")
                     test.is_nil(db_err)
                     local rows, query_err = db:query([[SELECT name FROM kickside_model_cards
                         WHERE name = $1 AND max_tokens IS NULL AND output_tokens IS NULL AND dimensions IS NULL]], { name })
@@ -119,7 +119,7 @@ local function define_tests()
                 test.is_true(card.enabled)
                 test.eq(table.concat(card.capabilities, ","), "embed")
                 test.is_nil(card.dimensions)
-                local db, db_err = repo.open_db()
+                local db, db_err = sql.get("app:db")
                 test.is_nil(db_err)
                 local rows, query_err = db:query("SELECT name FROM kickside_model_cards WHERE name = $1 AND dimensions IS NULL",
                     { card.name })

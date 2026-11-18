@@ -27,6 +27,9 @@ local function fake_reader()
         list_pending_inputs = function()
             return {}, nil
         end,
+        list_pending_answers = function()
+            return {}, nil
+        end,
         messages = function()
             return {
                 from_checkpoint = function(self)

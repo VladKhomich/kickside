@@ -37,6 +37,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.models:db_config
         path: .meta.db_id
+      - entry: kickside.models.catalog:catalog_database
+        path: .policy.resources +=
 
   - name: db_config
     kind: registry.entry
@@ -125,6 +127,29 @@ entries:
         default: true
         methods:
           resolve: kickside.models.catalog:model_resolver_func
+
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: llm.provider
+      name: models
+      title: Saved model profiles
+    driver:
+      id: kickside.models:profile_driver
+
+  - name: profile_driver
+    kind: contract.binding
+    contracts:
+      - contract: wippy.llm:provider
+        methods: {status: kickside.models.providers.profile:status}
+      - contract: wippy.llm:generator
+        methods: {generate: kickside.models.providers.profile:generate}
+      - contract: wippy.llm:embedder
+        methods: {embed: kickside.models.providers.profile:embed}
+      - contract: wippy.llm:structured_output
+        methods: {structured_output: kickside.models.providers.profile:structured_output}
+      - contract: wippy.llm:evaluator
+        methods: {evaluate: kickside.models.providers.profile:evaluate}
 
   - name: openai_compat_plain.driver
     kind: contract.binding
