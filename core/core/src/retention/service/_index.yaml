@@ -3,13 +3,13 @@ namespace: kickside.core.retention.service
 
 entries:
   # Service layer of the retention slice. It reacts to durable Core retention
-  # changes and exact eligibility deadlines. The .host on sweeper.service is
+  # changes and bounded rotation deadlines. The .host on sweeper.service is
   # injected by the slice's process_host requirement.
 
   - name: sweeper_process
     kind: process.lua
     meta:
-      comment: Event-driven retention with boot recovery and exact eligibility deadlines.
+      comment: Event-driven retention with boot recovery and bounded rotation deadlines.
     source: file://sweeper_process.lua
     method: main
     modules:
@@ -38,7 +38,7 @@ entries:
   - name: runner
     kind: library.lua
     meta:
-      comment: One event-driven retention pass and its exact next eligibility deadline.
+      comment: One bounded retention pass and its next wake-up hint.
     source: file://runner.lua
     modules: [sql, logger, process]
     imports:

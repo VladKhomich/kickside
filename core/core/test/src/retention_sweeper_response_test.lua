@@ -3,21 +3,20 @@ local sweeper = require("sweeper")
 local fixture = require("fixture")
 local sql = require("sql")
 local methods = {
-    run = sweeper.run,
-    next_deadline_ms = sweeper.next_deadline_ms,
+    run = function(db: sql.DB) return sweeper.run(db, {}) end,
     run_for_thread = function(db: sql.DB) return sweeper.run_for_thread(db, "thread") end,
 }
 local function head(changes: table): table
-    local row = {id = "thread", seq = 1, pin_floor = 1, projection_floor = 1,
-        eligibility_ms = 1000, created_at = "2000-01-01 00:00:00", head_created_at = "2000-01-01 00:00:00"}
+    local row = {id = "thread",
+        eligibility_ms = 1000, head_created_at = "2000-01-01 00:00:00"}
     for key, value in pairs(changes) do row[key] = value end
     return row
 end
 return {run = test.run_cases(function()
     test.describe("permanent retention sweeper response failures", function()
-        for _, method in ipairs({"run", "run_for_thread", "next_deadline_ms"}) do
+        for _, method in ipairs({"run", "run_for_thread"}) do
             local query_field = method == "run" and "candidates.query"
-                or method == "run_for_thread" and "thread_policy.query" or "event_deadlines.query"
+                or "thread_policy.query"
             for _, response in ipairs({{}, {value = "invalid"}, {value = {false}},
                 {value = {unexpected = {}}}, {value = {[2] = {}}}}) do
                 test.it(method .. "/heads/" .. tostring(response.value), function()
@@ -36,8 +35,7 @@ return {run = test.run_cases(function()
                     test.eq(fixture.purges, 0)
                 end)
             end
-            local fields = {type = "db.type", policy = "policy"}
-            if method ~= "next_deadline_ms" then fields.prune = "prune.deleted" end
+            local fields = {type = "db.type", policy = "policy", prune = "prune.deleted"}
             if method == "run" then fields.purge = "purge.deleted" end
             for stage, field in pairs(fields) do
                 local responses = stage == "type" and {{}} or {{}, {value = false}, {value = {}}}
@@ -59,10 +57,10 @@ return {run = test.run_cases(function()
             end
         end
         for _, response in ipairs({{}, {value = false}, {value = {false}}, {value = {unexpected = {}}}}) do
-            test.it("next_deadline_ms/receipts/" .. tostring(response.value), function()
-                fixture.reset("next_deadline_ms", "", nil, sql.type.SQLITE)
+            test.it("next_receipt_deadline_ms/" .. tostring(response.value), function()
+                fixture.reset("next_receipt_deadline_ms", "", nil, sql.type.SQLITE)
                 fixture.responses.receipts = response
-                local ok, result, err = pcall(sweeper.next_deadline_ms, fixture.database())
+                local ok, result, err = pcall(sweeper.next_receipt_deadline_ms, fixture.database())
                 test.is_true(ok)
                 test.is_nil(result)
                 test.eq(err:kind(), errors.INTERNAL)
@@ -75,9 +73,7 @@ return {run = test.run_cases(function()
             {method = "run", value = head({id = ""}), field = "candidate.id"},
             {method = "run", value = head({event_hot_retention_days = 0}), field = "event_hot_retention_days"},
             {method = "run_for_thread", value = head({event_hot_retention_days = "invalid"}), field = "event_hot_retention_days"},
-            {method = "next_deadline_ms", value = head({seq = "invalid"}), field = "event.seq"},
             {method = "run", value = head({head_created_at = "invalid"}), field = "timestamp"},
-            {method = "next_deadline_ms", value = head({created_at = "invalid"}), field = "timestamp"},
         }) do
             test.it(case.method .. "/" .. case.field, function()
                 fixture.reset(case.method, "", nil, sql.type.SQLITE)
@@ -94,9 +90,9 @@ return {run = test.run_cases(function()
             end)
         end
         test.it("requires the Postgres native event deadline proof", function()
-            fixture.reset("next_deadline_ms", "", nil, sql.type.POSTGRES)
+            fixture.reset("run", "", nil, sql.type.POSTGRES)
             fixture.responses.heads = {value = {head({eligibility_ms = false})}}
-            local result, err = sweeper.next_deadline_ms(fixture.database())
+            local result, err = methods.run(fixture.database())
             test.is_nil(result)
             test.eq(err:kind(), errors.INTERNAL)
             test.eq(err:retryable(), false)
@@ -105,13 +101,14 @@ return {run = test.run_cases(function()
             test.eq(fixture.queries, 1)
         end)
         for _, dialect in ipairs({sql.type.SQLITE, sql.type.POSTGRES}) do
-            for _, method in ipairs({"run", "run_for_thread", "next_deadline_ms"}) do
+            for _, method in ipairs({"run", "run_for_thread"}) do
                 test.it("retains empty candidates/" .. dialect .. "/" .. method, function()
                     fixture.reset(method, "", nil, dialect)
                     fixture.responses.heads, fixture.responses.receipts = {value = {}}, {value = {}}
                     local result, err = methods[method](fixture.database())
                     test.is_nil(err)
-                    if method ~= "next_deadline_ms" then test.eq(result.events, 0) else test.is_nil(result) end
+                    test.eq(result.events, 0)
+                    test.is_nil(result.deadline_ms)
                     test.eq(fixture.prunes, 0)
                 end)
             end
