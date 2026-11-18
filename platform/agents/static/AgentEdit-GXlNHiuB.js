@@ -1,7 +1,7 @@
 import { computed as i, defineComponent as _, ref as o, onMounted as h, openBlock as I, createBlock as y, unref as w } from "vue";
 import { api as u } from "@wippy-fe/proxy";
 import { j as C, u as P } from "./wc-runtime-C2f1ro5W.js";
-import { _ as b } from "./AgentForm.vue_vue_type_script_setup_true_lang-C6OGvOS1.js";
+import { _ as b } from "./AgentForm.vue_vue_type_script_setup_true_lang-B-6fjO10.js";
 import { l as k } from "./toolCatalog-W6OjlU7E.js";
 function x(d) {
   return i(() => {
@@ -65,4 +65,4 @@ const S = /* @__PURE__ */ _({
 export {
   S as default
 };
-//# sourceMappingURL=AgentEdit-BBxEEwxc.js.map
+//# sourceMappingURL=AgentEdit-GXlNHiuB.js.map

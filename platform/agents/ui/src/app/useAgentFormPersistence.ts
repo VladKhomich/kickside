@@ -5,6 +5,7 @@ import type { Form, Model } from './agent-form.types.ts'
 
 interface AgentFormPersistenceOptions {
   form: Ref<Form>
+  maxTokens: ComputedRef<number | ''>
   valid: ComputedRef<boolean>
   tab: Ref<string>
   blank: (includeCreateDefaults?: boolean) => Form
@@ -15,7 +16,7 @@ interface AgentFormPersistenceOptions {
   emitSaved: (id: string) => void
 }
 
-export function useAgentFormPersistence({ form, valid, tab, blank, agentId, parentId, models, redirectTrait, emitSaved }: AgentFormPersistenceOptions) {
+export function useAgentFormPersistence({ form, maxTokens, valid, tab, blank, agentId, parentId, models, redirectTrait, emitSaved }: AgentFormPersistenceOptions) {
   const loading = ref(false)
   const saving = ref(false)
   const error = ref('')
@@ -73,7 +74,7 @@ export function useAgentFormPersistence({ form, valid, tab, blank, agentId, pare
       prompt: form.value.prompt,
       model: form.value.model,
       temperature: form.value.temperature ?? false,
-      max_tokens: form.value.max_tokens,
+      max_tokens: maxTokens.value,
       thinking_effort: form.value.thinking_effort ?? false,
       traits: form.value.traits,
       trait_contexts: selectedMap(form.value.trait_contexts),

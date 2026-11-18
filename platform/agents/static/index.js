@@ -17,7 +17,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: p(
-        () => import("./lazy-mount-B3qc7Ezg.js").then((t) => t.mountConfig),
+        () => import("./lazy-mount-DQ-Rgfob.js").then((t) => t.mountConfig),
         "Could not load Agents. Reload the page to try again.",
         s
       )

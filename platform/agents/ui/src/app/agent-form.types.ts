@@ -25,7 +25,7 @@ export interface Form {
   public: boolean
   model: string
   temperature: number | null
-  max_tokens: number
+  max_tokens: number | '' | null
   thinking_effort: number | null
   traits: string[]
   trait_contexts: Record<string, any>
