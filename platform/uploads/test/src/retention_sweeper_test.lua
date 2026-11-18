@@ -189,6 +189,10 @@ return test.run_cases(function()
 
         test.it("recovers intentless completed uploads with a present or pruned parent and fails invalid checkpoints", function()
             local component_id, owner = user_container()
+            local stored_only = uuid.v4()
+            exec([[INSERT INTO kickside_uploads
+                (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata)
+                VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text','completed','{}')]], { stored_only, owner })
             local fixtures = { {}, { pruned = true }, { invalid = true } }
             for _, fixture in ipairs(fixtures) do
                 local upload_id, job_id = uuid.v4(), uuid.v4()
@@ -199,10 +203,14 @@ return test.run_cases(function()
                     { job_id, component_id, assert(json.encode({ upload_id = upload_id })),
                         "7:uploads" .. #upload_id .. ":" .. upload_id .. "7:process", owner, stamp(fixture.pruned and -40 or 0) })
                 checkpoint(component_id, owner, upload_id, nil, "{}", "uploaded")
-                lifecycle_event(component_id, upload_id, upload_types.EVENT.QUEUED, upload_types.EVENT.QUEUED)
                 if fixture.invalid then
                     exec("UPDATE kickside_uploads SET trace_context=$1 WHERE uuid=$2", { '{"unknown":"field"}', upload_id })
                     test.eq(assert(upload_query_repo.get(upload_id)).trace_context.unknown, "field")
+                else
+                    lifecycle_event(component_id, upload_id, upload_types.EVENT.QUEUED, upload_types.EVENT.QUEUED)
+                end
+                if fixture.pruned then
+                    exec("DELETE FROM kickside_upload_read_model WHERE upload_id=$1", { upload_id })
                 end
             end
             local db = assert(sql.get(DB))
@@ -218,6 +226,7 @@ return test.run_cases(function()
                 local result = assert(funcs.call("kickside.uploads:retention", {}))
                 test.is_true(result.success, tostring(result.error))
             end
+            test.eq(#terminal_events(component_id, stored_only), 0, "storage-only uploads have no processing outcome")
             for _, fixture in ipairs(fixtures) do
                 local events = terminal_events(component_id, fixture.upload_id)
                 test.eq(#events, 1)

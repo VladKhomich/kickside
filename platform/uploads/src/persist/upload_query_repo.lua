@@ -7,7 +7,7 @@ local trim = require("text_trim").trim
 
 local upload_query_repo = {}
 
-upload_query_repo.INTENTLESS_SQL = "processing_intent_state IS NULL AND processing_job_id IS NULL"
+local INTENTLESS_SQL = "processing_intent_state IS NULL AND processing_job_id IS NULL"
 
 function upload_query_repo.processing_job_identity_sql(upload: string): string
     return "'7:uploads' || CAST(length(" .. upload .. "uuid) AS TEXT) || ':' || " .. upload .. "uuid || '7:process'"
@@ -16,8 +16,19 @@ end
 function upload_query_repo.processing_job_owner_sql(): string
     return [[EXISTS (SELECT 1 FROM kickside_job j WHERE j.id = ? AND
         ((processing_intent_state = 'acknowledged' AND processing_job_id = CAST(j.id AS TEXT))
-         OR (]] .. upload_query_repo.INTENTLESS_SQL .. [[ AND j.job_identity = ]]
+         OR (]] .. INTENTLESS_SQL .. [[ AND j.job_identity = ]]
              .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. ")))"
+end
+
+-- Storage-only uploads also have NULL intent fields. Processing leaves
+-- either a queue event or its processing projection.
+function upload_query_repo.intentless_checkpoint_sql(upload_id: string): string
+    return INTENTLESS_SQL .. [[ AND (
+        EXISTS (SELECT 1 FROM kickside_upload_read_model r WHERE r.upload_id = ]] .. upload_id .. [[
+            AND r.status = 'processing')
+        OR EXISTS (SELECT 1 FROM kickside_event e WHERE e.external_source = 'uploads'
+            AND e.external_id = ]] .. upload_id .. [[ AND e.type = 'kickside.uploads.events:upload.queued')
+    )]]
 end
 
 local function select_upload_columns()
@@ -181,11 +192,13 @@ function upload_query_repo.list_checkpoints(limit: integer, cursor: string?, db:
     local dbtype, type_err = db:type()
     if type_err then return nil, type_err end
     local index = dbtype == sql.type.SQLITE and " INDEXED BY idx_upload_checkpoint_candidates" or ""
-    local rows, err = db:query("SELECT u.*, NOT " .. checkpoint_published .. " AS unpublished FROM kickside_uploads u"
+    local rows, err = db:query("SELECT u.*, (u.processing_job_id IS NOT NULL OR ("
+        .. upload_query_repo.intentless_checkpoint_sql("u.uuid") .. ")) AND NOT " .. checkpoint_published
+        .. " AS unpublished FROM kickside_uploads u"
         .. index .. [[
         WHERE u.storage_state IN ('completed', 'failed')
           AND ((u.processing_intent_state = 'acknowledged' AND u.processing_job_id IS NOT NULL)
-            OR (]] .. upload_query_repo.INTENTLESS_SQL .. "))" .. after .. " ORDER BY u.uuid LIMIT " .. limit_arg, params)
+            OR (]] .. INTENTLESS_SQL .. "))" .. after .. " ORDER BY u.uuid LIMIT " .. limit_arg, params)
     if err then return nil, err end
     local checkpoints = {}
     for _, row in ipairs(rows) do
