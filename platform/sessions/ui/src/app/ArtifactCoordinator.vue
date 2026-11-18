@@ -40,6 +40,7 @@ const activeSessionId = ref(sessionIdFromPath(route.initialPath))
 /** Invalidate title lookups when the modal closes or changes ownership. */
 let modalSequence = 0
 let legacyChatRequest = 0
+let legacyChatStart: AbortController | undefined
 
 function reveal() {
   manager?.expandPanel(ARTIFACT_PANEL_ID)
@@ -151,11 +152,13 @@ function setActiveSession(sessionId: string) {
 /** Compatibility when this Sessions release is loaded by the previous app. */
 async function openLegacyChat(intent: Record<string, unknown>) {
   const request = ++legacyChatRequest
+  legacyChatStart?.abort()
   let sessionId = typeof intent.uuid === 'string' ? intent.uuid : ''
   if (intent.intent === 'startChat') {
     if (typeof intent.startToken !== 'string' || !intent.startToken) return
     try {
-      sessionId = await exchangeStartToken(intent.startToken)
+      legacyChatStart = new AbortController()
+      sessionId = await exchangeStartToken(intent.startToken, legacyChatStart.signal)
     } catch {
       if (request === legacyChatRequest) host?.toast({ severity: 'error', summary: 'Could not start chat' })
       return
@@ -244,6 +247,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   legacyChatRequest++
+  legacyChatStart?.abort()
   modalSequence++
   stops.forEach(stop => stop())
 })

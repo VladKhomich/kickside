@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-import { api, define, loadByTagName, ws } from '@wippy-fe/proxy'
+import { api, define, loadByTagName, on, ws } from '@wippy-fe/proxy'
 
 const INTENT_CHANNEL = '@HOST/intent'
 const CHAT_TAG = 'kickside-chat-coordinator'
@@ -37,10 +37,27 @@ async function drawerAvailability() {
   }
 }
 
+function waitForWelcome(signal) {
+  signal.throwIfAborted()
+  return new Promise((resolve, reject) => {
+    const off = on('welcome', () => {
+      off()
+      signal.removeEventListener('abort', abort)
+      resolve()
+    })
+    function abort() {
+      off()
+      reject(signal.reason)
+    }
+    signal.addEventListener('abort', abort, { once: true })
+  })
+}
+
 export class KicksideManagedCoordinator extends HTMLElement {
   #mount
   #unsubscribe
   #request = 0
+  #start
 
   connectedCallback() {
     const mount = {}
@@ -52,6 +69,7 @@ export class KicksideManagedCoordinator extends HTMLElement {
 
   disconnectedCallback() {
     this.#mount = undefined
+    this.#start?.abort()
     this.#unsubscribe?.()
     this.#unsubscribe = undefined
     this.replaceChildren()
@@ -93,11 +111,20 @@ export class KicksideManagedCoordinator extends HTMLElement {
 
   async #openInline(mount, host, { intent, uuid, startToken, context }) {
     const request = ++this.#request
+    this.#start?.abort()
     let sessionId = uuid
     if (intent === 'startChat') {
       if (typeof startToken !== 'string' || !startToken) return
+      this.#start = new AbortController()
+      const { signal } = this.#start
+      const command = { type: 'session_open', start_token: startToken }
       try {
-        const response = await ws.sendWithResponse({ type: 'session_open', start_token: startToken })
+        const response = await ws.sendWithResponse(command).catch(async error => {
+          if (!(error instanceof Error) || error.message !== 'WebSocket is not connected') throw error
+          await waitForWelcome(signal)
+          signal.throwIfAborted()
+          return ws.sendWithResponse(command)
+        })
         if (response.topic !== 'session.opened' || !response.data?.session_id) throw new Error()
         sessionId = response.data.session_id
       } catch {

@@ -71,6 +71,7 @@ interface ChatIntent {
 /** A token start whose session has not been announced yet. */
 interface PendingStart {
   token: string
+  controller: AbortController
   request: number
   /** Show the new session on /sessions/<id> instead of in the panel. */
   fullPage: boolean
@@ -277,6 +278,7 @@ function isFullPage(intent: ChatIntent, current: HostRoute): boolean {
  */
 function setPending(next: PendingStart | null) {
   const changed = (pending !== null) !== (next !== null)
+  pending?.controller.abort()
   pending = next
   if (changed) bus?.broadcast(START_CHANNEL, { pending: next !== null })
 }
@@ -305,7 +307,7 @@ function openSession(intent: ChatIntent, sessionId: string) {
 async function finishStart(start: PendingStart) {
   let sessionId: string
   try {
-    sessionId = await exchangeStartToken(start.token)
+    sessionId = await exchangeStartToken(start.token, start.controller.signal)
   } catch {
     if (pending !== start) return
     cancelPending()
@@ -341,7 +343,8 @@ function startChat(intent: ChatIntent, token: string) {
     const previousSessionId = pending?.previousSessionId
       ?? patchedSession ?? text(panelProps(layout, CHAT_PANEL_ID).sessionId)
     const start: PendingStart = {
-      token, request: ++requestSequence, fullPage, context: intent.context, section, previousSessionId, seen: false,
+      token, controller: new AbortController(), request: ++requestSequence,
+      fullPage, context: intent.context, section, previousSessionId, seen: false,
     }
     setPending(start)
     patchChat({ startRequest: start.request, sessionId: null })

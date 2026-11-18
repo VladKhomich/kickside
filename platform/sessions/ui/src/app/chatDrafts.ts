@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import type { ChatDrafts } from '@widgets/chatDraftComposer'
 
-const MAX_DRAFT_LENGTH = 65_536
 const MAX_SESSIONS = 100
 
 /** Owned by a single authenticated Host. A credential change discards its drafts. */
@@ -21,7 +20,7 @@ export function createChatDrafts(token: () => string | undefined): ChatDrafts {
       return isAuthenticated() ? drafts.get(sessionId) ?? '' : undefined
     },
     write(sessionId, draft) {
-      if (!isAuthenticated() || draft.length > MAX_DRAFT_LENGTH) return
+      if (!isAuthenticated()) return
       drafts.delete(sessionId)
       if (draft) drafts.set(sessionId, draft)
       if (drafts.size > MAX_SESSIONS) {
