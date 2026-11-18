@@ -25,10 +25,11 @@ drain of an in-flight execution is bounded by that execution's own declared
 apply. An upgrade never terminates or re-runs an execution.
 
 The pool has five seconds for shutdown coordination, including dispatch,
-assignment release and cleanup waits in the database or runtime. A service
-stop or replacement closes admission and lets each running execution settle
-under its own execution ceiling. Explicit process cancellation also asks
-each slot to cancel through its existing termination fence. If coordination
+assignment release and cleanup waits in the database or runtime. A CANCEL
+event, including during service stop, replacement or context cancellation,
+closes admission and lets each running execution settle under its own
+execution ceiling. A drain triggered by the pool's registry subscription closing
+asks each slot to cancel through its existing termination fence. If coordination
 exceeds the deadline, the pool exits with an error. Shutdown cleanup can
 finish separately, reusing confirmed slot exits and the original claim and
 run-owner fences to refund assignments that never started.
@@ -234,8 +235,9 @@ The editable policy paths are Settings definitions in namespace
 `retry.max_attempts` (1–1000000), `retry.retry_after_ms` (1–86400000),
 `retry.max_delay_ms` (1000–86400000), and `proc.max_execution` (default **10m**).
 
-Precedence is administrator override, then the host assignment in
-`kickside.core.jobs:policy` meta, then the shipped default in its `defaults`.
+Precedence is administrator override, then the host assignment, then the
+shipped default. The complete host policy stays in `kickside.core.jobs:policy`
+meta so active workers can read it while a new module version is applied.
 Settings stores only overrides; Jobs reads the keys `get_namespace` reports as
 `overridden`, so a value without an override follows the host configuration
 rather than the Settings default. Each override is validated by

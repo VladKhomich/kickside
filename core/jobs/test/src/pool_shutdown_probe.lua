@@ -2,7 +2,6 @@
 local channel = require("channel")
 local process = require("process")
 local sql = require("sql")
-local time = require("time")
 local worker_pool = require("worker_pool")
 local fixture = require("job_fixture")
 local claim = require("claim")
@@ -49,7 +48,25 @@ local function run_pool(observer: string, topic: string, blocked_step: string): 
     end
     local release_gate = blocked_step == "database" and process.listen(topic .. ".release") or nil
     local rollback_gate = blocked_step == "rollback" and process.listen(topic .. ".resume") or nil
+    local pool_events = nil
+    if blocked_step == "release" or blocked_step == "database" then
+        local registry_ch = channel.new(0)
+        local drain_gate = process.listen(topic .. ".drain")
+        coroutine.spawn(function()
+            drain_gate:receive()
+            registry_ch:close()
+        end)
+        pool_events = {
+            subscribe = function()
+                return {
+                    channel = function() return registry_ch end,
+                    close = function() end,
+                }, nil
+            end,
+        }
+    end
     return worker_pool.new({
+        events = pool_events,
         policy = function() return policy, nil end,
         schema_ready = function() return true, nil end,
         sql_get = function()
@@ -75,10 +92,9 @@ local function run_pool(observer: string, topic: string, blocked_step: string): 
                         elseif blocked_step == "database" then
                             announce({ id = job.id, worker = tostring(slot) })
                         else
-                            announce(blocked_step == "hard" and tostring(slot) or "retention")
+                            announce("retention")
                         end
-                        if blocked_step == "retention" or blocked_step == "hard" then gate:receive() end
-                        if blocked_step == "release" then time.sleep("2s") end
+                        if blocked_step == "retention" then gate:receive() end
                     end,
                 }
             end,
