@@ -2,6 +2,11 @@ local test = require("test")
 local sweeper = require("sweeper")
 local fixture = require("fixture")
 local sql = require("sql")
+local methods = {
+    run = sweeper.run,
+    next_deadline_ms = sweeper.next_deadline_ms,
+    run_for_thread = function(db: sql.DB) return sweeper.run_for_thread(db, "thread") end,
+}
 local cases = {
     {method = "run", stage = "policy", policies = 1, types = 0, queries = 0, prunes = 0, purges = 0},
     {method = "run", stage = "type", policies = 1, types = 1, queries = 0, prunes = 0, purges = 0},
@@ -28,7 +33,7 @@ return {run = test.run_cases(function()
                         local source = errors.new({kind = kind, message = "retention sweeper dependency failure",
                             retryable = options.retryable, details = {code = "retention_sweeper_dependency", nested = {stage = case.stage}}})
                         fixture.reset(case.method, case.stage, source, sql.type.SQLITE)
-                        local result, err = sweeper[case.method](fixture.database(), "thread")
+                        local result, err = methods[case.method](fixture.database())
                         test.is_nil(result)
                         test.eq(type(err), "userdata")
                         test.eq(err:kind(), source:kind())
@@ -48,7 +53,7 @@ return {run = test.run_cases(function()
             for _, method in ipairs({"run", "run_for_thread", "next_deadline_ms"}) do
                 test.it("retains healthy sweep/deadline behavior/" .. dialect .. "/" .. method, function()
                     fixture.reset(method, "", nil, dialect)
-                    local result, err = sweeper[method](fixture.database(), "thread")
+                    local result, err = methods[method](fixture.database())
                     test.is_nil(err)
                     if method == "next_deadline_ms" then
                         test.eq(type(result), "number")

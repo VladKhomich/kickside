@@ -29,6 +29,40 @@ local function define_tests()
             test.eq(#fixture.seqs_of(id), 0)
             test.eq(fixture.boundary_of(id), 10001)
         end)
+
+        test.it("rotates a capped event sweep through every backlogged thread", function()
+            local budget = 5000
+            local threads = { fixture.make_thread(), fixture.make_thread(), fixture.make_thread() }
+            table.sort(threads)
+            local first, middle, last = threads[1], threads[2], threads[3]
+            local first_backlog = 6 * budget + 1
+            fixture.add_bulk_events(first, first_backlog, 60)
+            fixture.add_bulk_events(middle, budget + 1, 60)
+            fixture.add_bulk_events(last, budget + 1, 60)
+
+            local db = fixture.open_db()
+            local traversal = {}
+            local total = 0
+            local function pass(): ()
+                local result, err = sweeper.run(db, traversal)
+                test.is_nil(err)
+                test.is_true(result.events <= budget, "each pass respects the shared event cap")
+                if result.events == budget then test.is_true(result.needs_continue) end
+                total = total + result.events
+            end
+            for _ = 1, 6 do pass() end
+            test.eq(fixture.boundary_of(middle), budget + 1, "middle thread drains while the first stays backlogged")
+            test.eq(fixture.boundary_of(last), budget + 1, "last thread drains while the first stays backlogged")
+            test.is_true(fixture.boundary_of(first) >= 2 * budget, "the traversal wraps to the first thread")
+            test.is_true(fixture.boundary_of(first) < first_backlog)
+
+            -- Once the later threads are drained, their suffix page and the
+            -- first thread's next turn take separate passes.
+            for _ = 7, 15 do pass() end
+            db:release()
+            test.eq(fixture.boundary_of(first), first_backlog)
+            test.eq(total, first_backlog + 2 * (budget + 1))
+        end)
     end)
 end
 return test.run_cases(define_tests)

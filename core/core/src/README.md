@@ -60,6 +60,20 @@ existing installations use the normal owner-authorized identity recovery.
 
 ## Module-owned retention
 
+Each Core retention pass reads one page of up to 256 thread IDs in order,
+checks their event heads, and shares the configured event deletion cap across
+the page. It then runs receipt cleanup and owner hooks. An append wake on a
+sparse installation still reads only one candidate page.
+
+The service keeps the last visited ID and the rotation's highest ID in memory.
+When a pass reaches that endpoint, the next pass wraps to the first ID. Higher
+IDs created during the rotation wait for a later rotation. For a stable set of
+threads, one rotation takes `ceil(threads / 256)` passes when the deletion cap
+allows each page to finish. A pass that reaches the cap sooner resumes after
+its last processed thread so every thread gets a turn. A deleted cursor thread
+still provides a seek key. Boot recovery starts a new rotation from the first
+ID.
+
 An installed module registers its maintenance function with
 `meta.type: kickside.retention.owner`. Core invokes ready owners on recovery,
 eligibility deadlines and change hints. Each owner retains its SQL, policy and
