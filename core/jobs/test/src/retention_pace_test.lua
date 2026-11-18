@@ -321,6 +321,7 @@ local function define_tests()
                 required(db:execute("ANALYZE kickside_job"))
                 required(db:execute("ANALYZE kickside_job_run"))
                 local checked = 0
+                local expected_range = "idx_job_global_retention (finished_at>? AND finished_at<?)"
                 local probe = {
                     type = function() return db:type() end,
                     begin = function() return db:begin() end,
@@ -332,12 +333,12 @@ local function define_tests()
                                 local plan = required(db:query("EXPLAIN QUERY PLAN " .. statement, params))
                                 local ranged = false
                                 for _, row in ipairs(plan) do
-                                    if string.find(row.detail, "idx_job_global_retention (finished_at>? AND finished_at<?)", 1, true) then
+                                    if string.find(row.detail, expected_range, 1, true) then
                                         ranged = true
                                     end
                                 end
                                 test.is_true(ranged, "job candidates use a bounded expiration index range")
-                                test.is_true(params[1] < finished, "the range excludes jobs whose runs stay in-window")
+                                test.is_true(params[#params - 1] < finished, "the range excludes jobs whose runs stay in-window")
                             else
                                 local plan = required(db:query("EXPLAIN (ANALYZE, BUFFERS) " .. statement, params))
                                 local measured = false
@@ -363,6 +364,14 @@ local function define_tests()
                 }
                 local stats = required(retention.sweep(probe, dbtype))
                 test.eq(checked, 1)
+                test.eq(stats.jobs, 0)
+                test.eq(stats.job_runs, 0)
+                policy.retention_by_type = { ["test.retention"] = {
+                    jobs_ms = policy.retention_jobs_ms, job_runs_ms = policy.retention_job_runs_ms,
+                } }
+                expected_range = "idx_job_type_retention (job_type=? AND finished_at>? AND finished_at<?)"
+                stats = required(retention.sweep(probe, dbtype))
+                test.eq(checked, 2)
                 test.eq(stats.jobs, 0)
                 test.eq(stats.job_runs, 0)
                 for _, name in ipairs({"kickside_job", "kickside_job_run"}) do

@@ -21,12 +21,18 @@ local function policy(overrides: table?): table
         limits = { max_row_bytes = 4194304 },
         retention = { jobs = "30d", job_runs = "30d",
             thread_cleanup_receipts = "30d", sweep_interval = "1h",
-            batch = 500, thread_cleanup_batch = 100 },
+            batch = 500, thread_cleanup_batch = 100, by_type = {} },
     }
     for section, values in pairs(overrides or {}) do
         for key, value in pairs(values :: table) do meta[section][key] = value end
     end
     return meta
+end
+
+local function required_resolve(meta: table): any
+    local resolved, err = config.resolve(meta)
+    if err or not resolved then error(err or "policy resolves no value") end
+    return resolved
 end
 
 local function define_tests()
@@ -157,6 +163,15 @@ local function define_tests()
                 { retention = { sweep_interval = "0s" } },
                 { retention = { batch = 0 } },
                 { retention = { thread_cleanup_batch = 0 } },
+                { retention = { by_type = "test.retention" } },
+                { retention = { by_type = { { jobs = "1d", job_runs = "1d" } } } },
+                { retention = { by_type = { [""] = { jobs = "1d", job_runs = "1d" } } } },
+                { retention = { by_type = { ["test.retention"] = "1d" } } },
+                { retention = { by_type = { ["test.retention"] = { jobs = "1d" } } } },
+                { retention = { by_type = { ["test.retention"] = { job_runs = "1d" } } } },
+                { retention = { by_type = { ["test.retention"] = { jobs = "0d", job_runs = "1d" } } } },
+                { retention = { by_type = { ["test.retention"] = { jobs = "1d", job_runs = "soon" } } } },
+                { retention = { by_type = { ["test.retention"] = { jobs = "1d", job_runs = "1d", batch = 1 } } } },
             }) do
                 local resolved, err = config.resolve(policy(bad))
                 test.is_nil(resolved)
@@ -165,6 +180,27 @@ local function define_tests()
             end
             local _, missing_err = config.resolve({})
             test.not_nil(missing_err)
+            local without_overrides = policy()
+            without_overrides.retention.by_type = nil
+            local _, overrides_err = config.resolve(without_overrides)
+            test.eq((overrides_err :: error):kind(), errors.INVALID)
+            local crowded: table = {}
+            for index = 1, config.MAX_RETENTION_TYPES + 1 do
+                crowded["test.retention." .. tostring(index)] = { jobs = "1d", job_runs = "1d" }
+            end
+            local _, crowded_err = config.resolve(policy({ retention = { by_type = crowded } }))
+            test.eq((crowded_err :: error):kind(), errors.INVALID)
+        end)
+
+        test.it("resolves per-type retention windows", function()
+            local resolved, err = config.resolve(policy({ retention = { by_type = {
+                ["test.retention"] = { jobs = "1d", job_runs = "2h" } } } }))
+            test.is_nil(err)
+            local window = (resolved :: any).retention_by_type["test.retention"]
+            test.eq(window.jobs_ms, 86400000)
+            test.eq(window.job_runs_ms, 7200000)
+            local defaults = required_resolve(policy())
+            test.is_nil(next(defaults.retention_by_type))
         end)
 
         test.it("loads the registered policy", function()
@@ -174,7 +210,9 @@ local function define_tests()
             test.is_nil(err)
             local expected = config.resolve(policy({worker={count_sqlite=2}}))
             for key, value in pairs(expected :: table) do
-                if key == "fairness_shares" then
+                if key == "retention_by_type" then
+                    test.is_nil(next((loaded :: any).retention_by_type), "retention_by_type")
+                elseif key == "fairness_shares" then
                     local actual_shares = (loaded :: any).fairness_shares
                     test.eq(actual_shares.live, (value :: any).live, "fairness_shares.live")
                     test.eq(actual_shares.backfill, (value :: any).backfill, "fairness_shares.backfill")

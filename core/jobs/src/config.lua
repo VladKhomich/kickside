@@ -74,6 +74,42 @@ local function duration_ms(value: any, path: string): (integer?, error?)
     return ms :: integer, nil
 end
 
+-- Each override adds one bounded pass per retained table to every sweep.
+M.MAX_RETENTION_TYPES = 64
+
+type RetentionWindow = {
+    jobs_ms: integer,
+    job_runs_ms: integer,
+}
+
+-- retention.by_type maps a job type to both of its windows, so an overridden
+-- type never falls back to a global cutoff.
+local function retention_windows(value: any): ({ [string]: RetentionWindow }?, error?)
+    if type(value) ~= "table" then return nil, invalid("retention.by_type must be an object") end
+    local windows: { [string]: RetentionWindow } = {}
+    local total = 0
+    for job_type, window in pairs(value) do
+        if type(job_type) ~= "string" or job_type == "" then
+            return nil, invalid("retention.by_type keys must be job types")
+        end
+        total = total + 1
+        if total > M.MAX_RETENTION_TYPES then
+            return nil, invalid("retention.by_type allows at most " .. tostring(M.MAX_RETENTION_TYPES) .. " job types")
+        end
+        local path = "retention.by_type." .. job_type
+        if type(window) ~= "table" then return nil, invalid(path .. " must be an object") end
+        for key in pairs(window) do
+            if key ~= "jobs" and key ~= "job_runs" then return nil, invalid(path .. " contains an unknown key") end
+        end
+        local jobs_ms, jobs_err = duration_ms(window.jobs, path .. ".jobs")
+        if jobs_err then return nil, jobs_err end
+        local job_runs_ms, runs_err = duration_ms(window.job_runs, path .. ".job_runs")
+        if runs_err then return nil, runs_err end
+        windows[job_type] = { jobs_ms = jobs_ms :: integer, job_runs_ms = job_runs_ms :: integer }
+    end
+    return windows, nil
+end
+
 local FAIRNESS_TIERS = { "live", "backfill", "maintenance" }
 M.FAIRNESS_TIERS = FAIRNESS_TIERS
 
@@ -116,6 +152,7 @@ type Resolved = {
     max_row_bytes: integer,
     retention_jobs_ms: integer,
     retention_job_runs_ms: integer,
+    retention_by_type: { [string]: RetentionWindow },
     retention_thread_cleanup_receipts_ms: integer,
     retention_interval_ms: integer,
     retention_batch: integer,
@@ -197,6 +234,8 @@ function M.resolve(meta: any): (Resolved?, error?)
     if e_jobs then return nil, e_jobs end
     local retention_job_runs_ms, e_runs = duration_ms((retention :: table).job_runs, "retention.job_runs")
     if e_runs then return nil, e_runs end
+    local retention_by_type, e_by_type = retention_windows((retention :: table).by_type)
+    if e_by_type then return nil, e_by_type end
     local retention_thread_cleanup_receipts_ms, e_cleanup_receipts = duration_ms(
         (retention :: table).thread_cleanup_receipts, "retention.thread_cleanup_receipts")
     if e_cleanup_receipts then return nil, e_cleanup_receipts end
@@ -228,6 +267,7 @@ function M.resolve(meta: any): (Resolved?, error?)
         max_row_bytes = max_row_bytes :: integer,
         retention_jobs_ms = retention_jobs_ms :: integer,
         retention_job_runs_ms = retention_job_runs_ms :: integer,
+        retention_by_type = retention_by_type :: { [string]: RetentionWindow },
         retention_thread_cleanup_receipts_ms = retention_thread_cleanup_receipts_ms :: integer,
         retention_interval_ms = retention_interval_ms :: integer,
         retention_batch = retention_batch :: integer,
@@ -316,6 +356,7 @@ local function policy_copy(value: Resolved): Resolved
     local shares: table = {}
     for key, item in pairs(value.fairness_shares) do shares[key] = item end
     out.fairness_shares = shares
+    out.retention_by_type = M.copy(value.retention_by_type)
     return out :: Resolved
 end
 
