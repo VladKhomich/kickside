@@ -324,17 +324,19 @@ end
 -- Only the same job can resume a terminal checkpoint written before publication.
 -- Dead outcomes require the same intent snapshot and dead job.
 function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: string, job_id: string,
-        dead_processing: table?): (table?, any?)
+        dead_processing: table?): (table?, any?, error?)
     if not uuid or uuid == "" then return nil, typed(errors.INVALID, "Upload ID is required") end
     if storage_state ~= "completed" and storage_state ~= "failed" then
         return nil, typed(errors.INVALID, "Upload outcome must be completed or failed")
     end
+    local resuming_completion = dead_processing ~= nil and dead_processing.storage_state == "completed"
+    local checkpoint_state = resuming_completion and "completed" or storage_state
     local query = sql.builder.update("kickside_uploads")
         :set("storage_state", storage_state)
         :set("updated_at", now_rfc3339())
         :where("uuid = ?", uuid)
         :where("(storage_state = 'uploaded' OR (storage_state = ? AND "
-            .. upload_query_repo.processing_job_owner_sql() .. "))", storage_state, job_id)
+            .. upload_query_repo.processing_job_owner_sql() .. "))", checkpoint_state, job_id)
     if dead_processing ~= nil then
         if dead_processing.processing_intent_state == nil then
             query = query:where("processing_intent_state IS NULL")
@@ -347,7 +349,7 @@ function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: s
             query = query:where("processing_job_id = ?", dead_processing.processing_job_id)
         end
         local dead_job = "SELECT 1 FROM kickside_job j WHERE j.id = ? AND j.status = 'dead'"
-        if storage_state == "completed" then
+        if resuming_completion then
             dead_job = dead_job .. " AND " .. upload_query_repo.completion_unpublished_sql("j.thread_id")
         end
         query = query:where("EXISTS (" .. dead_job .. ")", job_id)
@@ -359,8 +361,7 @@ function upload_record_repo.settle_storage_tx(tx, uuid: string, storage_state: s
     if #rows == 0 then return nil, nil end
     local deliveries, decode_err = persisted_json.decode_table(rows[1].callback_deliveries,
         "kickside_uploads.callback_deliveries", true)
-    if decode_err then return nil, decode_err end
-    return deliveries or {}, nil
+    return deliveries or {}, nil, decode_err
 end
 
 -- Record delivery against the same terminal upload checkpoint read by the callback.

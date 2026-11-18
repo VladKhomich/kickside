@@ -21,6 +21,7 @@ entries:
     imports:
       process_job: kickside.uploads.service:process_dead
       upload_query_repo: kickside.uploads.persist:upload_query_repo
+      uploads_resources: kickside.uploads.binding:uploads_resources
       uploads_retention_policy: kickside.uploads:retention_policy
       upload_read_model_retention: kickside.uploads.persist:read_model_retention
       artifact_cleanup_repo: kickside.uploads.persist:artifact_cleanup_repo

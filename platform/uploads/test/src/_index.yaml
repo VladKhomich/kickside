@@ -693,13 +693,15 @@ entries:
       comment: The supervised Core retention sweeper runs the uploads owner under its declared identity.
     source: file://retention_sweeper_test.lua
     method: run
-    modules: [sql, uuid, time, process, security, contract, funcs, json]
+    modules: [sql, uuid, time, process, security, contract, funcs, json, env, fs]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       retention_notifier: kickside.core.retention:notifier
       types: kickside.uploads:types
       upload_tokens: kickside.uploads.persist:upload_tokens
+      secret_cipher: kickside.contract:secret_cipher
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
 
   - name: delete_stage_failure_test
     kind: function.lua

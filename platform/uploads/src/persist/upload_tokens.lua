@@ -205,6 +205,7 @@ local function unpack(token: string?)
 
     local current_time = os.time()
     local issued_at = payload.issued_at or 0
+    if type(issued_at) ~= "number" then return nil, "Invalid upload token issuance time" end
     local token_age = current_time - issued_at
 
     if token_age > 86400 then
