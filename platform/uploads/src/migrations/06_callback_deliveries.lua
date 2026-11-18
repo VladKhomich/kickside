@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 return require("migration").define(function()
     migration("06 callback deliveries", function()
         for _, engine in ipairs({ "sqlite", "postgres" }) do
