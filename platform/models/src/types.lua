@@ -41,15 +41,10 @@ function M.slug(value: any): string
     return s
 end
 
-function M.limits_configured(max_tokens: any, output_tokens: any, capabilities: any): boolean
-    if (tonumber(max_tokens) or 0) <= 0 then return false end
-    if type(capabilities) ~= "table" then return false end
-    for _, capability in ipairs(capabilities) do
-        if capability == "generate" then
-            return (tonumber(output_tokens) or 0) > 0
-        end
-    end
-    return true
+function M.positive_limit(value: any): number?
+    local limit = tonumber(value)
+    if limit and limit > 0 then return limit end
+    return nil
 end
 
 return M
