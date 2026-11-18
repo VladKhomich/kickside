@@ -48,3 +48,10 @@ entries:
     meta:
       comment: Automation health reads the jobs runtime policy's overdue grace.
     component: kickside/jobs
+
+  - name: dep.kickside.provider_text
+    version: '*'
+    kind: ns.dependency
+    meta:
+      comment: Boundary whitespace normalization for automation metadata.
+    component: kickside/provider-text
