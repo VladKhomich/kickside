@@ -380,7 +380,7 @@ local function define_tests()
             }
             local seen: table? = nil
             local driver = schedule.new({policy = config.policy, now = function() return instant end,
-                sweep = function(_, cursor)
+                sweep = function(_, _, cursor)
                     seen = cursor
                     return stats, nil
                 end})
