@@ -73,6 +73,8 @@ function M.purge_thread(db: DB, component_id: string, actor_id: string?): ({ pur
     local read_err = rows_error(existing, exists_err, "failed to load thread", "thread.rows")
     if read_err then return nil, read_err end
     if #(existing :: { table }) == 0 then
+        local finish_err = teardown_page.finish_absent(db, id)
+        if finish_err then return nil, finish_err end
         return { purged = true, notified = {} }, nil
     end
 

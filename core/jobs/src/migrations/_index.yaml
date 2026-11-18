@@ -165,3 +165,16 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 28_unused_thread_fences
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Indexes unused thread fences for bounded pruning.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-17T00:00:28Z"
+    source: file://28_unused_thread_fences.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

@@ -287,6 +287,10 @@ function jobs.cleanup_thread_page(thread_id: string, page_seq: integer): (table?
     end, true)
 end
 
+function jobs.finish_absent_thread_tx(tx: sql.Transaction, dbtype: string, thread_id: string): (boolean?, error?)
+    return thread_teardown.finish_absent_thread_tx(tx, dbtype, thread_id)
+end
+
 function jobs.ack_thread_cleanup_page_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_seq: integer,
         thread_done: boolean): (boolean?, error?)
     return thread_teardown.ack_tx(tx, dbtype, thread_id, page_seq, thread_done)

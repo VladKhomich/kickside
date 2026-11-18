@@ -207,6 +207,28 @@ local function body(tx: any, dbtype: string, id: string, page_seq: integer,
     return { pending = false, discarded = counts, notified = notified, removed_cursors = removed_cursors }, nil
 end
 
+local function finish_absent_tx(tx: sql.Transaction, dbtype: string, id: string): error?
+    local finished, finish_err = jobs.finish_absent_thread_tx(tx, dbtype, id)
+    if finish_err then return finish_err end
+    if finished ~= true then return internal("thread cleanup acknowledgment failed", "missing result") end
+    return nil
+end
+
+function M.finish_absent(db: sql.DB, id: string): error?
+    local dbtype, dbtype_err = writer.dbtype_of(db)
+    if dbtype_err then return dbtype_err end
+    local tx, begin_err = db:begin()
+    if begin_err or not tx then return internal("thread cascade transaction failed", begin_err) end
+    local finish_err = finish_absent_tx(tx, dbtype :: string, id)
+    if finish_err then
+        return error_envelope.cleanup(function(): (any, error?) return tx:rollback() end,
+            finish_err, "thread cascade rollback failed")
+    end
+    local _, commit_err = tx:commit()
+    if commit_err then return internal("thread cascade commit failed", commit_err) end
+    return nil
+end
+
 function M.run(db: any, id: string): (any?, error?)
     local dbtype, dbtype_err = writer.dbtype_of(db)
     if dbtype_err then return nil, dbtype_err end
@@ -216,6 +238,8 @@ function M.run(db: any, id: string): (any?, error?)
         return nil, internal("thread teardown state read failed", state_err or "missing result")
     end
     if not state[1] then
+        local finish_err = M.finish_absent(db, id)
+        if finish_err then return nil, finish_err end
         return { pending = false, discarded = {}, notified = {} }, nil
     end
     if state[1].deleting_at == nil or
@@ -249,6 +273,12 @@ function M.run(db: any, id: string): (any?, error?)
         if ack_err or acknowledged ~= true then
             tx:rollback()
             return nil, ack_err or internal("thread cleanup acknowledgment failed", "missing result")
+        end
+    else
+        local finish_err = finish_absent_tx(tx, dbtype :: string, id)
+        if finish_err then
+            return nil, error_envelope.cleanup(function(): (any, error?) return tx:rollback() end,
+                finish_err, "thread cascade rollback failed")
         end
     end
     local _, commit_err = tx:commit()

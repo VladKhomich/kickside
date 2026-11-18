@@ -395,6 +395,40 @@ local function define_tests()
             db:release()
         end)
 
+        test.it("prunes unused default fences while preserving live threads and pending receipts", function()
+            local orphan, live, pending = uuid.v7(), uuid.v7(), uuid.v7()
+            local db = open_db()
+            assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
+                VALUES ($1,'jobs-cleanup',$2,0)]], {live, live}))
+            assert(jobs.cleanup_thread_page(orphan, 0))
+            assert(jobs.ack_thread_cleanup_page(orphan, 0, true))
+            assert(jobs.cleanup_thread_page(pending, 0))
+            assert(db:execute([[UPDATE kickside_job_thread_cleanup SET started=FALSE,next_page_seq=0,completed_at=NULL
+                WHERE thread_id IN ($1,$2)]], {orphan, pending}))
+            assert(db:execute("INSERT INTO kickside_job_thread_cleanup (thread_id) VALUES ($1)", {live}))
+
+            assert(jobs.retention_sweep())
+            local fences = assert(db:query([[SELECT thread_id FROM kickside_job_thread_cleanup
+                WHERE thread_id IN ($1,$2,$3) ORDER BY thread_id]], {orphan, live, pending}))
+            local kept = {}
+            for _, row in ipairs(fences) do kept[row.thread_id] = true end
+            test.is_nil(kept[orphan])
+            test.is_true(kept[live])
+            test.is_true(kept[pending])
+            local receipts = assert(db:query([[SELECT page_seq FROM kickside_job_thread_cleanup_receipt
+                WHERE thread_id=$1 AND acknowledged_at IS NOT NULL]], {orphan}))
+            test.eq(#receipts, 1)
+            assert(db:execute([[UPDATE kickside_job_thread_cleanup_receipt SET acknowledged_at='2000-01-01T00:00:00Z'
+                WHERE thread_id=$1]], {orphan}))
+            assert(jobs.retention_sweep())
+            receipts = assert(db:query("SELECT page_seq FROM kickside_job_thread_cleanup_receipt WHERE thread_id=$1", {orphan}))
+            test.eq(#receipts, 0)
+            forget_thread(db, pending)
+            forget_thread(db, live)
+            assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {live}))
+            db:release()
+        end)
+
         test.it("skips a completed owner drained and pruned by a competing sweep", function()
             local thread_id = uuid.v7()
             local page = assert(jobs.cleanup_thread_page(thread_id, 0))

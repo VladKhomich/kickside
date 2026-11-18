@@ -21,7 +21,7 @@ function M.database(): any
     function db:begin()
         M.begins = M.begins + 1
         if M.mode == "receipts" or M.mode == "fences" then
-            M.active = M.begins == 1 and "receipts" or "fences"
+            M.active = ({"receipts", "fences", "unused_fences"})[M.begins]
         end
         if M.active == M.mode then return M.result("begin", self) end
         return self, nil
@@ -33,6 +33,7 @@ function M.database(): any
         return true, nil
     end
     function db:query(statement, params)
+        if statement:find(" AS present", 1, true) then return M.result("thread_schema", {{present = false}}) end
         if statement:find("INSERT INTO kickside_job_thread_cleanup", 1, true) == 1 then
             M.fence_calls, M.fenced_ids, M.writes_at_fence = M.fence_calls + 1, params, M.writes
             local rows = {}
