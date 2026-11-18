@@ -3,7 +3,7 @@ import { defineComponent as we, ref as _, computed as S, onMounted as Oe, onBefo
 import { Icon as y } from "@iconify/vue";
 import { s as W, a as rt, u as st } from "./constants-DA57EUYd.js";
 import { on as it, host as lt } from "@wippy-fe/proxy";
-import { u as ut } from "./useSessionsApi-P7vRdJK6.js";
+import { u as ut } from "./useSessionsApi-BQAm970o.js";
 import { s as ct } from "./index-oxBrmUiV.js";
 const dt = ["title", "aria-label"], ft = {
   key: 0,
@@ -1446,4 +1446,4 @@ const zt = { class: "kx-drawer-title" }, Ut = { class: "kx-drawer-b" }, Vt = {
 export {
   Bn as mountConfig
 };
-//# sourceMappingURL=index-mount-Y6kHbyB8.js.map
+//# sourceMappingURL=index-mount-CtcY_iiS.js.map

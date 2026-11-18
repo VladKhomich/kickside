@@ -2,33 +2,30 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { on } from '@wippy-fe/proxy'
-import { useHostVisibilityRefresh, useLayoutBus } from '@wippy-fe/webcomponent-vue'
+import type { host as proxyHost } from '@wippy-fe/proxy'
+import { useHost, useHostVisibilityRefresh, useLayoutBus } from '@wippy-fe/webcomponent-vue'
 import Select from 'primevue/select'
 import type { ArtifactSummary } from '../types.ts'
 import { artifactId } from './artifactPresentation.ts'
+import {
+  ARTIFACT_PANEL_ID,
+  acceptsArtifactSession,
+  eventArtifactId,
+  eventSessionId,
+  layoutSnapshot,
+  sessionIdFromPath,
+} from './hostRoute.ts'
+import type { LayoutEvent } from './hostRoute.ts'
+import { useHostRoute } from './useHostRoute'
 import { useSessionsApi } from './useSessionsApi.ts'
-
-interface LayoutEvent {
-  channel?: string
-  payload?: unknown
-}
-
-interface ArtifactIntent {
-  intent?: string
-  uuid?: string
-  artifactId?: string
-}
-
-interface SessionIntent {
-  sessionId?: string
-  session_id?: string
-}
 
 const api = useSessionsApi()
 const bus = useLayoutBus()
+const host = useHost<typeof proxyHost>()
 const artifacts = ref<ArtifactSummary[]>([])
 const selectedId = ref('')
-const activeSessionId = ref(sessionIdFromPath(window.location.pathname))
+const route = useHostRoute(host, path => setActiveSession(sessionIdFromPath(path)))
+const activeSessionId = ref(sessionIdFromPath(route.initialPath))
 const loading = ref(!!activeSessionId.value)
 const action = ref<'copy' | 'save' | ''>('')
 const error = ref('')
@@ -41,24 +38,6 @@ let selectionSequence = 0
 let pendingSelectionId = ''
 
 const selected = computed(() => artifacts.value.find(item => artifactId(item) === selectedId.value))
-
-function eventArtifactId(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return ''
-  const intent = payload as ArtifactIntent
-  return String(intent.uuid || intent.artifactId || '')
-}
-
-function eventSessionId(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return ''
-  const intent = payload as SessionIntent
-  return String(intent.sessionId || intent.session_id || '')
-}
-
-function sessionIdFromPath(path: string): string {
-  if (!path.startsWith('/sessions/')) return ''
-  const encoded = path.slice('/sessions/'.length).split('/')[0] || ''
-  try { return decodeURIComponent(encoded) } catch { return '' }
-}
 
 async function loadCatalog() {
   const sessionId = activeSessionId.value
@@ -95,6 +74,7 @@ async function loadCatalog() {
 }
 
 function queueRefresh() {
+  if (!activeSessionId.value) return
   if (refreshTimer) clearTimeout(refreshTimer)
   refreshTimer = setTimeout(() => { void loadCatalog() }, 150)
 }
@@ -168,6 +148,7 @@ function setActiveSession(sessionId: string) {
 
 function onLayoutEvent(event: LayoutEvent) {
   if (event.channel === 'kickside:artifact-session') {
+    if (!acceptsArtifactSession(event.sourcePanelId, layoutSnapshot(host), route.hostPath())) return
     setActiveSession(eventSessionId(event.payload))
     return
   }
@@ -240,7 +221,7 @@ async function saveArtifact() {
 }
 
 function closePanel() {
-  bus?.broadcast('kickside:artifact-close', { panelId: 'artifact' })
+  bus?.broadcast('kickside:artifact-close', { panelId: ARTIFACT_PANEL_ID })
 }
 
 const hostVisible = useHostVisibilityRefresh(queueRefresh)

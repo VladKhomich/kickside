@@ -3,28 +3,18 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { getLayoutManager, on } from '@wippy-fe/proxy'
 import type { host as proxyHost } from '@wippy-fe/proxy'
 import { useHost, useLayoutBus } from '@wippy-fe/webcomponent-vue'
+import {
+  ARTIFACT_PANEL_ID,
+  acceptsArtifactSession,
+  eventArtifactId,
+  eventSessionId,
+  layoutSnapshot,
+  sessionIdFromPath,
+} from './hostRoute.ts'
+import type { ArtifactIntent, LayoutEvent } from './hostRoute.ts'
+import { useHostRoute } from './useHostRoute'
 import { useSessionsApi } from './useSessionsApi.ts'
 
-interface LayoutEvent {
-  channel?: string
-  payload?: unknown
-  sourcePanelId?: string | null
-}
-
-interface ArtifactIntent {
-  intent?: string
-  uuid?: string
-  artifactId?: string
-  target?: 'sidebar' | 'modal'
-  reason?: 'click' | 'arrival'
-}
-
-interface SessionIntent {
-  sessionId?: string
-  session_id?: string
-}
-
-const PANEL_ID = 'artifact'
 const MODAL_ID = 'artifact-modal'
 /** Verified rendering size; the shell draws no header at all without one. */
 const MODAL_SIZE = { width: '80vw', height: '80vh' }
@@ -38,47 +28,22 @@ const api = useSessionsApi()
 const manager = host ? getLayoutManager(host) : null
 const stops: Array<() => void> = []
 
-/**
- * The session the artifact panel is scoped to, i.e. the one in the URL.
- *
- * Seeded from the address bar because a click can land before the shell's
- * first broadcast, then kept current by `kickside:artifact-session`.
- */
-const activeSessionId = ref(sessionIdFromPath(window.location.pathname))
+const route = useHostRoute(host, path => setActiveSession(sessionIdFromPath(path)))
+const activeSessionId = ref(sessionIdFromPath(route.initialPath))
 
-/**
- * Guards the async gap in `openModal`. Without it a slow title lookup can
- * reopen a modal the user has already navigated away from, or let an older
- * artifact overwrite a newer one, because `MODAL_ID` is a singleton.
- */
+/** Invalidate title lookups when the modal closes or changes ownership. */
 let modalSequence = 0
 
-function sessionIdFromPath(path: string): string {
-  if (!path.startsWith('/sessions/')) return ''
-  const encoded = path.slice('/sessions/'.length).split('/')[0] || ''
-  try { return decodeURIComponent(encoded) } catch { return '' }
-}
-
-function artifactIdFrom(value: unknown): string {
-  if (!value || typeof value !== 'object') return ''
-  const payload = value as ArtifactIntent
-  return String(payload.uuid || payload.artifactId || '')
-}
-
-function eventSessionId(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') return ''
-  const intent = payload as SessionIntent
-  return String(intent.sessionId || intent.session_id || '')
-}
-
 function reveal() {
-  manager?.expandPanel(PANEL_ID)
-  manager?.openDrawer(PANEL_ID)
+  manager?.expandPanel(ARTIFACT_PANEL_ID)
+  // On a narrow screen the chat and artifact drawers must not stack. The chat
+  // coordinator watches the layout for either one opening and closes the other.
+  manager?.openDrawer(ARTIFACT_PANEL_ID)
 }
 
 function hide() {
-  manager?.closeDrawer(PANEL_ID)
-  manager?.collapsePanel(PANEL_ID)
+  manager?.closeDrawer(ARTIFACT_PANEL_ID)
+  manager?.collapsePanel(ARTIFACT_PANEL_ID)
 }
 
 function closeModal() {
@@ -120,9 +85,9 @@ async function openModal(id: string) {
  * Route an artifact to a surface.
  *
  * The side panel sits next to the session it belongs to, so it is only
- * meaningful on a `/sessions/<id>` route. The same chat component also runs as
- * a floating sidebar over Agents, Knowledge and the rest; revealing the panel
- * from there would park a session's artifact next to an unrelated page. Off a
+ * meaningful on a `/sessions/<id>` route. The chat drawer (host panel `chat`)
+ * also runs over Agents, Knowledge and the rest; revealing the panel from
+ * there would park a session's artifact next to an unrelated page. Off a
  * session route the artifact opens in a modal instead.
  *
  * Arrivals are deliberately not routed off a session route. The web host
@@ -130,7 +95,7 @@ async function openModal(id: string) {
  * this app that decides a surface worth revealing on demand is not one worth
  * throwing over the page unprompted.
  *
- * `sourcePanelId === PANEL_ID` is defence in depth and does not fire today:
+ * `sourcePanelId === ARTIFACT_PANEL_ID` is defence in depth and does not fire today:
  * the artifact panel is declared `kind: 'component'`, so it is a host element
  * rather than a window, and host-realm publishers arrive unattributed
  * (`source: null`). It is kept so the guard is already correct if the panel
@@ -144,7 +109,7 @@ function showArtifact(id: string, intent?: ArtifactIntent, sourcePanelId?: strin
     void openModal(id)
     return
   }
-  const ownsPanel = !!activeSessionId.value && sourcePanelId !== PANEL_ID
+  const ownsPanel = !!activeSessionId.value && sourcePanelId !== ARTIFACT_PANEL_ID
   if (!ownsPanel) {
     if (intent?.reason === 'arrival') return
     void openModal(id)
@@ -159,15 +124,15 @@ function showArtifact(id: string, intent?: ArtifactIntent, sourcePanelId?: strin
 /**
  * Follow the session the shell is showing.
  *
- * The modal closes on every broadcast, not only when the session id changes:
- * it is scoped to the page it was opened over, and the shell broadcasts on
- * each route change. Without that, walking from one non-session route to
- * another (`/agents` to `/knowledge`, both broadcasting an empty id) left the
- * modal hanging over the new page.
+ * The modal closes on every call, not only when the session id changes: it is
+ * scoped to the page it was opened over, and this runs on each route change.
+ * Without that, walking from one non-session route to another (`/agents` to
+ * `/knowledge`, both with an empty id) left the modal hanging over the new
+ * page.
  *
  * The panel only closes when the session actually changes, because whatever it
- * holds then belongs to the previous session. ArtifactPanel clears its own
- * contents off the same broadcast; this closes the chrome around them.
+ * holds then belongs to the previous session. ArtifactPanel follows the same
+ * route to clear its contents; this closes the chrome around them.
  */
 function setActiveSession(sessionId: string) {
   closeModal()
@@ -178,16 +143,15 @@ function setActiveSession(sessionId: string) {
 
 function onLayoutEvent(event: LayoutEvent) {
   if (event.channel === 'kickside:artifact-session') {
+    // This announces the session a navigation is about to reach. The same rule
+    // decides it in the panel (hostRoute.acceptsArtifactSession).
+    if (!acceptsArtifactSession(event.sourcePanelId, layoutSnapshot(host), route.hostPath())) return
     setActiveSession(eventSessionId(event.payload))
     return
   }
   if (event.channel === '@HOST/intent') {
     const payload = event.payload as ArtifactIntent | undefined
-    if (payload?.intent === 'startChat' || payload?.intent === 'openSession') {
-      bus?.send('main', 'kickside:chat-open', payload)
-      return
-    }
-    const id = artifactIdFrom(payload)
+    const id = eventArtifactId(payload)
     if (payload?.intent === 'openArtifact' && id)
       showArtifact(id, payload, event.sourcePanelId)
     return
