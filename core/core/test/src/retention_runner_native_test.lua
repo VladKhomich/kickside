@@ -3,7 +3,7 @@ local runner = require("runner")
 local fixture = require("fixture")
 return {run = test.run_cases(function()
     test.describe("native retention pass failures", function()
-        for _, stage in ipairs({"sweep", "owner", "send", "deadline"}) do
+        for _, stage in ipairs({"sweep", "owner", "send"}) do
             for _, kind in ipairs({errors.NOT_FOUND, errors.ALREADY_EXISTS, errors.INVALID,
                 errors.PERMISSION_DENIED, errors.UNAVAILABLE, errors.INTERNAL, errors.CANCELED,
                 errors.CONFLICT, errors.TIMEOUT, errors.RATE_LIMITED, errors.UNKNOWN}) do
@@ -22,7 +22,6 @@ return {run = test.run_cases(function()
                         test.eq(fixture.sweeps, 1)
                         test.eq(fixture.owners, stage == "sweep" and 0 or 1)
                         test.eq(fixture.sends, stage == "send" and 1 or 0)
-                        test.eq(fixture.deadlines, stage == "deadline" and 1 or 0)
                     end)
                 end
             end
@@ -40,7 +39,6 @@ return {run = test.run_cases(function()
                     test.eq(fixture.sweeps, 1)
                     test.eq(fixture.owners, stage == "sweep" and 0 or 1)
                     test.eq(fixture.sends, 0)
-                    test.eq(fixture.deadlines, 0)
                 end)
             end
         end
@@ -58,7 +56,6 @@ return {run = test.run_cases(function()
                 test.eq(fixture.sweeps, 1)
                 test.eq(fixture.owners, 1)
                 test.eq(fixture.sends, 0)
-                test.eq(fixture.deadlines, 1)
             end)
         end
         test.it("retains successful continuation topic and owner locator", function()
@@ -71,7 +68,6 @@ return {run = test.run_cases(function()
             test.eq(fixture.sent_topic, "kickside.core.retention.changed")
             test.eq(fixture.sent_change.kind, "continue")
             test.eq(fixture.sent_change.owner_locator.id, "owner")
-            test.eq(fixture.deadlines, 1)
         end)
         for _, case in ipairs({{name = "owner before Core", core = 9000, owner = 3000, expected = 3000},
             {name = "Core before owner", core = 3000, owner = 9000, expected = 3000},
@@ -87,7 +83,7 @@ return {run = test.run_cases(function()
                     test.is_nil(err); test.eq(result.deadline_ms, case.expected)
                     local passes = method == "on_wakes" and 2 or 1
                     test.eq(fixture.sweeps, passes); test.eq(fixture.owners, passes)
-                    test.eq(fixture.deadlines, passes); test.eq(fixture.sends, 0)
+                    test.eq(fixture.sends, 0)
                     test.is_true(result.stats.needs_continue ~= true)
                 end)
             end

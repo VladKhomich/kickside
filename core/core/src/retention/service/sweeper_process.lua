@@ -1,7 +1,7 @@
 local proc_supervisor = require("proc_supervisor")
 -- Event-driven Core retention. Boot recovery handles durable eligibility that
 -- arose while the service was absent; thereafter only state-change messages,
--- registry commits, and exact row-eligibility deadlines trigger a pass.
+-- registry commits, and the rotation's wake-up hint trigger a pass.
 
 local sql = require("sql")
 local channel = require("channel")

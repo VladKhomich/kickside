@@ -47,6 +47,16 @@ local function earlier_deadline(first: integer?, second: integer): integer
     return first == nil and second or math.min(first :: integer, second)
 end
 
+local function rotation_deadline(db: sql.DB): integer?
+    local traversal = {}
+    local result, err
+    repeat
+        result, err = sweeper.run(db, traversal)
+        test.is_nil(err)
+    until not traversal.after_thread_id
+    return result.deadline_ms
+end
+
 local function reserve_receipt(db: sql.DB, sink_id: string, key: string): ()
     local tx, begin_err = db:begin()
     if begin_err or not tx then error("receipt reservation transaction failed: " .. tostring(begin_err)) end
@@ -65,7 +75,7 @@ end
 
 local function define_tests()
     test.describe("Core retention service runner", function()
-        test.it("keeps recent event heads inside Postgres storage during a recovery pass", function()
+        test.it("computes recent event deadlines inside Postgres storage", function()
             local db = assert(sql.get("app:db"))
             local recent: { [string]: boolean } = {}
             for index = 1, 3 do
@@ -88,7 +98,7 @@ local function define_tests()
             test.is_nil(run_err)
             test.not_nil(result)
             if dialect == sql.type.POSTGRES then
-                test.eq(event_parses, 0, "recent timestamp heads must be filtered in storage")
+                test.eq(event_parses, 0, "recent timestamp heads must be evaluated in storage")
             else
                 test.eq(event_parses, 3, "SQLite validates every recent fixture text timestamp")
             end
@@ -98,16 +108,12 @@ local function define_tests()
             local db, db_err = sql.get("app:db")
             test.is_nil(db_err)
             if not db then error("retention database is absent") end
-            local original_sweep, original_owners, original_deadline = sweeper.run, owner_hooks.run, sweeper.next_deadline_ms
-            local sweeps, deadlines = 0, 0
+            local original_sweep, original_owners = sweeper.run, owner_hooks.run
+            local sweeps = 0
             local requests: table[] = {}
-            sweeper.run = function(handle)
+            sweeper.run = function(handle, traversal)
                 sweeps = sweeps + 1
-                return original_sweep(handle)
-            end
-            sweeper.next_deadline_ms = function(handle)
-                deadlines = deadlines + 1
-                return original_deadline(handle)
+                return original_sweep(handle, traversal)
             end
             owner_hooks.run = function(change)
                 requests[#requests + 1] = { change = change }
@@ -120,7 +126,6 @@ local function define_tests()
                 test.is_nil(pass_err)
                 test.not_nil(pass)
                 test.eq(sweeps, 1)
-                test.eq(deadlines, 1)
                 test.eq(#requests, 1)
                 test.is_nil(requests[1].change)
                 local scoped = { kind = "lease_released", owner_locator = { kind = "component", id = "scope" } }
@@ -128,10 +133,9 @@ local function define_tests()
                 test.is_nil(next_err)
                 test.not_nil(next_pass)
                 test.eq(sweeps, 2)
-                test.eq(deadlines, 2)
                 test.eq(requests[2].change.owner_locator.id, "scope")
             end)
-            sweeper.run, owner_hooks.run, sweeper.next_deadline_ms = original_sweep, original_owners, original_deadline
+            sweeper.run, owner_hooks.run = original_sweep, original_owners
             db:release()
             if not ok then error(failure) end
         end)
@@ -156,13 +160,9 @@ local function define_tests()
             test.is_nil(wake_err)
             local expected, expected_err = sweeper.deadline_ms(created_at, 86400000, tostring(_db:type()))
             test.is_nil(expected_err)
-            local current, current_err = sweeper.next_deadline_ms(_db)
-            test.is_nil(current_err)
-            test.not_nil(current)
-            test.eq((wake :: table).deadline_ms, current,
-                "the service must arm the earliest exact deadline returned by Core storage")
-            test.is_true((current :: integer) <= (expected :: integer),
-                "the event's own deadline must be included in the service's exact deadline set")
+            test.not_nil(wake.deadline_ms)
+            test.is_true(wake.deadline_ms <= (expected :: integer),
+                "the service wake-up hint must cover the appended head")
             test.eq(count_events(_db, thread_id), 1)
             _db:release()
         end)
@@ -203,11 +203,9 @@ local function define_tests()
             })
             test.is_nil(protect_err)
             test.not_nil(protected)
-            local baseline_deadline, baseline_err = sweeper.next_deadline_ms(_db)
-            test.is_nil(baseline_err)
+            local baseline_deadline = rotation_deadline(_db)
             add_event(_db, thread_id, stamp(_db, time.now():add(-2 * 24 * time.HOUR)))
-            local blocked_deadline, blocked_deadline_err = sweeper.next_deadline_ms(_db)
-            test.is_nil(blocked_deadline_err)
+            local blocked_deadline = rotation_deadline(_db)
             test.eq(blocked_deadline, baseline_deadline,
                 "a pinned head adds no timer before its owner releases the pin")
             local blocked, recover_err = runner.recover(_db, "retention-pin-test")
@@ -239,8 +237,7 @@ local function define_tests()
             })
             test.is_nil(policy_err)
             local event_at = stamp(_db, time.now():add(-2 * 24 * time.HOUR))
-            local baseline_deadline, baseline_err = sweeper.next_deadline_ms(_db)
-            test.is_nil(baseline_err)
+            local baseline_deadline = rotation_deadline(_db)
             add_event(_db, thread_id, event_at)
             local projection_id, cursor_id = uuid.v7(), uuid.v7()
             local _, projection_err = sql.builder.insert("kickside_projection")
@@ -254,8 +251,7 @@ local function define_tests()
                 :run_with(_db):exec()
             test.is_nil(cursor_err)
 
-            local blocked_deadline, blocked_deadline_err = sweeper.next_deadline_ms(_db)
-            test.is_nil(blocked_deadline_err)
+            local blocked_deadline = rotation_deadline(_db)
             test.eq(blocked_deadline, baseline_deadline,
                 "an active cursor below the event head adds no timer until it advances")
             local blocked, recover_err = runner.recover(_db, "retention-cursor-test")
@@ -324,9 +320,8 @@ local function define_tests()
             })
             test.is_nil(policy_err)
             local created_at = stamp(_db, time.now())
+            local baseline = rotation_deadline(_db)
             add_event(_db, thread_id, created_at)
-            local baseline, baseline_err = sweeper.next_deadline_ms(_db)
-            test.is_nil(baseline_err)
 
             local _, update_err = retention_repo.upsert(_db, thread_id, {
                 event_hot_retention_days = 2, archive_mode = "tombstone_only", enabled = true,

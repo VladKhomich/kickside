@@ -5,6 +5,7 @@ entries:
   - name: retention_service_traversal_fixture
     kind: library.lua
     source: file://retention_service_traversal_fixture.lua
+    modules: [time]
     imports:
       native: app:retention_process_native_fixture
       prune_scaffold: app:prune_scaffold
@@ -16,20 +17,37 @@ entries:
       fixture: app:retention_service_traversal_fixture
       owner_hooks: kickside.core.retention.service:owner_hooks
 
+  - name: retention_service_traversal_clock
+    kind: library.lua
+    source: file://retention_service_traversal_clock.lua
+    imports:
+      fixture: app:retention_service_traversal_fixture
+
   - name: retention_service_traversal_runner
     kind: library.lua
     source: file://retention_service_traversal_runner_source.lua
     modules: [sql, logger]
     imports:
       process: app:retention_service_traversal_fixture
-      sweeper: kickside.core.retention:sweeper
+      sweeper: app:retention_service_traversal_sweeper
       owner_hooks: app:retention_service_traversal_owner
+
+  - name: retention_service_traversal_sweeper
+    kind: library.lua
+    source: file://retention_sweeper_native_source.lua
+    modules: [sql]
+    imports:
+      time: app:retention_service_traversal_clock
+      clock: kickside.core.jobs:clock
+      prune: kickside.core.retention:prune
+      receipt_purge: kickside.core:write_receipt_purge
+      retention_policy: kickside.core:policy_config
 
   - name: retention_service_traversal_process
     kind: library.lua
     source: file://retention_process_native_source.lua
-    modules: [time]
     imports:
+      time: app:retention_service_traversal_clock
       process: app:retention_process_native_process_adapter
       sql: app:retention_service_traversal_sql
       channel: app:retention_service_traversal_fixture
@@ -45,6 +63,7 @@ entries:
     meta: {type: test, suite: core_retention_service_traversal}
     source: file://retention_service_traversal_test.lua
     method: run
+    modules: [time, uuid]
     imports:
       test: wippy.test:test
       fixture: app:retention_service_traversal_fixture

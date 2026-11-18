@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- One event-driven retention service pass: sweep durable state, run owner
--- retention operations, and compute the next stored-row eligibility deadline.
+-- retention operations, and select the next wake-up hint.
 local sql = require("sql")
 local logger = require("logger")
 local process = require("process")
@@ -10,7 +10,13 @@ local owner_hooks = require("owner_hooks")
 local M = {}
 
 type PassResult = { stats: table, deadline_ms: integer?, owner_failures: { table }, owner_blocked: { table } }
-type EventTraversal = { after_thread_id: string?, end_thread_id: string? }
+type EventTraversal = {
+    after_thread_id: string?,
+    end_thread_id: string?,
+    rotation_deadline_ms: integer?,
+    last_deadline_ms: integer?,
+    rescan: boolean?,
+}
 
 local function invalid_response(message: string, field: string): error
     return errors.new({message = message, kind = errors.INTERNAL, retryable = false,
@@ -18,7 +24,7 @@ local function invalid_response(message: string, field: string): error
 end
 
 local function perform(db: sql.DB, pid: string, change: table?, traversal: EventTraversal?): (PassResult?, error?)
-    local stats, sweep_err = sweeper.run(db, traversal)
+    local stats, sweep_err = sweeper.run(db, traversal or {})
     if sweep_err or not stats then
         local err = sweep_err or invalid_response("retention sweep returned no result", "sweeper.run")
         logger:error("retention sweep failed: " .. tostring(err))
@@ -55,13 +61,18 @@ local function perform(db: sql.DB, pid: string, change: table?, traversal: Event
         if send_err then return nil, errors.wrap(send_err, "retention continuation handoff failed") end
     end
 
-    local deadline_ms, deadline_err = sweeper.next_deadline_ms(db)
-    if deadline_err then return nil, deadline_err end
+    local deadline_ms = s.deadline_ms
     local owner_deadline = (owners :: table).deadline_ms
     if owner_deadline ~= nil then
         deadline_ms = deadline_ms == nil and owner_deadline or math.min(deadline_ms, owner_deadline)
     end
     return { stats = s, deadline_ms = deadline_ms, owner_failures = (owners :: table).failures, owner_blocked = (owners :: table).blocked }, nil
+end
+
+local function note_change(traversal: EventTraversal?): ()
+    if traversal and traversal.after_thread_id then
+        traversal.rescan = true
+    end
 end
 
 function M.recover(db: sql.DB, pid: string, traversal: EventTraversal?): (PassResult?, error?)
@@ -72,6 +83,7 @@ function M.on_wake(db: sql.DB, pid: string, change: table, traversal: EventTrave
     if type(change) ~= "table" or type(change.kind) ~= "string" or change.kind == "" then
         return nil, (errors.new({ message = "retention wake requires a change kind", kind = errors.INVALID }) :: error)
     end
+    if change.kind ~= "continue" then note_change(traversal) end
     return perform(db, pid, change, traversal)
 end
 
@@ -83,10 +95,12 @@ function M.on_wakes(db: sql.DB, pid: string, changes: table[], traversal: EventT
     end
     local pending: table[] = {}
     local recovered = false
+    local changed = false
     for _, change in ipairs(changes) do
         if type(change.kind) ~= "string" or change.kind == "" then
             return nil, (errors.new({ message = "retention wake requires a change kind", kind = errors.INVALID }) :: error)
         end
+        changed = changed or change.kind ~= "continue"
         if change.owner_locator ~= nil then
             pending[#pending + 1] = { change = change }
         elseif not recovered then
@@ -94,6 +108,7 @@ function M.on_wakes(db: sql.DB, pid: string, changes: table[], traversal: EventT
             recovered = true
         end
     end
+    if changed then note_change(traversal) end
     local aggregate: PassResult? = nil
     for _, request in ipairs(pending) do
         local result, err = perform(db, pid, request.change, traversal)

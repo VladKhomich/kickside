@@ -3,6 +3,8 @@ local test = require("test")
 local fixture = require("fixture")
 local seed = require("prune_scaffold")
 local source = require("source")
+local time = require("time")
+local uuid = require("uuid")
 
 local cap = 5000
 local page_size = 256
@@ -37,6 +39,15 @@ local function continue_after_cap(): table
     test.eq(change.kind, "continue")
     fixture.continuation = nil
     return change
+end
+
+local function add_event(id: string, seq: integer, due_seconds: integer): ()
+    local at = fixture.now():add((due_seconds - 30 * 86400) * time.SECOND):utc()
+    local stamp = seed.dialect() == "postgres" and at:format(time.RFC3339)
+        or at:format("2006-01-02 15:04:05.000000")
+    seed.exec([[INSERT INTO kickside_event (id,thread_id,type,role,body,seq,created_at)
+        VALUES ($1,$2,'test','user','{}',$3,$4)]], {uuid.v7(), id, seq, stamp})
+    seed.exec("UPDATE kickside_thread SET event_count=$1 WHERE id=$2", {seq, id})
 end
 
 return {run = test.run_cases(function()
@@ -161,6 +172,97 @@ return {run = test.run_cases(function()
             test.eq(fixture.candidates, 1, "candidate queries on the append wake")
             test.eq(fixture.candidate_rows, page_size)
             test.eq(fixture.continuations, 0)
+        end)
+
+        test.it("sleeps on the full rotation minimum and sweeps the final thread by the next rotation", function()
+            fixture.at = assert(time.parse(time.RFC3339, "2025-01-01T00:00:00Z"))
+            for _, id in ipairs({first, last}) do
+                seed.exec("INSERT INTO kickside_thread(id,thread_class) VALUES ($1,'review_retention')", {id})
+            end
+            local existing = tonumber(seed.query("SELECT COUNT(*) AS n FROM kickside_thread", {})[1].n)
+            add_empty_threads("90000000-0000-4000-8000-", 1, 16384 - math.floor(assert(existing)))
+            add_event(first, 1, 120)
+            add_event(last, 1, 60)
+            add_event(last, 2, 180)
+            local pages = 16384 / page_size
+            fixture.before_select = function(delay: integer?): any
+                local pass = fixture.hooks
+                test.eq(fixture.candidates, pass, "one candidate query per pass")
+                test.eq(fixture.candidate_rows, pass * page_size, "each pass visits one full page")
+                if pass < pages then
+                    test.eq(delay, 1, "the initial rotation advances without waiting for eligibility")
+                elseif pass == pages then
+                    test.eq(delay, 60001, "the final page can supply the earliest deadline")
+                    test.eq(seed.boundary_of(last), 0)
+                    fixture.at = fixture.now():add(60001 * time.MILLISECOND)
+                elseif pass < 2 * pages then
+                    test.eq(delay, 1, "the deadline starts another immediate rotation")
+                elseif pass == 2 * pages then
+                    test.eq(seed.boundary_of(last), 1, "one rotation is enough to prune the eligible final head")
+                    test.eq(delay, 1, "a pruned head can expose a new deadline")
+                else
+                    if pass < 3 * pages then
+                        test.eq(delay, 1)
+                    else
+                        test.eq(delay, 60000, "the new rotation replaces the spent minimum")
+                        test.eq(seed.boundary_of(last), 1, "the successor is still fresh")
+                        return nil
+                    end
+                end
+                return "timer"
+            end
+            local _, err = source.main()
+            test.is_nil(err, tostring(err))
+            test.eq(fixture.hooks, 3 * pages)
+            test.eq(fixture.event_deadline_queries, 0, "no global event deadline read")
+        end)
+
+        test.it("includes a head appended behind the cursor before sleeping", function()
+            fixture.at = assert(time.parse(time.RFC3339, "2025-01-01T00:00:00Z"))
+            seed.exec("INSERT INTO kickside_thread(id,thread_class) VALUES ($1,'review_retention')", {first})
+            local existing = tonumber(seed.query("SELECT COUNT(*) AS n FROM kickside_thread", {})[1].n)
+            local pages = math.ceil((assert(existing) + page_size) / page_size)
+            add_empty_threads("f0000000-0000-4000-8000-", 1, page_size)
+            fixture.before_select = function(delay: integer?): any
+                local pass = fixture.hooks
+                if pass == 1 then
+                    test.eq(delay, 1)
+                    add_event(first, 1, 60)
+                    return {kind = "events_appended"}
+                end
+                if pass == 2 * pages then
+                    test.eq(delay, 60001, "the new minimum includes an ID already visited when the wake arrived")
+                    return nil
+                end
+                test.eq(delay, 1)
+                return "timer"
+            end
+            local _, err = source.main()
+            test.is_nil(err, tostring(err))
+            test.eq(fixture.hooks, 2 * pages)
+        end)
+
+        test.it("uses the receipt deadline when it precedes the event minimum", function()
+            fixture.at = assert(time.parse(time.RFC3339, "2025-01-01T00:00:00Z"))
+            seed.exec("INSERT INTO kickside_thread(id,thread_class) VALUES ($1,'review_retention')", {first})
+            add_event(first, 1, 120)
+            local completed_at = fixture.now():add((-30 * 86400 + 60) * time.SECOND):utc():format(time.RFC3339)
+            seed.exec([[INSERT INTO kickside_write_receipt
+                (sink_id,idempotency_key,identity_key,payload_hash,status,created_at,completed_at)
+                VALUES ('review-retention','key','identity','hash','committed',$1,$2)]], {completed_at, completed_at})
+            local count = tonumber(seed.query("SELECT COUNT(*) AS n FROM kickside_thread", {})[1].n)
+            local pages = math.ceil(assert(count) / page_size)
+            fixture.before_select = function(delay: integer?): any
+                if fixture.hooks == pages then
+                    test.eq(delay, 60001)
+                    return nil
+                end
+                test.eq(delay, 1)
+                return "timer"
+            end
+            local _, err = source.main()
+            test.is_nil(err, tostring(err))
+            test.eq(fixture.hooks, pages)
         end)
     end)
 end)}

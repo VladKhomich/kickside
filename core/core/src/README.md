@@ -65,14 +65,23 @@ checks their event heads, and shares the configured event deletion cap across
 the page. It then runs receipt cleanup and owner hooks. An append wake on a
 sparse installation still reads only one candidate page.
 
-The service keeps the last visited ID and the rotation's highest ID in memory.
-When a pass reaches that endpoint, the next pass wraps to the first ID. Higher
-IDs created during the rotation wait for a later rotation. For a stable set of
-threads, one rotation takes `ceil(threads / 256)` passes when the deletion cap
-allows each page to finish. A pass that reaches the cap sooner resumes after
-its last processed thread so every thread gets a turn. A deleted cursor thread
-still provides a seek key. Boot recovery starts a new rotation from the first
-ID.
+Boot recovery starts a rotation immediately. The service keeps the last
+visited ID and the rotation's highest ID in memory. It schedules the next
+page immediately until it reaches the endpoint. For a stable set of threads,
+one rotation takes `ceil(threads / 256)` passes when the deletion cap allows
+each page to finish. A pass that hits the cap resumes after its last processed
+thread, even if that thread has since been deleted.
+
+Each page contributes the earliest eligibility time among the event heads it
+visits. Core uses the inherited or per-thread retention window and skips heads
+blocked by a pin or a non-invalid projection cursor. The service stores the
+minimum for the current rotation and the last completed rotation. At the end
+of a rotation it waits for that rotation's minimum, the oldest committed
+receipt's deadline, an owner deadline, or a change wake, whichever comes
+first. A due head can trigger an early follow-up rotation to discover its
+successor after pruning. A change wake during a rotation also brings the next
+rotation forward so changes to earlier IDs and newly created higher IDs are
+seen before the service sleeps. Each new rotation starts at the first ID.
 
 An installed module registers its maintenance function with
 `meta.type: kickside.retention.owner`. Core invokes ready owners on recovery,

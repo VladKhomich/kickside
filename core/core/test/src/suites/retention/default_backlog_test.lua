@@ -1,6 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
-local sql = require("sql")
 local time = require("time")
 local fixture = require("prune_scaffold")
 local sweeper = require("sweeper")
@@ -13,15 +12,13 @@ local function define_tests()
             local db = fixture.open_db()
             local total = 0
             for pass = 1, 3 do
-                local result, err = sweeper.run(db)
+                local result, err = sweeper.run(db, {})
                 test.is_nil(err)
                 total = total + result.events
                 if pass < 3 then
                     test.eq(result.events, 5000)
                     test.is_true(result.needs_continue)
-                    local deadline, deadline_err = sweeper.next_deadline_ms(db)
-                    test.is_nil(deadline_err)
-                    test.is_true(deadline <= math.floor(time.now():unix_nano() / 1000000))
+                    test.is_true(result.deadline_ms <= math.floor(time.now():unix_nano() / 1000000))
                 end
             end
             db:release()

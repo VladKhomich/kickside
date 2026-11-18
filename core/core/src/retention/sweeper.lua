@@ -1,5 +1,5 @@
 -- Core owns event-prefix pruning and committed write-receipt retention. The
--- service invokes these operations at exact eligibility deadlines and after
+-- service invokes these operations using rotation deadlines and after
 -- state-change notifications; foreign-owner retention is dispatched by its owner.
 
 local sql = require("sql")
@@ -12,12 +12,19 @@ local retention_policy = require("retention_policy")
 local sweeper = {}
 
 type DB = sql.DB
-type EventTraversal = { after_thread_id: string?, end_thread_id: string? }
+type EventTraversal = {
+    after_thread_id: string?,
+    end_thread_id: string?,
+    rotation_deadline_ms: integer?,
+    last_deadline_ms: integer?,
+    rescan: boolean?,
+}
 
 type RunStats = {
     events: integer,
     write_receipts: integer,
     needs_continue: boolean,
+    deadline_ms: integer?,
 }
 
 local EVENT_THREAD_PAGE = 256
@@ -127,46 +134,61 @@ function sweeper.deadline_ms(stamp: string, retention_ms: integer, dbtype: strin
 end
 
 local function prune_thread(db: DB, dbtype: string, row: table, policy: table,
-        now: any, maximum: integer): (integer?, error?)
-    if maximum <= 0 then return 0, nil end
+        now: any, now_ms: integer, maximum: integer, native_deadline: boolean): (integer?, integer?, error?)
     local thread_id = tostring(row.id or "")
-    if thread_id == "" then return nil, response_failure("retention candidate has no thread id", "candidate.id") end
-    if type(row.head_created_at) ~= "string" then return 0, nil end
+    if thread_id == "" then
+        return nil, nil, response_failure("retention candidate has no thread id", "candidate.id")
+    end
+    if row.head_blocked == 1 or type(row.head_created_at) ~= "string" then return 0, nil, nil end
     local window, window_err = event_window_ms(row, policy)
-    if window_err then return nil, window_err end
-    local deadline, deadline_err = sweeper.deadline_ms(row.head_created_at,
-        window :: integer, dbtype)
-    if deadline_err then return nil, deadline_err end
-    if (deadline :: integer) > math.floor(now:unix_nano() / 1000000) then return 0, nil end
+    if window_err then return nil, nil, window_err end
+    local deadline: integer?
+    if native_deadline then
+        deadline = tonumber(row.eligibility_ms) :: integer?
+        if deadline == nil then
+            return nil, nil, response_failure("retention event deadline is missing", "event.eligibility_ms")
+        end
+    else
+        local deadline_err
+        deadline, deadline_err = sweeper.deadline_ms(row.head_created_at, window :: integer, dbtype)
+        if deadline_err then return nil, nil, deadline_err end
+    end
+    if (deadline :: integer) > now_ms or maximum <= 0 then return 0, deadline, nil end
     local result, prune_err = prune.prune_thread(db, thread_id, {
         cutoff = event_cutoff(dbtype, window :: integer, now),
         batch_size = prune.MAX_LOCK_BATCH,
         max_total = maximum,
     })
-    if prune_err then return nil, prune_err end
-    return deleted_count(result, "prune.deleted")
+    if prune_err then return nil, nil, prune_err end
+    local deleted, count_err = deleted_count(result, "prune.deleted")
+    -- A due head may have a successor. Its observed deadline brings the next
+    -- rotation forward so a successor cannot be missed while the service sleeps.
+    return deleted, deadline, count_err
 end
 
-local function load_event_threads(db: DB, dbtype: string, policy: table, now: any,
+local function load_event_threads(db: DB, dbtype: string, policy: table,
         after_id: string?, end_id: string?, start_rotation: boolean): ({ table }?, error?)
     local policy_join = [[LEFT JOIN kickside_retention_policy p ON p.thread_id=t.id]]
     local event_join = [[LEFT JOIN kickside_event e INDEXED BY uq_kickside_event_thread_seq
             ON t.deleting_at IS NULL AND e.thread_id=t.id AND e.seq=t.max_pruned_seq+1
                 AND (p.enabled IS NULL OR p.enabled=1)]]
+    local native_deadline = ""
     local params: table = {}
     if dbtype == sql.type.POSTGRES then
         policy_join = [[LEFT JOIN LATERAL (
             SELECT p.enabled,p.event_hot_retention_days FROM kickside_retention_policy p WHERE p.thread_id=t.id LIMIT 1
         ) p ON TRUE]]
+        -- The sequence order lets PostgreSQL seek the head using (thread_id, seq).
         event_join = [[LEFT JOIN LATERAL (
-            SELECT e.created_at FROM kickside_event e
-            WHERE t.deleting_at IS NULL AND e.thread_id=t.id AND e.seq=t.max_pruned_seq+1
-                AND (p.enabled IS NULL OR p.enabled=$1)
-                AND (p.event_hot_retention_days < 1 OR FLOOR(EXTRACT(EPOCH FROM e.created_at)*1000)
-                    + COALESCE(p.event_hot_retention_days::bigint*86400000,$2::bigint) + 1 <= $3::bigint)
-            LIMIT 1
-        ) e ON TRUE]]
-        params = { true, policy.events_ms, math.floor(now:unix_nano() / 1000000) }
+            SELECT e.seq,e.created_at,(FLOOR(EXTRACT(EPOCH FROM e.created_at)*1000)
+                + COALESCE(p.event_hot_retention_days::bigint*86400000,$1::bigint) + 1)::bigint AS eligibility_ms
+            FROM kickside_event e
+            WHERE t.deleting_at IS NULL AND e.thread_id=t.id AND e.seq>t.max_pruned_seq
+                AND (p.enabled IS NULL OR p.enabled=TRUE)
+            ORDER BY e.seq LIMIT 1
+        ) e ON e.seq=t.max_pruned_seq+1]]
+        native_deadline = ",e.eligibility_ms"
+        params = { policy.events_ms }
     end
     local bounds = ""
     if after_id then
@@ -181,88 +203,37 @@ local function load_event_threads(db: DB, dbtype: string, policy: table, now: an
     -- seek gives the rotation a fixed endpoint even as higher IDs are added.
     local rotation_end = start_rotation
         and ",(SELECT id FROM kickside_thread ORDER BY id DESC LIMIT 1) AS end_thread_id" or ""
-    -- Take the page before filtering out deleting threads or looking up heads.
-    local rows, err = db:query("SELECT t.id,p.event_hot_retention_days,e.created_at AS head_created_at"
-        .. rotation_end .. "\nFROM (SELECT id,max_pruned_seq,deleting_at FROM kickside_thread"
+    -- Take the page before looking up heads or their protection floors.
+    local rows, err = db:query([[SELECT t.id,p.event_hot_retention_days,e.created_at AS head_created_at,
+        CASE WHEN e.seq IS NOT NULL AND (EXISTS (SELECT 1 FROM kickside_retention_pin rp
+            WHERE rp.thread_id=t.id AND rp.cursor_seq<e.seq)
+        OR EXISTS (SELECT 1 FROM kickside_projection_cursor pc
+            WHERE pc.thread_id=t.id AND pc.status IN ('active','paused') AND pc.last_seq<e.seq))
+        THEN 1 ELSE 0 END AS head_blocked]]
+        .. native_deadline .. rotation_end .. "\nFROM (SELECT id,max_pruned_seq,deleting_at FROM kickside_thread"
         .. bounds .. " ORDER BY id LIMIT " .. tostring(EVENT_THREAD_PAGE) .. ") t\n"
         .. policy_join .. "\n" .. event_join .. "\nORDER BY t.id", params)
     if err then return nil, errors.wrap(err, "failed to load Core event retention candidates") end
     return rows_result(rows, "candidates.query")
 end
 
-local function min_deadline(current: integer?, candidate: integer): integer
-    return current == nil and candidate or math.min(current :: integer, candidate)
+local function min_deadline(current: integer?, candidate: integer?): integer?
+    if candidate == nil then return current end
+    return current == nil and candidate or math.min(current, candidate)
 end
 
--- Returns the earliest event or committed-receipt eligibility deadline. An
--- event head blocked by a pin or projection cursor has no timer; those owners
--- wake Core when their protection changes.
-function sweeper.next_deadline_ms(db: DB): (integer?, error?)
-    local policy, policy_err = load_policy()
-    if policy_err then return nil, policy_err end
-    local raw_dbtype, dbtype_err = db:type()
-    if dbtype_err then return nil, errors.wrap(dbtype_err, "failed to resolve DB type") end
-    if not raw_dbtype then return nil, response_failure("failed to resolve DB type", "db.type") end
-    local dbtype = tostring(raw_dbtype)
-    local enabled_match: any = dbtype == sql.type.SQLITE and 1 or true
-    local native_deadline, native_filter = "", ""
-    local ordering = " ORDER BY t.id"
-    local params: table = { enabled_match }
-    if dbtype == sql.type.POSTGRES then
-        native_deadline = [[(FLOOR(EXTRACT(EPOCH FROM e.created_at)*1000)
-            + COALESCE(p.event_hot_retention_days::bigint*86400000,$2::bigint) + 1)::bigint AS eligibility_ms,]]
-        native_filter = [[ AND NOT EXISTS (SELECT 1 FROM kickside_retention_pin rp
-                WHERE rp.thread_id=t.id AND rp.cursor_seq<e.seq)
-            AND NOT EXISTS (SELECT 1 FROM kickside_projection_cursor pc
-                WHERE pc.thread_id=t.id AND pc.status<>'invalid' AND pc.last_seq<e.seq)]]
-        ordering = " ORDER BY CASE WHEN p.event_hot_retention_days<1 THEN 0 ELSE 1 END,eligibility_ms LIMIT 1"
-        params[2] = (policy :: table).events_ms
-    end
-    local rows, query_err = db:query("SELECT " .. native_deadline .. [[t.id,e.seq,e.created_at,p.event_hot_retention_days,
-            COALESCE((SELECT MIN(cursor_seq) FROM kickside_retention_pin rp WHERE rp.thread_id=t.id),e.seq) AS pin_floor,
-            COALESCE((SELECT MIN(last_seq) FROM kickside_projection_cursor pc
-                WHERE pc.thread_id=t.id AND pc.status<>'invalid'),e.seq) AS projection_floor
-        FROM kickside_thread t
-        JOIN kickside_event e ON e.thread_id=t.id AND e.seq=t.max_pruned_seq+1
-        LEFT JOIN kickside_retention_policy p ON p.thread_id=t.id
-        WHERE t.deleting_at IS NULL AND (p.thread_id IS NULL OR p.enabled=$1)
-        ]] .. native_filter .. ordering, params)
-    if query_err then return nil, errors.wrap(query_err, "failed to read next Core event deadlines") end
-    local event_rows, rows_err = rows_result(rows, "event_deadlines.query")
-    if rows_err then return nil, rows_err end
-
-    local next_ms: integer? = nil
-    for _, row in ipairs(event_rows :: { table }) do
-        local seq = tonumber(row.seq)
-        if not seq then return nil, response_failure("retention event head has no sequence", "event.seq") end
-        if (tonumber(row.pin_floor) or seq) >= seq
-            and (tonumber(row.projection_floor) or seq) >= seq then
-            local window, window_err = event_window_ms(row, policy :: table)
-            if window_err then return nil, window_err end
-            local deadline, deadline_err = tonumber(row.eligibility_ms), nil
-            if dbtype ~= sql.type.POSTGRES then
-                deadline, deadline_err = sweeper.deadline_ms(tostring(row.created_at), window :: integer, dbtype)
-            end
-            if deadline_err then return nil, deadline_err end
-            if deadline == nil then return nil, response_failure("retention event deadline is missing", "event.eligibility_ms") end
-            next_ms = min_deadline(next_ms, deadline :: integer)
-        end
-    end
-
+local function receipt_deadline_ms(db: DB, dbtype: string, policy: table): (integer?, error?)
     local receipts, receipt_err = db:query([[SELECT completed_at FROM kickside_write_receipt
         WHERE status='committed' AND completed_at IS NOT NULL
-        ORDER BY completed_at,sink_id,idempotency_key LIMIT 1]])
+        ORDER BY completed_at LIMIT 1]])
     if receipt_err then return nil, errors.wrap(receipt_err, "failed to read next committed-receipt deadline") end
     local receipt_rows, receipts_err = rows_result(receipts, "receipt_deadline.query")
     if receipts_err then return nil, receipts_err end
     local receipt = (receipt_rows :: { table })[1]
     if receipt then
-        local deadline, deadline_err = sweeper.deadline_ms(tostring(receipt.completed_at),
-            (policy :: table).receipts_orphan_ms, dbtype)
-        if deadline_err then return nil, deadline_err end
-        next_ms = min_deadline(next_ms, deadline :: integer)
+        return sweeper.deadline_ms(tostring(receipt.completed_at), policy.receipts_orphan_ms, dbtype)
     end
-    return next_ms, nil
+    return nil, nil
 end
 
 function sweeper.run(db: DB, traversal: EventTraversal?): (RunStats?, error?)
@@ -273,33 +244,26 @@ function sweeper.run(db: DB, traversal: EventTraversal?): (RunStats?, error?)
     if not raw_dbtype then return nil, response_failure("failed to resolve DB type", "db.type") end
     local dbtype = tostring(raw_dbtype)
     local now = time.now()
+    local now_ms = math.floor(now:unix_nano() / 1000000)
     local agg: RunStats = { events = 0, write_receipts = 0, needs_continue = false }
 
     local budget = math.floor((policy :: table).batch_events)
     local after_id = traversal and traversal.after_thread_id
     local end_id = traversal and traversal.end_thread_id
-    local threads, thread_err = load_event_threads(db, dbtype, policy :: table, now,
+    local threads, thread_err = load_event_threads(db, dbtype, policy :: table,
         after_id, end_id, traversal ~= nil and after_id == nil)
     if thread_err then return nil, thread_err end
     local page = threads :: { table }
     local visited = 0
+    local page_deadline: integer? = nil
     for index, row in ipairs(page) do
-        local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table, now, budget - agg.events)
+        local deleted, deadline, prune_err = prune_thread(db, dbtype, row, policy :: table,
+            now, now_ms, budget - agg.events, dbtype == sql.type.POSTGRES)
         if prune_err then return nil, prune_err end
         agg.events = agg.events + (deleted :: integer)
+        page_deadline = min_deadline(page_deadline, deadline)
         visited = index
         if agg.events >= budget then break end
-    end
-    if traversal then
-        local last_id = visited > 0 and tostring(page[visited].id) or nil
-        local rotation_end = end_id or (page[1] and page[1].end_thread_id)
-        if visited == #page and (#page < EVENT_THREAD_PAGE or last_id == rotation_end) then
-            traversal.after_thread_id = nil
-            traversal.end_thread_id = nil
-        else
-            traversal.after_thread_id = last_id
-            traversal.end_thread_id = rotation_end
-        end
     end
 
     -- Receipt timestamps are canonical RFC3339 UTC text on both dialects;
@@ -313,6 +277,27 @@ function sweeper.run(db: DB, traversal: EventTraversal?): (RunStats?, error?)
     agg.write_receipts = count :: integer
     agg.needs_continue = agg.events >= (policy :: table).batch_events
         or agg.write_receipts >= (policy :: table).batch_receipts
+    if traversal then
+        local last_id = visited > 0 and tostring(page[visited].id) or nil
+        local rotation_end = end_id or (page[1] and page[1].end_thread_id)
+        local rotation_deadline = min_deadline(traversal.rotation_deadline_ms, page_deadline)
+        if visited < #page or (#page == EVENT_THREAD_PAGE and last_id ~= rotation_end) then
+            traversal.after_thread_id = last_id
+            traversal.end_thread_id = rotation_end
+            traversal.rotation_deadline_ms = rotation_deadline
+            agg.deadline_ms = 0
+        else
+            local receipt_deadline, deadline_err = receipt_deadline_ms(db, dbtype, policy :: table)
+            if deadline_err then return nil, deadline_err end
+            traversal.after_thread_id = nil
+            traversal.end_thread_id = nil
+            traversal.rotation_deadline_ms = nil
+            traversal.last_deadline_ms = rotation_deadline
+            -- Wakes received mid-rotation may affect an already visited ID.
+            agg.deadline_ms = traversal.rescan and 0 or min_deadline(traversal.last_deadline_ms, receipt_deadline)
+            traversal.rescan = nil
+        end
+    end
     return agg, nil
 end
 
@@ -338,8 +323,8 @@ function sweeper.run_for_thread(db: DB, thread_id: string): (table?, error?)
     local policy, policy_err = load_policy()
     if policy_err then return nil, policy_err end
     local now = time.now()
-    local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table,
-        now, (policy :: table).batch_events)
+    local deleted, _, prune_err = prune_thread(db, dbtype, row, policy :: table,
+        now, math.floor(now:unix_nano() / 1000000), (policy :: table).batch_events, false)
     if prune_err then return nil, prune_err end
     return { events = deleted }, nil
 end
