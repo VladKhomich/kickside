@@ -85,6 +85,11 @@ OpenAI-compatible profiles, `test_model` is non-secret profile config used only
 by the connection-test probe; API keys remain in encrypted profile secrets or
 `*_env` references. Card and profile filtering preserve the exact `headers` name and existing credential substrings (`secret`, `token`, `api_key`/`api-key`/`apikey`, `authorization`, `password`, `credential`), except token-quantity names containing the plural word `tokens` or singular `token` immediately followed by `budget`, `limit`, `count`, `usage`, `cost`, `rate`, `length`, `window`, `quota` or `size` after word normalization and no other credential substring; profile `*_env` references remain public and declared provider-secret keys retain their exact spelling for config/secret separation.
 
+Profile `timeout` accepts positive seconds or a positive duration string such as
+`"2s"`. An unset timeout uses the provider default. On update, omit the field to
+keep the saved value or send an empty string to clear it. Invalid timeouts return
+HTTP 400 with `kind: "Invalid"` and `details.field: "timeout"`.
+
 Retry is provider-level transport policy: `retry.attempts` is the number of
 transient failures to retry after the initial request, and optional
 `retry.backoff_ms` is the base exponential backoff delay.

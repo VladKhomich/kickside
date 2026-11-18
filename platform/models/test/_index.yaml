@@ -2,6 +2,18 @@ version: "1.0"
 namespace: app
 
 entries:
+  - name: provider_timeout_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_models}
+    source: file://provider_timeout_test.lua
+    method: run
+    modules: [sql, json]
+    imports:
+      test: wippy.test:test
+      repo: kickside.models.persist:repo
+      migration_runner: wippy.migration:runner
+      plain_generate: kickside.models.providers.openai_compat_plain:generate_implementation
+
   - name: cipher_compatibility_test
     kind: function.lua
     meta: {type: test, suite: cipher_compatibility}

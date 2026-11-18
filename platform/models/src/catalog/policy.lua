@@ -7,6 +7,7 @@ local json = require("json")
 local registry = require("registry")
 local models_types = require("models_types")
 local models_secrets = require("models_secrets")
+local llm_transport = require("llm_transport")
 
 local M = {}
 
@@ -423,7 +424,7 @@ local function provider_context(profile: any): any
     return merge_config(config, secret)
 end
 
-local function clean_profile_input(input: any, existing: any?): (any?, string?)
+local function clean_profile_input(input: any, existing: any?): (any?, any?)
     if type(input) ~= "table" then return nil, "profile body must be an object" end
     local name = input.name or (existing and existing.name)
     if type(name) ~= "string" or name == "" then return nil, "name is required" end
@@ -433,6 +434,14 @@ local function clean_profile_input(input: any, existing: any?): (any?, string?)
     local config = copy_config(input, existing and existing.config or {})
     local secret_config = copy_secret_config(input, existing and existing.secret_config or {})
     config = apply_provider_normalization(provider_id, config, secret_config)
+    if config.timeout ~= nil and llm_transport.timeout_seconds(config.timeout) == nil then
+        return nil, errors.new({
+            kind = errors.INVALID,
+            message = "Timeout must be positive seconds or a positive duration",
+            retryable = false,
+            details = {field = "timeout"},
+        })
+    end
     local verr = validate_profile_config(provider_id, config, secret_config)
     if verr then return nil, verr end
 
