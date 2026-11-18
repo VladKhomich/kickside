@@ -153,30 +153,44 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
         return nil, binding_errors.from(query_err, errors.UNAVAILABLE, "upload_lookup_failed", "Failed to get upload")
     end
     if #rows == 0 then return nil, nil end
-    return parse_upload_row(rows[1])
+    local upload, decode_err = parse_upload_row(rows[1])
+    return upload or rows[1], decode_err
 end
 
 -- A published worker can die after saving completed storage but before publishing.
 -- The read model still witnesses publication after Core prunes the event.
-function upload_query_repo.list_dead_completion_intents(limit: integer): (table?, any?)
-    local db, err = resources.get_db()
-    if err then return nil, err end
+function upload_query_repo.list_dead_completion_intents(limit: integer, cursor: string?, db: any): (table?, any?, string?)
+    local after, limit_arg, params = "", "$1", { limit }
+    if cursor then
+        after, limit_arg, params = " WHERE id > $1", "$2", { cursor, limit }
+    end
     local rows, read_err = db:query([[
-        SELECT j.id FROM kickside_job j
-        JOIN kickside_uploads ON kickside_uploads.uuid = (j.payload ->> 'upload_id')
-            AND kickside_uploads.actor_id = j.owner_id
-        WHERE j.job_type = 'kickside.uploads.service:process_job_proc' AND j.owner_kind = 'user'
-          AND j.status = 'dead' AND kickside_uploads.storage_state = 'completed'
-          AND NOT EXISTS (
-              SELECT 1 FROM kickside_job outcome
-              WHERE outcome.thread_id = j.thread_id AND outcome.job_type = 'kickside.uploads.service:process_dead'
-                AND outcome.job_identity = ]] .. dead_outcome.identity_sql("j.id") .. [[
-          )
-          AND ]] .. processing_job_owner("j") .. " AND " .. upload_query_repo.completion_unpublished_sql("j.thread_id") .. [[
-        ORDER BY j.id LIMIT $1
-    ]], { limit })
-    db:release()
-    return rows, read_err
+        SELECT j.id, CASE WHEN j.job_type = 'kickside.uploads.service:process_job_proc'
+          AND j.owner_kind = 'user' AND j.status = 'dead' THEN (
+            SELECT 1 FROM kickside_uploads
+            WHERE kickside_uploads.uuid = (j.payload ->> 'upload_id')
+              AND kickside_uploads.actor_id = j.owner_id
+              AND kickside_uploads.storage_state = 'completed'
+              AND ]] .. processing_job_owner("j") .. [[
+              AND CASE WHEN ]] .. upload_query_repo.completion_unpublished_sql("j.thread_id") .. [[
+                THEN (SELECT 1 FROM kickside_job outcome
+                    WHERE outcome.thread_id = j.thread_id AND outcome.job_type = 'kickside.uploads.service:process_dead'
+                      AND outcome.job_identity = ]] .. dead_outcome.identity_sql("j.id") .. [[
+                    LIMIT 1) IS NULL ELSE FALSE END
+            LIMIT 1
+        ) IS NOT NULL ELSE FALSE END AS recoverable
+        FROM (
+            SELECT id, thread_id, job_type, owner_kind, owner_id, status, payload, job_identity
+            FROM kickside_job]] .. after .. [[
+            ORDER BY id LIMIT ]] .. limit_arg .. [[
+        ) j ORDER BY j.id
+    ]], params)
+    if read_err then return nil, read_err end
+    local checkpoints = {}
+    for _, row in ipairs(rows) do
+        if row.recoverable == true or row.recoverable == 1 then checkpoints[#checkpoints + 1] = { id = row.id } end
+    end
+    return checkpoints, nil, #rows == limit and tostring(rows[#rows].id) or nil
 end
 
 -- Authorization needs the stored owner, without loading content metadata.

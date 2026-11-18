@@ -7,10 +7,14 @@ local contract = require("contract")
 local security = require("security")
 local funcs = require("funcs")
 local json = require("json")
+local env = require("env")
+local fs = require("fs")
 local provision = require("provision")
 local notifier = require("retention_notifier")
 local upload_types = require("types")
 local upload_tokens = require("upload_tokens")
+local secret_cipher = require("secret_cipher")
+local upload_query_repo = require("upload_query_repo")
 
 local DB = "app:db"
 local WAIT_MS = 15000
@@ -22,12 +26,16 @@ local function exec(statement: string, params: { any }): ()
     test.is_nil(err, tostring(err))
 end
 
-local function count(id: string): integer
+local function query(statement: string, params: { any }): { table }
     local db = assert(sql.get(DB))
-    local rows, err = db:query("SELECT COUNT(*) AS n FROM kickside_upload_read_model WHERE upload_id=$1", { id })
+    local rows, err = db:query(statement, params)
     db:release()
     test.is_nil(err, tostring(err))
-    return tonumber(rows[1].n) :: integer
+    return rows
+end
+
+local function count(id: string): integer
+    return tonumber(query("SELECT COUNT(*) AS n FROM kickside_upload_read_model WHERE upload_id=$1", { id })[1].n) :: integer
 end
 
 local function sweeper_pid(): string?
@@ -71,8 +79,142 @@ local function model(component_id: string, seq: integer): string
     return id
 end
 
+local function checkpoint(component_id: string, owner: string, upload_id: string, job_id: string, metadata: string)
+    exec([[INSERT INTO kickside_job (id,thread_id,job_type,payload,job_identity,owner_kind,owner_id,status,finished_at)
+        VALUES ($1,$2,'kickside.uploads.service:process_job_proc',$3,$4,'user',$5,'dead',$6)]],
+        { job_id, component_id, assert(json.encode({ upload_id = upload_id })),
+            "7:uploads" .. #upload_id .. ":" .. upload_id .. "7:process", owner, stamp(0) })
+    exec([[INSERT INTO kickside_uploads
+        (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata,
+            processing_intent_state,processing_job_id)
+        VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text','completed',$3,'acknowledged',$4)]],
+        { upload_id, owner, metadata, job_id })
+    exec([[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
+        VALUES ($1,$2,'processing')]], { upload_id, component_id })
+end
+
 return test.run_cases(function()
     test.describe("uploads retention under the Core retention sweeper service", function()
+        test.it("settles an expired checkpoint as failed and continues recovery and cleanup in the same pass", function()
+            local component_id, owner = user_container()
+            local bad, good = uuid.v4(), uuid.v4()
+            local key = assert(secret_cipher.load_key(assert(env.get("kickside.uploads.env:encryption_key"))))
+            local token = assert(secret_cipher.seal(assert(json.encode({ upload_id = bad,
+                function_id = "app:callback_probe", actor_id = owner, actor_context = "{}",
+                issued_at = os.time() - 86401 })), key))
+            checkpoint(component_id, owner, bad, "00000000-0000-4000-8000-000000000001",
+                assert(json.encode({ __upload_token = token })))
+            checkpoint(component_id, owner, good, "00000000-0000-4000-8000-000000000002", "{}")
+            exec("UPDATE kickside_thread SET max_pruned_seq=5 WHERE id=$1", { component_id })
+            local tombstone = model(component_id, 3)
+            local blob_id = uuid.v4()
+            local storage = assert(fs.get("app:uploads"))
+            local _, write_err = storage:writefile(blob_id, "bytes")
+            test.is_nil(write_err, tostring(write_err))
+            exec([[INSERT INTO kickside_upload_artifact_blobs
+                (blob_id,checksum,mime_type,size,storage_id,storage_path,created_at,updated_at)
+                VALUES ($1,$2,'text/plain',5,'app:uploads',$2,$3,$3)]], { blob_id, blob_id, stamp(-40) })
+
+            local result, err = funcs.call("kickside.uploads:retention", {})
+            test.is_nil(err, tostring(err))
+            test.is_true(result.success, tostring(result.error))
+            local failure = query([[SELECT body,external_version FROM kickside_event
+                WHERE thread_id=$1 AND external_id=$2 AND type=$3]], { component_id, bad, upload_types.EVENT.FAILED })
+            test.eq(#failure, 1)
+            test.eq(failure[1].external_version, "00000000-0000-4000-8000-000000000001")
+            local body = type(failure[1].body) == "table" and failure[1].body or assert(json.decode(failure[1].body))
+            test.contains(body.error, "Token expired")
+            test.eq(assert(upload_query_repo.get(bad)).storage_state, "failed")
+            test.eq(#query("SELECT id FROM kickside_event WHERE thread_id=$1 AND external_id=$2 AND type=$3",
+                { component_id, good, upload_types.EVENT.COMPLETED }), 1)
+            test.eq(count(tombstone), 0)
+            test.eq(#query("SELECT blob_id FROM kickside_upload_artifact_blobs WHERE blob_id=$1", { blob_id }), 0)
+        end)
+
+        test.it("bounds candidate discovery across 10000 already published dead jobs", function()
+            local component_id, owner = user_container()
+            local db = assert(sql.get(DB))
+            local postgres = tostring(db:type()) == sql.type.POSTGRES
+            local prefix = "10000000-0000-4000-8000-"
+            local ident = postgres and "($1 || LPAD(CAST(n AS TEXT),12,'0'))"
+                or "($1 || PRINTF('%012d', n))"
+            local ids = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<10000) "
+            local job_id = postgres and "CAST(" .. ident .. " AS UUID)" or ident
+            local payload = (postgres and "json_build_object" or "json_object") .. "('upload_id', " .. ident .. ")"
+            exec(ids .. [[INSERT INTO kickside_job (id,thread_id,job_type,payload,job_identity,owner_kind,owner_id,status,finished_at)
+                SELECT ]] .. job_id .. ",$2,'kickside.uploads.service:process_job_proc'," .. payload
+                .. "," .. ident .. ",'user',$3,'dead',$4 FROM seq",
+                { prefix, component_id, owner, stamp(0) })
+            exec(ids .. [[INSERT INTO kickside_uploads
+                (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata,
+                    processing_intent_state,processing_job_id)
+                SELECT ]] .. ident .. ",$2,'text/plain',1,'app:uploads'," .. ident
+                .. ",'text','completed','{}','acknowledged'," .. ident .. " FROM seq", { prefix, owner })
+            exec(ids .. [[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
+                SELECT ]] .. ident .. ",$2,'completed' FROM seq", { prefix, component_id })
+            local last_job, last_upload = prefix .. "000000010001", uuid.v4()
+            checkpoint(component_id, owner, last_upload, last_job, "{}")
+
+            local batch = 500
+            local cursor = prefix .. "000000000000"
+            local found, examined = nil, 0
+            local probe = {
+                type = function() return db:type() end,
+                query = function(_, statement, params)
+                    local plan = assert(db:query((postgres and "EXPLAIN (ANALYZE, BUFFERS) " or "EXPLAIN QUERY PLAN ")
+                        .. statement, params))
+                    local seek = false
+                    for _, row in ipairs(plan) do
+                        local detail = tostring(postgres and row["QUERY PLAN"] or row.detail)
+                        if postgres then
+                            local rows, loops = detail:match("actual time=[^ ]+ rows=(%d+) loops=(%d+)")
+                            if rows and loops then
+                                test.is_true(assert(tonumber(rows)) * assert(tonumber(loops)) <= batch, detail)
+                            end
+                            local removed = detail:match("Rows Removed by [%a ]+: (%d+)")
+                            if removed then test.is_true(assert(tonumber(removed)) <= batch, detail) end
+                            seek = seek or detail:find("Index Cond:", 1, true) ~= nil
+                        else
+                            seek = seek or (detail:find("SEARCH", 1, true) ~= nil and detail:find("id>?", 1, true) ~= nil)
+                            test.is_false(detail:find("USE TEMP B-TREE FOR ORDER BY", 1, true) ~= nil, detail)
+                        end
+                    end
+                    test.is_true(seek, "candidate discovery advances by an indexed seek")
+                    local rows, err = db:query(statement, params)
+                    if rows then examined = examined + #rows end
+                    return rows, err
+                end,
+            }
+            for page = 1, 21 do
+                local rows, err, next_cursor = upload_query_repo.list_dead_completion_intents(batch, cursor, probe)
+                test.is_nil(err, tostring(err))
+                if page <= 20 then
+                    test.eq(#rows, 0)
+                    test.eq(next_cursor, prefix .. string.format("%012d", page * batch))
+                    test.eq(examined, page * batch)
+                    cursor = next_cursor
+                else
+                    found = rows[1] and rows[1].id
+                end
+            end
+            test.eq(found, last_job)
+            db:release()
+            local _, wake_err = notifier.notify({ kind = "uploads_retention_test" })
+            test.is_nil(wake_err, tostring(wake_err))
+            local events = {}
+            local deadline = time.now():unix_nano() + WAIT_MS * 1000000
+            while #events == 0 and time.now():unix_nano() < deadline do
+                events = query("SELECT external_version FROM kickside_event WHERE thread_id=$1 AND external_id=$2 AND type=$3",
+                    { component_id, last_upload, upload_types.EVENT.COMPLETED })
+                if #events == 0 then time.sleep("50ms") end
+            end
+            test.eq(#events, 1, "the retention owner advances past empty pages")
+            test.eq(events[1].external_version, last_job)
+            exec("DELETE FROM kickside_job WHERE owner_id=$1", { owner })
+            exec("DELETE FROM kickside_upload_read_model WHERE component_id=$1", { component_id })
+            exec("DELETE FROM kickside_uploads WHERE actor_id=$1", { owner })
+        end)
+
         test.it("publishes a completed checkpoint whose processing job was already dead at upgrade", function()
             local component_id, owner = user_container()
             local function completed(upload_id: string): { table }

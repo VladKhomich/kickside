@@ -89,6 +89,10 @@ local function completion_output(upload: any): table
     return { success = true, upload_id = upload.uuid, owner_actor_id = upload.actor_id }
 end
 
+local function permanent(err: any): boolean
+    return type(err) == "userdata" and not err:retryable()
+end
+
 -- Settle an upload's processing outcome in one transaction: its storage state,
 -- callback jobs, thread event and, on success, the processing hooks. Inside the
 -- processing job the same transaction completes the job's lease. Dead
@@ -96,6 +100,7 @@ end
 -- when the upload is not the settling job's to settle.
 local function settle(job: any, upload: any, outcome: table, dead_processing: table?): (boolean, any?)
     local success = outcome.success == true
+    local error_text = outcome.error_text
     local prepared_hooks
     if success then
         local prepare_err
@@ -103,11 +108,6 @@ local function settle(job: any, upload: any, outcome: table, dead_processing: ta
         if prepare_err then return false, prepare_err end
     end
     local job_id = tostring(job.id)
-    local event = success and completed_event(job_id, upload, upload.trace_context)
-        or failed_event(job_id, upload, tostring(outcome.error_text), upload.trace_context)
-    local body_json, encode_err = json.encode(event.body)
-    if encode_err then return false, encode_err end
-    event.body, event.body_json = nil, body_json
     local db, db_err = sql.get(jobs_config.db_id())
     if db_err or not db then return false, db_err end
     local raw_type, type_err = db:type()
@@ -120,21 +120,33 @@ local function settle(job: any, upload: any, outcome: table, dead_processing: ta
         db:release()
         return false, err
     end
-    local delivered, state_err = upload_record_repo.settle_storage_tx(tx, upload.uuid,
+    local delivered, state_err, receipt_err = upload_record_repo.settle_storage_tx(tx, upload.uuid,
         success and "completed" or "failed", job_id, dead_processing)
     if state_err then return abort(state_err) end
     if not delivered then return abort(nil) end
-    local callback_ok, callback_err = pipeline_lib.invoke_upload_token(upload, success,
-        outcome.error_text, tx, dbtype, delivered)
-    if not callback_ok then
-        if success or type(callback_err) ~= "userdata" or callback_err:retryable() then
-            return abort(callback_err)
-        end
-        local body = assert(json.decode(body_json))
-        body.callback_error = tostring(callback_err)
-        event.body_json, encode_err = json.encode(body)
-        if encode_err then return abort(encode_err) end
+    local callbacks, callback_err = {}, receipt_err
+    if not receipt_err then
+        callbacks, callback_err = pipeline_lib.prepare_upload_callbacks(upload, success, error_text, delivered)
     end
+    if success and callback_err then
+        if dead_processing == nil or not permanent(callback_err) then return abort(callback_err) end
+        success, error_text = false, tostring(callback_err)
+        delivered, state_err = upload_record_repo.settle_storage_tx(tx, upload.uuid, "failed", job_id, dead_processing)
+        if state_err or not delivered then return abort(state_err) end
+        if not receipt_err then
+            callbacks, callback_err = pipeline_lib.prepare_upload_callbacks(upload, false, error_text, delivered)
+        end
+    end
+    local callback_ok, enqueue_err = pipeline_lib.enqueue_upload_callbacks(upload, callbacks, callback_err, tx, dbtype)
+    local event = success and completed_event(job_id, upload, upload.trace_context)
+        or failed_event(job_id, upload, tostring(error_text), upload.trace_context)
+    if not callback_ok then
+        if success or not permanent(enqueue_err) then return abort(enqueue_err) end
+        event.body.callback_error = tostring(enqueue_err)
+    end
+    local body_json, encode_err = json.encode(event.body)
+    if encode_err then return abort(encode_err) end
+    event.body, event.body_json = nil, body_json
     local thread_id = tostring(job.thread_id or "")
     local completing: string? = nil
     if dead_processing == nil then completing = job_id end
@@ -263,10 +275,12 @@ local function dead(input: any): (any, any?)
         if decode_err then return nil, decode_err end
     end
     local upload, upload_err = upload_query_repo.find_by_processing_job(tostring(dead_job.owner_id), job_id, tostring(type(payload) == "table" and payload.upload_id or ""))
-    if upload_err then return nil, upload_err end
+    if upload_err and (not upload or upload.storage_state ~= "completed") then return nil, upload_err end
     if not upload then return { skipped = true, reason = "upload_not_held", job_id = job_id }, nil end
-    local settlement = upload.storage_state == "completed" and { success = true, output = completion_output(upload) }
-        or { success = false, error_text = tostring(dead_job.last_error or "upload processing job ended dead") }
+    if upload_err then upload.metadata, upload.trace_context = nil, nil end
+    local settlement = upload.storage_state == "completed" and not upload_err
+            and { success = true, output = completion_output(upload) }
+        or { success = false, error_text = tostring(upload_err or dead_job.last_error or "upload processing job ended dead") }
     local settled, settle_err = settle(dead_job, upload, settlement, upload)
     if settle_err then return nil, settle_err end
     log:info("dead processing job settled", { upload_id = upload.uuid, job_id = job_id, settled = settled })
