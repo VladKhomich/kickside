@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: retention_service_traversal_fixture
+    kind: library.lua
+    source: file://retention_service_traversal_fixture.lua
+    imports:
+      native: app:retention_process_native_fixture
+      prune_scaffold: app:prune_scaffold
+
+  - name: retention_service_traversal_owner
+    kind: library.lua
+    source: file://retention_service_traversal_owner.lua
+    imports:
+      fixture: app:retention_service_traversal_fixture
+      owner_hooks: kickside.core.retention.service:owner_hooks
+
+  - name: retention_service_traversal_runner
+    kind: library.lua
+    source: file://retention_service_traversal_runner_source.lua
+    modules: [sql, logger]
+    imports:
+      process: app:retention_service_traversal_fixture
+      sweeper: kickside.core.retention:sweeper
+      owner_hooks: app:retention_service_traversal_owner
+
+  - name: retention_service_traversal_process
+    kind: library.lua
+    source: file://retention_process_native_source.lua
+    modules: [time]
+    imports:
+      process: app:retention_process_native_process_adapter
+      sql: app:retention_service_traversal_sql
+      channel: app:retention_service_traversal_fixture
+      events: app:retention_process_native_events_adapter
+      proc_supervisor: app:retention_process_native_supervisor_adapter
+      runner: app:retention_service_traversal_runner
+      core_db: kickside.core:db
+      notifier: kickside.core.retention:notifier
+      lease_release: kickside.core.jobs:lease_release
+
+  - name: retention_service_traversal_test
+    kind: function.lua
+    meta: {type: test, suite: core_retention_service_traversal}
+    source: file://retention_service_traversal_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      fixture: app:retention_service_traversal_fixture
+      prune_scaffold: app:prune_scaffold
+      source: app:retention_service_traversal_process
+
+  - name: retention_service_traversal_sql
+    kind: library.lua
+    source: file://retention_service_traversal_sql.lua
+    modules: [sql]
+    imports:
+      fixture: app:retention_service_traversal_fixture

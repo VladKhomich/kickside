@@ -12,7 +12,7 @@ local retention_policy = require("retention_policy")
 local sweeper = {}
 
 type DB = sql.DB
-type EventTraversal = { after_thread_id: string? }
+type EventTraversal = { after_thread_id: string?, end_thread_id: string? }
 
 type RunStats = {
     events: integer,
@@ -148,10 +148,11 @@ local function prune_thread(db: DB, dbtype: string, row: table, policy: table,
 end
 
 local function load_event_threads(db: DB, dbtype: string, policy: table, now: any,
-        after_id: string?, through_id: string?): ({ table }?, error?)
+        after_id: string?, end_id: string?, start_rotation: boolean): ({ table }?, error?)
     local policy_join = [[LEFT JOIN kickside_retention_policy p ON p.thread_id=t.id]]
     local event_join = [[LEFT JOIN kickside_event e INDEXED BY uq_kickside_event_thread_seq
-            ON e.thread_id=t.id AND e.seq=t.max_pruned_seq+1 AND (p.enabled IS NULL OR p.enabled=1)]]
+            ON t.deleting_at IS NULL AND e.thread_id=t.id AND e.seq=t.max_pruned_seq+1
+                AND (p.enabled IS NULL OR p.enabled=1)]]
     local params: table = {}
     if dbtype == sql.type.POSTGRES then
         policy_join = [[LEFT JOIN LATERAL (
@@ -159,7 +160,8 @@ local function load_event_threads(db: DB, dbtype: string, policy: table, now: an
         ) p ON TRUE]]
         event_join = [[LEFT JOIN LATERAL (
             SELECT e.created_at FROM kickside_event e
-            WHERE e.thread_id=t.id AND e.seq=t.max_pruned_seq+1 AND (p.enabled IS NULL OR p.enabled=$1)
+            WHERE t.deleting_at IS NULL AND e.thread_id=t.id AND e.seq=t.max_pruned_seq+1
+                AND (p.enabled IS NULL OR p.enabled=$1)
                 AND (p.event_hot_retention_days < 1 OR FLOOR(EXTRACT(EPOCH FROM e.created_at)*1000)
                     + COALESCE(p.event_hot_retention_days::bigint*86400000,$2::bigint) + 1 <= $3::bigint)
             LIMIT 1
@@ -169,38 +171,23 @@ local function load_event_threads(db: DB, dbtype: string, policy: table, now: an
     local bounds = ""
     if after_id then
         params[#params + 1] = after_id
-        bounds = bounds .. " AND id>$" .. tostring(#params)
+        bounds = " WHERE id>$" .. tostring(#params)
+        if end_id then
+            params[#params + 1] = end_id
+            bounds = bounds .. " AND id<=$" .. tostring(#params)
+        end
     end
-    if through_id then
-        params[#params + 1] = through_id
-        bounds = bounds .. " AND id<=$" .. tostring(#params)
-    end
-    -- Bound the thread seek before looking up heads so sparse eligibility
-    -- cannot turn a page into a scan of event history.
-    local rows, err = db:query([[SELECT t.id,p.event_hot_retention_days,e.created_at AS head_created_at
-        FROM (SELECT id,max_pruned_seq FROM kickside_thread WHERE deleting_at IS NULL]]
+    -- Capture the end in the first page's snapshot. A backward primary-key
+    -- seek gives the rotation a fixed endpoint even as higher IDs are added.
+    local rotation_end = start_rotation
+        and ",(SELECT id FROM kickside_thread ORDER BY id DESC LIMIT 1) AS end_thread_id" or ""
+    -- Take the page before filtering out deleting threads or looking up heads.
+    local rows, err = db:query("SELECT t.id,p.event_hot_retention_days,e.created_at AS head_created_at"
+        .. rotation_end .. "\nFROM (SELECT id,max_pruned_seq,deleting_at FROM kickside_thread"
         .. bounds .. " ORDER BY id LIMIT " .. tostring(EVENT_THREAD_PAGE) .. ") t\n"
         .. policy_join .. "\n" .. event_join .. "\nORDER BY t.id", params)
     if err then return nil, errors.wrap(err, "failed to load Core event retention candidates") end
     return rows_result(rows, "candidates.query")
-end
-
-local function sweep_event_range(db: DB, dbtype: string, policy: table, now: any, budget: integer,
-        after_id: string?, through_id: string?): (integer, string?, error?)
-    local events = 0
-    while true do
-        local threads, thread_err = load_event_threads(db, dbtype, policy, now, after_id, through_id)
-        if thread_err then return events, nil, thread_err end
-        local page = threads :: { table }
-        for _, row in ipairs(page) do
-            local deleted, prune_err = prune_thread(db, dbtype, row, policy, now, budget - events)
-            if prune_err then return events, nil, prune_err end
-            events = events + (deleted :: integer)
-            after_id = tostring(row.id)
-            if events >= budget then return events, after_id, nil end
-        end
-        if #page < EVENT_THREAD_PAGE then return events, nil, nil end
-    end
 end
 
 local function min_deadline(current: integer?, candidate: integer): integer
@@ -290,17 +277,30 @@ function sweeper.run(db: DB, traversal: EventTraversal?): (RunStats?, error?)
 
     local budget = math.floor((policy :: table).batch_events)
     local after_id = traversal and traversal.after_thread_id
-    local events, next_id, sweep_err = sweep_event_range(db, dbtype, policy :: table, now, budget, after_id, nil)
-    if sweep_err then return nil, sweep_err end
-    if after_id and events < budget then
-        -- Wrap at most once and share the remaining deletion budget with the prefix.
-        local wrapped, wrap_err
-        wrapped, next_id, wrap_err = sweep_event_range(db, dbtype, policy :: table, now, budget - events, nil, after_id)
-        if wrap_err then return nil, wrap_err end
-        events = events + wrapped
+    local end_id = traversal and traversal.end_thread_id
+    local threads, thread_err = load_event_threads(db, dbtype, policy :: table, now,
+        after_id, end_id, traversal ~= nil and after_id == nil)
+    if thread_err then return nil, thread_err end
+    local page = threads :: { table }
+    local visited = 0
+    for index, row in ipairs(page) do
+        local deleted, prune_err = prune_thread(db, dbtype, row, policy :: table, now, budget - agg.events)
+        if prune_err then return nil, prune_err end
+        agg.events = agg.events + (deleted :: integer)
+        visited = index
+        if agg.events >= budget then break end
     end
-    if traversal then traversal.after_thread_id = next_id end
-    agg.events = events
+    if traversal then
+        local last_id = visited > 0 and tostring(page[visited].id) or nil
+        local rotation_end = end_id or (page[1] and page[1].end_thread_id)
+        if visited == #page and (#page < EVENT_THREAD_PAGE or last_id == rotation_end) then
+            traversal.after_thread_id = nil
+            traversal.end_thread_id = nil
+        else
+            traversal.after_thread_id = last_id
+            traversal.end_thread_id = rotation_end
+        end
+    end
 
     -- Receipt timestamps are canonical RFC3339 UTC text on both dialects;
     -- event.created_at follows the database timestamp layout instead.

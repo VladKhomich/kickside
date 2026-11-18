@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- One event-driven retention service pass: sweep durable state, run owner
 -- retention operations, and compute the next stored-row eligibility deadline.
 local sql = require("sql")
@@ -9,7 +10,7 @@ local owner_hooks = require("owner_hooks")
 local M = {}
 
 type PassResult = { stats: table, deadline_ms: integer?, owner_failures: { table }, owner_blocked: { table } }
-type EventTraversal = { after_thread_id: string? }
+type EventTraversal = { after_thread_id: string?, end_thread_id: string? }
 
 local function invalid_response(message: string, field: string): error
     return errors.new({message = message, kind = errors.INTERNAL, retryable = false,

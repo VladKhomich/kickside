@@ -50,13 +50,15 @@ local function define_tests()
                 if result.events == budget then test.is_true(result.needs_continue) end
                 total = total + result.events
             end
-            for _ = 1, 5 do pass() end
+            for _ = 1, 6 do pass() end
             test.eq(fixture.boundary_of(middle), budget + 1, "middle thread drains while the first stays backlogged")
             test.eq(fixture.boundary_of(last), budget + 1, "last thread drains while the first stays backlogged")
             test.is_true(fixture.boundary_of(first) >= 2 * budget, "the traversal wraps to the first thread")
             test.is_true(fixture.boundary_of(first) < first_backlog)
 
-            for _ = 1, 4 do pass() end
+            -- Once the later threads are drained, their suffix page and the
+            -- first thread's next turn take separate passes.
+            for _ = 7, 15 do pass() end
             db:release()
             test.eq(fixture.boundary_of(first), first_backlog)
             test.eq(total, first_backlog + 2 * (budget + 1))
