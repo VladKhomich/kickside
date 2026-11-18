@@ -170,7 +170,7 @@ function sweeper.deadline_ms(stamp: string, retention_ms: integer, dbtype: strin
 end
 
 local function prune_thread(db: DB, dbtype: string, row: table, policy: table,
-        now: any, now_ms: integer, maximum: integer, native_deadline: boolean): (integer?, integer?, error?)
+        now: any, now_ms: integer, maximum: integer, background: boolean): (integer?, integer?, error?)
     local thread_id = tostring(row.id or "")
     if thread_id == "" then
         return nil, nil, response_failure("retention candidate has no thread id", "candidate.id")
@@ -178,8 +178,9 @@ local function prune_thread(db: DB, dbtype: string, row: table, policy: table,
     if row.head_blocked == 1 or type(row.head_created_at) ~= "string" then return 0, nil, nil end
     local window, window_err = event_window_ms(row, policy)
     if window_err then return nil, nil, window_err end
+    local postgres_background = background and dbtype == sql.type.POSTGRES
     local deadline: integer?
-    if native_deadline then
+    if postgres_background then
         deadline = tonumber(row.eligibility_ms) :: integer?
         if deadline == nil then
             return nil, nil, response_failure("retention event deadline is missing", "event.eligibility_ms")
@@ -196,10 +197,11 @@ local function prune_thread(db: DB, dbtype: string, row: table, policy: table,
         cutoff = event_cutoff(dbtype, window :: integer, now),
         batch_size = prune.MAX_LOCK_BATCH,
         max_total = maximum,
+        postgres_async_commit = postgres_background,
     })
     if prune_err then return nil, nil, prune_err end
     local deleted, count_err = deleted_count(result, "prune.deleted")
-    if native_deadline and deleted == 0 and row.head_blocked == PROJECTION_PENDING
+    if postgres_background and deleted == 0 and row.head_blocked == PROJECTION_PENDING
         and (tonumber(result.max_pruned_seq) or 0) < tonumber(row.head_seq) then
         -- The authoritative floor can see a protection outside the observed
         -- cursor keys. Its owner will wake retention when it advances.
@@ -444,7 +446,7 @@ function sweeper.run(db: DB, traversal: EventTraversal?): (RunStats?, error?)
             end
         end
         local deleted, deadline, prune_err = prune_thread(db, dbtype, row, policy :: table,
-            now, now_ms, budget - agg.events, dbtype == sql.type.POSTGRES)
+            now, now_ms, budget - agg.events, true)
         if prune_err then return nil, prune_err end
         agg.events = agg.events + (deleted :: integer)
         page_deadline = min_deadline(page_deadline, deadline)
