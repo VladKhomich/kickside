@@ -160,6 +160,39 @@ local function define_tests()
 
 
     test.describe("openai_compat_plain driver contracts", function()
+        test.it("uses the provider timeout when generation has no request override", function()
+            local driver = openai_compat_plain_generate
+            local client = driver._client
+            local original_context = client._ctx
+            local original_http = client._http_client
+            local timeouts = {}
+            client._ctx = { all = function()
+                return { base_url = "http://127.0.0.1:1/v1", api_key = "fixture-key", timeout = 1 }
+            end }
+            client._http_client = { post = function(_url: string, options: any): (any?, string?)
+                table.insert(timeouts, options.timeout)
+                if options.timeout == "1000ms" or options.timeout == "250ms" then
+                    return nil, "request timeout"
+                end
+                return { status_code = 502, body = "<html>Bad Gateway</html>" }, nil
+            end }
+            local ok, failure = pcall(function()
+                local request: any = { model = "fixture-model", options = {},
+                    messages = { { role = "user", content = { { type = "text", text = "Hello" } } } } }
+                for _, duration in ipairs({ 0.25, false }) do
+                    request.timeout = duration or nil
+                    local result, err = driver.handler(request)
+                    test.is_nil(result)
+                    test.eq(err:kind(), errors.TIMEOUT)
+                    test.is_true(err:retryable())
+                end
+                test.eq(table.concat(timeouts, ","), "250ms,1000ms")
+            end)
+            client._ctx = original_context
+            client._http_client = original_http
+            assert(ok, tostring(failure))
+        end)
+
         test.it("declares structured_output (KB ask synthesis needs it)", function()
             local driver = registry.get("kickside.models:openai_compat_plain.driver")
             test.not_nil(driver, "plain driver entry missing")
