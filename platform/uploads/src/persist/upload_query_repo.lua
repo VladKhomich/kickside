@@ -4,7 +4,6 @@ local sql = require("sql")
 local resources = require("uploads_resources")
 local persisted_json = require("persisted_json")
 local trim = require("text_trim").trim
-local dead_outcome = require("dead_outcome")
 
 local upload_query_repo = {}
 
@@ -12,26 +11,11 @@ function upload_query_repo.processing_job_identity_sql(upload: string): string
     return "'7:uploads' || CAST(length(" .. upload .. "uuid) AS TEXT) || ':' || " .. upload .. "uuid || '7:process'"
 end
 
-local function processing_job_owner(job: string): string
-    return "((processing_intent_state = 'acknowledged' AND processing_job_id = CAST(" .. job .. ".id AS TEXT)) OR "
-        .. "(processing_intent_state IS NULL AND processing_job_id IS NULL AND " .. job .. ".job_identity = "
-        .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. "))"
-end
-
 function upload_query_repo.processing_job_owner_sql(): string
-    return "EXISTS (SELECT 1 FROM kickside_job owner_job WHERE owner_job.id = ? AND "
-        .. processing_job_owner("owner_job") .. ")"
-end
-
-function upload_query_repo.completion_unpublished_sql(thread_id: string): string
-    return [[NOT EXISTS (
-        SELECT 1 FROM kickside_upload_read_model r
-        WHERE r.upload_id = kickside_uploads.uuid AND r.status IN ('completed', 'deleted')
-    ) AND NOT EXISTS (
-        SELECT 1 FROM kickside_event e WHERE e.thread_id = ]] .. thread_id .. [[
-          AND e.external_source = 'uploads' AND e.external_id = kickside_uploads.uuid
-          AND e.type = 'kickside.uploads.events:upload.completed'
-    )]]
+    return [[EXISTS (SELECT 1 FROM kickside_job j WHERE j.id = ? AND
+        ((processing_intent_state = 'acknowledged' AND processing_job_id = CAST(j.id AS TEXT))
+         OR (processing_intent_state IS NULL AND processing_job_id IS NULL AND j.job_identity = ]]
+             .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. ")))"
 end
 
 local function select_upload_columns()
@@ -43,7 +27,7 @@ local function select_upload_columns()
     )
 end
 
-local function parse_upload_row(upload)
+function upload_query_repo.parse_upload_row(upload)
     local metadata, metadata_err = persisted_json.decode_table(upload.metadata, "kickside_uploads.metadata")
     if metadata_err then return nil, metadata_err end
     local trace, trace_err = persisted_json.decode_table(upload.trace_context,
@@ -68,7 +52,7 @@ local function find_by_content_hash(db, actor_id, content_sha256, dedup_scope)
     if #rows == 0 then return nil, nil end
 
     local upload = rows[1]
-    return parse_upload_row(upload)
+    return upload_query_repo.parse_upload_row(upload)
 end
 
 -- Resolve an existing upload for an account by content hash, opening its own db handle.
@@ -128,7 +112,7 @@ end
 function upload_query_repo.get(uuid)
     local upload, err = get_upload(uuid, select_upload_columns())
     if err then return nil, err end
-    return parse_upload_row(upload)
+    return upload_query_repo.parse_upload_row(upload)
 end
 
 -- The upload of an account whose acknowledged processing intent names job_id,
@@ -153,44 +137,32 @@ function upload_query_repo.find_by_processing_job(actor_id: string, job_id: stri
         return nil, binding_errors.from(query_err, errors.UNAVAILABLE, "upload_lookup_failed", "Failed to get upload")
     end
     if #rows == 0 then return nil, nil end
-    local upload, decode_err = parse_upload_row(rows[1])
+    local upload, decode_err = upload_query_repo.parse_upload_row(rows[1])
     return upload or rows[1], decode_err
 end
 
--- A published worker can die after saving completed storage but before publishing.
--- The read model still witnesses publication after Core prunes the event.
-function upload_query_repo.list_dead_completion_intents(limit: integer, cursor: string?, db: any): (table?, any?, string?)
+-- Select a bounded index page and check publication without filtering away cursor positions.
+function upload_query_repo.list_checkpoints(limit: integer, cursor: string?, db: any): (table?, any?, string?)
     local after, limit_arg, params = "", "$1", { limit }
-    if cursor then
-        after, limit_arg, params = " WHERE id > $1", "$2", { cursor, limit }
-    end
-    local rows, read_err = db:query([[
-        SELECT j.id, CASE WHEN j.job_type = 'kickside.uploads.service:process_job_proc'
-          AND j.owner_kind = 'user' AND j.status = 'dead' THEN (
-            SELECT 1 FROM kickside_uploads
-            WHERE kickside_uploads.uuid = (j.payload ->> 'upload_id')
-              AND kickside_uploads.actor_id = j.owner_id
-              AND kickside_uploads.storage_state = 'completed'
-              AND ]] .. processing_job_owner("j") .. [[
-              AND CASE WHEN ]] .. upload_query_repo.completion_unpublished_sql("j.thread_id") .. [[
-                THEN (SELECT 1 FROM kickside_job outcome
-                    WHERE outcome.thread_id = j.thread_id AND outcome.job_type = 'kickside.uploads.service:process_dead'
-                      AND outcome.job_identity = ]] .. dead_outcome.identity_sql("j.id") .. [[
-                    LIMIT 1) IS NULL ELSE FALSE END
-            LIMIT 1
-        ) IS NOT NULL ELSE FALSE END AS recoverable
-        FROM (
-            SELECT id, thread_id, job_type, owner_kind, owner_id, status, payload, job_identity
-            FROM kickside_job]] .. after .. [[
-            ORDER BY id LIMIT ]] .. limit_arg .. [[
-        ) j ORDER BY j.id
-    ]], params)
-    if read_err then return nil, read_err end
+    if cursor then after, limit_arg, params = " AND uuid > $1", "$2", { cursor, limit } end
+    local dbtype, type_err = db:type()
+    if type_err then return nil, type_err end
+    local index = dbtype == sql.type.SQLITE and " INDEXED BY idx_upload_checkpoint_candidates" or ""
+    local rows, err = db:query([[
+        SELECT u.*, NOT EXISTS (
+            SELECT 1 FROM kickside_upload_read_model r WHERE r.upload_id = u.uuid
+              AND r.status IN ('deleted', CASE u.storage_state WHEN 'completed' THEN 'completed' ELSE 'error' END)
+        ) AS unpublished
+        FROM kickside_uploads u]] .. index .. [[
+        WHERE storage_state IN ('completed', 'failed')
+          AND processing_intent_state = 'acknowledged' AND processing_job_id IS NOT NULL]] .. after .. [[
+        ORDER BY uuid LIMIT ]] .. limit_arg, params)
+    if err then return nil, err end
     local checkpoints = {}
     for _, row in ipairs(rows) do
-        if row.recoverable == true or row.recoverable == 1 then checkpoints[#checkpoints + 1] = { id = row.id } end
+        if row.unpublished == true or row.unpublished == 1 then checkpoints[#checkpoints + 1] = row end
     end
-    return checkpoints, nil, #rows == limit and tostring(rows[#rows].id) or nil
+    return checkpoints, nil, #rows == limit and tostring(rows[#rows].uuid) or nil
 end
 
 -- Authorization needs the stored owner, without loading content metadata.
@@ -226,7 +198,7 @@ function upload_query_repo.list_processing_enqueue_intents(limit)
     if query_err then return nil, query_err end
 
     for _, row in ipairs(rows or {}) do
-        local _, decode_err = parse_upload_row(row)
+        local _, decode_err = upload_query_repo.parse_upload_row(row)
         if decode_err then return nil, decode_err end
     end
     return rows or {}, nil
@@ -308,7 +280,7 @@ function upload_query_repo.list_by_actor(actor_id, limit, offset, opts)
     end
 
     for _, upload in ipairs(uploads) do
-        local _, decode_err = parse_upload_row(upload)
+        local _, decode_err = upload_query_repo.parse_upload_row(upload)
         if decode_err then return nil, decode_err end
     end
 
@@ -348,7 +320,7 @@ function upload_query_repo.list_by_type(type_id, limit, offset)
     end
 
     for _, upload in ipairs(uploads) do
-        local _, decode_err = parse_upload_row(upload)
+        local _, decode_err = upload_query_repo.parse_upload_row(upload)
         if decode_err then return nil, decode_err end
     end
 
@@ -476,7 +448,7 @@ function upload_query_repo.list_with_filters(options)
     end
 
     for _, upload in ipairs(uploads) do
-        local _, decode_err = parse_upload_row(upload)
+        local _, decode_err = upload_query_repo.parse_upload_row(upload)
         if decode_err then return nil, decode_err end
     end
 

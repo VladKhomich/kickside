@@ -702,6 +702,7 @@ entries:
       upload_tokens: kickside.uploads.persist:upload_tokens
       secret_cipher: kickside.contract:secret_cipher
       upload_query_repo: kickside.uploads.persist:upload_query_repo
+      jobs_retention: kickside.core.jobs.persist:retention
 
   - name: delete_stage_failure_test
     kind: function.lua

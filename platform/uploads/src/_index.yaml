@@ -492,6 +492,8 @@ entries:
     targets:
     - entry: kickside.uploads.service:process_job_proc
       path: .imports.processing_hooks
+    - entry: kickside.uploads.service:process_dead
+      path: .imports.processing_hooks
     - entry: kickside.uploads:retention
       path: .imports.processing_hooks
 

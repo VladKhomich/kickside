@@ -949,6 +949,10 @@ local function define_tests()
                 local job = admit_job(db, queued.job_id, checkpoint.dead and 5 or 1)
                 local dbtype = tostring(db:type())
 
+                if checkpoint.delivered then
+                    -- Keep the checkpoint out of the owner pass until its callback is pruned.
+                    assert(db:execute("UPDATE kickside_uploads SET processing_intent_state=NULL, processing_job_id=NULL WHERE uuid=$1", {id}))
+                end
                 -- The published worker commits this state before publishing the event.
                 if checkpoint.failed then
                     assert(upload_record_repo.mark_storage_failed(id))
@@ -995,6 +999,10 @@ local function define_tests()
                 end
                 test.eq(#events(), 0)
 
+                if checkpoint.delivered then
+                    assert(db:execute("UPDATE kickside_uploads SET processing_intent_state='acknowledged', processing_job_id=$2 WHERE uuid=$1",
+                        {id, job.id}))
+                end
                 local expected_status = checkpoint.failed and "error" or "completed"
                 if checkpoint.dead then
                     local outcomes = assert(db:query([[SELECT id FROM kickside_job WHERE thread_id=$1 AND

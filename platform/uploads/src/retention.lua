@@ -23,12 +23,12 @@ function M.run(input: table?): any
     if db_err or not db then return { success = false, error = db_err or missing("database") } end
     local cursor = type(input) == "table" and input.cursor or nil
     local checkpoints, checkpoint_err, next_cursor =
-        upload_query_repo.list_dead_completion_intents(settings.batch_deleted_read_model, cursor, db)
+        upload_query_repo.list_checkpoints(settings.batch_deleted_read_model, cursor, db)
     db:release()
     if checkpoint_err then return { success = false, error = checkpoint_err } end
     local recovery_err = nil
     for _, checkpoint in ipairs(checkpoints) do
-        local _, settle_err = process_job.dead({ payload = { job_id = tostring(checkpoint.id) } })
+        local _, settle_err = process_job.recover(checkpoint)
         recovery_err = recovery_err or settle_err
     end
     local definition, contract_err = contract.get("kickside.core:threads")

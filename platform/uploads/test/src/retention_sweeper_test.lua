@@ -15,6 +15,7 @@ local upload_types = require("types")
 local upload_tokens = require("upload_tokens")
 local secret_cipher = require("secret_cipher")
 local upload_query_repo = require("upload_query_repo")
+local jobs_retention = require("jobs_retention")
 
 local DB = "app:db"
 local WAIT_MS = 15000
@@ -79,32 +80,35 @@ local function model(component_id: string, seq: integer): string
     return id
 end
 
-local function checkpoint(component_id: string, owner: string, upload_id: string, job_id: string, metadata: string)
-    exec([[INSERT INTO kickside_job (id,thread_id,job_type,payload,job_identity,owner_kind,owner_id,status,finished_at)
-        VALUES ($1,$2,'kickside.uploads.service:process_job_proc',$3,$4,'user',$5,'dead',$6)]],
-        { job_id, component_id, assert(json.encode({ upload_id = upload_id })),
-            "7:uploads" .. #upload_id .. ":" .. upload_id .. "7:process", owner, stamp(0) })
+local function checkpoint(component_id: string, owner: string, upload_id: string, job_id: string, metadata: string, state: string?)
     exec([[INSERT INTO kickside_uploads
         (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata,
             processing_intent_state,processing_job_id)
-        VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text','completed',$3,'acknowledged',$4)]],
-        { upload_id, owner, metadata, job_id })
+        VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text',$3,$4,'acknowledged',$5)]],
+        { upload_id, owner, state or "completed", metadata, job_id })
     exec([[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
         VALUES ($1,$2,'processing')]], { upload_id, component_id })
 end
 
 return test.run_cases(function()
     test.describe("uploads retention under the Core retention sweeper service", function()
-        test.it("settles an expired checkpoint as failed and continues recovery and cleanup in the same pass", function()
+        test.it("settles permanent callback errors as failures and continues recovery and cleanup in the same pass", function()
             local component_id, owner = user_container()
-            local bad, good = uuid.v4(), uuid.v4()
+            local expired, invalid, good = uuid.v4(), uuid.v4(), uuid.v4()
             local key = assert(secret_cipher.load_key(assert(env.get("kickside.uploads.env:encryption_key"))))
-            local token = assert(secret_cipher.seal(assert(json.encode({ upload_id = bad,
-                function_id = "app:callback_probe", actor_id = owner, actor_context = "{}",
-                issued_at = os.time() - 86401 })), key))
-            checkpoint(component_id, owner, bad, "00000000-0000-4000-8000-000000000001",
-                assert(json.encode({ __upload_token = token })))
-            checkpoint(component_id, owner, good, "00000000-0000-4000-8000-000000000002", "{}")
+            local function metadata(upload_id, issued_at, trace_context)
+                local token = assert(secret_cipher.seal(assert(json.encode({ upload_id = upload_id,
+                    function_id = "app:callback_probe", actor_id = owner, actor_context = "{}",
+                    issued_at = issued_at, trace_context = trace_context })), key))
+                return assert(json.encode({ __upload_token = token }))
+            end
+            local fixtures = {
+                { expired, "00000000-0000-4000-8000-000000000001", "Token expired" },
+                { invalid, "00000000-0000-4000-8000-000000000002", "is not canonical" },
+            }
+            checkpoint(component_id, owner, expired, fixtures[1][2], metadata(expired, os.time() - 86401, nil))
+            checkpoint(component_id, owner, invalid, fixtures[2][2], metadata(invalid, os.time(), { unknown = "field" }))
+            checkpoint(component_id, owner, good, "00000000-0000-4000-8000-000000000003", "{}")
             exec("UPDATE kickside_thread SET max_pruned_seq=5 WHERE id=$1", { component_id })
             local tombstone = model(component_id, 3)
             local blob_id = uuid.v4()
@@ -118,20 +122,24 @@ return test.run_cases(function()
             local result, err = funcs.call("kickside.uploads:retention", {})
             test.is_nil(err, tostring(err))
             test.is_true(result.success, tostring(result.error))
-            local failure = query([[SELECT body,external_version FROM kickside_event
-                WHERE thread_id=$1 AND external_id=$2 AND type=$3]], { component_id, bad, upload_types.EVENT.FAILED })
-            test.eq(#failure, 1)
-            test.eq(failure[1].external_version, "00000000-0000-4000-8000-000000000001")
-            local body = type(failure[1].body) == "table" and failure[1].body or assert(json.decode(failure[1].body))
-            test.contains(body.error, "Token expired")
-            test.eq(assert(upload_query_repo.get(bad)).storage_state, "failed")
+            local again = assert(funcs.call("kickside.uploads:retention", {}))
+            test.is_true(again.success, tostring(again.error))
+            for _, fixture in ipairs(fixtures) do
+                local failure = query([[SELECT body,external_version FROM kickside_event
+                    WHERE thread_id=$1 AND external_id=$2 AND type=$3]], { component_id, fixture[1], upload_types.EVENT.FAILED })
+                test.eq(#failure, 1)
+                test.eq(failure[1].external_version, fixture[2])
+                local body = type(failure[1].body) == "table" and failure[1].body or assert(json.decode(failure[1].body))
+                test.contains(body.error, fixture[3])
+                test.eq(assert(upload_query_repo.get(fixture[1])).storage_state, "failed")
+            end
             test.eq(#query("SELECT id FROM kickside_event WHERE thread_id=$1 AND external_id=$2 AND type=$3",
                 { component_id, good, upload_types.EVENT.COMPLETED }), 1)
             test.eq(count(tombstone), 0)
             test.eq(#query("SELECT blob_id FROM kickside_upload_artifact_blobs WHERE blob_id=$1", { blob_id }), 0)
         end)
 
-        test.it("bounds candidate discovery across 10000 already published dead jobs", function()
+        test.it("bounds candidate discovery across 10000 terminal uploads", function()
             local component_id, owner = user_container()
             local db = assert(sql.get(DB))
             local postgres = tostring(db:type()) == sql.type.POSTGRES
@@ -139,12 +147,6 @@ return test.run_cases(function()
             local ident = postgres and "($1 || LPAD(CAST(n AS TEXT),12,'0'))"
                 or "($1 || PRINTF('%012d', n))"
             local ids = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<10000) "
-            local job_id = postgres and "CAST(" .. ident .. " AS UUID)" or ident
-            local payload = (postgres and "json_build_object" or "json_object") .. "('upload_id', " .. ident .. ")"
-            exec(ids .. [[INSERT INTO kickside_job (id,thread_id,job_type,payload,job_identity,owner_kind,owner_id,status,finished_at)
-                SELECT ]] .. job_id .. ",$2,'kickside.uploads.service:process_job_proc'," .. payload
-                .. "," .. ident .. ",'user',$3,'dead',$4 FROM seq",
-                { prefix, component_id, owner, stamp(0) })
             exec(ids .. [[INSERT INTO kickside_uploads
                 (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata,
                     processing_intent_state,processing_job_id)
@@ -152,7 +154,7 @@ return test.run_cases(function()
                 .. ",'text','completed','{}','acknowledged'," .. ident .. " FROM seq", { prefix, owner })
             exec(ids .. [[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
                 SELECT ]] .. ident .. ",$2,'completed' FROM seq", { prefix, component_id })
-            local last_job, last_upload = prefix .. "000000010001", uuid.v4()
+            local last_job, last_upload = uuid.v4(), prefix .. "000000010001"
             checkpoint(component_id, owner, last_upload, last_job, "{}")
 
             local batch = 500
@@ -175,7 +177,7 @@ return test.run_cases(function()
                             if removed then test.is_true(assert(tonumber(removed)) <= batch, detail) end
                             seek = seek or detail:find("Index Cond:", 1, true) ~= nil
                         else
-                            seek = seek or (detail:find("SEARCH", 1, true) ~= nil and detail:find("id>?", 1, true) ~= nil)
+                            seek = seek or (detail:find("SEARCH", 1, true) ~= nil and detail:find("uuid>?", 1, true) ~= nil)
                             test.is_false(detail:find("USE TEMP B-TREE FOR ORDER BY", 1, true) ~= nil, detail)
                         end
                     end
@@ -186,7 +188,7 @@ return test.run_cases(function()
                 end,
             }
             for page = 1, 21 do
-                local rows, err, next_cursor = upload_query_repo.list_dead_completion_intents(batch, cursor, probe)
+                local rows, err, next_cursor = upload_query_repo.list_checkpoints(batch, cursor, probe)
                 test.is_nil(err, tostring(err))
                 if page <= 20 then
                     test.eq(#rows, 0)
@@ -194,10 +196,10 @@ return test.run_cases(function()
                     test.eq(examined, page * batch)
                     cursor = next_cursor
                 else
-                    found = rows[1] and rows[1].id
+                    found = rows[1] and rows[1].uuid
                 end
             end
-            test.eq(found, last_job)
+            test.eq(found, last_upload)
             db:release()
             local _, wake_err = notifier.notify({ kind = "uploads_retention_test" })
             test.is_nil(wake_err, tostring(wake_err))
@@ -210,40 +212,33 @@ return test.run_cases(function()
             end
             test.eq(#events, 1, "the retention owner advances past empty pages")
             test.eq(events[1].external_version, last_job)
-            exec("DELETE FROM kickside_job WHERE owner_id=$1", { owner })
             exec("DELETE FROM kickside_upload_read_model WHERE component_id=$1", { component_id })
             exec("DELETE FROM kickside_uploads WHERE actor_id=$1", { owner })
         end)
 
-        test.it("publishes a completed checkpoint whose processing job was already dead at upgrade", function()
+        test.it("publishes legacy terminal checkpoints after Jobs prunes their parents", function()
             local component_id, owner = user_container()
-            local function completed(upload_id: string): { table }
-                local handle = assert(sql.get(DB))
-                local rows, err = handle:query([[SELECT external_version FROM kickside_event
-                    WHERE thread_id=$1 AND external_source='uploads' AND external_id=$2 AND type=$3]],
-                    { component_id, upload_id, upload_types.EVENT.COMPLETED })
-                handle:release()
-                test.is_nil(err, tostring(err))
-                return rows
+            local function outcomes(upload_id: string): { table }
+                return query([[SELECT type,external_version FROM kickside_event
+                    WHERE thread_id=$1 AND external_source='uploads' AND external_id=$2 AND type IN ($3,$4)]],
+                    { component_id, upload_id, upload_types.EVENT.COMPLETED, upload_types.EVENT.FAILED })
             end
             local checkpoints = {}
             for _, fixture in ipairs({
-                { acknowledged = true },
-                { acknowledged = false },
-                { acknowledged = true, outcome = "pending" },
-                { acknowledged = true, outcome = "dead" },
+                {},
+                { failed = true },
+                { outcome = "pending" },
+                { outcome = "dead" },
             }) do
                 local upload_id, job_id = uuid.v4(), uuid.v4()
-                checkpoints[#checkpoints + 1] = { upload_id = upload_id, job_id = job_id, outcome = fixture.outcome }
+                checkpoints[#checkpoints + 1] = { upload_id = upload_id, job_id = job_id, failed = fixture.failed }
                 exec([[INSERT INTO kickside_job
                     (id,thread_id,job_type,payload,job_identity,owner_kind,owner_id,status,finished_at,last_error)
                     VALUES ($1,$2,'kickside.uploads.service:process_job_proc',$3,$4,'user',$5,'dead',$6,
                         'publication interrupted')]], { job_id, component_id, '{"upload_id":"' .. upload_id .. '"}',
-                    "7:uploads" .. #upload_id .. ":" .. upload_id .. "7:process", owner, stamp(0) })
-                exec([[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
-                    VALUES ($1,$2,'processing')]], { upload_id, component_id })
+                    "7:uploads" .. #upload_id .. ":" .. upload_id .. "7:process", owner, stamp(fixture.outcome and 0 or -40) })
                 local metadata = "{}"
-                if fixture.acknowledged and not fixture.outcome then
+                if not fixture.failed and not fixture.outcome then
                     local token = assert(upload_tokens.pack({ upload_id = upload_id, function_id = "app:callback_probe",
                         actor_id = owner, actor_context = "{}" }))
                     metadata = assert(json.encode({ __upload_token = token }))
@@ -255,13 +250,15 @@ return test.run_cases(function()
                         { uuid.v4(), component_id, assert(json.encode({ job_id = job_id })),
                             "18:kickside.jobs.dead" .. #job_id .. ":" .. job_id .. "7:outcome", owner, fixture.outcome })
                 end
-                exec([[INSERT INTO kickside_uploads
-                    (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata,
-                        processing_intent_state,processing_job_id)
-                    VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text','completed',$3,NULLIF($4,''),NULLIF($5,''))]],
-                    { upload_id, owner, metadata, fixture.acknowledged and "acknowledged" or "",
-                        fixture.acknowledged and job_id or "" })
-                test.eq(#completed(upload_id), 0)
+                checkpoint(component_id, owner, upload_id, job_id, metadata, fixture.failed and "failed" or "completed")
+                test.eq(#outcomes(upload_id), 0)
+            end
+
+            local db = assert(sql.get(DB))
+            assert(jobs_retention.sweep(db, tostring(db:type())))
+            db:release()
+            for i = 1, 2 do
+                test.eq(#query("SELECT id FROM kickside_job WHERE id=$1", {checkpoints[i].job_id}), 0)
             end
 
             await_sweeper()
@@ -269,33 +266,27 @@ return test.run_cases(function()
             test.is_nil(wake_err, tostring(wake_err))
             local deadline = time.now():unix_nano() + WAIT_MS * 1000000
             for _, checkpoint in ipairs(checkpoints) do
-                if not checkpoint.outcome then
-                    local events = completed(checkpoint.upload_id)
-                    while #events == 0 and time.now():unix_nano() < deadline do
-                        time.sleep("50ms")
-                        events = completed(checkpoint.upload_id)
-                    end
-                    test.eq(#events, 1, "normal recovery publishes the stored completion")
-                    test.eq(events[1].external_version, checkpoint.job_id)
+                local event_type = checkpoint.failed and upload_types.EVENT.FAILED or upload_types.EVENT.COMPLETED
+                local events = outcomes(checkpoint.upload_id)
+                while #events == 0 and time.now():unix_nano() < deadline do
+                    time.sleep("50ms")
+                    events = outcomes(checkpoint.upload_id)
                 end
+                test.eq(#events, 1, "normal recovery publishes the stored outcome")
+                test.eq(events[1].external_version, checkpoint.job_id)
+                test.eq(events[1].type, event_type)
             end
-            local repeated, repeat_err = funcs.call("kickside.uploads:retention", {})
-            test.is_nil(repeat_err, tostring(repeat_err))
+            local repeated = assert(funcs.call("kickside.uploads:retention", {}))
             test.is_true(repeated.success, tostring(repeated.error))
-            local handle = assert(sql.get(DB))
-            local outcome_jobs = assert(handle:query([[SELECT id FROM kickside_job WHERE thread_id=$1 AND
-                job_type='kickside.uploads.service:process_dead']], { component_id }))
-            local failures = assert(handle:query("SELECT id FROM kickside_event WHERE thread_id=$1 AND type=$2",
-                { component_id, upload_types.EVENT.FAILED }))
-            local callbacks = assert(handle:query([[SELECT id FROM kickside_job WHERE thread_id=$1 AND
-                job_type='kickside.uploads.service:callback_job']], { component_id }))
-            handle:release()
-            test.eq(#outcome_jobs, 2, "recovery creates no dead outcomes")
-            test.eq(#failures, 0)
-            test.eq(#callbacks, 1)
-            for _, checkpoint in ipairs(checkpoints) do
-                test.eq(#completed(checkpoint.upload_id), checkpoint.outcome and 0 or 1)
+            for _, checkpoint in ipairs(checkpoints) do test.eq(#outcomes(checkpoint.upload_id), 1) end
+            local jobs = query("SELECT job_type FROM kickside_job WHERE thread_id=$1 AND job_type IN ($2,$3)",
+                { component_id, "kickside.uploads.service:process_dead", "kickside.uploads.service:callback_job" })
+            local outcomes_count = 0
+            for _, job in ipairs(jobs) do
+                if job.job_type == "kickside.uploads.service:process_dead" then outcomes_count = outcomes_count + 1 end
             end
+            test.eq(outcomes_count, 2, "recovery creates no outcome jobs")
+            test.eq(#jobs - outcomes_count, 1, "recovery enqueues one callback")
 
             local projected = checkpoints[1].upload_id
             exec("UPDATE kickside_upload_read_model SET status='completed' WHERE upload_id=$1", { projected })
@@ -303,7 +294,7 @@ return test.run_cases(function()
             local after_prune, prune_err = funcs.call("kickside.uploads:retention", {})
             test.is_nil(prune_err, tostring(prune_err))
             test.is_true(after_prune.success, tostring(after_prune.error))
-            test.eq(#completed(projected), 0, "a projected completion is not republished after event retention")
+            test.eq(#outcomes(projected), 0, "a projected completion is not republished after event retention")
         end)
 
         test.it("reclaims a user container's pruned tombstone and keeps the sweeper running", function()
