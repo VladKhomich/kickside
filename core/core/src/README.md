@@ -33,6 +33,13 @@ The `threads` slice additionally consumes the `kickside.component:component_serv
 contract (the component module is a sibling dependency) for ownership, access, and
 hierarchy.
 
+## Unicode case folding
+
+Import `kickside.core:casefold` and call `fold(s)` to build case-insensitive
+keys or search text. It applies the Unicode 17.0.0 default full mappings
+independently of Unicode normalization. Malformed UTF-8 returns `nil` and a
+native `INVALID` error.
+
 ## Per-user provisioning
 
 A declared user singleton created by `provision.ensure_user` or first-touch
