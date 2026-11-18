@@ -1,11 +1,13 @@
 local models_repo = require("models_repo")
 local models_types = require("models_types")
+local logger = require("logger")
 local common = require("discovery_common")
 local mapper = require("model_mapper")
 local provider_registry = require("provider_registry")
 local reference_registry = require("reference_registry")
 
 local M = {}
+local log = logger:named("kickside.models.discovery")
 
 function M.adapter_for(provider_id: string): any?
     return provider_registry.adapter_for(provider_id)
@@ -34,6 +36,7 @@ function M.discover(profile_id: string): (any?, any?, any?)
     end
 
     local saved = {}
+    local reference_error
     local existing_cards = {}
     local overlays, overlay_err = models_repo.list_card_overlays()
     if overlay_err then return nil, overlay_err end
@@ -52,10 +55,17 @@ function M.discover(profile_id: string): (any?, any?, any?)
             local has_ctx = mapper.context_limit(item) ~= nil
             local has_output = mapper.output_limit(item) ~= nil
             local has_price = type(item.pricing) == "table" and next(item.pricing :: any) ~= nil
-            if not has_ctx or not has_price or (not has_output and common.table_has(capabilities, "generate")) then
-                local ref, reference_err = reference_registry.lookup(provider_id, provider_model)
-                if reference_err then return nil, reference_err end
-                if type(ref) == "table" then
+            if not reference_error and
+                (not has_ctx or not has_price or (not has_output and common.table_has(capabilities, "generate"))) then
+                local ref
+                ref, reference_error = reference_registry.lookup(provider_id, provider_model)
+                if reference_error then
+                    log:warn("model reference catalog enrichment failed", {
+                        profile_id = profile_id,
+                        provider_id = provider_id,
+                        error = tostring(reference_error),
+                    })
+                elseif type(ref) == "table" then
                     if not has_ctx then item.context_length = ref.context_length end
                     if not has_price and ref.pricing then item.pricing = ref.pricing end
                     if not has_output then item.max_output_tokens = ref.output_tokens end

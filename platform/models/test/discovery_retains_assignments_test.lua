@@ -142,7 +142,7 @@ local function define_tests()
             if not ok then error(err, 0) end
         end)
 
-        test.it("returns a reference source failure instead of saving an incomplete discovery", function()
+        local function assert_discovery_during_reference_failure(failure)
             local profile, profile_err = repo.create_profile({
                 name = "Reference source failure",
                 provider_id = "wippy.llm.openai_compat:provider",
@@ -151,19 +151,54 @@ local function define_tests()
             test.is_nil(profile_err)
             local original_adapter, original_lookup = discovery.adapter_for, reference_registry.lookup
             discovery.adapter_for = function() return {
-                fetch = function() return { { id = "reference-error-model" } }, nil end,
+                fetch = function()
+                    return {
+                        { id = "id-only" },
+                        { id = "advertised-context", max_model_len = 8192, pricing = { prompt = "0" } },
+                    }, nil
+                end,
             } end
-            reference_registry.lookup = function() return nil, "reference source unavailable" end
+            local lookup_calls = 0
+            reference_registry.lookup = function()
+                lookup_calls = lookup_calls + 1
+                return nil, failure
+            end
             local ok, err = pcall(function()
                 local result, discovery_err = discovery.discover(profile.id)
-                test.is_nil(result)
-                test.eq(discovery_err, "reference source unavailable")
-                test.eq(repo.get_profile(profile.id).status, "unknown")
+                test.is_nil(discovery_err)
+                test.eq(result.count, 2)
+                test.eq(lookup_calls, 1, "an unavailable catalog is contacted once per discovery")
+                test.eq(repo.get_profile(profile.id).status, "healthy")
+                local stored_cards, read_err = repo.list_cards_public()
+                test.is_nil(read_err)
+                local by_model = {}
+                for _, stored in ipairs(stored_cards) do
+                    if stored.provider_profile_id == profile.id then
+                        test.is_true(stored.enabled)
+                        test.is_nil(stored.output_tokens)
+                        test.is_nil(stored.dimensions)
+                        local assigned = save({ name = stored.name, classes = { "fast" } })
+                        test.is_true(assigned.enabled)
+                        test.eq(table.concat(assigned.class, ","), "fast")
+                        test.is_nil(assigned.output_tokens)
+                        by_model[stored.provider_model] = stored
+                    end
+                end
+                test.is_nil(by_model["id-only"].max_tokens)
+                test.eq(by_model["advertised-context"].max_tokens, 8192)
             end)
             discovery.adapter_for, reference_registry.lookup = original_adapter, original_lookup
             local _, delete_err = repo.delete_profile(profile.id)
             test.is_nil(delete_err)
             if not ok then error(err, 0) end
+        end
+
+        test.it("saves selectable cards when the reference catalog fails", function()
+            assert_discovery_during_reference_failure("reference source unavailable")
+        end)
+
+        test.it("saves selectable cards when the reference catalog times out", function()
+            assert_discovery_during_reference_failure("reference source timed out")
         end)
 
         test.it("returns a persistence failure instead of marking incomplete discovery healthy", function()
