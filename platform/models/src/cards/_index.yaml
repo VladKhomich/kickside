@@ -11,20 +11,10 @@ entries:
     kind: security.policy
     meta:
       private: true
-      comment: Card contract functions read and write the models database and publish the cache snapshot under their own scope.
+      comment: Card contract functions read and write the models database and read the catalog snapshot.
     policy:
       resources: '*'
-      actions: [registry.get, db.get, store.get, store.key.get, store.key.set, store.key.delete]
-      effect: allow
-
-  - name: card_writer_encryption_key
-    kind: security.policy
-    meta:
-      private: true
-      comment: The shared catalog reload decrypts existing provider profiles before publishing the snapshot.
-    policy:
-      resources: [ENCRYPTION_KEY]
-      actions: env.get
+      actions: [registry.get, db.get, store.get, store.key.get]
       effect: allow
 
   - name: cards
@@ -104,7 +94,7 @@ entries:
     security:
       policies:
         - kickside.models.cards:card_writer_runtime
-        - kickside.models.cards:card_writer_encryption_key
+        - kickside.models:reload_profiles_call
 
   - name: disable_card
     kind: function.lua
@@ -117,7 +107,7 @@ entries:
     security:
       policies:
         - kickside.models.cards:card_writer_runtime
-        - kickside.models.cards:card_writer_encryption_key
+        - kickside.models:reload_profiles_call
 
   - name: cards_binding
     kind: contract.binding
