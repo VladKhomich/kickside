@@ -10,13 +10,6 @@ local uploads_resources = require("uploads_resources")
 local log = require("logger"):named("kickside.uploads.binding.get_content")
 
 local MAX_EXTRACTED_BYTES = 24 * 1024
-local PUBLIC_CAUSE_CODES = table.freeze({
-    artifact_reference_not_found = true,
-    invalid_storage_path = true,
-    primary_artifact_missing = true,
-    storage_access_denied = true,
-    storage_unavailable = true,
-})
 
 local function handle(args)
     args = args or {}
@@ -57,8 +50,8 @@ local function handle(args)
             local cause = artifact_err and binding_errors.from(artifact_err, errors.UNAVAILABLE, "artifact_read_failed")
                 or binding_errors.new(errors.INTERNAL, "no primary artifact", "primary_artifact_missing")
             local details = cause:details() or {}
-            log:warn("Failed to read extracted artifact", {upload_id = upload_id, artifact_id = failed_artifact_id,
-                error = tostring(cause), details = details})
+            local diagnostic = binding_errors.artifact_diagnostic(cause, upload_id, failed_artifact_id)
+            log:warn("Failed to read extracted artifact", diagnostic)
 
             local read_source = details.artifact_read_source
             local public_message = read_source == "blob" and "failed to read artifact blob"
@@ -66,7 +59,7 @@ local function handle(args)
                 or artifact_parts_repo.is_primary_artifact_missing(cause) and "primary content artifact not found"
             local message = "extracted text is not available"
             if public_message then message = message .. ": " .. public_message end
-            local cause_code = PUBLIC_CAUSE_CODES[details.code] and details.code or nil
+            local cause_code = diagnostic.code
             local code = not read_source and cause_code == "storage_unavailable" and cause_code or "artifact_read_failed"
             return {
                 success = false,

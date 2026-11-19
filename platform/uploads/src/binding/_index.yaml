@@ -105,6 +105,7 @@ entries:
     - logger
     imports:
       storage_location: kickside.uploads.binding:storage_location
+      binding_errors: kickside.uploads.binding:binding_errors
   - name: storage_location
     kind: library.lua
     source: file://storage_location.lua

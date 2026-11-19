@@ -85,6 +85,7 @@ entries:
       upload_tokens: kickside.uploads.persist:upload_tokens
       original_read: kickside.uploads:original_read
       http_errors: kickside.contract:http_errors
+      binding_errors: kickside.uploads.binding:binding_errors
 
   - name: upload_delete_fixture
     kind: library.lua

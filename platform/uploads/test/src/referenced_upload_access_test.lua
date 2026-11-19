@@ -143,10 +143,13 @@ return {run = test.run_cases(function()
         for _, fixture in ipairs({
             {name = "missing backing bytes", storage_id = "app:uploads", status = 404},
             {name = "unavailable artifact storage", storage_id = "app.upload_errors:unreadable_storage", status = 503},
+            {name = "unregistered artifact volume", storage_id = "app:unregistered_volume", status = 503},
+            {name = "unregistered packed artifact volume", storage_id = "app:uploads",
+                path_prefix = "fs://app:unregistered_volume/", status = 503},
         }) do
             test.it("returns a public artifact response for " .. fixture.name, function()
                 register(owner, {}, types.component_id_for_owner(owner), types.IMPL)
-                local path = "private/" .. upload_id
+                local path = (fixture.path_prefix or "") .. "private/" .. upload_id
                 local artifact = assert(artifacts.create_artifact({upload_id = upload_id, kind = "image",
                     mime_type = "image/png", locator = {type = "image.region", storage_id = fixture.storage_id, storage_path = path}}))
                 local response = raw(owner, nil, upload_id, "/artifacts/" .. artifact.artifact_id .. "/raw")

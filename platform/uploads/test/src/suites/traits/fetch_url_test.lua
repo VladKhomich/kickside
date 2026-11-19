@@ -220,23 +220,34 @@ local function define_tests()
             test.eq(result.artifact_count, 1)
         end)
 
-        test.it("wait returns a tool error when the extracted text cannot be read", function()
-            base_deps(function(deps)
-                deps.http.get = function()
-                    return { status_code = 200, headers = { ["content-type"] = "application/pdf" }, body = "%PDF" }, nil
-                end
-                deps.read_model.get_for_actor = function() return { status = "completed", mime_type = "text/markdown" } end
-                deps.artifacts.read_primary_content = function()
-                    return nil, errors.new({ kind = errors.UNAVAILABLE, message = "cannot read private/artifact.txt" })
-                end
-            end)
+        test.it("wait returns the typed cause of an unreadable primary artifact without private details", function()
+            for _, retryable in ipairs({true, false}) do
+                local diagnostic = "fetch-url-private-artifact"
+                local calls = base_deps(function(deps)
+                    deps.http.get = function()
+                        return {status_code = 200, headers = {["content-type"] = "application/pdf"}, body = "%PDF"}, nil
+                    end
+                    deps.read_model.get_for_actor = function() return {status = "completed", mime_type = "text/markdown"} end
+                    deps.artifacts.read_primary_content = function()
+                        return nil, errors.new({kind = errors.UNAVAILABLE, message = diagnostic, retryable = retryable,
+                            details = {code = diagnostic, storage_path = diagnostic}}), "primary-artifact"
+                    end
+                end)
 
-            local result, err = handler.handle({ url = "https://example.com/doc.pdf", wait = true })
-            test.is_nil(result)
-            test.is_true(errors.is(err, errors.INTERNAL))
-            test.is_nil(tostring(err):find("private/artifact.txt", 1, true), tostring(err))
-            test.eq(err:message(), "processed upload could not be read: primary artifact is unreadable")
-            test.eq(err:details().upload_id, "upload-1")
+                local result, err = handler.handle({url = "https://example.com/doc.pdf", wait = true})
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.UNAVAILABLE), tostring(err))
+                test.eq(err:retryable(), retryable)
+                test.is_nil(tostring(err):find(diagnostic, 1, true), tostring(err))
+                test.eq(err:message(), "processed upload could not be read: primary artifact is unreadable")
+                local details = err:details()
+                test.eq(details.upload_id, "upload-1")
+                test.eq(details.artifact_id, "primary-artifact")
+                test.eq(details.code, "artifact_read_failed")
+                test.is_nil(details.cause)
+                test.is_nil(details.storage_path)
+                test.eq(calls.upload_file, 1)
+            end
         end)
 
         test.it("wait distinguishes no primary artifact from a primary artifact with missing bytes", function()
@@ -264,9 +275,11 @@ local function define_tests()
 
             result, err = handler.handle(args)
             test.is_nil(result)
-            test.is_true(errors.is(err, errors.INTERNAL))
+            test.is_true(errors.is(err, errors.NOT_FOUND), tostring(err))
+            test.is_false(err:retryable() == true)
             test.eq(err:message(), "processed upload could not be read: primary artifact is unreadable")
             test.eq(err:details().upload_id, upload_id)
+            test.eq(err:details().artifact_id, artifact.artifact_id)
         end)
 
         test.it("wait returns a tool error when the derived artifacts cannot be listed", function()

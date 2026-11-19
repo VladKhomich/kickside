@@ -378,6 +378,28 @@ return {run = test.run_cases(function()
                     test.is_true((err:details() or {}).code ~= "artifact_reference_not_found")
                 end)
 
+                test.it("distinguishes an unregistered volume from missing backing bytes", function()
+                    for _, location in ipairs({
+                        {storage_id = "app:unregistered_volume", path = path},
+                        {storage_id = "app:uploads", path = "fs://app:unregistered_volume/" .. path},
+                    }) do
+                        set_location(location.storage_id, location.path)
+                        local content, read_err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                        test.is_nil(content)
+                        check(read_err, errors.UNAVAILABLE, "storage_unavailable")
+                        test.eq(read_err:details().cause.kind, errors.NOT_FOUND)
+
+                        local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+                        test.is_nil(err, tostring(err))
+                        test.is_false(value.success)
+                        test.eq(value.error:kind(), errors.UNAVAILABLE)
+                        local cause = value.error:details().cause
+                        test.eq(cause.details.code, "storage_unavailable")
+                        test.eq(cause.details.artifact_id, artifact.artifact_id)
+                        test.is_nil(cause.details.cause)
+                    end
+                end)
+
                 test.it("reports malformed stored locations as invalid", function()
                     set_location("app:uploads", backing == "blob" and "fs://" or "")
                     local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)

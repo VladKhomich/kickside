@@ -1,6 +1,7 @@
 local security = require("security")
 local http_client = require("http_client")
 local time = require("time")
+local binding_errors = require("binding_errors")
 local log = require("logger"):named("kickside.uploads.traits.fetch_url")
 
 local upload_lib = require("upload_lib")
@@ -147,10 +148,15 @@ end
 local function completed_extras(upload_id, content_type)
     local result = { content_type = content_type }
 
-    local primary, primary_err = M.deps.artifacts.read_primary_content(upload_id)
+    local primary, primary_err, artifact_id = M.deps.artifacts.read_primary_content(upload_id)
     if primary_err and not artifact_parts_repo.is_primary_artifact_missing(primary_err) then
-        log:warn("Failed to read primary artifact", {upload_id = upload_id, error = tostring(primary_err)})
-        return nil, "primary artifact is unreadable"
+        local diagnostic = binding_errors.artifact_diagnostic(primary_err, upload_id, artifact_id)
+        log:warn("Failed to read primary artifact", diagnostic)
+        local retryable
+        if type(primary_err) == "userdata" then retryable = (primary_err :: error):retryable() end
+        return nil, errors.new({kind = diagnostic.kind, retryable = retryable,
+            message = "processed upload could not be read: primary artifact is unreadable",
+            details = {code = diagnostic.code or "artifact_read_failed", upload_id = upload_id, artifact_id = artifact_id}})
     end
     if primary and type(primary.content) == "string" then
         local mime = primary.mime_type or content_type or ""
@@ -161,7 +167,10 @@ local function completed_extras(upload_id, content_type)
     end
 
     local artifacts, artifacts_err = M.deps.artifacts.list_artifacts(upload_id)
-    if artifacts_err then return nil, artifacts_err end
+    if artifacts_err then
+        return nil, errors.new({message = "processed upload could not be read: " .. tostring(artifacts_err),
+            kind = errors.INTERNAL, details = {upload_id = upload_id}})
+    end
     if #artifacts > 0 then
         local refs = {}
         for _, a in ipairs(artifacts) do
@@ -265,10 +274,7 @@ local function handle(args)
 
     if status == "completed" then
         local extras, extras_err = completed_extras(upload_id, (row and row.mime_type) or content_type)
-        if extras_err then
-            return nil, errors.new({ message = "processed upload could not be read: " .. tostring(extras_err),
-                kind = errors.INTERNAL, details = { upload_id = upload_id } })
-        end
+        if extras_err then return nil, extras_err end
         return {
             upload_id = upload_id,
             status = "completed",
