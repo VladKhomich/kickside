@@ -12,6 +12,7 @@ local capability_context = require("capability_context")
 local checkpoint_policy = require("checkpoint_policy")
 
 local COMPONENT_SERVICE = "kickside.component:component_service"
+local DEFAULT_MAX_TOKENS = 8000
 -- Private trait auto-attached when an agent has delegates; folds the delegation
 -- semantics + target list into the prompt (see traits/init_delegate.lua).
 local DELEGATE_TRAIT = "kickside.agents.traits:delegate"
@@ -316,7 +317,7 @@ local function resolve(input)
         end
     end
 
-    local applied, policy_err = checkpoint_policy.apply(resolved)
+    local applied, policy_err = checkpoint_policy.apply(resolved, DEFAULT_MAX_TOKENS)
     if policy_err then return nil, errors.new({kind = errors.INVALID, message = tostring(policy_err)}) end
     return applied
 end
