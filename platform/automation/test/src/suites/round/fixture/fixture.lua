@@ -363,6 +363,9 @@ function M.write(request: any): (any, any)
         return { accepted = true, dest_ref = { id = "rec:" .. tostring(r.identity_key) } }, nil
     elseif what == "capacity" then
         return { success = false, error = { code = "rate_limited", scope = "capacity", retry_after_ms = 30000, retriable = true, message = "busy" } }, nil
+    elseif what == "effect_pending" then
+        return { success = false, error = { code = "effect_pending", scope = "item", retry_after_ms = 2000,
+            retriable = true, message = "accepted effect is processing" } }, nil
     elseif what == "timeout" then
         return { success = false, error = { code = "provider_unavailable", retriable = true, message = "timed out" } }, nil
     elseif what == "invalid" then
