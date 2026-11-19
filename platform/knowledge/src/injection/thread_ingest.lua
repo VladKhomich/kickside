@@ -155,6 +155,15 @@ function M.status(kb_id, opts)
     return load_status(exec, kb_id, kb.impl_id)
 end
 
+-- The Core lookup checks the caller's READ access on the KB primary thread.
+-- Return only the source work count to callers that render progress.
+function M.pending_source(kb_id: string, impl_id: string): (any?, any?)
+    local exec, exec_err = current_executor()
+    if not exec then return nil, exec_err end
+    local source, read_err = status.lookup_source_projection(exec, kb_id, impl_id, true)
+    return source and source.pending_source or nil, read_err
+end
+
 function M.pause(kb_id, opts)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end

@@ -3410,6 +3410,12 @@ entries:
     imports:
       fixture: app:projection_apply_native_fixture
 
+  - name: projection_apply_native_lease_status_adapter
+    kind: library.lua
+    source: file://projection_apply_native_dependency_adapter.lua
+    imports:
+      fixture: app:projection_apply_native_fixture
+
   - name: projection_apply_native_source
     kind: library.lua
     source: file://projection_apply_native_source.lua
@@ -3426,6 +3432,11 @@ entries:
       retention_notifier: app:projection_apply_native_retention_notifier_adapter
       retention_pin: app:projection_apply_native_fixture
       execution_identity: app:projection_apply_native_execution_identity_adapter
+      committed_error: kickside.contract:committed_error
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
+      lease_status: app:projection_apply_native_lease_status_adapter
+      job_types: kickside.core.jobs:types
 
   - name: projection_apply_native_test
     kind: function.lua

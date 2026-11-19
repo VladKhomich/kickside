@@ -17,7 +17,8 @@ vi.mock('@wippy-fe/webcomponent-vue', async () => {
 })
 vi.mock('@kickside/ui-kit/componentRealtime', () => ({ subscribeComponentMeta: vi.fn() }))
 const file = { uuid: 'b1544a30-d59a-4d70-8edc-023a5f4adeb8', filename: 'report.txt', size: 5,
-  mime_type: 'text/plain', status: 'completed', created_at: 0, raw_url: 'https://objects.example/report?signature=test' }
+  mime_type: 'text/plain', status: 'completed', created_at: 0, raw_url: 'https://objects.example/report?signature=test',
+  content_description: { kind: 'text', mime_type: 'text/plain', text_available: true, inline: true } }
 function render() {
   return mount(Uploads, { global: { stubs: {
     UploadPreviewDrawer: { props: ['preview', 'closePreview', 'activePreviewSource'], template: '<div data-testid="drawer"><span v-if="preview">{{ preview.filename }} {{ activePreviewSource(preview).sourceUrl }}</span><button @click="closePreview()">Close</button></div>' },

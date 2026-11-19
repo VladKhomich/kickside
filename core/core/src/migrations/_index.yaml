@@ -194,6 +194,18 @@ entries:
       migration: wippy.migration:migration
     method: migrate
 
+  - name: 15_projection_continuation
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-19T00:00:15Z"
+    source: file://15_projection_continuation.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
   - name: 16_teardown_projection_index
     kind: function.lua
     meta:

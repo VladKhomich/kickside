@@ -1,7 +1,7 @@
 local test = require("test")
 local status = require("status")
 
-local function executor(pair, failure)
+local function executor(pair, failure, includes_pending)
     return setmetatable({}, { __index = function(_, method)
         return function(_, args)
             test.eq(method, "get_projection_cursor")
@@ -9,6 +9,12 @@ local function executor(pair, failure)
             test.eq(args.kind, "knowledge.injection.source")
             test.eq(args.projection_key, "source")
             test.eq(args.cursor_key, "source")
+            if includes_pending then
+                test.eq(args.pending_event_types[1], "kickside.knowledge.events:content.upserted")
+                test.eq(args.pending_event_types[2], "kickside.knowledge.events:content.deleted")
+            else
+                test.is_nil(args.pending_event_types)
+            end
             return pair, failure
         end
     end })
@@ -29,6 +35,16 @@ return { run = test.run_cases(function()
             test.eq(found.projection.worker_ref, "proc://fixture:source")
             test.eq(found.projection.last_seq, 7)
             test.eq(found.projection.debounce_max_ms, 21)
+        end)
+        test.it("requests pending source revisions only when showing progress", function()
+            local found, err = status.lookup_source_projection(executor({
+                projection = { id = "projection", body = {} },
+                cursor = { id = "cursor", last_seq = 29 },
+                pending_events = { count = 8, truncated = true },
+            }, nil, true), "kb", "test.kb:embeddable", true)
+            test.is_nil(err)
+            test.eq(found.pending_source.count, 8)
+            test.is_true(found.pending_source.truncated)
         end)
         test.it("propagates graph append failures after one owner call", function()
             local calls = 0
