@@ -130,6 +130,11 @@ makes the job claimable only after its registered execution child has ended.
 A gone child recovers in the same pass; a live child retains the termination fence.
 Heartbeats renew only matching, unexpired executions without a termination fence.
 
+### Lease ownership and progress
+
+See [lease ownership and progress](../README.md#lease-ownership-and-progress) for
+heartbeat declaration, fencing, deadlines, and failure semantics.
+
 `jobs.health()` is a read-only operator diagnostic. It uses existing indexes and
 adds no schema, writes, claim checks or enqueue work. Each count reads at most
 1,001 index entries: exact through 1,000, then the lower bound 1,000 with its
