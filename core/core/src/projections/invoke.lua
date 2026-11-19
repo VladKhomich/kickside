@@ -57,7 +57,7 @@ end
 
 local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?, error?)
     local rows, err = db:query([[SELECT c.id,c.projection_id,c.thread_id,c.cursor_key,c.last_seq,
-        c.generation,c.status,c.job_id,c.debounce_idle_ms,c.debounce_max_ms,
+        c.generation,c.status,c.job_id,c.last_error,c.debounce_idle_ms,c.debounce_max_ms,
         c.actor_id,c.execution_identity_json,p.kind,p.body,t.event_count
         FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id
@@ -209,7 +209,8 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             trace_context = trace_context.common(batch),
             worker_input_mode = mode,
             cursor = { id = cursor_id, cursor_key = current.cursor_key, last_seq = last,
-                target_seq = target, batch_size = page_size, generation = tonumber(current.generation) },
+                target_seq = target, batch_size = page_size, generation = tonumber(current.generation),
+                last_error = current.last_error },
             projection = { id = current.projection_id, kind = current.kind, body = body },
             range = { from_seq = last + 1, to_seq = seen_last, target_seq = target, processed_count = #batch },
             events = mode == "prefetch_events" and batch or nil,
