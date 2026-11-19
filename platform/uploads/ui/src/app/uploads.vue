@@ -39,7 +39,8 @@ const STATUS_OPTIONS = [
 const uploads = ref<Upload[]>([])
 const total = ref(0)
 const loading = ref(false)
-const error = ref('')
+const listError = ref('')
+const deliveryError = ref('')
 const uploadFailures = ref<string[]>([])
 const dragOver = ref(false)
 const uploadingCount = ref(0)
@@ -47,19 +48,28 @@ const query = ref('')
 const statusFilter = ref('all')
 const page = ref(1)
 const deleteErrors = ref<Record<string, string>>({})
+const unlistedDeleteErrors = computed(() => Object.entries(deleteErrors.value)
+  .filter(([id]) => !uploads.value.some(upload => upload.uuid === id)))
 let listRead: Promise<void> | null = null
 let listRefreshQueued = false
 let disposed = false
 const retrying = ref(false)
+const retryError = ref<{ uploadId: string; message: string } | null>(null)
 
 const {
   preview, artifactView, partsExpanded, busyAction,
   activePreviewSource,
   openPreview: showPreview, closePreview: hidePreview, viewOriginal, viewPrimary, viewArtifact,
   currentArtifacts, partsTotal, partsPage, partsPages, partsRangeStart, partsRangeEnd,
-  hasPrimary,
-  primaryKind, artifactsLoading, gotoPartsPage, downloadActive, openActive,
-} = useUploadArtifacts(error)
+  hasPrimary, primaryKind, artifactsLoading, artifactsError, gotoPartsPage, downloadActive, openActive,
+} = useUploadArtifacts(deliveryError)
+
+const drawerRetryError = computed(() => {
+  const failure = retryError.value
+  return failure && failure.uploadId === preview.value?.uuid ? failure.message : ''
+})
+const drawerRequestErrors = computed(() =>
+  [artifactsError.value, deliveryError.value, drawerRetryError.value].filter(Boolean))
 
 const routeProps = useComponentProps()
 const emit = useComponentEvents()
@@ -119,7 +129,8 @@ watch(() => routeProps.value.route, async (route) => {
   }
   if (read !== previewRead) return
   const listed = uploads.value.find(upload => upload.uuid === id)
-  previewError.value = formatUploadRequestError(listed && uploadLabel(listed), failure, 'Failed to load upload')
+  const message = await formatUploadRequestError(listed && uploadLabel(listed), failure, 'Failed to load upload')
+  if (read === previewRead) previewError.value = message
 }, { immediate: true })
 
 const componentId = ref('')
@@ -155,24 +166,24 @@ function fetchUploads(): Promise<void> {
         const requestedStatus = statusFilter.value
         const isCurrent = () => !disposed && requestedPage === page.value
           && requestedQuery === query.value.trim() && requestedStatus === statusFilter.value
-        error.value = ''
+        listError.value = ''
         try {
           const params: Record<string, unknown> = { limit: PAGE_SIZE, offset: (requestedPage - 1) * PAGE_SIZE }
           if (requestedQuery) params.q = requestedQuery
           if (requestedStatus !== 'all') params.status = requestedStatus
-          const { data } = await api.get('/api/v1/uploads/list', { params })
+          const response = await api.get('/api/v1/uploads/list', { params })
           if (!isCurrent()) continue
-          if (data.success) {
-            uploads.value = data.uploads || []
-            total.value = Number(data.meta?.total ?? uploads.value.length)
-            if (typeof data.component_id === 'string') componentId.value = data.component_id
-          } else {
-            uploads.value = []; total.value = 0
-          }
-        } catch (e) {
+          const { data } = response
+          if (!data.success) throw { response }
+          uploads.value = data.uploads || []
+          total.value = Number(data.meta?.total ?? uploads.value.length)
+          if (typeof data.component_id === 'string') componentId.value = data.component_id
+        } catch (cause) {
+          const message = await formatUploadRequestError('Uploads', cause, 'Failed to load uploads')
           if (!isCurrent()) continue
-          uploads.value = []; total.value = 0
-          error.value = e instanceof Error ? e.message : 'failed to load uploads'
+          uploads.value = []
+          total.value = 0
+          listError.value = message
         }
       }
     } finally {
@@ -232,13 +243,12 @@ async function uploadOne(file: File) {
   } catch (cause) {
     failure = cause
   }
-  uploadFailures.value.push(formatUploadRequestError(file.name, failure, 'Upload failed'))
+  uploadFailures.value.push(await formatUploadRequestError(file.name, failure, 'Upload failed'))
 }
 
 async function uploadFiles(files: FileList | File[]) {
   const list = Array.from(files)
   if (!list.length) return
-  error.value = ''
   if (uploadingCount.value === 0) uploadFailures.value = []
   uploadingCount.value += list.length
   try {
@@ -296,30 +306,24 @@ async function doRemove(u: Upload) {
   } catch (cause) {
     failure = cause
   }
-  deleteErrors.value[u.uuid] = formatUploadRequestError(uploadLabel(u), failure, 'Failed to delete upload')
+  deleteErrors.value[u.uuid] = await formatUploadRequestError(uploadLabel(u), failure, 'Failed to delete upload')
 }
 
 async function retryUpload(u: Upload) {
   if (retrying.value) return
   const read = previewRead
   retrying.value = true
-  previewError.value = ''
-  let failure: unknown
+  retryError.value = null
   try {
     const response = await api.post(`/api/v1/uploads/${u.uuid}/retry`)
-    if (response.data.success) {
-      if (read === previewRead) closePreview()
-      await fetchUploads()
-      return
-    }
-    failure = { response }
+    if (!response.data.success) throw { response }
+    if (read === previewRead) closePreview()
+    await fetchUploads()
   } catch (cause) {
-    failure = cause
+    const message = await formatUploadRequestError(uploadLabel(u), cause, 'Failed to retry upload')
+    retryError.value = { uploadId: u.uuid, message }
   } finally {
     retrying.value = false
-  }
-  if (read === previewRead) {
-    previewError.value = formatUploadRequestError(uploadLabel(u), failure, 'Failed to retry upload')
   }
 }
 
@@ -331,8 +335,8 @@ async function refreshUploads() {
   try {
     await fetchUploads()
     connectRealtime()
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'host API unavailable'
+  } catch (cause) {
+    listError.value = await formatUploadRequestError('Uploads', cause, 'Host API unavailable')
   }
 }
 
@@ -364,7 +368,7 @@ onBeforeUnmount(() => {
         <p class="kx-head-sub">Files your agents can read and process.</p>
       </div>
       <div class="kx-head-actions">
-        <span class="kx-count">{{ total }} file{{ total !== 1 ? 's' : '' }}</span>
+        <span v-if="!listError" class="kx-count">{{ total }} file{{ total !== 1 ? 's' : '' }}</span>
         <span v-if="pendingCount" class="kx-count kx-pending"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> {{ pendingCount }} processing</span>
         <InputGroup class="kx-search">
           <InputGroupAddon>
@@ -414,7 +418,9 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <div v-if="error" class="kx-err" role="alert">{{ error }}</div>
+    <div v-if="listError" class="kx-err" role="alert">{{ listError }}</div>
+    <div v-if="retryError && !drawerRetryError" class="kx-err" role="alert">{{ retryError.message }}</div>
+    <div v-for="[id, message] in unlistedDeleteErrors" :key="id" class="kx-err" role="alert">{{ message }}</div>
     <div v-if="previewLoading" class="kx-loading" role="status">Loading file…</div>
     <div v-if="previewError && !preview" class="kx-err" role="alert" data-testid="uploads-link-error">
       {{ previewError }}
@@ -449,7 +455,7 @@ onBeforeUnmount(() => {
 
         <div v-if="loading && !uploads.length" class="kx-loading"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Loading…</div>
 
-        <div v-else-if="!total && !query && statusFilter === 'all'" class="kx-empty">
+        <div v-else-if="!listError && !total && !query && statusFilter === 'all'" class="kx-empty">
           <div class="kx-empty-ico"><Icon icon="tabler:cloud-upload" aria-hidden="true" /></div>
           <div class="kx-empty-title">No uploads yet</div>
           <div class="kx-empty-sub">Upload a document, image, or text file to make it available to your agents.</div>
@@ -465,12 +471,12 @@ onBeforeUnmount(() => {
           </Button>
         </div>
 
-        <div v-else-if="!uploads.length" class="kx-empty">
+        <div v-else-if="!listError && !uploads.length" class="kx-empty">
           <div class="kx-empty-title">No matches</div>
           <div class="kx-empty-sub">No files match the current search or filter.</div>
         </div>
 
-        <template v-else>
+        <template v-else-if="uploads.length">
           <div class="kx-list">
             <div
               v-for="u in uploads"
@@ -568,7 +574,7 @@ onBeforeUnmount(() => {
       :view-artifact="viewArtifact"
       :goto-parts-page="gotoPartsPage"
       :retrying="retrying"
-      :request-error="previewError"
+      :request-errors="drawerRequestErrors"
       :retry-upload="retryUpload"
     />
 

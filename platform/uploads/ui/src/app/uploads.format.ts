@@ -31,13 +31,35 @@ export function uploadLabel(upload: Upload): string {
   return (upload.filename || '').trim() || 'Untitled file'
 }
 
-export function formatUploadRequestError(filename: string | undefined, cause: unknown, fallback: string): string {
+const ERROR_BODY_LIMIT = 4 * 1024
+const ERROR_REASON_LIMIT = 320
+
+function readableReason(value: string): string {
+  const reason = value.slice(0, ERROR_REASON_LIMIT + 1).trim()
+  if (reason.startsWith('<') || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(reason)) return ''
+  return reason.length > ERROR_REASON_LIMIT ? reason.slice(0, ERROR_REASON_LIMIT - 1).trimEnd() + '…' : reason
+}
+
+async function uploadErrorBody(body: unknown): Promise<unknown> {
+  if (!(body instanceof Blob)) return body
+  const type = body.type.split(';', 1)[0].trim()
+  const json = type === 'application/json' || type.endsWith('+json')
+  if (json ? body.size > ERROR_BODY_LIMIT : type && type !== 'text/plain') return undefined
+  try {
+    const text = await body.slice(0, ERROR_BODY_LIMIT).text()
+    return json ? JSON.parse(text) : text
+  } catch {
+    return undefined
+  }
+}
+
+export async function formatUploadRequestError(filename: string | undefined, cause: unknown, fallback: string): Promise<string> {
   const response = (cause as { response?: { data?: unknown; status?: number; statusText?: string } } | null)?.response
-  const body = response?.data
-  const declaredReason = typeof body === 'string' ? body.trim() : errMsg({ response }, '').trim()
+  const body = await uploadErrorBody(response?.data)
+  const declaredReason = readableReason(typeof body === 'string' ? body : errMsg({ response: { data: body } }, ''))
   const status = response?.status
-  const httpReason = status && status >= 400 ? response?.statusText?.trim() || `HTTP ${status}` : ''
-  const reason = declaredReason || httpReason || errMsg(cause, fallback)
+  const httpReason = status && status >= 400 ? readableReason(response?.statusText || '') || `HTTP ${status}` : ''
+  const reason = declaredReason || httpReason || readableReason(errMsg({ message: (cause as Error | null)?.message }, '')) || fallback
   return `${filename || 'File'} · ${reason}`
 }
 
