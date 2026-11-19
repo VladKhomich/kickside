@@ -56,7 +56,8 @@ const {
   activePreviewSource,
   openPreview: showPreview, closePreview: hidePreview, viewOriginal, viewPrimary, viewArtifact,
   currentArtifacts, partsTotal, partsPage, partsPages, partsRangeStart, partsRangeEnd,
-  hasPrimary, artifactsLoading, gotoPartsPage, downloadActive, openActive,
+  hasPrimary,
+  primaryKind, artifactsLoading, gotoPartsPage, downloadActive, openActive,
 } = useUploadArtifacts(error)
 
 const routeProps = useComponentProps()
@@ -533,6 +534,7 @@ onBeforeUnmount(() => {
       :parts-range-start="partsRangeStart"
       :parts-range-end="partsRangeEnd"
       :has-primary="hasPrimary"
+      :primary-kind="primaryKind"
       :artifacts-loading="artifactsLoading"
       :active-preview-source="activePreviewSource"
       :download-active="downloadActive"

@@ -58,18 +58,6 @@ export function formatError(raw: string): string {
   return message ? message.charAt(0).toUpperCase() + message.slice(1) : message
 }
 
-const RAW_MIME_PREFIXES = ['image/', 'audio/', 'video/', 'text/']
-const RAW_MIME_EXACT = new Set([
-  'application/pdf',
-  'application/json', 'application/xml', 'application/javascript', 'application/x-yaml', 'application/sql',
-  'application/xhtml+xml',
-])
-
-export function isRawRenderable(mime: string): boolean {
-  const normalized = (mime || '').toLowerCase()
-  return RAW_MIME_PREFIXES.some((prefix) => normalized.startsWith(prefix)) || RAW_MIME_EXACT.has(normalized)
-}
-
 const TRANSCRIPTION_KEYS = ['ocr_error', 'asr_error', 'conversion_error']
 const TRANSCRIPTION_MESSAGES: Record<string, string> = {
   transcription_failed: 'Text recognition failed.',
@@ -141,9 +129,4 @@ export function artifactMeta(artifact: UploadArtifact): string {
     artifact.occurrence_count && artifact.occurrence_count > 1 ? `${artifact.occurrence_count} occurrences` : null,
   ]
   return bits.filter(Boolean).join(' · ')
-}
-
-export function isTextualContent(contentType: string): boolean {
-  const normalized = (contentType || '').toLowerCase()
-  return normalized.startsWith('text/') || normalized.includes('markdown')
 }

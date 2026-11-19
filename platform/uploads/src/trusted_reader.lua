@@ -29,16 +29,19 @@ local function status_of(storage_state: unknown): string
     return "processing"
 end
 
--- cut_utf8(text, limit) -> at most limit bytes, never ending inside a
--- multi-byte UTF-8 character.
-local function cut_utf8(text: string, limit: integer): string
-    local cut = limit
-    while cut > 0 do
-        local byte = text:byte(cut + 1)
-        if not byte or byte < 0x80 or byte >= 0xC0 then break end
-        cut = cut - 1
+local function complete_utf8_prefix(text: string): string
+    local start = #text
+    while start > 0 do
+        local byte = text:byte(start)
+        if byte < 0x80 then return text end
+        if byte >= 0xC0 then
+            local width = byte < 0xE0 and 2 or (byte < 0xF0 and 3 or 4)
+            if #text - start + 1 < width then return text:sub(1, start - 1) end
+            return text
+        end
+        start = start - 1
     end
-    return text:sub(1, cut)
+    return text
 end
 
 local function metadata_of(upload: any): { [string]: unknown }
@@ -77,15 +80,14 @@ function M.primary_text(upload_id: string, max_chars: number?): (PrimaryText?, a
     if type(limit) ~= "number" or limit <= 0 or limit >= math.huge or limit ~= math.floor(limit) then
         return nil, errors.new({ kind = errors.INVALID, message = "max_chars must be a positive finite integer" })
     end
-    local primary, err = M.deps.parts.read_primary_content(upload_id)
+    local primary, err = M.deps.parts.read_primary_content(upload_id, limit)
     if err or not primary then return nil, err end
     local text = type(primary.content) == "string" and primary.content or ""
-    local chars = #text
-    local truncated = chars > limit
-    if truncated then text = cut_utf8(text, limit :: integer) end
+    local truncated = primary.total_size > #text
+    if truncated then text = complete_utf8_prefix(text) end
     return {
         text = text,
-        chars = chars,
+        chars = primary.total_size,
         truncated = truncated,
         content_type = primary.mime_type,
         artifact_id = primary.artifact.artifact_id,
@@ -123,11 +125,20 @@ function M.image_bytes(upload_id: string, artifact_id: string, max_bytes: number
     if mime:sub(1, 6) ~= "image/" then
         return nil, errors.new({ kind = errors.INVALID, message = "artifact is not an image", details = { code = "not_an_image" } })
     end
-    local content, err = M.deps.content.read_artifact_content(upload_id, artifact_id)
+    local limit = max_bytes
+    if limit ~= nil and (type(limit) ~= "number" or not (limit > 0 and limit < math.huge)
+        or limit ~= math.floor(limit)) then
+        return nil, errors.new({kind = errors.INVALID, message = "max_bytes must be a positive finite integer"})
+    end
+    local content, err, location = M.deps.content.read_artifact_content(upload_id, artifact_id, limit)
     if err or type(content) ~= "string" then return nil, err end
-    local limit = tonumber(max_bytes)
-    if limit and #content > limit then
-        return nil, errors.new({ kind = errors.INVALID, message = "image is too large", details = { code = "too_large" } })
+    if limit then
+        if not location or type(location.size) ~= "number" then
+            return nil, errors.new({kind = errors.INTERNAL, message = "image size is unavailable"})
+        end
+        if location.size > limit then
+            return nil, errors.new({kind = errors.INVALID, message = "image is too large", details = {code = "too_large"}})
+        end
     end
     return { bytes = content, content_type = mime, size = #content }, nil
 end

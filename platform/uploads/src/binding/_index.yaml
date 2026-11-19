@@ -34,6 +34,8 @@ entries:
       component: kickside.component:component
       types: kickside.uploads:types
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_mime: kickside.uploads:uploads_mime
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       uploads_resources: kickside.uploads.binding:uploads_resources
@@ -50,6 +52,7 @@ entries:
       component: kickside.component:component
       types: kickside.uploads:types
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
+      upload_mime: kickside.uploads:uploads_mime
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
       upload_query_repo: kickside.uploads.persist:upload_query_repo
     method: handle

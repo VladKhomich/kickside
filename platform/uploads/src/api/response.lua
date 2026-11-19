@@ -2,6 +2,7 @@ local registry = require("registry")
 local time = require("time")
 local resources = require("uploads_resources")
 local metadata_sanitizer = require("metadata_sanitizer")
+local upload_mime = require("upload_mime")
 
 -- Normalize old numeric timestamps and current RFC3339 strings for frontend use.
 local function format_date(timestamp)
@@ -65,6 +66,16 @@ local function delivery_url(storage_id: string, storage_path: string, raw_url: s
     return raw_url, nil
 end
 
+local function attach_delivery(upload: any, public: any): (any?, string?)
+    local description, describe_err = upload_mime.describe(upload.mime_type, (upload.metadata or {}).filename)
+    if describe_err then return describe_err, "Failed to describe upload content" end
+    local url, delivery_err = delivery_url(upload.storage_id, upload.storage_path, public.raw_url)
+    if delivery_err then return delivery_err, "Failed to obtain upload delivery URL" end
+    public.content_description = description
+    public.raw_url = url
+    return nil, nil
+end
+
 local function format_list_upload(upload: any, base: string?): any
     local metadata = metadata_sanitizer.public(upload.metadata)
     return {
@@ -103,6 +114,7 @@ return {
     raw_path = raw_path,
     view_base = view_base,
     delivery_url = delivery_url,
+    attach_delivery = attach_delivery,
     format_list_upload = format_list_upload,
     format_get_upload = format_get_upload,
 }

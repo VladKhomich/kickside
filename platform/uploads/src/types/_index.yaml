@@ -16,7 +16,17 @@ entries:
       comment: Image files for agent viewing and analysis
     type_key: images
     priority: 10
-    extensions: [jpg, jpeg, png, gif, bmp, webp, tiff, tif, svg, ico]
+    extension_mime_types:
+      jpg: image/jpeg
+      jpeg: image/jpeg
+      png: image/png
+      gif: image/gif
+      bmp: image/bmp
+      webp: image/webp
+      tiff: image/tiff
+      tif: image/tiff
+      svg: image/svg+xml
+      ico: image/x-icon
     mime_types:
       - image/jpeg
       - image/png
@@ -40,7 +50,32 @@ entries:
       comment: Text and code files including source code, markup, and plain text
     type_key: text
     priority: 10
-    extensions: [txt, md, markdown, html, htm, css, js, json, xml, py, lua, rb, php, java, c, cpp, cs, go, sh, bat, ps1, yml, yaml, toml, sql, csv, tsv]
+    extensions: [txt, md, markdown]
+    extension_mime_types:
+      html: text/html
+      htm: text/html
+      css: text/css
+      js: application/javascript
+      json: application/json
+      xml: application/xml
+      py: text/x-python
+      lua: text/x-lua
+      rb: text/x-ruby
+      php: text/x-php
+      java: text/x-java
+      c: text/x-c
+      cpp: text/x-c++
+      cs: text/x-csharp
+      go: text/x-go
+      sh: text/x-shellscript
+      bat: text/x-msdos-batch
+      ps1: text/x-powershell
+      yml: text/yaml
+      yaml: text/yaml
+      toml: text/x-toml
+      sql: application/sql
+      csv: text/csv
+      tsv: text/tab-separated-values
     mime_types:
       - text/.*
       - application/json

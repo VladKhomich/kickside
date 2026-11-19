@@ -268,8 +268,12 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
 
     local content = primary.content or ""
     local artifact = primary.artifact or { artifact_id = primary.artifact_id, checksum = primary.checksum }
-    local content_type = primary.content_type or primary.mime_type or "text/plain"
-    if content == "" or not is_text_content(content_type) then
+    local description = primary.content_description
+    local content_type = description and description.mime_type or primary.content_type or primary.mime_type or "text/plain"
+    local text_available = description and description.text_available
+    -- The published content provider contract also permits MIME-only responses.
+    if text_available == nil then text_available = is_text_content(content_type) end
+    if content == "" or not text_available then
         local engine, engine_err = engines.by_impl(comp.impl_id)
         if engine_err then return nil, engine_err end
         if not engine or not engine.accepts_files then

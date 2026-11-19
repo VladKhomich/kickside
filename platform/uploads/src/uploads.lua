@@ -64,7 +64,6 @@ end
 
 local upload_mime = require("upload_mime")
 local get_file_extension = upload_mime.get_file_extension
-local get_mime_type_from_extension = upload_mime.get_mime_type_from_extension
 local determine_upload_type = upload_mime.determine_upload_type
 
 local function freeze_current_identity(metadata: any, parent_upload_id: string?, actor_id: string?): any?
@@ -261,9 +260,9 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         return nil, identity_err
     end
 
-    if not mime_type or mime_type == "" or mime_type == "application/octet-stream" then
-        mime_type = get_mime_type_from_extension(filename)
-    end
+    local description, mime_err = upload_mime.describe(mime_type, filename)
+    if mime_err then return nil, typed(mime_err, errors.UNAVAILABLE, "infrastructure", "") end
+    mime_type = description.mime_type
 
     local success
     success, err = storage:writefile(storage_path, file_data)

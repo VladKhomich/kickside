@@ -49923,7 +49923,7 @@ const pi = /* @__PURE__ */ gc(Ju), ju = { class: "codev" }, ep = {
       sql: "sql",
       toml: "ini",
       ini: "ini"
-    }, o = ze(() => (e.value?.contentType || "").toLowerCase().split(";")[0].trim()), _ = ze(() => (e.value?.filename || "").split(".").pop()?.toLowerCase() || ""), l = ze(() => o.value === "text/csv" || o.value === "text/tab-separated-values" || _.value === "csv" || _.value === "tsv");
+    }, o = ze(() => (e.value?.contentType || "").toLowerCase().split(";")[0].trim()), _ = ze(() => (e.value?.filename || "").split(".").pop()?.toLowerCase() || ""), l = ze(() => o.value === "text/csv" ? "," : o.value === "text/tab-separated-values" ? "	" : o.value && o.value !== "text/plain" && o.value !== "application/octet-stream" ? null : _.value === "tsv" ? "	" : _.value === "csv" ? "," : null);
     function c() {
       return i[o.value] || s[_.value] || "";
     }
@@ -49946,8 +49946,9 @@ const pi = /* @__PURE__ */ gc(Ju), ju = { class: "codev" }, ep = {
 `;
       return g;
     }), E = ze(() => {
-      if (!l.value || !r.value) return [];
-      const S = o.value === "text/tab-separated-values" || _.value === "tsv" ? "	" : ",", g = [];
+      const S = l.value;
+      if (!S || !r.value) return [];
+      const g = [];
       let T = [], b = "", f = !1;
       const I = r.value.replace(/\r\n/g, `
 `);
@@ -49994,7 +49995,7 @@ const pi = /* @__PURE__ */ gc(Ju), ju = { class: "codev" }, ep = {
           "aria-hidden": "true"
         }),
         we("span", null, Ct(a.value), 1)
-      ])) : l.value && E.value.length ? (ve(), ye("div", np, [
+      ])) : E.value.length ? (ve(), ye("div", np, [
         we("table", ap, [
           we("thead", null, [
             we("tr", null, [
@@ -50019,4 +50020,4 @@ const pi = /* @__PURE__ */ gc(Ju), ju = { class: "codev" }, ep = {
 export {
   pp as default
 };
-//# sourceMappingURL=RenderCode-Dt7jxeoT.js.map
+//# sourceMappingURL=RenderCode-B0cCpEWi.js.map
