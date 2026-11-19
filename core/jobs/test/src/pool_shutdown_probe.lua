@@ -8,24 +8,36 @@ local claim = require("claim")
 local claim_execution = require("claim_execution")
 local lifecycle = require("lifecycle")
 
-local function run_slot(): string?
+local function run_slot(observer: string?, topic: string?): string?
+    local release = topic and process.listen(topic .. ".release_idle") or nil
     local events = process.events()
     while true do
         local event, open = events:receive()
         if not open then return nil end
-        if event.kind == process.event.CANCEL then return "cancelled" end
+        if event.kind == process.event.CANCEL then
+            if release and observer and topic then
+                assert(process.send(observer, topic, "idle slot cancelled"))
+                release:receive()
+            end
+            return "cancelled"
+        end
     end
 end
 
 local function run_pool(observer: string, topic: string, blocked_step: string): (any?, error?)
     local slot, spawn_err = process.spawn_linked_monitored("app:pool_shutdown_slot", "app:processes")
     if spawn_err or not slot then error("shutdown probe slot failed: " .. tostring(spawn_err)) end
+    local idle_slot = blocked_step == "late_idle"
+        and assert(process.spawn_linked_monitored("app:pool_shutdown_slot", "app:processes", observer, topic)) or nil
     local gate = channel.new(0)
     local function announce(step: any): ()
         local sent, err = process.send(observer, topic, step)
         if err or not sent then error("shutdown probe report failed: " .. tostring(err)) end
     end
-    local policy = fixture.pool_policy({ worker_count_sqlite = 1, worker_count_postgres = 1, worker_awaited_slots = 0 })
+    local slot_count = idle_slot and 2 or 1
+    local policy = fixture.pool_policy({
+        worker_count_sqlite = slot_count, worker_count_postgres = slot_count, worker_awaited_slots = 0,
+    })
     local job: table = { id = "shutdown-job" }
     local run_id = "shutdown-run"
     local dialect = sql.type.SQLITE
@@ -91,6 +103,8 @@ local function run_pool(observer: string, topic: string, blocked_step: string): 
                             rollback_gate:receive()
                         elseif blocked_step == "database" then
                             announce({ id = job.id, worker = tostring(slot) })
+                        elseif idle_slot then
+                            announce({ assigned = tostring(slot), idle = tostring(idle_slot) })
                         else
                             announce("retention")
                         end
@@ -114,11 +128,12 @@ local function run_pool(observer: string, topic: string, blocked_step: string): 
             end,
         },
     }).main({
-        size = 1, policy = policy, database = dialect,
-        slots = {{
-            slot = 1, pid = tostring(slot), epoch = 1,
-            assignment = not rollback_gate and { job = job, run_id = run_id } or nil,
-        }},
+        size = slot_count, policy = policy, database = dialect,
+        slots = {
+            { slot = 1, pid = tostring(slot), epoch = 1,
+                assignment = not rollback_gate and { job = job, run_id = run_id } or nil },
+            idle_slot and { slot = 2, pid = tostring(idle_slot), epoch = 0 } or nil,
+        },
     })
 end
 
