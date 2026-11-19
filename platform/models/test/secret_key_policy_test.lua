@@ -196,9 +196,9 @@ local function define_tests()
                 test.eq(card.options[name], expected, "card options " .. name)
                 test.eq(card.metadata[name], expected, "card metadata " .. name)
                 local config_expected = (not protected or name:lower():match("_env$")) and value or nil
-                test.eq(profile.config[name], config_expected, "public config " .. name)
-                -- Main separates declared provider secrets by their exact spelling.
+                -- Declared provider secrets use their exact spelling in profile config.
                 if declared_secret_keys[name] then config_expected = nil end
+                test.eq(profile.config[name], config_expected, "public config " .. name)
                 test.eq(clean.config[name], config_expected, "saved config " .. name)
             end
             test.is_true(count >= 15000, "generated corpus size: " .. tostring(count))
