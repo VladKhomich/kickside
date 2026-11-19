@@ -83,4 +83,6 @@ entries:
       - title: Unpacking archive
         func: kickside.uploads.archive:processor
     on_delete:
+      # Owner teardown already visits every member through its own upload row.
       - func: kickside.uploads.archive:on_delete
+        delete_scope: single_upload

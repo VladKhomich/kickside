@@ -997,11 +997,13 @@ entries:
       comment: Library for handling file uploads to configured storage backends.
     source: file://fixtures/uploads.lua
     modules:
+    - funcs
     - uuid
     - time
     - hash
     - logger
     imports:
+      binding_errors: kickside.uploads.binding:binding_errors
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       upload_read_model: kickside.uploads.persist:upload_read_model
