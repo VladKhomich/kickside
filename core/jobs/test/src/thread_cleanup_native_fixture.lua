@@ -29,17 +29,19 @@ function M.database(): any
         if statement:find("FROM kickside_job_thread_cleanup_receipt", 1, true) then
             return M.result(M.mode == "prior" and "previous" or "receipt", {M.row})
         end
-        if statement:find("WHERE id=$1 FOR UPDATE", 1, true) then
-            return M.result(statement:find("FROM kickside_job_run", 1, true) and "lock_run" or "lock_job", {{id = "job"}})
+        if statement:find("ORDER BY id FOR UPDATE", 1, true) then
+            return M.result("lock_job", {{id = "job"}})
         end
-        if statement:find("LIMIT 1", 1, true) then
+        if statement:find("RETURNING status", 1, true) then
+            M.mutations = M.mutations + 1
+            return M.result("mutation_" .. tostring(M.mutations), {{status = "done"}})
+        end
+        if statement:find("SELECT 1 FROM", 1, true) == 1 then
             M.continuations = M.continuations + 1
             return M.result("continuation_" .. tostring(M.continuations), {})
         end
         M.candidates = M.candidates + 1
-        local owned = M.candidates > 2
-        local rows = M.mode == "selected" and {{id = "job", job_id = "parent", status = "done",
-            owner_kind = owned and "thread" or "external", owner_id = owned and "thread" or "external"}} or {}
+        local rows = M.mode == "selected" and {{id = "job-" .. tostring(M.candidates), job_id = "parent"}} or {}
         return M.result("candidate_" .. tostring(M.candidates), rows)
     end
     function db:execute(statement, params)
@@ -49,11 +51,7 @@ function M.database(): any
         elseif statement:find("UPDATE kickside_job_thread_cleanup_receipt", 1, true) then
             stage = M.mode == "prior" and "previous_ack" or "ack_update"
         elseif statement:find("SET started=", 1, true) then stage = "state"
-        elseif statement:find("UPDATE kickside_job_thread_cleanup", 1, true) then stage = "completed"
-        else
-            M.mutations = M.mutations + 1
-            stage = "mutation_" .. tostring(M.mutations)
-        end
+        elseif statement:find("UPDATE kickside_job_thread_cleanup", 1, true) then stage = "completed" end
         return M.result(stage, {rows_affected = 1})
     end
     return db
