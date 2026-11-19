@@ -16,6 +16,7 @@ local fixtures = require("fixtures")
 local sql = require("sql")
 local jobs = require("jobs")
 local claim = require("claim")
+local proc_supervisor = require("proc_supervisor")
 local page_images = require("page_images")
 local contract = require("contract")
 local upload_lib = require("upload_lib")
@@ -265,6 +266,12 @@ local function define_tests()
                 local settings = assert(assert(contract.get("kickside.settings:settings")):open())
                 local previous = assert(settings:get({namespace = "kickside.uploads.rasterize", key = "rasterize_batch_pages"}))
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_batch_pages", value = 1}).success)
+                -- This fixture leases its job directly. Supply the mailbox normally
+                -- owned by the Jobs supervisor so batch progress follows the real fence.
+                local ref = opts.cancel_ref
+                local controls = assert(process.listen(proc_supervisor.CONTROL_TOPIC))
+                local execution = proc_supervisor.execution_name(ref.job_id, ref.lease_token)
+                assert(process.registry.register(execution, nil, process.registry.CONSISTENT))
                 local renders, ocr = 0, 0
                 local get_pipeline, stage_executor = upload_type.get_pipeline, pipeline.upload_stage_executor
                 upload_type.get_pipeline = function() return {{func = "rasterize"}, {func = "enrich"}, {func = "ocr"}} end
@@ -273,6 +280,7 @@ local function define_tests()
                         if stage == "rasterize" then
                             renders = renders + 1
                             local result = assert(funcs.call("kickside.uploads.rasterize:stage", params))
+                            test.is_true(result.success, tostring(result.error))
                             if renders == 1 then
                                 test.is_false(result.completed)
                                 if failure ~= "partial" then
@@ -303,8 +311,20 @@ local function define_tests()
                     test.eq(#images, 2)
                     test.eq(images[1].metadata.page, 1)
                     test.eq(images[2].metadata.page, 2)
+                    local heartbeat_count = failure == "partial" and 3 or 2
+                    for _ = 1, heartbeat_count do
+                        local progress = channel.select({controls:case_receive(), time.after("5s"):case_receive()})
+                        test.eq(progress.channel, controls)
+                        test.eq(progress.value.kind, "heartbeat")
+                        test.eq(progress.value.job_id, ref.job_id)
+                        test.eq(progress.value.lease_token, ref.lease_token)
+                        test.eq(progress.value.execution_seq, ref.execution_seq)
+                    end
+                    test.is_true(channel.select({controls:case_receive(), default = true}).default)
                 end)
                 upload_type.get_pipeline, pipeline.upload_stage_executor = get_pipeline, stage_executor
+                assert(process.registry.unregister(execution, process.registry.CONSISTENT))
+                process.unlisten(controls)
                 test.is_true(settings:set({namespace = "kickside.uploads.rasterize", key = "rasterize_batch_pages", value = previous.value}).success)
                 assert(storage:remove(upload.storage_path))
                 if not ok then error(err) end
