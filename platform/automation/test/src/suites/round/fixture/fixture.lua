@@ -446,7 +446,8 @@ function M.record_keys(request: any): (any, any)
         keys[#keys + 1] = item.key
     end
     local next_cursor = from + #keys
-    return { success = true, keys = keys, next_cursor = next_cursor, has_more = next_cursor < #all }, nil
+    return { success = true, keys = keys, next_cursor = next_cursor, has_more = next_cursor < #all,
+        retry_after_ms = config.retry_after_ms }, nil
 end
 
 
