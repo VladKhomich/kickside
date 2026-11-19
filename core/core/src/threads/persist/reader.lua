@@ -421,7 +421,8 @@ function reader.find_event_by_external(
     event_type: string,
     external_source: string,
     external_id: string,
-    external_version: string?
+    external_version: string?,
+    latest: boolean?
 ): (table?, error?)
     local id = trim(thread_id)
     local kind = trim(event_type)
@@ -433,20 +434,34 @@ function reader.find_event_by_external(
     local _, gate_err = gate_read(db_or_tx, id, (masks.ACCESS.READ :: integer))
     if gate_err then return nil, gate_err end
 
-    local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
-        :from("kickside_event")
-        :where(sql.builder.eq({
-            thread_id = id,
-            type = kind,
-            external_source = source,
-            external_id = external_key,
-        }))
-    if external_version ~= nil then
-        query = query:where(sql.builder.eq({ external_version = external_version }))
+    local rows, query_err
+    if latest then
+        -- Resolve the sequence through the scoped external-identity index before
+        -- fetching the payload. Ordering the outer rows by sequence makes the
+        -- planner consider walking unrelated events in a busy thread.
+        rows, query_err = db_or_tx:query("SELECT " .. table.concat(EVENT_COLUMNS, ", ") .. [[
+            FROM kickside_event
+            WHERE thread_id = $1 AND seq = (
+                SELECT max(seq) FROM kickside_event
+                WHERE thread_id = $1 AND type = $2 AND external_source = $3 AND external_id = $4
+                GROUP BY thread_id, type, external_source, external_id
+            )]], { id, kind, source, external_key })
     else
-        query = query:where(sql.builder.expr("external_version IS NULL"))
+        local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
+            :from("kickside_event")
+            :where(sql.builder.eq({
+                thread_id = id,
+                type = kind,
+                external_source = source,
+                external_id = external_key,
+            }))
+        if external_version ~= nil then
+            query = query:where(sql.builder.eq({ external_version = external_version }))
+        else
+            query = query:where(sql.builder.expr("external_version IS NULL"))
+        end
+        rows, query_err = query:limit(1):run_with(db_or_tx):query()
     end
-    local rows, query_err = query:limit(1):run_with(db_or_tx):query()
     local read_err = rows_error(rows, query_err, "failed to find external event", "external.rows")
     if read_err then return nil, read_err end
     local event = rows[1]

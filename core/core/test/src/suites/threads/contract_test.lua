@@ -355,6 +355,49 @@ local function define_tests()
             test.not_nil(denied_err)
         end)
 
+        test.it("finds the newest retained revision within the authorized external identity", function()
+            local target = as_owner(CREATE, { thread_class = "ct_latest_" .. suffix,
+                impl_id = "app:threads_test_event_kind" }).thread_id
+            local other = as_owner(CREATE, { thread_class = "ct_latest_peer_" .. suffix,
+                impl_id = "app:threads_test_event_kind" }).thread_id
+            local function publish(thread_id, source, version, value)
+                local receipt, err = publish_as_owner({ thread_id = thread_id, event = {
+                    type = "app:threads_test_external", role = "system", body = { value = value },
+                    external = { external_source = source, external_id = "shared", external_version = version },
+                } })
+                test.is_nil(err)
+                test.eq(receipt.inserted, 1)
+            end
+            publish(target, "retained", "v9", "earlier")
+            publish(target, "retained", "v1", "latest")
+            publish(target, "other-source", "v2", "foreign source")
+            publish(other, "retained", "v9", "foreign thread")
+            publish(other, "retained", "v1", "foreign thread")
+            publish(other, "retained", "v3", "foreign thread")
+
+            local request = { thread_id = target, event_type = "app:threads_test_external",
+                external_source = "retained", external_id = "shared" }
+            local unversioned, unversioned_err = as_owner(FIND_EXTERNAL, request)
+            test.is_nil(unversioned_err)
+            test.is_nil(unversioned.event)
+            request.latest = true
+            local found, found_err = as_owner(FIND_EXTERNAL, request)
+            test.is_nil(found_err)
+            test.not_nil(found.event)
+            test.eq(found.event.thread_id, target)
+            test.eq(found.event.external_version, "v1")
+            test.eq(assert(json.decode(found.event.body)).value, "latest")
+            local _, denied_err = run_as(stranger, FIND_EXTERNAL, request)
+            test.eq(denied_err:kind(), errors.PERMISSION_DENIED)
+            request.external_id = "missing"
+            local missing, missing_err = as_owner(FIND_EXTERNAL, request)
+            test.is_nil(missing_err)
+            test.is_nil(missing.event)
+            request.external_version = "v9"
+            local _, mixed_err = as_owner(FIND_EXTERNAL, request)
+            test.eq(mixed_err:kind(), errors.INVALID)
+        end)
+
         test.it("append_event stores typed events and wakes through the durable writer", function()
             local created = as_owner(CREATE, { thread_class = "ct_append_" .. suffix,
                 impl_id = "app:threads_test_event_kind" })
