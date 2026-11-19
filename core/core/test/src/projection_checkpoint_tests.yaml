@@ -1,0 +1,16 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: projection_checkpoint_test
+    kind: function.lua
+    meta: {type: test, suite: core_projection_checkpoint}
+    source: file://projection_checkpoint_test.lua
+    method: run
+    modules: [sql, json, uuid, time]
+    imports:
+      apply: kickside.core.projections:apply
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
+      job_types: kickside.core.jobs:types
+      projections: kickside.core.projections.persist:writer
+      test: wippy.test:test

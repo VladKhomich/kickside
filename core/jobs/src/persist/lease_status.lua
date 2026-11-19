@@ -16,7 +16,8 @@ end
 -- cancel took leaves this attempt's run row running, and a reclaim closes it
 -- as lease_lost; both read as lost. run_id is the claimed attempt's run row; without it
 -- only the lease row is consulted.
-local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?, run_id: string?): (boolean, error?, string?)
+local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?, run_id: string?,
+        lock: boolean?): (boolean, error?, string?)
     local id = tostring(job.id or "")
     local lease_token = tostring(job.lease_token or "")
     local execution_seq = tonumber(job.execution_seq)
@@ -24,7 +25,7 @@ local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?
         return false, (errors.new({ message = "job id, lease token, and execution sequence required", kind = errors.INVALID }) :: error)
     end
     local now = clock.now(dbtype or sql.type.SQLITE)
-    local rows, err = sql.builder.select("id", "lease_until")
+    local query = sql.builder.select("id", "lease_until")
         :from("kickside_job")
         :where(sql.builder.eq({ id = id, status = job_types.JOB_STATE.RUNNING,
             lease_token = lease_token, execution_seq = execution_seq }))
@@ -32,8 +33,8 @@ local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?
         :where("(last_error IS NULL OR substr(last_error, 1, ?) <> ?)",
             #job_types.TERMINATION_PENDING_PREFIX, job_types.TERMINATION_PENDING_PREFIX)
         :limit(1)
-        :run_with(db_or_tx)
-        :query()
+    if lock and dbtype == sql.type.POSTGRES then query = query:suffix("FOR UPDATE") end
+    local rows, err = query:run_with(db_or_tx):query()
     if err then
         return false, errors.wrap(err, "job active check failed")
     end
@@ -72,5 +73,10 @@ local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?
     return false, nil, nil
 end
 lease_status.job_still_running = job_still_running
+
+function lease_status.lock_active_tx(tx: sql.Transaction, job: table, dbtype: string): (boolean, error?)
+    local active, err = job_still_running(tx, job, dbtype, nil, true)
+    return active, err
+end
 
 return lease_status
