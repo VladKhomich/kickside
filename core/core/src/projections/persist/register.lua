@@ -59,6 +59,13 @@ local function trim(value: any): string
     return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
+local function declaration_key(value: any): string
+    local key = trim(value)
+    return key ~= "" and key or types.KEY_DEFAULT
+end
+
+writer.declaration_key = declaration_key
+
 local now_string = clock.now
 
 -- The projection body contains two different kinds of state: the declaration
@@ -71,6 +78,23 @@ local DECLARATION_BODY_KEYS = {
     "events",
     "drop_notify",
 }
+
+-- Select only the declaration JSON from each addressed row. Keep nested nulls
+-- and the shapes of JSON arrays and objects in the selected fields.
+function writer.declaration_fields_sql(dialect: string, body_column: string): string
+    local postgres = dialect == sql.type.POSTGRES
+    local fields = {}
+    for _, key in ipairs(DECLARATION_BODY_KEYS) do
+        fields[#fields + 1] = "'" .. key .. "'," .. body_column .. " -> '" .. key .. "'"
+    end
+    local build = (postgres and "jsonb_build_object(" or "json_object(") .. table.concat(fields, ",") .. ")"
+    if postgres then
+        return "CASE jsonb_typeof(" .. body_column .. ") WHEN 'object' THEN " .. build
+            .. " WHEN 'array' THEN '{}'::jsonb END"
+    end
+    return "CASE WHEN json_valid(" .. body_column .. ") THEN CASE json_type(" .. body_column
+        .. ") WHEN 'object' THEN " .. build .. " WHEN 'array' THEN '{}' END END"
+end
 
 local function apply_declaration_fields(target: table, declaration: table): table
     for _, key in ipairs(DECLARATION_BODY_KEYS) do
@@ -94,6 +118,63 @@ local function same_declaration(a: any, b: any): boolean
     return true
 end
 
+function writer.declaration_body(params: table): (table?, error?)
+    local worker_ref = trim(params.worker_ref)
+    if worker_ref == "" then
+        return nil, (errors.new({ message = "worker_ref is required", kind = errors.INVALID }) :: error)
+    end
+    -- Runtime is part of worker_ref's canonical wire format, never a second
+    -- caller-controlled routing decision.
+    local worker_runtime
+    if string.sub(worker_ref, 1, #types.WORKER_SCHEME.PROC) == types.WORKER_SCHEME.PROC then
+        worker_runtime = types.WORKER_RUNTIME.PROC
+    elseif string.sub(worker_ref, 1, #types.WORKER_SCHEME.FUNC) == types.WORKER_SCHEME.FUNC then
+        worker_runtime = types.WORKER_RUNTIME.FUNC
+    else
+        return nil, (errors.new({ message = "worker_ref must use func:// or proc:// scheme", kind = errors.INVALID }) :: error)
+    end
+    local declared_runtime = trim(params.worker_runtime)
+    if declared_runtime ~= "" and declared_runtime ~= worker_runtime then
+        return nil, (errors.new({
+            message = "worker_runtime conflicts with worker_ref scheme: " .. declared_runtime .. " vs " .. worker_runtime,
+            kind = errors.INVALID,
+        }) :: error)
+    end
+    local worker_input_mode = trim(params.worker_input_mode)
+    if worker_input_mode == "" then
+        worker_input_mode = types.WORKER_INPUT_MODE_DEFAULT
+    end
+    if worker_input_mode ~= types.WORKER_INPUT_MODE.PREFETCH_EVENTS and worker_input_mode ~= types.WORKER_INPUT_MODE.CURSOR_ONLY then
+        return nil, (errors.new({ message = "worker_input_mode must be one of: prefetch_events, cursor_only", kind = errors.INVALID }) :: error)
+    end
+
+    local body = {
+        meta = {
+            worker_ref = worker_ref,
+            worker_runtime = worker_runtime,
+            worker_input_mode = worker_input_mode,
+        },
+    }
+    if type(params.worker_config) == "table" then
+        body.worker_config = params.worker_config
+    end
+    if type(params.events) == "table" then
+        body.events = params.events
+    end
+    -- drop_notify is a subscriber-declared teardown hook: { thread_id, type, body }.
+    -- When the thread this projection lives on is torn down, the threads slice appends
+    -- the declared typed event to thread_id so the subscriber surfaces the loss of its
+    -- source through its own read model. A declaration field, like worker_config.
+    if type(params.drop_notify) == "table" then
+        body.drop_notify = params.drop_notify
+    end
+    return body, nil
+end
+
+function writer.declaration_matches(stored: table, declared: table): boolean
+    return same_declaration(apply_declaration_fields({}, stored), apply_declaration_fields({}, declared))
+end
+
 local function bounded(value: any, name: string, min_value: integer,
     max_value: integer, fallback: integer): (integer?, error?)
     if value == nil then return fallback, nil end
@@ -102,6 +183,27 @@ local function bounded(value: any, name: string, min_value: integer,
         return nil, (errors.new({ message = name .. " is outside its integer range", kind = errors.INVALID }) :: error)
     end
     return value :: integer, nil
+end
+
+function writer.debounce(params: table): (number?, number?, error?)
+    local idle, idle_err = bounded(params.debounce_idle_ms, "debounce_idle_ms", 0, types.DEBOUNCE_MAX_MS, 0)
+    if idle_err then return nil, nil, idle_err end
+    local maximum, max_err = bounded(params.debounce_max_ms, "debounce_max_ms", 0, types.DEBOUNCE_MAX_MS, 0)
+    if max_err then return nil, nil, max_err end
+    if idle > 0 and maximum == 0 then
+        return nil, nil, errors.new({ message = "debounce_idle_ms requires debounce_max_ms", kind = errors.INVALID })
+    end
+    return idle, maximum, nil
+end
+
+function writer.declaration_refusal(thread_id: string, projection_id: string,
+    kind: string, projection_key: string, cursor_key: string): error
+    return errors.new({kind = errors.CONFLICT, retryable = false,
+        message = "projection " .. kind .. "/" .. projection_key .. " cursor " .. cursor_key
+            .. " has a different stored declaration; explicitly re-register or reset the projection",
+        details = {code = "projection_declaration_requires_registration", thread_id = thread_id,
+            projection_id = projection_id, projection_kind = kind, projection_key = projection_key,
+            cursor_key = cursor_key, action = "explicit_reregistration_or_reset"}})
 end
 
 -- The execution identity a projection registration carries (IDENTITY-1 §4 T
@@ -136,9 +238,10 @@ end
 -- thread row, upserts the projection (merging the body's read-model on
 -- re-register unless reset=true), and upserts the cursor. No tx management:
 -- the caller begins and commits; on error the caller rolls back. Declaration
--- convergence passes ensure=true to refresh declarations while preserving the
--- fold and cursor state. A changed declaration fences previously loaded workers.
-function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table): (RegisterResult?, error?)
+-- convergence refuses drift on existing cursors. Lifecycle attachments start new
+-- cursors at the retained boundary.
+function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table,
+    mode: string?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -157,43 +260,13 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         return nil, (errors.new({ message = "kind is too long (max " .. tostring(types.KIND_MAX_LEN) .. ")", kind = errors.INVALID }) :: error)
     end
 
-    local worker_ref = trim(params.worker_ref)
-    if worker_ref == "" then
-        return nil, (errors.new({ message = "worker_ref is required", kind = errors.INVALID }) :: error)
-    end
-    -- Runtime is part of worker_ref's canonical wire format, never a second
-    -- caller-controlled routing decision.
-    local worker_runtime
-    if string.sub(worker_ref, 1, #types.WORKER_SCHEME.PROC) == types.WORKER_SCHEME.PROC then
-        worker_runtime = types.WORKER_RUNTIME.PROC
-    elseif string.sub(worker_ref, 1, #types.WORKER_SCHEME.FUNC) == types.WORKER_SCHEME.FUNC then
-        worker_runtime = types.WORKER_RUNTIME.FUNC
-    else
-        return nil, (errors.new({ message = "worker_ref must use func:// or proc:// scheme", kind = errors.INVALID }) :: error)
-    end
-    local declared_runtime = trim(params.worker_runtime)
-    if declared_runtime ~= "" and declared_runtime ~= worker_runtime then
-        return nil, (errors.new({
-            message = "worker_runtime conflicts with worker_ref scheme: " .. declared_runtime .. " vs " .. worker_runtime,
-            kind = errors.INVALID,
-        }) :: error)
-    end
-    local worker_input_mode = trim(params.worker_input_mode)
-    if worker_input_mode == "" then
-        worker_input_mode = types.WORKER_INPUT_MODE_DEFAULT
-    end
-    if worker_input_mode ~= types.WORKER_INPUT_MODE.PREFETCH_EVENTS and worker_input_mode ~= types.WORKER_INPUT_MODE.CURSOR_ONLY then
-        return nil, (errors.new({ message = "worker_input_mode must be one of: prefetch_events, cursor_only", kind = errors.INVALID }) :: error)
-    end
+    local body, declaration_err = writer.declaration_body(params)
+    if declaration_err then return nil, declaration_err end
+    local worker_ref = body.meta.worker_ref
+    local worker_input_mode = body.meta.worker_input_mode
 
-    local projection_key = trim(params.projection_key)
-    if projection_key == "" then
-        projection_key = types.KEY_DEFAULT
-    end
-    local cursor_key = trim(params.cursor_key)
-    if cursor_key == "" then
-        cursor_key = types.KEY_DEFAULT
-    end
+    local projection_key = declaration_key(params.projection_key)
+    local cursor_key = declaration_key(params.cursor_key)
     for _, key in ipairs({ projection_key, cursor_key }) do
         if #key > types.KEY_MAX_LEN then
             return nil, (errors.new({ message = "projection/cursor key is too long (max " .. tostring(types.KEY_MAX_LEN) .. ")", kind = errors.INVALID }) :: error)
@@ -202,15 +275,10 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local start_seq, start_err = bounded(params.start_seq, "start_seq",
         types.START_SEQ.MIN, types.START_SEQ.MAX, types.START_SEQ.MIN)
     if start_err then return nil, start_err end
-    local debounce_idle_ms, idle_err = bounded(params.debounce_idle_ms, "debounce_idle_ms",
-        0, types.DEBOUNCE_MAX_MS, 0)
-    if idle_err then return nil, idle_err end
-    local debounce_max_ms, max_err = bounded(params.debounce_max_ms, "debounce_max_ms",
-        0, types.DEBOUNCE_MAX_MS, 0)
-    if max_err then return nil, max_err end
-    if (debounce_idle_ms :: integer) > 0 and (debounce_max_ms :: integer) == 0 then
-        return nil, (errors.new({ message = "debounce_idle_ms requires debounce_max_ms", kind = errors.INVALID }) :: error)
-    end
+    local debounce_idle_ms, debounce_max_ms, debounce_err = writer.debounce(params)
+    if debounce_err then return nil, debounce_err end
+    local convergence = mode == "convergence" or mode == "lifecycle_convergence"
+    local lifecycle = mode == "lifecycle" or mode == "lifecycle_convergence"
     local reset = params.reset == true
 
     local now = now_string(dbtype)
@@ -245,6 +313,8 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     -- "head" is race-free; an explicit start_seq still wins.
     if params.start_at_head == true and params.start_seq == nil then
         start_seq = event_count
+    elseif lifecycle and params.start_seq == nil then
+        start_seq = math.max(start_seq, pruned_seq)
     end
     if start_seq > event_count then
         return fail("start_seq cannot exceed thread event_count", errors.INVALID)
@@ -268,26 +338,6 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         actor_context_col = (id_row :: any).actor_context :: string?
     end
 
-    local body = {
-        meta = {
-            worker_ref = worker_ref,
-            worker_runtime = worker_runtime,
-            worker_input_mode = worker_input_mode,
-        },
-    }
-    if type(params.worker_config) == "table" then
-        body.worker_config = params.worker_config
-    end
-    if type(params.events) == "table" then
-        body.events = params.events
-    end
-    -- drop_notify is a subscriber-declared teardown hook: { thread_id, type, body }.
-    -- When the thread this projection lives on is torn down, the threads slice appends
-    -- the declared typed event to thread_id so the subscriber surfaces the loss of its
-    -- source through its own read model. A declaration field, like worker_config.
-    if type(params.drop_notify) == "table" then
-        body.drop_notify = params.drop_notify
-    end
     local body_json, body_encode_err = json.encode(body)
     if body_encode_err then return nil, errors.wrap(body_encode_err, "failed to encode projection body") end
     if not body_json then
@@ -297,7 +347,8 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local projection_id: string
     local created_projection = false
     local declaration_changed = false
-    local projection_rows, projection_query_err = sql.builder.select("id", "body")
+    local checkpoint = start_seq
+    local projection_rows, projection_query_err = sql.builder.select("id", "body", "last_event_seq")
         :from("kickside_projection")
         :where(sql.builder.eq({ thread_id = thread_id, kind = kind, projection_key = projection_key }))
         :limit(1)
@@ -309,6 +360,11 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     if #projection_rows > 0 then
         projection_id = tostring(projection_rows[1].id)
+        if lifecycle and not reset and params.start_seq == nil and params.start_at_head ~= true then
+            local saved = tonumber(projection_rows[1].last_event_seq)
+            if saved == nil then return nil, response_error("projection.last_event_seq") end
+            checkpoint = math.max(start_seq, saved)
+        end
         -- Preserve the fold read-model that lives alongside the declaration in the
         -- body. The worker folds its accumulated public state (counters, status)
         -- into top-level body keys; only meta / worker_config / events are declaration fields. A re-register (binding hot-reload,
@@ -320,8 +376,18 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         if not reset then
             local merged, decode_err = persisted_json.decode_table(projection_rows[1].body, "kickside_projection.body")
             if decode_err then return nil, errors.wrap(decode_err, "failed to decode existing projection body") end
-            local stored_declaration = apply_declaration_fields({}, merged :: table)
-            declaration_changed = not same_declaration(stored_declaration, apply_declaration_fields({}, body))
+            declaration_changed = not writer.declaration_matches(merged :: table, body)
+            if convergence and declaration_changed then
+                -- One body is shared by every cursor at this projection address.
+                local existing, existing_err = sql.builder.select("id"):from("kickside_projection_cursor")
+                    :where(sql.builder.eq({projection_id = projection_id})):limit(1):run_with(tx):query()
+                existing, existing_err = sql_boundary.bounded_rows(existing, existing_err,
+                    "failed to check existing projection cursors", "cursor.existing", 0, 1, response_error)
+                if existing_err then return nil, existing_err end
+                if #existing > 0 then
+                    return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
+                end
+            end
             apply_declaration_fields(merged :: table, body)
             local merged_json, merged_err = json.encode(merged)
             if merged_err then return nil, errors.wrap(merged_err, "failed to encode merged projection body") end
@@ -384,7 +450,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     end
 
-    if declaration_changed then
+    if declaration_changed and not convergence then
         local fenced, fence_err = sql.builder.update("kickside_projection_cursor")
             :set("generation", sql.builder.expr("generation + 1")):set("updated_at", now)
             :where(sql.builder.eq({ projection_id = projection_id })):run_with(tx):exec()
@@ -396,7 +462,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     local cursor_id: string
     local generation = 1
-    local cursor_rows, cursor_query_err = sql.builder.select("id", "last_seq", "generation", "job_id")
+    local cursor_rows, cursor_query_err = sql.builder.select("id", "last_seq", "generation", "job_id", "debounce_idle_ms", "debounce_max_ms")
         :from("kickside_projection_cursor")
         :where(sql.builder.eq({ projection_id = projection_id, cursor_key = cursor_key }))
         :limit(1):run_with(tx):query()
@@ -404,8 +470,13 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         "failed to load cursor", "cursor.rows", 0, 1, response_error)
     if cursor_query_err then return nil, cursor_query_err end
     if not cursor_rows then return nil, response_error("cursor.rows") end
-    local cursor_head = start_seq
+    local cursor_head = checkpoint
     if #cursor_rows > 0 then
+        local cursor = cursor_rows[1]
+        if convergence and (tonumber(cursor.debounce_idle_ms) ~= debounce_idle_ms
+            or tonumber(cursor.debounce_max_ms) ~= debounce_max_ms) then
+            return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
+        end
         cursor_id = tostring(cursor_rows[1].id)
         cursor_head = reset and start_seq or tonumber(cursor_rows[1].last_seq)
         if cursor_head == nil then return fail("projection cursor position is missing", errors.INTERNAL) end
@@ -436,11 +507,11 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             if proof_err then return nil, proof_err end
         end
     else
-        if start_seq < pruned_seq then return fail("projection registration would replay pruned history", errors.CONFLICT) end
+        if cursor_head < pruned_seq then return fail("projection registration would replay pruned history", errors.CONFLICT) end
         cursor_id = uuid.v7()
         local inserted, insert_err = sql.builder.insert("kickside_projection_cursor")
             :set_map({ id = cursor_id, projection_id = projection_id, thread_id = thread_id,
-                cursor_key = cursor_key, generation = 1, last_seq = start_seq,
+                cursor_key = cursor_key, generation = 1, last_seq = cursor_head,
                 status = "active", debounce_idle_ms = debounce_idle_ms,
                 debounce_max_ms = debounce_max_ms, actor_id = actor_id_col,
                 execution_identity_json = actor_context_col,
@@ -506,11 +577,11 @@ end
 -- register_projection upserts a projection and its cursor, opening and
 -- committing its own transaction off db. On error it rolls back and returns
 -- the error. Delegates to register_projection_tx for the core SQL.
-function writer.register_projection(db: sql.DB, thread_id: string, params: table): (RegisterResult?, error?)
+function writer.register_projection(db: sql.DB, thread_id: string, params: table, mode: string?): (RegisterResult?, error?)
     local dbtype, dbtype_err = sql_boundary.database_type(db, "failed to resolve db type", "database.type", response_error)
     if dbtype_err then return nil, dbtype_err end
     local result, err = sql_boundary.transaction(db, function(tx: sql.Transaction): (any?, error?)
-        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params)
+        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode)
     end, "projection registration", response_error)
     if err then return nil, err end
     local _, notify_err = jobs_wake.nudge_workers(db, dbtype)

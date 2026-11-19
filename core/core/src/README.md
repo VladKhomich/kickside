@@ -164,3 +164,23 @@ Thread deletion removes its own projection cursors and their blocked-input pins;
 those local pins do not require a surviving consumer's deletion fence. The fence
 pages raw pins before checking local cursor ownership by primary key, so pages
 advance through local pins with bounded work.
+
+## Declared projection convergence
+
+After Core's migrations are current, lifecycle boot checks declared projections
+on the component's primary thread or, for `on: lifecycle`, its lifecycle thread.
+Child lifecycle projections attach when the child emits its lifecycle events.
+A new lifecycle projection begins at the last pruned sequence and consumes the
+remaining events. If its projection row still holds a fold, a replacement
+cursor resumes at the later of the fold's checkpoint and the retention boundary.
+
+Each pass examines up to 256 owners by indexed key range. Disabled Jobs slots
+are restored in pages of up to 100. Boot resumes these pages between service
+events. Each repair commits before convergence moves to another projection or
+owner.
+
+A declaration that differs from a stored cursor is reported as
+`projection_declaration_requires_registration`. The report identifies the
+projection and cursor. Explicitly re-register to resume at the committed
+sequence, activate the cursor and clear its error. Request a reset to rebuild
+from a retained sequence.
