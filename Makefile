@@ -102,17 +102,18 @@ test:
 	@case " $(UI_KIT_CONSUMERS) " in *" $(MOD) "*) $(MAKE) ui-kit MOD=$(MOD) || exit 1;; esac
 	cd $(call fe_dir,$(MOD)) && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npm test $(TEST_IF_PRESENT) -- $(TEST_ARGS)
 
+# A targeted install materializes the locked UI Kit into the consumer.
 ui-kit:
 	@test -n "$(MOD)" || { echo "ui-kit needs MOD=<module>"; exit 1; }
 	@set -e; \
-	wapp="$(UI_KIT_WAPP)"; \
-	if [ -z "$$wapp" ]; then \
-	  ( cd $(UI_KIT_BUILD_INPUTS) && $(WIPPY_BIN) update --src-dir src ); \
-	  wapp=$$(ls $(UI_KIT_BUILD_INPUTS)/.wippy/vendor/kickside/ui-kit-*.wapp 2>/dev/null | grep -v sha256 | sort | tail -1); \
+	root="$(CURDIR)/$(call fe_dir,$(MOD))/.wippy"; \
+	if [ -n "$(UI_KIT_WAPP)" ]; then \
+	  "$(WIPPY_BIN)" artifacts materialize "$(UI_KIT_WAPP)" kickside.ui_kit:package_fs --root "$$root"; \
+	else \
+	  ( cd "$(UI_KIT_BUILD_INPUTS)" && "$(WIPPY_BIN)" update --src-dir src && \
+	    "$(WIPPY_BIN)" install kickside/ui-kit --set "artifact.materialization_root=$$root" ); \
 	fi; \
-	test -n "$$wapp" || { echo "no kickside/ui-kit .wapp; is the module published?"; exit 1; }; \
-	$(WIPPY_BIN) artifacts materialize "$$wapp" kickside.ui_kit:package_fs --root $(call fe_dir,$(MOD))/.wippy; \
-	cd $(call fe_dir,$(MOD)) && node $(CURDIR)/scripts/wire-ui-kit.mjs && npm install --no-audit --no-fund
+	cd $(call fe_dir,$(MOD)) && node "$(CURDIR)/scripts/wire-ui-kit.mjs" && npm install --no-audit --no-fund
 
 # Facade CSS assembler (app-level, no node_modules needed): concatenates
 # app/facade-src/{custom,children}/*.css into app/static/*.facade.generated.css.
