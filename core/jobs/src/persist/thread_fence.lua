@@ -51,6 +51,44 @@ function M.lock(tx: sql.Transaction, thread_id: string): (table?, error?)
     return states[thread_id], nil
 end
 
+-- Linked producers can append a Core event later in the same transaction.
+-- A nonblocking lock avoids waiting on them with Core thread rows held.
+function M.lock_link(tx: sql.Transaction, dbtype: string, thread_id: string, cleanup: boolean): error?
+    if dbtype ~= sql.type.POSTGRES then
+        if cleanup then return nil end
+        -- Start writing before reading a fence on SQLite. No fence is created
+        -- for an independent link, and the cleanup transaction also writes.
+        local _, err = tx:execute("UPDATE " .. M.TABLE .. " SET started=started WHERE FALSE")
+        return err and errors.wrap(err, "thread link fence lock failed") or nil
+    end
+
+    local acquire = cleanup and "pg_try_advisory_xact_lock" or "pg_try_advisory_xact_lock_shared"
+    local rows, err = tx:query("SELECT " .. acquire
+        .. "(hashtextextended('kickside.core.jobs:thread-link:' || $1,0)) AS acquired", { thread_id })
+    if err then return errors.wrap(err, "thread link fence lock failed") end
+    if type(rows) ~= "table" or not rows[1] or type(rows[1].acquired) ~= "boolean" then
+        return invalid_response("link_lock", thread_id)
+    end
+    if not rows[1].acquired then
+        return errors.new({ message = "thread link write and cleanup are concurrent",
+            kind = errors.CONFLICT, retryable = true, details = {
+                code = "job_thread_link_busy", thread_id = thread_id,
+                cleanup_pending = cleanup, needs_continue = cleanup,
+            } })
+    end
+    return nil
+end
+
+function M.admit_link(tx: sql.Transaction, dbtype: string, thread_id: string): (string?, error?)
+    local lock_err = M.lock_link(tx, dbtype, thread_id, false)
+    if lock_err then return nil, lock_err end
+    local rows, err = tx:query("SELECT started FROM " .. M.TABLE .. " WHERE thread_id=$1", { thread_id })
+    if err then return nil, errors.wrap(err, "thread link fence read failed") end
+    if type(rows) ~= "table" then return nil, invalid_response("link_rows", thread_id) end
+    if rows[1] and flag(rows[1].started) then return nil, nil end
+    return thread_id, nil
+end
+
 -- admit(tx, owner, operation) refuses new work for a thread owner whose
 -- cleanup has started. Other owners carry no fence.
 function M.admit(tx: sql.Transaction, owner: table, operation: string): error?

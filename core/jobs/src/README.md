@@ -115,6 +115,8 @@ concurrency keys from its claimable backlog.
 
 `jobs.enqueue` and `jobs.enqueue_tx` accept optional `demand = true` with `slot = true`. Enrollment and control demand commit together: parked work becomes due, and a running attempt retains a follow-up. Reusing an active one-shot identity with demand returns a conflict. Omitting demand retains the existing enqueue behavior.
 
+An independent job's optional `thread_id` is omitted when a retained fence shows that thread cleanup has started. The job retains its own owner, canonical identity, and payload. A write that overlaps an in-progress cleanup transaction can return a retryable conflict before admission.
+
 `jobs.enqueue` and `jobs.enqueue_tx` accept optional boolean `replace`. Identical
 immutable inputs return the existing job. With `replace = true`, different inputs
 for a pending job owned by the same owner cancel the predecessor and insert its

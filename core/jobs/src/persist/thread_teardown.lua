@@ -242,6 +242,8 @@ function M.page_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_
     if page_seq ~= next_seq then
         return nil, sequence_error(next_seq, page_seq)
     end
+    local link_err = thread_fence.lock_link(tx, dbtype, thread_id, true)
+    if link_err then return nil, link_err end
     if page_seq > 0 then
         -- Older Core writers and standalone callers can advance without
         -- acknowledging their previous page.

@@ -276,6 +276,7 @@ entries:
       completion: kickside.core.jobs.persist:completion
       retention: kickside.core.jobs.persist:retention
       thread_teardown: kickside.core.jobs.persist:thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: kickside.core.jobs.api:scope
       lease_release: kickside.core.jobs:lease_release
       claim: kickside.core.jobs.persist:claim
