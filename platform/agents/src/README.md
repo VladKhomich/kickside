@@ -22,6 +22,7 @@ CRUD API.
 - **Registry discovery** — built-in agent entries can be contributed by the app
   or any installed module via `agent.gen1` registry entries.
 - **HTTP API** — `/user-agents` CRUD + `/agents/{list,traits,tools}` discovery.
+- **Chat discovery** — `GET /agents/details?agent=<id-or-name>` returns basic agent details and any declared start prompts. It uses component read access for user agents and public visibility for registry agents. `GET /tools/by-name?tools=<names>` returns titles for public tools by registry ID or unambiguous tool name.
 
 ## Requirements
 

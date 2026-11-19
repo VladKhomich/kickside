@@ -206,6 +206,8 @@ sharing that queue has been upgraded to support capacity enforcement.
 
 `jobs.complete_tx` accepts optional `demand_satisfied = true` when the worker proves under its durable source lock that the completed run covers the source head. It consumes ordinary demand received during that run; independent control wakes still rearm the slot. Omission retains the existing demand behavior.
 
+When a successful reusable slot schedules optional future work with `rearm`, it can also set `rearm_on_demand = true`. A new ordinary wake brings that slot forward if its deadline is still in the future. This lets an event consumer wait for an item retry while remaining ready for new input. Omit the option for fixed deadlines such as source backoff or projection debounce. `rearm_on_demand` cannot be combined with `defer_demand` or parking. Existing deadlines retain the behavior they were written with until the slot next completes.
+
 Failure transitions accept an optional final `{ retry_after_ms = milliseconds }`
 argument on `fail_tx` and `fail_job`. The structured floor can exceed the policy
 cap. Slots use `slot_retry`; one-shot jobs use `retry`. Both retain their configured

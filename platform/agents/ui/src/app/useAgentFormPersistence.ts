@@ -5,6 +5,7 @@ import type { Form, Model } from './agent-form.types.ts'
 
 interface AgentFormPersistenceOptions {
   form: Ref<Form>
+  maxTokens: ComputedRef<number | '' | undefined>
   valid: ComputedRef<boolean>
   tab: Ref<string>
   blank: (includeCreateDefaults?: boolean) => Form
@@ -15,7 +16,7 @@ interface AgentFormPersistenceOptions {
   emitSaved: (id: string) => void
 }
 
-export function useAgentFormPersistence({ form, valid, tab, blank, agentId, parentId, models, redirectTrait, emitSaved }: AgentFormPersistenceOptions) {
+export function useAgentFormPersistence({ form, maxTokens, valid, tab, blank, agentId, parentId, models, redirectTrait, emitSaved }: AgentFormPersistenceOptions) {
   const loading = ref(false)
   const saving = ref(false)
   const error = ref('')
@@ -31,7 +32,7 @@ export function useAgentFormPersistence({ form, valid, tab, blank, agentId, pare
           title: d.title || '', description: d.description || '', icon: d.icon || 'tabler:robot', public: d.public === true,
           prompt: d.prompt || '', model: d.model || models()[0]?.name || '',
           temperature: typeof d.temperature === 'number' ? d.temperature : null,
-          max_tokens: typeof d.max_tokens === 'number' ? d.max_tokens : 8000,
+          max_tokens: typeof d.max_tokens === 'number' ? d.max_tokens : null,
           thinking_effort: typeof d.thinking_effort === 'number' ? d.thinking_effort : null,
           traits: Array.isArray(d.traits) ? [...d.traits] : [],
           trait_contexts: d.trait_contexts && typeof d.trait_contexts === 'object' ? { ...d.trait_contexts } : {},
@@ -73,7 +74,6 @@ export function useAgentFormPersistence({ form, valid, tab, blank, agentId, pare
       prompt: form.value.prompt,
       model: form.value.model,
       temperature: form.value.temperature ?? false,
-      max_tokens: form.value.max_tokens,
       thinking_effort: form.value.thinking_effort ?? false,
       traits: form.value.traits,
       trait_contexts: selectedMap(form.value.trait_contexts),
@@ -83,6 +83,7 @@ export function useAgentFormPersistence({ form, valid, tab, blank, agentId, pare
       memory_target_id: form.value.memory_target_id,
       memory_provider_id: form.value.memory_provider_id,
     }
+    if (typeof maxTokens.value === 'number') payload.max_tokens = maxTokens.value
     const currentId = agentId()
     if (currentId) {
       const selfRefs = new Set([currentId, `user_agent:${currentId}`])

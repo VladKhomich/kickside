@@ -1,11 +1,11 @@
-import { openBlock as u, createElementBlock as g, mergeProps as S, renderSlot as B, createTextVNode as D, toDisplayString as L, resolveComponent as lt, resolveDirective as jt, withDirectives as V, createBlock as H, resolveDynamicComponent as mt, withCtx as M, createCommentVNode as z, normalizeClass as R, createElementVNode as l, computed as I, createVNode as $, Transition as ge, Fragment as K, defineComponent as J, renderList as vt, unref as b, ref as N, onMounted as Ft, watch as yt, onBeforeUnmount as fe, shallowRef as he, vModelText as Z, nextTick as me } from "vue";
+import { openBlock as u, createElementBlock as h, mergeProps as _, renderSlot as D, createTextVNode as A, toDisplayString as I, resolveComponent as ut, resolveDirective as Ft, withDirectives as R, createBlock as H, resolveDynamicComponent as vt, withCtx as j, createCommentVNode as E, normalizeClass as N, createElementVNode as i, computed as z, createVNode as $, Transition as fe, Fragment as W, defineComponent as tt, renderList as yt, unref as b, ref as U, onMounted as Vt, watch as kt, onBeforeUnmount as he, shallowRef as me, vModelText as Y, nextTick as ve } from "vue";
 import { Icon as T } from "@iconify/vue";
-import { B as rt, m as Vt, d as Rt, s as _t, f as Y, R as Ht, a as Nt, L as ve, h as X, i as q, n as ye, U as ke, o as It, q as we, r as Ut, t as xe, c as Ce, v as _e, w as Se, y as $e, S as ze, _ as Ee, x as gt, A as Ie } from "./wc-runtime-C2f1ro5W.js";
-import { b as Le, a as Pe, s as Be } from "./index-DUuTkDEA.js";
-import { loadByTagName as kt, api as ft } from "@wippy-fe/proxy";
-import { _ as De } from "./WcMount.vue_vue_type_script_setup_true_lang-CNWT59Oh.js";
-import { _ as Ae } from "./toolCatalog-W6OjlU7E.js";
-var Oe = `
+import { B as it, m as Rt, d as Nt, s as St, f as q, R as Ht, a as Ut, L as ye, h as G, i as Q, n as ke, U as we, o as It, q as xe, r as Kt, t as Ce, c as _e, v as Se, w as $e, y as ze, S as Ee, _ as Le, x as ft, A as Ie } from "./wc-runtime-C2f1ro5W.js";
+import { b as Pe, a as Be, s as De } from "./index-DUuTkDEA.js";
+import { loadByTagName as wt, api as ht } from "@wippy-fe/proxy";
+import { _ as Ae } from "./WcMount.vue_vue_type_script_setup_true_lang-CNWT59Oh.js";
+import { _ as Oe } from "./toolCatalog-W6OjlU7E.js";
+var Me = `
     .p-badge {
         display: inline-flex;
         border-radius: dt('badge.border.radius');
@@ -84,8 +84,8 @@ var Oe = `
   root: function(e) {
     var n = e.props, o = e.instance;
     return ["p-badge p-component", {
-      "p-badge-circle": Rt(n.value) && String(n.value).length === 1,
-      "p-badge-dot": Vt(n.value) && !o.$slots.default,
+      "p-badge-circle": Nt(n.value) && String(n.value).length === 1,
+      "p-badge-dot": Rt(n.value) && !o.$slots.default,
       "p-badge-sm": n.size === "small",
       "p-badge-lg": n.size === "large",
       "p-badge-xl": n.size === "xlarge",
@@ -97,13 +97,13 @@ var Oe = `
       "p-badge-contrast": n.severity === "contrast"
     }];
   }
-}, Me = rt.extend({
+}, je = it.extend({
   name: "badge",
-  style: Oe,
+  style: Me,
   classes: Te
-}), je = {
+}), Fe = {
   name: "BaseBadge",
-  extends: _t,
+  extends: St,
   props: {
     value: {
       type: [String, Number],
@@ -118,7 +118,7 @@ var Oe = `
       default: null
     }
   },
-  style: Me,
+  style: je,
   provide: function() {
     return {
       $pcBadge: this,
@@ -126,54 +126,54 @@ var Oe = `
     };
   }
 };
-function Q(t) {
+function et(t) {
   "@babel/helpers - typeof";
-  return Q = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
+  return et = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
     return typeof e;
   } : function(e) {
     return e && typeof Symbol == "function" && e.constructor === Symbol && e !== Symbol.prototype ? "symbol" : typeof e;
-  }, Q(t);
+  }, et(t);
 }
-function Lt(t, e, n) {
-  return (e = Fe(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
+function Pt(t, e, n) {
+  return (e = Ve(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
 }
-function Fe(t) {
-  var e = Ve(t, "string");
-  return Q(e) == "symbol" ? e : e + "";
+function Ve(t) {
+  var e = Re(t, "string");
+  return et(e) == "symbol" ? e : e + "";
 }
-function Ve(t, e) {
-  if (Q(t) != "object" || !t) return t;
+function Re(t, e) {
+  if (et(t) != "object" || !t) return t;
   var n = t[Symbol.toPrimitive];
   if (n !== void 0) {
     var o = n.call(t, e);
-    if (Q(o) != "object") return o;
+    if (et(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (e === "string" ? String : Number)(t);
 }
-var Kt = {
+var Wt = {
   name: "Badge",
-  extends: je,
+  extends: Fe,
   inheritAttrs: !1,
   computed: {
     dataP: function() {
-      return Y(Lt(Lt({
+      return q(Pt(Pt({
         circle: this.value != null && String(this.value).length === 1,
         empty: this.value == null && !this.$slots.default
       }, this.severity, this.severity), this.size, this.size));
     }
   }
-}, Re = ["data-p"];
+}, Ne = ["data-p"];
 function He(t, e, n, o, s, r) {
-  return u(), g("span", S({
+  return u(), h("span", _({
     class: t.cx("root"),
     "data-p": r.dataP
-  }, t.ptmi("root")), [B(t.$slots, "default", {}, function() {
-    return [D(L(t.value), 1)];
-  })], 16, Re);
+  }, t.ptmi("root")), [D(t.$slots, "default", {}, function() {
+    return [A(I(t.value), 1)];
+  })], 16, Ne);
 }
-Kt.render = He;
-var Ne = `
+Wt.render = He;
+var Ue = `
     .p-button {
         display: inline-flex;
         cursor: pointer;
@@ -824,35 +824,35 @@ var Ne = `
         color: dt('button.link.active.color');
     }
 `;
-function tt(t) {
+function nt(t) {
   "@babel/helpers - typeof";
-  return tt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
+  return nt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
     return typeof e;
   } : function(e) {
     return e && typeof Symbol == "function" && e.constructor === Symbol && e !== Symbol.prototype ? "symbol" : typeof e;
-  }, tt(t);
+  }, nt(t);
 }
-function A(t, e, n) {
-  return (e = Ue(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
+function O(t, e, n) {
+  return (e = Ke(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
 }
-function Ue(t) {
-  var e = Ke(t, "string");
-  return tt(e) == "symbol" ? e : e + "";
+function Ke(t) {
+  var e = We(t, "string");
+  return nt(e) == "symbol" ? e : e + "";
 }
-function Ke(t, e) {
-  if (tt(t) != "object" || !t) return t;
+function We(t, e) {
+  if (nt(t) != "object" || !t) return t;
   var n = t[Symbol.toPrimitive];
   if (n !== void 0) {
     var o = n.call(t, e);
-    if (tt(o) != "object") return o;
+    if (nt(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (e === "string" ? String : Number)(t);
 }
-var We = {
+var Ze = {
   root: function(e) {
     var n = e.instance, o = e.props;
-    return ["p-button p-component", A(A(A(A(A(A(A(A(A({
+    return ["p-button p-component", O(O(O(O(O(O(O(O(O({
       "p-button-icon-only": n.hasIcon && !o.label && !o.badge,
       "p-button-vertical": (o.iconPos === "top" || o.iconPos === "bottom") && o.label,
       "p-button-loading": o.loading,
@@ -862,16 +862,16 @@ var We = {
   loadingIcon: "p-button-loading-icon",
   icon: function(e) {
     var n = e.props;
-    return ["p-button-icon", A({}, "p-button-icon-".concat(n.iconPos), n.label)];
+    return ["p-button-icon", O({}, "p-button-icon-".concat(n.iconPos), n.label)];
   },
   label: "p-button-label"
-}, Ze = rt.extend({
+}, Xe = it.extend({
   name: "button",
-  style: Ne,
-  classes: We
-}), Xe = {
+  style: Ue,
+  classes: Ze
+}), Ye = {
   name: "BaseButton",
-  extends: _t,
+  extends: St,
   props: {
     label: {
       type: String,
@@ -958,7 +958,7 @@ var We = {
       default: null
     }
   },
-  style: Ze,
+  style: Xe,
   provide: function() {
     return {
       $pcButton: this,
@@ -966,34 +966,34 @@ var We = {
     };
   }
 };
-function et(t) {
+function ot(t) {
   "@babel/helpers - typeof";
-  return et = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
+  return ot = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
     return typeof e;
   } : function(e) {
     return e && typeof Symbol == "function" && e.constructor === Symbol && e !== Symbol.prototype ? "symbol" : typeof e;
-  }, et(t);
+  }, ot(t);
 }
-function P(t, e, n) {
-  return (e = Ye(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
+function B(t, e, n) {
+  return (e = Ge(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
 }
-function Ye(t) {
-  var e = Ge(t, "string");
-  return et(e) == "symbol" ? e : e + "";
+function Ge(t) {
+  var e = qe(t, "string");
+  return ot(e) == "symbol" ? e : e + "";
 }
-function Ge(t, e) {
-  if (et(t) != "object" || !t) return t;
+function qe(t, e) {
+  if (ot(t) != "object" || !t) return t;
   var n = t[Symbol.toPrimitive];
   if (n !== void 0) {
     var o = n.call(t, e);
-    if (et(o) != "object") return o;
+    if (ot(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (e === "string" ? String : Number)(t);
 }
-var st = {
+var ct = {
   name: "Button",
-  extends: Xe,
+  extends: Ye,
   inheritAttrs: !1,
   inject: {
     $pcFluid: {
@@ -1021,7 +1021,7 @@ var st = {
       return this.icon || this.$slots.icon;
     },
     attrs: function() {
-      return S(this.asAttrs, this.a11yAttrs, this.getPTOptions("root"));
+      return _(this.asAttrs, this.a11yAttrs, this.getPTOptions("root"));
     },
     asAttrs: function() {
       return this.as === "BUTTON" ? {
@@ -1038,145 +1038,101 @@ var st = {
       };
     },
     hasFluid: function() {
-      return Vt(this.fluid) ? !!this.$pcFluid : this.fluid;
+      return Rt(this.fluid) ? !!this.$pcFluid : this.fluid;
     },
     dataP: function() {
-      return Y(P(P(P(P(P(P(P(P(P(P({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge), "loading", this.loading), "fluid", this.hasFluid), "rounded", this.rounded), "raised", this.raised), "outlined", this.outlined || this.variant === "outlined"), "text", this.text || this.variant === "text"), "link", this.link || this.variant === "link"), "vertical", (this.iconPos === "top" || this.iconPos === "bottom") && this.label));
+      return q(B(B(B(B(B(B(B(B(B(B({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge), "loading", this.loading), "fluid", this.hasFluid), "rounded", this.rounded), "raised", this.raised), "outlined", this.outlined || this.variant === "outlined"), "text", this.text || this.variant === "text"), "link", this.link || this.variant === "link"), "vertical", (this.iconPos === "top" || this.iconPos === "bottom") && this.label));
     },
     dataIconP: function() {
-      return Y(P(P({}, this.iconPos, this.iconPos), this.size, this.size));
+      return q(B(B({}, this.iconPos, this.iconPos), this.size, this.size));
     },
     dataLabelP: function() {
-      return Y(P(P({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge));
+      return q(B(B({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge));
     }
   },
   components: {
-    SpinnerIcon: Le,
-    Badge: Kt
+    SpinnerIcon: Pe,
+    Badge: Wt
   },
   directives: {
     ripple: Ht
   }
-}, qe = ["data-p"], Je = ["data-p"];
-function Qe(t, e, n, o, s, r) {
-  var v = lt("SpinnerIcon"), x = lt("Badge"), f = jt("ripple");
-  return t.asChild ? B(t.$slots, "default", {
+}, Je = ["data-p"], Qe = ["data-p"];
+function tn(t, e, n, o, s, r) {
+  var y = ut("SpinnerIcon"), x = ut("Badge"), f = Ft("ripple");
+  return t.asChild ? D(t.$slots, "default", {
     key: 1,
-    class: R(t.cx("root")),
+    class: N(t.cx("root")),
     a11yAttrs: r.a11yAttrs
-  }) : V((u(), H(mt(t.as), S({
+  }) : R((u(), H(vt(t.as), _({
     key: 0,
     class: t.cx("root"),
     "data-p": r.dataP
   }, r.attrs), {
-    default: M(function() {
-      return [B(t.$slots, "default", {}, function() {
-        return [t.loading ? B(t.$slots, "loadingicon", S({
+    default: j(function() {
+      return [D(t.$slots, "default", {}, function() {
+        return [t.loading ? D(t.$slots, "loadingicon", _({
           key: 0,
           class: [t.cx("loadingIcon"), t.cx("icon")]
         }, t.ptm("loadingIcon")), function() {
-          return [t.loadingIcon ? (u(), g("span", S({
+          return [t.loadingIcon ? (u(), h("span", _({
             key: 0,
             class: [t.cx("loadingIcon"), t.cx("icon"), t.loadingIcon]
-          }, t.ptm("loadingIcon")), null, 16)) : (u(), H(v, S({
+          }, t.ptm("loadingIcon")), null, 16)) : (u(), H(y, _({
             key: 1,
             class: [t.cx("loadingIcon"), t.cx("icon")],
             spin: ""
           }, t.ptm("loadingIcon")), null, 16, ["class"]))];
-        }) : B(t.$slots, "icon", S({
+        }) : D(t.$slots, "icon", _({
           key: 1,
           class: [t.cx("icon")]
         }, t.ptm("icon")), function() {
-          return [t.icon ? (u(), g("span", S({
+          return [t.icon ? (u(), h("span", _({
             key: 0,
             class: [t.cx("icon"), t.icon, t.iconClass],
             "data-p": r.dataIconP
-          }, t.ptm("icon")), null, 16, qe)) : z("", !0)];
-        }), t.label ? (u(), g("span", S({
+          }, t.ptm("icon")), null, 16, Je)) : E("", !0)];
+        }), t.label ? (u(), h("span", _({
           key: 2,
           class: t.cx("label")
         }, t.ptm("label"), {
           "data-p": r.dataLabelP
-        }), L(t.label), 17, Je)) : z("", !0), t.badge ? (u(), H(x, {
+        }), I(t.label), 17, Qe)) : E("", !0), t.badge ? (u(), H(x, {
           key: 3,
           value: t.badge,
-          class: R(t.badgeClass),
+          class: N(t.badgeClass),
           severity: t.badgeSeverity,
           unstyled: t.unstyled,
           pt: t.ptm("pcBadge")
-        }, null, 8, ["value", "class", "severity", "unstyled", "pt"])) : z("", !0)];
+        }, null, 8, ["value", "class", "severity", "unstyled", "pt"])) : E("", !0)];
       })];
     }),
     _: 3
   }, 16, ["class", "data-p"])), [[f]]);
 }
-st.render = Qe;
-var Wt = {
-  name: "WindowMaximizeIcon",
-  extends: Nt
-};
-function tn(t) {
-  return rn(t) || on(t) || nn(t) || en();
-}
-function en() {
-  throw new TypeError(`Invalid attempt to spread non-iterable instance.
-In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
-}
-function nn(t, e) {
-  if (t) {
-    if (typeof t == "string") return wt(t, e);
-    var n = {}.toString.call(t).slice(8, -1);
-    return n === "Object" && t.constructor && (n = t.constructor.name), n === "Map" || n === "Set" ? Array.from(t) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? wt(t, e) : void 0;
-  }
-}
-function on(t) {
-  if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
-}
-function rn(t) {
-  if (Array.isArray(t)) return wt(t);
-}
-function wt(t, e) {
-  (e == null || e > t.length) && (e = t.length);
-  for (var n = 0, o = Array(e); n < e; n++) o[n] = t[n];
-  return o;
-}
-function an(t, e, n, o, s, r) {
-  return u(), g("svg", S({
-    width: "14",
-    height: "14",
-    viewBox: "0 0 14 14",
-    fill: "none",
-    xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), tn(e[0] || (e[0] = [l("path", {
-    "fill-rule": "evenodd",
-    "clip-rule": "evenodd",
-    d: "M7 14H11.8C12.3835 14 12.9431 13.7682 13.3556 13.3556C13.7682 12.9431 14 12.3835 14 11.8V2.2C14 1.61652 13.7682 1.05694 13.3556 0.644365C12.9431 0.231785 12.3835 0 11.8 0H2.2C1.61652 0 1.05694 0.231785 0.644365 0.644365C0.231785 1.05694 0 1.61652 0 2.2V7C0 7.15913 0.063214 7.31174 0.175736 7.42426C0.288258 7.53679 0.44087 7.6 0.6 7.6C0.75913 7.6 0.911742 7.53679 1.02426 7.42426C1.13679 7.31174 1.2 7.15913 1.2 7V2.2C1.2 1.93478 1.30536 1.68043 1.49289 1.49289C1.68043 1.30536 1.93478 1.2 2.2 1.2H11.8C12.0652 1.2 12.3196 1.30536 12.5071 1.49289C12.6946 1.68043 12.8 1.93478 12.8 2.2V11.8C12.8 12.0652 12.6946 12.3196 12.5071 12.5071C12.3196 12.6946 12.0652 12.8 11.8 12.8H7C6.84087 12.8 6.68826 12.8632 6.57574 12.9757C6.46321 13.0883 6.4 13.2409 6.4 13.4C6.4 13.5591 6.46321 13.7117 6.57574 13.8243C6.68826 13.9368 6.84087 14 7 14ZM9.77805 7.42192C9.89013 7.534 10.0415 7.59788 10.2 7.59995C10.3585 7.59788 10.5099 7.534 10.622 7.42192C10.7341 7.30985 10.798 7.15844 10.8 6.99995V3.94242C10.8066 3.90505 10.8096 3.86689 10.8089 3.82843C10.8079 3.77159 10.7988 3.7157 10.7824 3.6623C10.756 3.55552 10.701 3.45698 10.622 3.37798C10.5099 3.2659 10.3585 3.20202 10.2 3.19995H7.00002C6.84089 3.19995 6.68828 3.26317 6.57576 3.37569C6.46324 3.48821 6.40002 3.64082 6.40002 3.79995C6.40002 3.95908 6.46324 4.11169 6.57576 4.22422C6.68828 4.33674 6.84089 4.39995 7.00002 4.39995H8.80006L6.19997 7.00005C6.10158 7.11005 6.04718 7.25246 6.04718 7.40005C6.04718 7.54763 6.10158 7.69004 6.19997 7.80005C6.30202 7.91645 6.44561 7.98824 6.59997 8.00005C6.75432 7.98824 6.89791 7.91645 6.99997 7.80005L9.60002 5.26841V6.99995C9.6021 7.15844 9.66598 7.30985 9.77805 7.42192ZM1.4 14H3.8C4.17066 13.9979 4.52553 13.8498 4.78763 13.5877C5.04973 13.3256 5.1979 12.9707 5.2 12.6V10.2C5.1979 9.82939 5.04973 9.47452 4.78763 9.21242C4.52553 8.95032 4.17066 8.80215 3.8 8.80005H1.4C1.02934 8.80215 0.674468 8.95032 0.412371 9.21242C0.150274 9.47452 0.00210008 9.82939 0 10.2V12.6C0.00210008 12.9707 0.150274 13.3256 0.412371 13.5877C0.674468 13.8498 1.02934 13.9979 1.4 14ZM1.25858 10.0586C1.29609 10.0211 1.34696 10 1.4 10H3.8C3.85304 10 3.90391 10.0211 3.94142 10.0586C3.97893 10.0961 4 10.147 4 10.2V12.6C4 12.6531 3.97893 12.704 3.94142 12.7415C3.90391 12.779 3.85304 12.8 3.8 12.8H1.4C1.34696 12.8 1.29609 12.779 1.25858 12.7415C1.22107 12.704 1.2 12.6531 1.2 12.6V10.2C1.2 10.147 1.22107 10.0961 1.25858 10.0586Z",
-    fill: "currentColor"
-  }, null, -1)])), 16);
-}
-Wt.render = an;
+ct.render = tn;
 var Zt = {
-  name: "WindowMinimizeIcon",
-  extends: Nt
+  name: "WindowMaximizeIcon",
+  extends: Ut
 };
-function ln(t) {
-  return cn(t) || un(t) || dn(t) || sn();
+function en(t) {
+  return an(t) || rn(t) || on(t) || nn();
 }
-function sn() {
+function nn() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function dn(t, e) {
+function on(t, e) {
   if (t) {
     if (typeof t == "string") return xt(t, e);
     var n = {}.toString.call(t).slice(8, -1);
     return n === "Object" && t.constructor && (n = t.constructor.name), n === "Map" || n === "Set" ? Array.from(t) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? xt(t, e) : void 0;
   }
 }
-function un(t) {
+function rn(t) {
   if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
 }
-function cn(t) {
+function an(t) {
   if (Array.isArray(t)) return xt(t);
 }
 function xt(t, e) {
@@ -1184,35 +1140,79 @@ function xt(t, e) {
   for (var n = 0, o = Array(e); n < e; n++) o[n] = t[n];
   return o;
 }
-function bn(t, e, n, o, s, r) {
-  return u(), g("svg", S({
+function ln(t, e, n, o, s, r) {
+  return u(), h("svg", _({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), ln(e[0] || (e[0] = [l("path", {
+  }, t.pti()), en(e[0] || (e[0] = [i("path", {
+    "fill-rule": "evenodd",
+    "clip-rule": "evenodd",
+    d: "M7 14H11.8C12.3835 14 12.9431 13.7682 13.3556 13.3556C13.7682 12.9431 14 12.3835 14 11.8V2.2C14 1.61652 13.7682 1.05694 13.3556 0.644365C12.9431 0.231785 12.3835 0 11.8 0H2.2C1.61652 0 1.05694 0.231785 0.644365 0.644365C0.231785 1.05694 0 1.61652 0 2.2V7C0 7.15913 0.063214 7.31174 0.175736 7.42426C0.288258 7.53679 0.44087 7.6 0.6 7.6C0.75913 7.6 0.911742 7.53679 1.02426 7.42426C1.13679 7.31174 1.2 7.15913 1.2 7V2.2C1.2 1.93478 1.30536 1.68043 1.49289 1.49289C1.68043 1.30536 1.93478 1.2 2.2 1.2H11.8C12.0652 1.2 12.3196 1.30536 12.5071 1.49289C12.6946 1.68043 12.8 1.93478 12.8 2.2V11.8C12.8 12.0652 12.6946 12.3196 12.5071 12.5071C12.3196 12.6946 12.0652 12.8 11.8 12.8H7C6.84087 12.8 6.68826 12.8632 6.57574 12.9757C6.46321 13.0883 6.4 13.2409 6.4 13.4C6.4 13.5591 6.46321 13.7117 6.57574 13.8243C6.68826 13.9368 6.84087 14 7 14ZM9.77805 7.42192C9.89013 7.534 10.0415 7.59788 10.2 7.59995C10.3585 7.59788 10.5099 7.534 10.622 7.42192C10.7341 7.30985 10.798 7.15844 10.8 6.99995V3.94242C10.8066 3.90505 10.8096 3.86689 10.8089 3.82843C10.8079 3.77159 10.7988 3.7157 10.7824 3.6623C10.756 3.55552 10.701 3.45698 10.622 3.37798C10.5099 3.2659 10.3585 3.20202 10.2 3.19995H7.00002C6.84089 3.19995 6.68828 3.26317 6.57576 3.37569C6.46324 3.48821 6.40002 3.64082 6.40002 3.79995C6.40002 3.95908 6.46324 4.11169 6.57576 4.22422C6.68828 4.33674 6.84089 4.39995 7.00002 4.39995H8.80006L6.19997 7.00005C6.10158 7.11005 6.04718 7.25246 6.04718 7.40005C6.04718 7.54763 6.10158 7.69004 6.19997 7.80005C6.30202 7.91645 6.44561 7.98824 6.59997 8.00005C6.75432 7.98824 6.89791 7.91645 6.99997 7.80005L9.60002 5.26841V6.99995C9.6021 7.15844 9.66598 7.30985 9.77805 7.42192ZM1.4 14H3.8C4.17066 13.9979 4.52553 13.8498 4.78763 13.5877C5.04973 13.3256 5.1979 12.9707 5.2 12.6V10.2C5.1979 9.82939 5.04973 9.47452 4.78763 9.21242C4.52553 8.95032 4.17066 8.80215 3.8 8.80005H1.4C1.02934 8.80215 0.674468 8.95032 0.412371 9.21242C0.150274 9.47452 0.00210008 9.82939 0 10.2V12.6C0.00210008 12.9707 0.150274 13.3256 0.412371 13.5877C0.674468 13.8498 1.02934 13.9979 1.4 14ZM1.25858 10.0586C1.29609 10.0211 1.34696 10 1.4 10H3.8C3.85304 10 3.90391 10.0211 3.94142 10.0586C3.97893 10.0961 4 10.147 4 10.2V12.6C4 12.6531 3.97893 12.704 3.94142 12.7415C3.90391 12.779 3.85304 12.8 3.8 12.8H1.4C1.34696 12.8 1.29609 12.779 1.25858 12.7415C1.22107 12.704 1.2 12.6531 1.2 12.6V10.2C1.2 10.147 1.22107 10.0961 1.25858 10.0586Z",
+    fill: "currentColor"
+  }, null, -1)])), 16);
+}
+Zt.render = ln;
+var Xt = {
+  name: "WindowMinimizeIcon",
+  extends: Ut
+};
+function sn(t) {
+  return bn(t) || cn(t) || un(t) || dn();
+}
+function dn() {
+  throw new TypeError(`Invalid attempt to spread non-iterable instance.
+In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
+}
+function un(t, e) {
+  if (t) {
+    if (typeof t == "string") return Ct(t, e);
+    var n = {}.toString.call(t).slice(8, -1);
+    return n === "Object" && t.constructor && (n = t.constructor.name), n === "Map" || n === "Set" ? Array.from(t) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? Ct(t, e) : void 0;
+  }
+}
+function cn(t) {
+  if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
+}
+function bn(t) {
+  if (Array.isArray(t)) return Ct(t);
+}
+function Ct(t, e) {
+  (e == null || e > t.length) && (e = t.length);
+  for (var n = 0, o = Array(e); n < e; n++) o[n] = t[n];
+  return o;
+}
+function pn(t, e, n, o, s, r) {
+  return u(), h("svg", _({
+    width: "14",
+    height: "14",
+    viewBox: "0 0 14 14",
+    fill: "none",
+    xmlns: "http://www.w3.org/2000/svg"
+  }, t.pti()), sn(e[0] || (e[0] = [i("path", {
     "fill-rule": "evenodd",
     "clip-rule": "evenodd",
     d: "M11.8 0H2.2C1.61652 0 1.05694 0.231785 0.644365 0.644365C0.231785 1.05694 0 1.61652 0 2.2V7C0 7.15913 0.063214 7.31174 0.175736 7.42426C0.288258 7.53679 0.44087 7.6 0.6 7.6C0.75913 7.6 0.911742 7.53679 1.02426 7.42426C1.13679 7.31174 1.2 7.15913 1.2 7V2.2C1.2 1.93478 1.30536 1.68043 1.49289 1.49289C1.68043 1.30536 1.93478 1.2 2.2 1.2H11.8C12.0652 1.2 12.3196 1.30536 12.5071 1.49289C12.6946 1.68043 12.8 1.93478 12.8 2.2V11.8C12.8 12.0652 12.6946 12.3196 12.5071 12.5071C12.3196 12.6946 12.0652 12.8 11.8 12.8H7C6.84087 12.8 6.68826 12.8632 6.57574 12.9757C6.46321 13.0883 6.4 13.2409 6.4 13.4C6.4 13.5591 6.46321 13.7117 6.57574 13.8243C6.68826 13.9368 6.84087 14 7 14H11.8C12.3835 14 12.9431 13.7682 13.3556 13.3556C13.7682 12.9431 14 12.3835 14 11.8V2.2C14 1.61652 13.7682 1.05694 13.3556 0.644365C12.9431 0.231785 12.3835 0 11.8 0ZM6.368 7.952C6.44137 7.98326 6.52025 7.99958 6.6 8H9.8C9.95913 8 10.1117 7.93678 10.2243 7.82426C10.3368 7.71174 10.4 7.55913 10.4 7.4C10.4 7.24087 10.3368 7.08826 10.2243 6.97574C10.1117 6.86321 9.95913 6.8 9.8 6.8H8.048L10.624 4.224C10.73 4.11026 10.7877 3.95982 10.7849 3.80438C10.7822 3.64894 10.7192 3.50063 10.6093 3.3907C10.4994 3.28077 10.3511 3.2178 10.1956 3.21506C10.0402 3.21232 9.88974 3.27002 9.776 3.376L7.2 5.952V4.2C7.2 4.04087 7.13679 3.88826 7.02426 3.77574C6.91174 3.66321 6.75913 3.6 6.6 3.6C6.44087 3.6 6.28826 3.66321 6.17574 3.77574C6.06321 3.88826 6 4.04087 6 4.2V7.4C6.00042 7.47975 6.01674 7.55862 6.048 7.632C6.07656 7.70442 6.11971 7.7702 6.17475 7.82524C6.2298 7.88029 6.29558 7.92344 6.368 7.952ZM1.4 8.80005H3.8C4.17066 8.80215 4.52553 8.95032 4.78763 9.21242C5.04973 9.47452 5.1979 9.82939 5.2 10.2V12.6C5.1979 12.9707 5.04973 13.3256 4.78763 13.5877C4.52553 13.8498 4.17066 13.9979 3.8 14H1.4C1.02934 13.9979 0.674468 13.8498 0.412371 13.5877C0.150274 13.3256 0.00210008 12.9707 0 12.6V10.2C0.00210008 9.82939 0.150274 9.47452 0.412371 9.21242C0.674468 8.95032 1.02934 8.80215 1.4 8.80005ZM3.94142 12.7415C3.97893 12.704 4 12.6531 4 12.6V10.2C4 10.147 3.97893 10.0961 3.94142 10.0586C3.90391 10.0211 3.85304 10 3.8 10H1.4C1.34696 10 1.29609 10.0211 1.25858 10.0586C1.22107 10.0961 1.2 10.147 1.2 10.2V12.6C1.2 12.6531 1.22107 12.704 1.25858 12.7415C1.29609 12.779 1.34696 12.8 1.4 12.8H3.8C3.85304 12.8 3.90391 12.779 3.94142 12.7415Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-Zt.render = bn;
-var pn = rt.extend({
+Xt.render = pn;
+var gn = it.extend({
   name: "focustrap-directive"
-}), gn = ye.extend({
-  style: pn
+}), fn = ke.extend({
+  style: gn
 });
-function nt(t) {
+function rt(t) {
   "@babel/helpers - typeof";
-  return nt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
+  return rt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
     return typeof e;
   } : function(e) {
     return e && typeof Symbol == "function" && e.constructor === Symbol && e !== Symbol.prototype ? "symbol" : typeof e;
-  }, nt(t);
+  }, rt(t);
 }
-function Pt(t, e) {
+function Bt(t, e) {
   var n = Object.keys(t);
   if (Object.getOwnPropertySymbols) {
     var o = Object.getOwnPropertySymbols(t);
@@ -1222,35 +1222,35 @@ function Pt(t, e) {
   }
   return n;
 }
-function Bt(t) {
+function Dt(t) {
   for (var e = 1; e < arguments.length; e++) {
     var n = arguments[e] != null ? arguments[e] : {};
-    e % 2 ? Pt(Object(n), !0).forEach(function(o) {
-      fn(t, o, n[o]);
-    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(t, Object.getOwnPropertyDescriptors(n)) : Pt(Object(n)).forEach(function(o) {
+    e % 2 ? Bt(Object(n), !0).forEach(function(o) {
+      hn(t, o, n[o]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(t, Object.getOwnPropertyDescriptors(n)) : Bt(Object(n)).forEach(function(o) {
       Object.defineProperty(t, o, Object.getOwnPropertyDescriptor(n, o));
     });
   }
   return t;
 }
-function fn(t, e, n) {
-  return (e = hn(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
+function hn(t, e, n) {
+  return (e = mn(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
 }
-function hn(t) {
-  var e = mn(t, "string");
-  return nt(e) == "symbol" ? e : e + "";
+function mn(t) {
+  var e = vn(t, "string");
+  return rt(e) == "symbol" ? e : e + "";
 }
-function mn(t, e) {
-  if (nt(t) != "object" || !t) return t;
+function vn(t, e) {
+  if (rt(t) != "object" || !t) return t;
   var n = t[Symbol.toPrimitive];
   if (n !== void 0) {
     var o = n.call(t, e);
-    if (nt(o) != "object") return o;
+    if (rt(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (e === "string" ? String : Number)(t);
 }
-var vn = gn.extend("focustrap", {
+var yn = fn.extend("focustrap", {
   mounted: function(e, n) {
     var o = n.value || {}, s = o.disabled;
     s || (this.createHiddenFocusableElements(e, n), this.bind(e, n), this.autoElementFocus(e, n)), e.setAttribute("data-pd-focustrap", !0), this.$el = e;
@@ -1267,15 +1267,15 @@ var vn = gn.extend("focustrap", {
       return ':not(.p-hidden-focusable):not([data-p-hidden-focusable="true"])'.concat(e ?? "");
     },
     bind: function(e, n) {
-      var o = this, s = n.value || {}, r = s.onFocusIn, v = s.onFocusOut;
+      var o = this, s = n.value || {}, r = s.onFocusIn, y = s.onFocusOut;
       e.$_pfocustrap_mutationobserver = new MutationObserver(function(x) {
         x.forEach(function(f) {
           if (f.type === "childList" && !e.contains(document.activeElement)) {
-            var w = function(c) {
-              var y = It(c) ? It(c, o.getComputedSelector(e.$_pfocustrap_focusableselector)) ? c : q(e, o.getComputedSelector(e.$_pfocustrap_focusableselector)) : q(c);
-              return Rt(y) ? y : c.nextSibling && w(c.nextSibling);
+            var k = function(p) {
+              var m = It(p) ? It(p, o.getComputedSelector(e.$_pfocustrap_focusableselector)) ? p : Q(e, o.getComputedSelector(e.$_pfocustrap_focusableselector)) : Q(p);
+              return Nt(m) ? m : p.nextSibling && k(p.nextSibling);
             };
-            X(w(f.nextSibling));
+            G(k(f.nextSibling));
           }
         });
       }), e.$_pfocustrap_mutationobserver.disconnect(), e.$_pfocustrap_mutationobserver.observe(e, {
@@ -1283,7 +1283,7 @@ var vn = gn.extend("focustrap", {
       }), e.$_pfocustrap_focusinlistener = function(x) {
         return r && r(x);
       }, e.$_pfocustrap_focusoutlistener = function(x) {
-        return v && v(x);
+        return y && y(x);
       }, e.addEventListener("focusin", e.$_pfocustrap_focusinlistener), e.addEventListener("focusout", e.$_pfocustrap_focusoutlistener);
     },
     unbind: function(e) {
@@ -1291,50 +1291,50 @@ var vn = gn.extend("focustrap", {
     },
     autoFocus: function(e) {
       this.autoElementFocus(this.$el, {
-        value: Bt(Bt({}, e), {}, {
+        value: Dt(Dt({}, e), {}, {
           autoFocus: !0
         })
       });
     },
     autoElementFocus: function(e, n) {
-      var o = n.value || {}, s = o.autoFocusSelector, r = s === void 0 ? "" : s, v = o.firstFocusableSelector, x = v === void 0 ? "" : v, f = o.autoFocus, w = f === void 0 ? !1 : f, _ = q(e, "[autofocus]".concat(this.getComputedSelector(r)));
-      w && !_ && (_ = q(e, this.getComputedSelector(x))), X(_);
+      var o = n.value || {}, s = o.autoFocusSelector, r = s === void 0 ? "" : s, y = o.firstFocusableSelector, x = y === void 0 ? "" : y, f = o.autoFocus, k = f === void 0 ? !1 : f, C = Q(e, "[autofocus]".concat(this.getComputedSelector(r)));
+      k && !C && (C = Q(e, this.getComputedSelector(x))), G(C);
     },
     onFirstHiddenElementFocus: function(e) {
-      var n, o = e.currentTarget, s = e.relatedTarget, r = s === o.$_pfocustrap_lasthiddenfocusableelement || !((n = this.$el) !== null && n !== void 0 && n.contains(s)) ? q(o.parentElement, this.getComputedSelector(o.$_pfocustrap_focusableselector)) : o.$_pfocustrap_lasthiddenfocusableelement;
-      X(r);
+      var n, o = e.currentTarget, s = e.relatedTarget, r = s === o.$_pfocustrap_lasthiddenfocusableelement || !((n = this.$el) !== null && n !== void 0 && n.contains(s)) ? Q(o.parentElement, this.getComputedSelector(o.$_pfocustrap_focusableselector)) : o.$_pfocustrap_lasthiddenfocusableelement;
+      G(r);
     },
     onLastHiddenElementFocus: function(e) {
-      var n, o = e.currentTarget, s = e.relatedTarget, r = s === o.$_pfocustrap_firsthiddenfocusableelement || !((n = this.$el) !== null && n !== void 0 && n.contains(s)) ? ve(o.parentElement, this.getComputedSelector(o.$_pfocustrap_focusableselector)) : o.$_pfocustrap_firsthiddenfocusableelement;
-      X(r);
+      var n, o = e.currentTarget, s = e.relatedTarget, r = s === o.$_pfocustrap_firsthiddenfocusableelement || !((n = this.$el) !== null && n !== void 0 && n.contains(s)) ? ye(o.parentElement, this.getComputedSelector(o.$_pfocustrap_focusableselector)) : o.$_pfocustrap_firsthiddenfocusableelement;
+      G(r);
     },
     createHiddenFocusableElements: function(e, n) {
-      var o = this, s = n.value || {}, r = s.tabIndex, v = r === void 0 ? 0 : r, x = s.firstFocusableSelector, f = x === void 0 ? "" : x, w = s.lastFocusableSelector, _ = w === void 0 ? "" : w, c = function(m) {
-        return ke("span", {
+      var o = this, s = n.value || {}, r = s.tabIndex, y = r === void 0 ? 0 : r, x = s.firstFocusableSelector, f = x === void 0 ? "" : x, k = s.lastFocusableSelector, C = k === void 0 ? "" : k, p = function(S) {
+        return we("span", {
           class: "p-hidden-accessible p-hidden-focusable",
-          tabIndex: v,
+          tabIndex: y,
           role: "presentation",
           "aria-hidden": !0,
           "data-p-hidden-accessible": !0,
           "data-p-hidden-focusable": !0,
-          onFocus: m?.bind(o)
+          onFocus: S?.bind(o)
         });
-      }, y = c(this.onFirstHiddenElementFocus), i = c(this.onLastHiddenElementFocus);
-      y.$_pfocustrap_lasthiddenfocusableelement = i, y.$_pfocustrap_focusableselector = f, y.setAttribute("data-pc-section", "firstfocusableelement"), i.$_pfocustrap_firsthiddenfocusableelement = y, i.$_pfocustrap_focusableselector = _, i.setAttribute("data-pc-section", "lastfocusableelement"), e.prepend(y), e.append(i);
+      }, m = p(this.onFirstHiddenElementFocus), l = p(this.onLastHiddenElementFocus);
+      m.$_pfocustrap_lasthiddenfocusableelement = l, m.$_pfocustrap_focusableselector = f, m.setAttribute("data-pc-section", "firstfocusableelement"), l.$_pfocustrap_firsthiddenfocusableelement = m, l.$_pfocustrap_focusableselector = C, l.setAttribute("data-pc-section", "lastfocusableelement"), e.prepend(m), e.append(l);
     }
   }
 });
-function Dt() {
-  xe({
-    variableName: Ut("scrollbar.width").name
-  });
-}
 function At() {
-  we({
-    variableName: Ut("scrollbar.width").name
+  Ce({
+    variableName: Kt("scrollbar.width").name
   });
 }
-var yn = `
+function Ot() {
+  xe({
+    variableName: Kt("scrollbar.width").name
+  });
+}
+var kn = `
     .p-dialog {
         max-height: 90%;
         transform: scale(1);
@@ -1432,7 +1432,7 @@ var yn = `
             transform: scale(0.93);
         }
     }
-`, kn = {
+`, wn = {
   mask: function(e) {
     var n = e.position, o = e.modal;
     return {
@@ -1452,7 +1452,7 @@ var yn = `
     flexDirection: "column",
     pointerEvents: "auto"
   }
-}, wn = {
+}, xn = {
   mask: function(e) {
     var n = e.props, o = ["left", "right", "top", "topleft", "topright", "bottom", "bottomleft", "bottomright"], s = o.find(function(r) {
       return r === n.position;
@@ -1474,14 +1474,14 @@ var yn = `
   pcCloseButton: "p-dialog-close-button",
   content: "p-dialog-content",
   footer: "p-dialog-footer"
-}, xn = rt.extend({
+}, Cn = it.extend({
   name: "dialog",
-  style: yn,
-  classes: wn,
-  inlineStyles: kn
-}), Cn = {
+  style: kn,
+  classes: xn,
+  inlineStyles: wn
+}), _n = {
   name: "BaseDialog",
-  extends: _t,
+  extends: St,
   props: {
     header: {
       type: null,
@@ -1605,22 +1605,22 @@ var yn = `
     },
     _instance: null
   },
-  style: xn,
+  style: Cn,
   provide: function() {
     return {
       $pcDialog: this,
       $parentInstance: this
     };
   }
-}, Xt = {
+}, Yt = {
   name: "Dialog",
-  extends: Cn,
+  extends: _n,
   inheritAttrs: !1,
   emits: ["update:visible", "show", "hide", "after-hide", "maximize", "unmaximize", "dragstart", "dragend"],
   provide: function() {
     var e = this;
     return {
-      dialogRef: I(function() {
+      dialogRef: z(function() {
         return e._instance;
       })
     };
@@ -1653,7 +1653,7 @@ var yn = `
     this.visible && (this.containerVisible = this.visible);
   },
   beforeUnmount: function() {
-    this.unbindDocumentState(), this.unbindGlobalListeners(), this.destroyStyle(), this.mask && this.autoZIndex && gt.clear(this.mask), this.container = null, this.mask = null;
+    this.unbindDocumentState(), this.unbindGlobalListeners(), this.destroyStyle(), this.mask && this.autoZIndex && ft.clear(this.mask), this.container = null, this.mask = null;
   },
   mounted: function() {
     this.breakpoints && this.createStyle();
@@ -1663,7 +1663,7 @@ var yn = `
       this.$emit("update:visible", !1);
     },
     onEnter: function() {
-      this.$emit("show"), this.target = document.activeElement, this.enableDocumentSettings(), this.bindGlobalListeners(), this.autoZIndex && gt.set("modal", this.mask, this.baseZIndex || this.$primevue.config.zIndex.modal);
+      this.$emit("show"), this.target = document.activeElement, this.enableDocumentSettings(), this.bindGlobalListeners(), this.autoZIndex && ft.set("modal", this.mask, this.baseZIndex || this.$primevue.config.zIndex.modal);
     },
     onAfterEnter: function() {
       this.focus();
@@ -1672,10 +1672,10 @@ var yn = `
       this.modal && !this.isUnstyled && Ie(this.mask, "p-overlay-mask-leave-active"), this.dragging && this.documentDragEndListener && this.documentDragEndListener();
     },
     onLeave: function() {
-      this.$emit("hide"), X(this.target), this.target = null, this.focusableClose = null, this.focusableMax = null;
+      this.$emit("hide"), G(this.target), this.target = null, this.focusableClose = null, this.focusableMax = null;
     },
     onAfterLeave: function() {
-      this.autoZIndex && gt.clear(this.mask), this.containerVisible = !1, this.unbindDocumentState(), this.unbindGlobalListeners(), this.$emit("after-hide");
+      this.autoZIndex && ft.clear(this.mask), this.containerVisible = !1, this.unbindDocumentState(), this.unbindGlobalListeners(), this.$emit("after-hide");
     },
     onMaskMouseDown: function(e) {
       this.maskMouseDownTarget = e.target;
@@ -1687,18 +1687,18 @@ var yn = `
       var e = function(s) {
         return s && s.querySelector("[autofocus]");
       }, n = this.$slots.footer && e(this.footerContainer);
-      n || (n = this.$slots.header && e(this.headerContainer), n || (n = this.$slots.default && e(this.content), n || (this.maximizable ? (this.focusableMax = !0, n = this.maximizableButton) : (this.focusableClose = !0, n = this.closeButton)))), n && X(n, {
+      n || (n = this.$slots.header && e(this.headerContainer), n || (n = this.$slots.default && e(this.content), n || (this.maximizable ? (this.focusableMax = !0, n = this.maximizableButton) : (this.focusableClose = !0, n = this.closeButton)))), n && G(n, {
         focusVisible: !0
       });
     },
     maximize: function(e) {
-      this.maximized ? (this.maximized = !1, this.$emit("unmaximize", e)) : (this.maximized = !0, this.$emit("maximize", e)), this.modal || (this.maximized ? Dt() : At());
+      this.maximized ? (this.maximized = !1, this.$emit("unmaximize", e)) : (this.maximized = !0, this.$emit("maximize", e)), this.modal || (this.maximized ? At() : Ot());
     },
     enableDocumentSettings: function() {
-      (this.modal || !this.modal && this.blockScroll || this.maximizable && this.maximized) && Dt();
+      (this.modal || !this.modal && this.blockScroll || this.maximizable && this.maximized) && At();
     },
     unbindDocumentState: function() {
-      (this.modal || !this.modal && this.blockScroll || this.maximizable && this.maximized) && At();
+      (this.modal || !this.modal && this.blockScroll || this.maximizable && this.maximized) && Ot();
     },
     onKeyDown: function(e) {
       e.code === "Escape" && this.closeOnEscape && !e.isComposing && this.close();
@@ -1733,7 +1733,7 @@ var yn = `
     createStyle: function() {
       if (!this.styleElement && !this.isUnstyled) {
         var e;
-        this.styleElement = document.createElement("style"), this.styleElement.type = "text/css", Ee(this.styleElement, "nonce", (e = this.$primevue) === null || e === void 0 || (e = e.config) === null || e === void 0 || (e = e.csp) === null || e === void 0 ? void 0 : e.nonce), document.head.appendChild(this.styleElement);
+        this.styleElement = document.createElement("style"), this.styleElement.type = "text/css", Le(this.styleElement, "nonce", (e = this.$primevue) === null || e === void 0 || (e = e.config) === null || e === void 0 || (e = e.csp) === null || e === void 0 ? void 0 : e.nonce), document.head.appendChild(this.styleElement);
         var n = "";
         for (var o in this.breakpoints)
           n += `
@@ -1750,7 +1750,7 @@ var yn = `
       this.styleElement && (document.head.removeChild(this.styleElement), this.styleElement = null);
     },
     initDrag: function(e) {
-      e.target.closest("div").getAttribute("data-pc-section") !== "headeractions" && this.draggable && (this.dragging = !0, this.lastPageX = e.pageX, this.lastPageY = e.pageY, this.container.style.margin = "0", document.body.setAttribute("data-p-unselectable-text", "true"), !this.isUnstyled && ze(document.body, {
+      e.target.closest("div").getAttribute("data-pc-section") !== "headeractions" && this.draggable && (this.dragging = !0, this.lastPageX = e.pageX, this.lastPageY = e.pageY, this.container.style.margin = "0", document.body.setAttribute("data-p-unselectable-text", "true"), !this.isUnstyled && Ee(document.body, {
         "user-select": "none"
       }), this.$emit("dragstart", e));
     },
@@ -1764,8 +1764,8 @@ var yn = `
       var e = this;
       this.documentDragListener = function(n) {
         if (e.dragging) {
-          var o = _e(e.container), s = Se(e.container), r = n.pageX - e.lastPageX, v = n.pageY - e.lastPageY, x = e.container.getBoundingClientRect(), f = x.left + r, w = x.top + v, _ = $e(), c = getComputedStyle(e.container), y = parseFloat(c.marginLeft), i = parseFloat(c.marginTop);
-          e.container.style.position = "fixed", e.keepInViewport ? (f >= e.minX && f + o < _.width && (e.lastPageX = n.pageX, e.container.style.left = f - y + "px"), w >= e.minY && w + s < _.height && (e.lastPageY = n.pageY, e.container.style.top = w - i + "px")) : (e.lastPageX = n.pageX, e.container.style.left = f - y + "px", e.lastPageY = n.pageY, e.container.style.top = w - i + "px");
+          var o = Se(e.container), s = $e(e.container), r = n.pageX - e.lastPageX, y = n.pageY - e.lastPageY, x = e.container.getBoundingClientRect(), f = x.left + r, k = x.top + y, C = ze(), p = getComputedStyle(e.container), m = parseFloat(p.marginLeft), l = parseFloat(p.marginTop);
+          e.container.style.position = "fixed", e.keepInViewport ? (f >= e.minX && f + o < C.width && (e.lastPageX = n.pageX, e.container.style.left = f - m + "px"), k >= e.minY && k + s < C.height && (e.lastPageY = n.pageY, e.container.style.top = k - l + "px")) : (e.lastPageX = n.pageX, e.container.style.left = f - m + "px", e.lastPageY = n.pageY, e.container.style.top = k - l + "px");
         }
       }, window.document.addEventListener("mousemove", this.documentDragListener);
     },
@@ -1793,7 +1793,7 @@ var yn = `
       return this.$primevue.config.locale.aria ? this.$primevue.config.locale.aria.close : void 0;
     },
     dataP: function() {
-      return Y({
+      return q({
         maximized: this.maximized,
         modal: this.modal
       });
@@ -1801,25 +1801,25 @@ var yn = `
   },
   directives: {
     ripple: Ht,
-    focustrap: vn
+    focustrap: yn
   },
   components: {
-    Button: st,
-    Portal: Ce,
-    WindowMinimizeIcon: Zt,
-    WindowMaximizeIcon: Wt,
-    TimesIcon: Pe
+    Button: ct,
+    Portal: _e,
+    WindowMinimizeIcon: Xt,
+    WindowMaximizeIcon: Zt,
+    TimesIcon: Be
   }
 };
-function ot(t) {
+function at(t) {
   "@babel/helpers - typeof";
-  return ot = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
+  return at = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
     return typeof e;
   } : function(e) {
     return e && typeof Symbol == "function" && e.constructor === Symbol && e !== Symbol.prototype ? "symbol" : typeof e;
-  }, ot(t);
+  }, at(t);
 }
-function Ot(t, e) {
+function Mt(t, e) {
   var n = Object.keys(t);
   if (Object.getOwnPropertySymbols) {
     var o = Object.getOwnPropertySymbols(t);
@@ -1832,39 +1832,39 @@ function Ot(t, e) {
 function Tt(t) {
   for (var e = 1; e < arguments.length; e++) {
     var n = arguments[e] != null ? arguments[e] : {};
-    e % 2 ? Ot(Object(n), !0).forEach(function(o) {
-      _n(t, o, n[o]);
-    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(t, Object.getOwnPropertyDescriptors(n)) : Ot(Object(n)).forEach(function(o) {
+    e % 2 ? Mt(Object(n), !0).forEach(function(o) {
+      Sn(t, o, n[o]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(t, Object.getOwnPropertyDescriptors(n)) : Mt(Object(n)).forEach(function(o) {
       Object.defineProperty(t, o, Object.getOwnPropertyDescriptor(n, o));
     });
   }
   return t;
 }
-function _n(t, e, n) {
-  return (e = Sn(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
+function Sn(t, e, n) {
+  return (e = $n(e)) in t ? Object.defineProperty(t, e, { value: n, enumerable: !0, configurable: !0, writable: !0 }) : t[e] = n, t;
 }
-function Sn(t) {
-  var e = $n(t, "string");
-  return ot(e) == "symbol" ? e : e + "";
+function $n(t) {
+  var e = zn(t, "string");
+  return at(e) == "symbol" ? e : e + "";
 }
-function $n(t, e) {
-  if (ot(t) != "object" || !t) return t;
+function zn(t, e) {
+  if (at(t) != "object" || !t) return t;
   var n = t[Symbol.toPrimitive];
   if (n !== void 0) {
     var o = n.call(t, e);
-    if (ot(o) != "object") return o;
+    if (at(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (e === "string" ? String : Number)(t);
 }
-var zn = ["data-p"], En = ["aria-labelledby", "aria-modal", "data-p"], In = ["id"], Ln = ["data-p"];
-function Pn(t, e, n, o, s, r) {
-  var v = lt("Button"), x = lt("Portal"), f = jt("focustrap");
+var En = ["data-p"], Ln = ["aria-labelledby", "aria-modal", "data-p"], In = ["id"], Pn = ["data-p"];
+function Bn(t, e, n, o, s, r) {
+  var y = ut("Button"), x = ut("Portal"), f = Ft("focustrap");
   return u(), H(x, {
     appendTo: t.appendTo
   }, {
-    default: M(function() {
-      return [s.containerVisible ? (u(), g("div", S({
+    default: j(function() {
+      return [s.containerVisible ? (u(), h("div", _({
         key: 0,
         ref: r.maskRef,
         class: t.cx("mask"),
@@ -1879,7 +1879,7 @@ function Pn(t, e, n, o, s, r) {
           return r.onMaskMouseUp && r.onMaskMouseUp.apply(r, arguments);
         }),
         "data-p": r.dataP
-      }, t.ptm("mask")), [$(ge, S({
+      }, t.ptm("mask")), [$(fe, _({
         name: "p-dialog",
         onEnter: r.onEnter,
         onAfterEnter: r.onAfterEnter,
@@ -1888,8 +1888,8 @@ function Pn(t, e, n, o, s, r) {
         onAfterLeave: r.onAfterLeave,
         appear: ""
       }, t.ptm("transition")), {
-        default: M(function() {
-          return [t.visible ? V((u(), g("div", S({
+        default: j(function() {
+          return [t.visible ? R((u(), h("div", _({
             key: 0,
             ref: r.containerRef,
             class: t.cx("root"),
@@ -1898,40 +1898,40 @@ function Pn(t, e, n, o, s, r) {
             "aria-labelledby": r.ariaLabelledById,
             "aria-modal": t.modal,
             "data-p": r.dataP
-          }, t.ptmi("root")), [t.$slots.container ? B(t.$slots, "container", {
+          }, t.ptmi("root")), [t.$slots.container ? D(t.$slots, "container", {
             key: 0,
             closeCallback: r.close,
-            maximizeCallback: function(_) {
-              return r.maximize(_);
+            maximizeCallback: function(C) {
+              return r.maximize(C);
             },
             initDragCallback: r.initDrag
-          }) : (u(), g(K, {
+          }) : (u(), h(W, {
             key: 1
-          }, [t.showHeader ? (u(), g("div", S({
+          }, [t.showHeader ? (u(), h("div", _({
             key: 0,
             ref: r.headerContainerRef,
             class: t.cx("header"),
             onMousedown: e[0] || (e[0] = function() {
               return r.initDrag && r.initDrag.apply(r, arguments);
             })
-          }, t.ptm("header")), [B(t.$slots, "header", {
-            class: R(t.cx("title"))
+          }, t.ptm("header")), [D(t.$slots, "header", {
+            class: N(t.cx("title"))
           }, function() {
-            return [t.header ? (u(), g("span", S({
+            return [t.header ? (u(), h("span", _({
               key: 0,
               id: r.ariaLabelledById,
               class: t.cx("title")
-            }, t.ptm("title")), L(t.header), 17, In)) : z("", !0)];
-          }), l("div", S({
+            }, t.ptm("title")), I(t.header), 17, In)) : E("", !0)];
+          }), i("div", _({
             class: t.cx("headerActions")
-          }, t.ptm("headerActions")), [t.maximizable ? B(t.$slots, "maximizebutton", {
+          }, t.ptm("headerActions")), [t.maximizable ? D(t.$slots, "maximizebutton", {
             key: 0,
             maximized: s.maximized,
-            maximizeCallback: function(_) {
-              return r.maximize(_);
+            maximizeCallback: function(C) {
+              return r.maximize(C);
             }
           }, function() {
-            return [$(v, S({
+            return [$(y, _({
               ref: r.maximizableRef,
               autofocus: s.focusableMax,
               class: t.cx("pcMaximizeButton"),
@@ -1942,22 +1942,22 @@ function Pn(t, e, n, o, s, r) {
               pt: t.ptm("pcMaximizeButton"),
               "data-pc-group-section": "headericon"
             }), {
-              icon: M(function(w) {
-                return [B(t.$slots, "maximizeicon", {
+              icon: j(function(k) {
+                return [D(t.$slots, "maximizeicon", {
                   maximized: s.maximized
                 }, function() {
-                  return [(u(), H(mt(r.maximizeIconComponent), S({
-                    class: [w.class, s.maximized ? t.minimizeIcon : t.maximizeIcon]
+                  return [(u(), H(vt(r.maximizeIconComponent), _({
+                    class: [k.class, s.maximized ? t.minimizeIcon : t.maximizeIcon]
                   }, t.ptm("pcMaximizeButton").icon), null, 16, ["class"]))];
                 })];
               }),
               _: 3
             }, 16, ["autofocus", "class", "onClick", "tabindex", "unstyled", "pt"])];
-          }) : z("", !0), t.closable ? B(t.$slots, "closebutton", {
+          }) : E("", !0), t.closable ? D(t.$slots, "closebutton", {
             key: 1,
             closeCallback: r.close
           }, function() {
-            return [$(v, S({
+            return [$(y, _({
               ref: r.closeButtonRef,
               autofocus: s.focusableClose,
               class: t.cx("pcCloseButton"),
@@ -1968,38 +1968,38 @@ function Pn(t, e, n, o, s, r) {
               pt: t.ptm("pcCloseButton"),
               "data-pc-group-section": "headericon"
             }), {
-              icon: M(function(w) {
-                return [B(t.$slots, "closeicon", {}, function() {
-                  return [(u(), H(mt(t.closeIcon ? "span" : "TimesIcon"), S({
-                    class: [t.closeIcon, w.class]
+              icon: j(function(k) {
+                return [D(t.$slots, "closeicon", {}, function() {
+                  return [(u(), H(vt(t.closeIcon ? "span" : "TimesIcon"), _({
+                    class: [t.closeIcon, k.class]
                   }, t.ptm("pcCloseButton").icon), null, 16, ["class"]))];
                 })];
               }),
               _: 3
             }, 16, ["autofocus", "class", "onClick", "aria-label", "unstyled", "pt"])];
-          }) : z("", !0)], 16)], 16)) : z("", !0), l("div", S({
+          }) : E("", !0)], 16)], 16)) : E("", !0), i("div", _({
             ref: r.contentRef,
             class: [t.cx("content"), t.contentClass],
             style: t.contentStyle,
             "data-p": r.dataP
-          }, Tt(Tt({}, t.contentProps), t.ptm("content"))), [B(t.$slots, "default")], 16, Ln), t.footer || t.$slots.footer ? (u(), g("div", S({
+          }, Tt(Tt({}, t.contentProps), t.ptm("content"))), [D(t.$slots, "default")], 16, Pn), t.footer || t.$slots.footer ? (u(), h("div", _({
             key: 1,
             ref: r.footerContainerRef,
             class: t.cx("footer")
-          }, t.ptm("footer")), [B(t.$slots, "footer", {}, function() {
-            return [D(L(t.footer), 1)];
-          })], 16)) : z("", !0)], 64))], 16, En)), [[f, {
+          }, t.ptm("footer")), [D(t.$slots, "footer", {}, function() {
+            return [A(I(t.footer), 1)];
+          })], 16)) : E("", !0)], 64))], 16, Ln)), [[f, {
             disabled: !t.modal
-          }]]) : z("", !0)];
+          }]]) : E("", !0)];
         }),
         _: 3
-      }, 16, ["onEnter", "onAfterEnter", "onBeforeLeave", "onLeave", "onAfterLeave"])], 16, zn)) : z("", !0)];
+      }, 16, ["onEnter", "onAfterEnter", "onBeforeLeave", "onLeave", "onAfterLeave"])], 16, En)) : E("", !0)];
     }),
     _: 3
   }, 8, ["appendTo"]);
 }
-Xt.render = Pn;
-var Bn = `
+Yt.render = Bn;
+var Dn = `
     .p-toggleswitch {
         display: inline-block;
         width: dt('toggleswitch.width');
@@ -2113,11 +2113,11 @@ var Bn = `
     .p-toggleswitch.p-disabled .p-toggleswitch-handle {
         background: dt('toggleswitch.handle.disabled.background');
     }
-`, Dn = {
+`, An = {
   root: {
     position: "relative"
   }
-}, An = {
+}, On = {
   root: function(e) {
     var n = e.instance, o = e.props;
     return ["p-toggleswitch p-component", {
@@ -2129,14 +2129,14 @@ var Bn = `
   input: "p-toggleswitch-input",
   slider: "p-toggleswitch-slider",
   handle: "p-toggleswitch-handle"
-}, On = rt.extend({
+}, Mn = it.extend({
   name: "toggleswitch",
-  style: Bn,
-  classes: An,
-  inlineStyles: Dn
+  style: Dn,
+  classes: On,
+  inlineStyles: An
 }), Tn = {
   name: "BaseToggleSwitch",
-  extends: Be,
+  extends: De,
   props: {
     trueValue: {
       type: null,
@@ -2175,14 +2175,14 @@ var Bn = `
       default: null
     }
   },
-  style: On,
+  style: Mn,
   provide: function() {
     return {
       $pcToggleSwitch: this,
       $parentInstance: this
     };
   }
-}, Ct = {
+}, _t = {
   name: "ToggleSwitch",
   extends: Tn,
   inheritAttrs: !1,
@@ -2216,23 +2216,23 @@ var Bn = `
       return this.d_value === this.trueValue;
     },
     dataP: function() {
-      return Y({
+      return q({
         checked: this.checked,
         disabled: this.disabled,
         invalid: this.$invalid
       });
     }
   }
-}, Mn = ["data-p-checked", "data-p-disabled", "data-p"], jn = ["id", "checked", "tabindex", "disabled", "readonly", "aria-checked", "aria-labelledby", "aria-label", "aria-invalid"], Fn = ["data-p"], Vn = ["data-p"];
-function Rn(t, e, n, o, s, r) {
-  return u(), g("div", S({
+}, jn = ["data-p-checked", "data-p-disabled", "data-p"], Fn = ["id", "checked", "tabindex", "disabled", "readonly", "aria-checked", "aria-labelledby", "aria-label", "aria-invalid"], Vn = ["data-p"], Rn = ["data-p"];
+function Nn(t, e, n, o, s, r) {
+  return u(), h("div", _({
     class: t.cx("root"),
     style: t.sx("root")
   }, r.getPTOptions("root"), {
     "data-p-checked": r.checked,
     "data-p-disabled": t.disabled,
     "data-p": r.dataP
-  }), [l("input", S({
+  }), [i("input", _({
     id: t.inputId,
     type: "checkbox",
     role: "switch",
@@ -2255,27 +2255,27 @@ function Rn(t, e, n, o, s, r) {
     onChange: e[2] || (e[2] = function() {
       return r.onChange && r.onChange.apply(r, arguments);
     })
-  }, r.getPTOptions("input")), null, 16, jn), l("div", S({
+  }, r.getPTOptions("input")), null, 16, Fn), i("div", _({
     class: t.cx("slider")
   }, r.getPTOptions("slider"), {
     "data-p": r.dataP
-  }), [l("div", S({
+  }), [i("div", _({
     class: t.cx("handle")
   }, r.getPTOptions("handle"), {
     "data-p": r.dataP
-  }), [B(t.$slots, "handle", {
+  }), [D(t.$slots, "handle", {
     checked: r.checked
-  })], 16, Vn)], 16, Fn)], 16, Mn);
+  })], 16, Rn)], 16, Vn)], 16, jn);
 }
-Ct.render = Rn;
+_t.render = Nn;
 const Hn = {
   class: "kx-nav",
   role: "tablist",
   "aria-label": "Agent sections"
-}, Nn = ["aria-selected", "onClick"], Un = { class: "kx-nav-ico" }, Kn = { class: "kx-nav-lbl" }, Wn = {
+}, Un = ["aria-selected", "onClick"], Kn = { class: "kx-nav-ico" }, Wn = { class: "kx-nav-lbl" }, Zn = {
   key: 0,
   class: "kx-nav-meta"
-}, Zn = /* @__PURE__ */ J({
+}, Xn = /* @__PURE__ */ tt({
   __name: "AgentNav",
   props: {
     items: {},
@@ -2284,27 +2284,27 @@ const Hn = {
   emits: ["select"],
   setup(t, { emit: e }) {
     const n = e;
-    return (o, s) => (u(), g("nav", Hn, [
-      (u(!0), g(K, null, vt(t.items, (r) => (u(), g("button", {
+    return (o, s) => (u(), h("nav", Hn, [
+      (u(!0), h(W, null, yt(t.items, (r) => (u(), h("button", {
         key: r.key,
         type: "button",
         role: "tab",
-        class: R(["kx-nav-item", t.active === r.key && "kx-nav-item-on"]),
+        class: N(["kx-nav-item", t.active === r.key && "kx-nav-item-on"]),
         "aria-selected": t.active === r.key,
-        onClick: (v) => n("select", r.key)
+        onClick: (y) => n("select", r.key)
       }, [
-        l("span", Un, [
+        i("span", Kn, [
           $(b(T), {
             icon: r.icon,
             "aria-hidden": "true"
           }, null, 8, ["icon"])
         ]),
-        l("span", Kn, L(r.label), 1),
-        r.meta ? (u(), g("span", Wn, L(r.meta), 1)) : z("", !0)
-      ], 10, Nn))), 128))
+        i("span", Wn, I(r.label), 1),
+        r.meta ? (u(), h("span", Zn, I(r.meta), 1)) : E("", !0)
+      ], 10, Un))), 128))
     ]));
   }
-}), Xn = /* @__PURE__ */ J({
+}), Yn = /* @__PURE__ */ tt({
   __name: "IconField",
   props: {
     modelValue: {},
@@ -2312,99 +2312,99 @@ const Hn = {
   },
   emits: ["update:modelValue"],
   setup(t, { emit: e }) {
-    const n = t, o = e, s = N(null);
+    const n = t, o = e, s = U(null);
     let r = null;
-    function v(f) {
+    function y(f) {
       o("update:modelValue", f.detail || "");
     }
     async function x() {
       if (s.value) {
-        r && r.removeEventListener("select", v), s.value.innerHTML = "";
+        r && r.removeEventListener("select", y), s.value.innerHTML = "";
         try {
-          customElements.get("wc-icon-picker") || await kt("wc-icon-picker", { timeoutMs: 8e3 });
+          customElements.get("wc-icon-picker") || await wt("wc-icon-picker", { timeoutMs: 8e3 });
         } catch {
         }
-        s.value && (r = document.createElement("wc-icon-picker"), r.setAttribute("value", n.modelValue || ""), n.fallback && r.setAttribute("fallback", n.fallback), r.addEventListener("select", v), s.value.appendChild(r));
+        s.value && (r = document.createElement("wc-icon-picker"), r.setAttribute("value", n.modelValue || ""), n.fallback && r.setAttribute("fallback", n.fallback), r.addEventListener("select", y), s.value.appendChild(r));
       }
     }
-    return Ft(x), yt(() => n.modelValue, (f) => {
+    return Vt(x), kt(() => n.modelValue, (f) => {
       r && r.getAttribute("value") !== f && r.setAttribute("value", f || "");
-    }), fe(() => {
-      r && r.removeEventListener("select", v);
-    }), (f, w) => (u(), g("div", {
+    }), he(() => {
+      r && r.removeEventListener("select", y);
+    }), (f, k) => (u(), h("div", {
       ref_key: "host",
       ref: s,
       class: "wc-iconfield"
     }, null, 512));
   }
 });
-function Yn({ form: t, traits: e, redirectTrait: n }) {
-  const o = I(() => e().filter((c) => c.id !== n)), s = (c) => t.value.traits.includes(c.id), r = I(() => o.value.filter(s));
-  function v(c) {
-    return !!c && typeof c == "object" && !Array.isArray(c);
+function Gn({ form: t, traits: e, redirectTrait: n }) {
+  const o = z(() => e().filter((p) => p.id !== n)), s = (p) => t.value.traits.includes(p.id), r = z(() => o.value.filter(s));
+  function y(p) {
+    return !!p && typeof p == "object" && !Array.isArray(p);
   }
-  function x(c) {
-    const y = v(t.value.trait_contexts[c]) ? t.value.trait_contexts[c] : {}, i = v(t.value.trait_agent_options[c]) ? t.value.trait_agent_options[c] : null;
-    return i ? { ...y, agent_options: i } : y;
+  function x(p) {
+    const m = y(t.value.trait_contexts[p]) ? t.value.trait_contexts[p] : {}, l = y(t.value.trait_agent_options[p]) ? t.value.trait_agent_options[p] : null;
+    return l ? { ...m, agent_options: l } : m;
   }
-  function f(c, y) {
-    if (v(y) && (Object.prototype.hasOwnProperty.call(y, "context") || Object.prototype.hasOwnProperty.call(y, "agent_options"))) {
-      t.value.trait_contexts = { ...t.value.trait_contexts, [c]: v(y.context) ? y.context : {} };
-      const h = { ...t.value.trait_agent_options };
-      v(y.agent_options) && Object.keys(y.agent_options).length ? h[c] = y.agent_options : delete h[c], t.value.trait_agent_options = h;
+  function f(p, m) {
+    if (y(m) && (Object.prototype.hasOwnProperty.call(m, "context") || Object.prototype.hasOwnProperty.call(m, "agent_options"))) {
+      t.value.trait_contexts = { ...t.value.trait_contexts, [p]: y(m.context) ? m.context : {} };
+      const v = { ...t.value.trait_agent_options };
+      y(m.agent_options) && Object.keys(m.agent_options).length ? v[p] = m.agent_options : delete v[p], t.value.trait_agent_options = v;
       return;
     }
-    t.value.trait_contexts = { ...t.value.trait_contexts, [c]: y };
-    const i = { ...t.value.trait_agent_options };
-    delete i[c], t.value.trait_agent_options = i;
+    t.value.trait_contexts = { ...t.value.trait_contexts, [p]: m };
+    const l = { ...t.value.trait_agent_options };
+    delete l[p], t.value.trait_agent_options = l;
   }
-  const w = I(() => t.value.traits.filter((c) => c !== n));
-  function _(c) {
-    t.value.traits = [...t.value.traits.filter((y) => y === n), ...c];
+  const k = z(() => t.value.traits.filter((p) => p !== n));
+  function C(p) {
+    t.value.traits = [...t.value.traits.filter((m) => m === n), ...p];
   }
   return {
     selectableTraits: o,
-    selectedCapabilities: w,
+    selectedCapabilities: k,
     activeTraits: r,
     traitMountConfig: x,
     onTraitConfig: f,
-    onCapabilitiesChange: _
+    onCapabilitiesChange: C
   };
 }
-const ht = "kickside.agents.traits:redirect", Gn = "kickside.agents.traits:artifacts", qn = "kickside.uploads.traits:file_manager", it = "user_agent:";
-function Jn({ form: t, agentId: e, agents: n, redirectTrait: o }) {
-  const s = N("delegates");
-  function r(h) {
-    const m = h.detail;
-    return m && Array.isArray(m.selected) ? m.selected.map(String) : [];
+const mt = "kickside.agents.traits:redirect", qn = "kickside.agents.traits:artifacts", Jn = "kickside.uploads.traits:file_manager", dt = "user_agent:";
+function Qn({ form: t, agentId: e, agents: n, redirectTrait: o }) {
+  const s = U("delegates");
+  function r(v) {
+    const S = v.detail;
+    return S && Array.isArray(S.selected) ? S.selected.map(String) : [];
   }
-  function v(h) {
-    const m = new Set([e(), `${it}${e()}`].filter(Boolean));
-    t.value.delegates = h.filter((C) => !m.has(C));
+  function y(v) {
+    const S = new Set([e(), `${dt}${e()}`].filter(Boolean));
+    t.value.delegates = v.filter((w) => !S.has(w));
   }
-  const x = (h) => h.startsWith(it) ? h.slice(it.length) : h, f = I(() => {
-    const h = t.value.trait_contexts[o];
-    return h && Array.isArray(h.targets) ? h.targets : [];
-  }), w = I(() => f.value.map((h) => h.agent_id));
-  function _(h) {
-    t.value.trait_contexts = { ...t.value.trait_contexts, [o]: { targets: h } };
-    const m = t.value.traits.indexOf(o);
-    h.length && m < 0 ? t.value.traits.push(o) : !h.length && m >= 0 && t.value.traits.splice(m, 1);
+  const x = (v) => v.startsWith(dt) ? v.slice(dt.length) : v, f = z(() => {
+    const v = t.value.trait_contexts[o];
+    return v && Array.isArray(v.targets) ? v.targets : [];
+  }), k = z(() => f.value.map((v) => v.agent_id));
+  function C(v) {
+    t.value.trait_contexts = { ...t.value.trait_contexts, [o]: { targets: v } };
+    const S = t.value.traits.indexOf(o);
+    v.length && S < 0 ? t.value.traits.push(o) : !v.length && S >= 0 && t.value.traits.splice(S, 1);
   }
-  function c(h) {
-    const m = new Set([e(), `${it}${e()}`].filter(Boolean)), C = h.filter((E) => !m.has(E)), p = new Map(f.value.map((E) => [E.agent_id, E.comment]));
-    _(C.map((E) => ({ agent_id: E, comment: p.get(E) || "" })));
+  function p(v) {
+    const S = new Set([e(), `${dt}${e()}`].filter(Boolean)), w = v.filter((c) => !S.has(c)), L = new Map(f.value.map((c) => [c.agent_id, c.comment]));
+    C(w.map((c) => ({ agent_id: c, comment: L.get(c) || "" })));
   }
-  function y(h) {
-    const m = x(h);
-    return n().find((C) => C.id === m)?.title || m;
+  function m(v) {
+    const S = x(v);
+    return n().find((w) => w.id === S)?.title || S;
   }
-  function i(h, m) {
-    _(f.value.map((C) => C.agent_id === h ? { ...C, comment: m } : C));
+  function l(v, S) {
+    C(f.value.map((w) => w.agent_id === v ? { ...w, comment: S } : w));
   }
-  return { routeView: s, pickIds: r, onDelegatesChange: v, redirectTargets: f, redirectSelectedIds: w, setRedirects: _, onRedirectsChange: c, redirectLabel: y, setRedirectCommentById: i };
+  return { routeView: s, pickIds: r, onDelegatesChange: y, redirectTargets: f, redirectSelectedIds: k, setRedirects: C, onRedirectsChange: p, redirectLabel: m, setRedirectCommentById: l };
 }
-function Mt(t, e) {
+function jt(t, e) {
   if (t && typeof t == "object") {
     const n = t, o = n.response?.data?.error;
     if (typeof o == "string") return o;
@@ -2414,52 +2414,52 @@ function Mt(t, e) {
   }
   return e;
 }
-function Qn({ form: t, valid: e, tab: n, blank: o, agentId: s, parentId: r, models: v, redirectTrait: x, emitSaved: f }) {
-  const w = N(!1), _ = N(!1), c = N("");
-  async function y(m) {
-    w.value = !0, t.value = o(!1);
+function to({ form: t, maxTokens: e, valid: n, tab: o, blank: s, agentId: r, parentId: y, models: x, redirectTrait: f, emitSaved: k }) {
+  const C = U(!1), p = U(!1), m = U("");
+  async function l(w) {
+    C.value = !0, t.value = s(!1);
     try {
-      const { data: C } = await ft.get(`/api/v1/user-agents/${m}`);
-      if (C?.success && C.agent) {
-        const p = C.agent;
+      const { data: L } = await ht.get(`/api/v1/user-agents/${w}`);
+      if (L?.success && L.agent) {
+        const c = L.agent;
         t.value = {
-          title: p.title || "",
-          description: p.description || "",
-          icon: p.icon || "tabler:robot",
-          public: p.public === !0,
-          prompt: p.prompt || "",
-          model: p.model || v()[0]?.name || "",
-          temperature: typeof p.temperature == "number" ? p.temperature : null,
-          max_tokens: typeof p.max_tokens == "number" ? p.max_tokens : 8e3,
-          thinking_effort: typeof p.thinking_effort == "number" ? p.thinking_effort : null,
-          traits: Array.isArray(p.traits) ? [...p.traits] : [],
-          trait_contexts: p.trait_contexts && typeof p.trait_contexts == "object" ? { ...p.trait_contexts } : {},
-          trait_agent_options: p.trait_agent_options && typeof p.trait_agent_options == "object" ? { ...p.trait_agent_options } : {},
-          tools: Array.isArray(p.tools) ? [...p.tools] : [],
-          delegates: Array.isArray(p.delegates) ? [...p.delegates] : [],
-          memory_target_id: p.memory_target_id || "",
-          memory_provider_id: p.memory_provider_id || ""
+          title: c.title || "",
+          description: c.description || "",
+          icon: c.icon || "tabler:robot",
+          public: c.public === !0,
+          prompt: c.prompt || "",
+          model: c.model || x()[0]?.name || "",
+          temperature: typeof c.temperature == "number" ? c.temperature : null,
+          max_tokens: typeof c.max_tokens == "number" ? c.max_tokens : null,
+          thinking_effort: typeof c.thinking_effort == "number" ? c.thinking_effort : null,
+          traits: Array.isArray(c.traits) ? [...c.traits] : [],
+          trait_contexts: c.trait_contexts && typeof c.trait_contexts == "object" ? { ...c.trait_contexts } : {},
+          trait_agent_options: c.trait_agent_options && typeof c.trait_agent_options == "object" ? { ...c.trait_agent_options } : {},
+          tools: Array.isArray(c.tools) ? [...c.tools] : [],
+          delegates: Array.isArray(c.delegates) ? [...c.delegates] : [],
+          memory_target_id: c.memory_target_id || "",
+          memory_provider_id: c.memory_provider_id || ""
         };
       }
-    } catch (C) {
-      c.value = Mt(C, "could not load agent");
+    } catch (L) {
+      m.value = jt(L, "could not load agent");
     } finally {
-      w.value = !1;
+      C.value = !1;
     }
   }
-  function i(m) {
-    const C = {};
-    for (const p of t.value.traits)
-      Object.prototype.hasOwnProperty.call(m, p) && (C[p] = m[p]);
-    return C;
+  function v(w) {
+    const L = {};
+    for (const c of t.value.traits)
+      Object.prototype.hasOwnProperty.call(w, c) && (L[c] = w[c]);
+    return L;
   }
-  async function h() {
-    if (!e.value) {
-      c.value = t.value.title.trim() ? "Check the model and token limits." : "Name is required.", t.value.title.trim() && (n.value = "model");
+  async function S() {
+    if (!n.value) {
+      m.value = t.value.title.trim() ? "Check the model and token limits." : "Name is required.", t.value.title.trim() && (o.value = "model");
       return;
     }
-    _.value = !0, c.value = "";
-    const m = {
+    p.value = !0, m.value = "";
+    const w = {
       title: t.value.title.trim(),
       description: t.value.description,
       icon: t.value.icon,
@@ -2467,104 +2467,105 @@ function Qn({ form: t, valid: e, tab: n, blank: o, agentId: s, parentId: r, mode
       prompt: t.value.prompt,
       model: t.value.model,
       temperature: t.value.temperature ?? !1,
-      max_tokens: t.value.max_tokens,
       thinking_effort: t.value.thinking_effort ?? !1,
       traits: t.value.traits,
-      trait_contexts: i(t.value.trait_contexts),
-      trait_agent_options: i(t.value.trait_agent_options),
+      trait_contexts: v(t.value.trait_contexts),
+      trait_agent_options: v(t.value.trait_agent_options),
       tools: t.value.tools,
       delegates: t.value.delegates,
       memory_target_id: t.value.memory_target_id,
       memory_provider_id: t.value.memory_provider_id
-    }, C = s();
-    if (C) {
-      const p = /* @__PURE__ */ new Set([C, `user_agent:${C}`]);
-      m.delegates = m.delegates.filter((j) => !p.has(j));
-      const E = m.trait_contexts?.[x];
-      if (E && Array.isArray(E.targets)) {
-        const j = E.targets.filter((U) => !p.has(U.agent_id));
-        m.trait_contexts = { ...m.trait_contexts, [x]: { ...E, targets: j } }, j.length || (m.traits = m.traits.filter((U) => U !== x));
+    };
+    typeof e.value == "number" && (w.max_tokens = e.value);
+    const L = r();
+    if (L) {
+      const c = /* @__PURE__ */ new Set([L, `user_agent:${L}`]);
+      w.delegates = w.delegates.filter((F) => !c.has(F));
+      const P = w.trait_contexts?.[f];
+      if (P && Array.isArray(P.targets)) {
+        const F = P.targets.filter((K) => !c.has(K.agent_id));
+        w.trait_contexts = { ...w.trait_contexts, [f]: { ...P, targets: F } }, F.length || (w.traits = w.traits.filter((K) => K !== f));
       }
     }
     try {
-      let p = C || "";
-      if (C) {
-        const { data: E } = await ft.put(`/api/v1/user-agents/${C}`, m);
-        if (!E?.success) throw new Error(E?.error || "save failed");
+      let c = L || "";
+      if (L) {
+        const { data: P } = await ht.put(`/api/v1/user-agents/${L}`, w);
+        if (!P?.success) throw new Error(P?.error || "save failed");
       } else {
-        const { data: E } = await ft.post("/api/v1/user-agents", { ...m, parent_id: r() || void 0 });
-        if (!E?.success) throw new Error(E?.error || "create failed");
-        p = E.component_id || "";
+        const { data: P } = await ht.post("/api/v1/user-agents", { ...w, parent_id: y() || void 0 });
+        if (!P?.success) throw new Error(P?.error || "create failed");
+        c = P.component_id || "";
       }
-      f(p);
-    } catch (p) {
-      c.value = Mt(p, "save failed");
+      k(c);
+    } catch (c) {
+      m.value = jt(c, "save failed");
     } finally {
-      _.value = !1;
+      p.value = !1;
     }
   }
-  return { loading: w, saving: _, error: c, loadAgent: y, save: h };
+  return { loading: C, saving: p, error: m, loadAgent: l, save: S };
 }
-const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no = { class: "kx-modal-head-text" }, oo = { class: "kx-modal-head-title" }, ro = { class: "kx-modal-head-sub" }, ao = {
+const eo = { class: "kx-modal-head" }, no = { class: "kx-modal-head-icon" }, oo = { class: "kx-modal-head-text" }, ro = { class: "kx-modal-head-title" }, ao = { class: "kx-modal-head-sub" }, io = {
   key: 0,
   class: "kx-2p"
-}, io = { class: "kx-loading" }, lo = {
+}, lo = { class: "kx-loading" }, so = {
   key: 1,
   class: "kx-2p"
-}, so = { class: "kx-2p-l" }, uo = { class: "kx-form" }, co = { class: "kx-field" }, bo = { class: "kx-name-row" }, po = { class: "kx-field" }, go = { class: "kx-2p-r" }, fo = { class: "kx-2p-r-head" }, ho = { class: "kx-2p-r-body" }, mo = {
+}, uo = { class: "kx-2p-l" }, co = { class: "kx-form" }, bo = { class: "kx-field" }, po = { class: "kx-name-row" }, go = { class: "kx-field" }, fo = { class: "kx-2p-r" }, ho = { class: "kx-2p-r-head" }, mo = { class: "kx-2p-r-body" }, vo = {
   key: 0,
   class: "kx-form kx-form-grow"
-}, vo = { class: "kx-field kx-field-grow" }, yo = {
+}, yo = { class: "kx-field kx-field-grow" }, ko = {
   key: 1,
   class: "kx-form"
-}, ko = { class: "kx-field" }, wo = ["value"], xo = { class: "kx-field" }, Co = ["max"], _o = {
+}, wo = { class: "kx-field" }, xo = ["value"], Co = { class: "kx-field" }, _o = ["max", "placeholder"], So = {
   key: 0,
   class: "kx-field-err"
-}, So = { class: "kx-field" }, $o = { class: "kx-toggle" }, zo = {
+}, $o = { class: "kx-field" }, zo = { class: "kx-toggle" }, Eo = {
   key: 0,
   class: "kx-think"
-}, Eo = { class: "kx-field-hint-inline" }, Io = { class: "kx-field" }, Lo = {
+}, Lo = { class: "kx-field-hint-inline" }, Io = { class: "kx-field" }, Po = {
   key: 0,
   class: "kx-toggle"
-}, Po = {
+}, Bo = {
   key: 1,
   class: "kx-sec-foot"
-}, Bo = {
+}, Do = {
   key: 2,
   class: "kx-think"
-}, Do = { class: "kx-field-hint-inline" }, Ao = {
+}, Ao = { class: "kx-field-hint-inline" }, Oo = {
   key: 2,
   class: "kx-form"
-}, Oo = {
+}, Mo = {
   key: 0,
   class: "kx-group",
   "aria-label": "Existing direct tools"
-}, To = { class: "kx-group-head" }, Mo = { class: "kx-group-meta" }, jo = { class: "kx-direct-tools" }, Fo = ["data-tool-id"], Vo = ["aria-label", "onClick"], Ro = {
+}, To = { class: "kx-group-head" }, jo = { class: "kx-group-meta" }, Fo = { class: "kx-direct-tools" }, Vo = ["data-tool-id"], Ro = ["aria-label", "onClick"], No = {
   key: 3,
   class: "kx-form"
 }, Ho = {
   class: "kx-seg",
   role: "tablist"
-}, No = ["aria-selected"], Uo = {
+}, Uo = ["aria-selected"], Ko = {
   key: 0,
   class: "kx-seg-count"
-}, Ko = ["aria-selected"], Wo = {
+}, Wo = ["aria-selected"], Zo = {
   key: 0,
   class: "kx-seg-count"
-}, Zo = ["selected"], Xo = ["selected"], Yo = {
+}, Xo = ["selected"], Yo = ["selected"], Go = {
   key: 0,
   class: "kx-redirect-comments"
-}, Go = { class: "kx-redirect-comment-name" }, qo = ["value", "onInput"], Jo = { class: "kx-modal-foot" }, Qo = {
+}, qo = { class: "kx-redirect-comment-name" }, Jo = ["value", "onInput"], Qo = { class: "kx-modal-foot" }, tr = {
   key: 0,
   class: "kx-err inline kx-foot-err"
-}, tr = {
+}, er = {
   key: 1,
   class: "kx-embed"
-}, er = {
+}, nr = {
   class: "kx-modal kx-modal-agent kx-modal-embed",
   role: "dialog",
   "aria-modal": "true"
-}, dr = /* @__PURE__ */ J({
+}, or = 8e3, cr = /* @__PURE__ */ tt({
   __name: "AgentForm",
   props: {
     open: { type: Boolean },
@@ -2578,16 +2579,16 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
   },
   emits: ["close", "saved"],
   setup(t, { emit: e }) {
-    const n = he(), o = J({
-      setup(k, { slots: a }) {
+    const n = me(), o = tt({
+      setup(g, { slots: a }) {
         return n.value = a.default, () => {
         };
       }
-    }), s = J({
+    }), s = tt({
       render() {
         return n.value ? n.value() : null;
       }
-    }), r = t, v = e, x = I(() => {
+    }), r = t, y = e, x = z(() => {
       switch (f.value) {
         case "model":
           return "Model";
@@ -2598,29 +2599,29 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
         default:
           return "Prompt";
       }
-    }), f = N("prompt"), w = ["fast", "nano", "balanced", "premium"], _ = I(() => {
-      const k = /* @__PURE__ */ new Set();
-      for (const a of r.models) for (const d of a.class || []) k.add(d);
-      return [...k].sort((a, d) => {
-        const O = w.indexOf(a), pt = w.indexOf(d);
-        return (O < 0 ? 99 : O) - (pt < 0 ? 99 : pt) || a.localeCompare(d);
+    }), f = U("prompt"), k = ["fast", "nano", "balanced", "premium"], C = z(() => {
+      const g = /* @__PURE__ */ new Set();
+      for (const a of r.models) for (const d of a.class || []) g.add(d);
+      return [...g].sort((a, d) => {
+        const M = k.indexOf(a), gt = k.indexOf(d);
+        return (M < 0 ? 99 : M) - (gt < 0 ? 99 : gt) || a.localeCompare(d);
       });
     });
-    function c() {
-      return _.value.includes("fast") ? "class:fast" : _.value.length ? "class:" + _.value[0] : r.models[0]?.name || "";
+    function p() {
+      return C.value.includes("fast") ? "class:fast" : C.value.length ? "class:" + C.value[0] : r.models[0]?.name || "";
     }
-    function y(k = !0) {
+    function m(g = !0) {
       return {
         title: "",
         description: "",
         icon: "tabler:robot",
         prompt: "",
         public: !1,
-        model: c(),
+        model: p(),
         temperature: null,
-        max_tokens: 8e3,
+        max_tokens: null,
         thinking_effort: null,
-        traits: k ? [Gn, qn] : [],
+        traits: g ? [qn, Jn] : [],
         trait_contexts: {},
         trait_agent_options: {},
         tools: [],
@@ -2629,99 +2630,111 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
         memory_provider_id: ""
       };
     }
-    const i = N(y()), h = I(() => !!r.agentId), m = I(() => i.value.tools.map((k) => ({
-      id: k,
-      title: r.tools.find((a) => a.id === k)?.title || k
-    }))), C = I({
+    const l = U(m()), v = z(() => !!r.agentId), S = z(() => l.value.tools.map((g) => ({
+      id: g,
+      title: r.tools.find((a) => a.id === g)?.title || g
+    }))), w = z({
       get: () => r.open,
-      set: (k) => {
-        k || v("close");
+      set: (g) => {
+        g || y("close");
       }
-    }), p = N(null);
-    function E() {
-      me(() => p.value?.focus({ preventScroll: !0 }));
+    }), L = U(null);
+    function c() {
+      ve(() => L.value?.focus({ preventScroll: !0 }));
     }
-    const j = I({
-      get: () => Math.round((i.value.temperature ?? 0.5) * 50),
-      set: (k) => {
-        i.value.temperature = Math.max(0, Math.min(2, (Number(k) || 0) / 50));
+    const P = z({
+      get: () => Math.round((l.value.temperature ?? 0.5) * 50),
+      set: (g) => {
+        l.value.temperature = Math.max(0, Math.min(2, (Number(g) || 0) / 50));
       }
-    }), U = I({
-      get: () => i.value.temperature !== null,
-      set: (k) => {
-        i.value.temperature = k ? i.value.temperature ?? 0.5 : null;
+    }), F = z({
+      get: () => l.value.temperature !== null,
+      set: (g) => {
+        l.value.temperature = g ? l.value.temperature ?? 0.5 : null;
       }
-    }), dt = I(() => i.value.model.startsWith("class:") ? r.models.filter((k) => k.class?.includes(i.value.model.slice(6))) : r.models.filter((k) => k.name === i.value.model)), ut = I(() => {
-      const k = dt.value.map((a) => a.output_tokens).filter((a) => typeof a == "number" && Number.isFinite(a) && a > 0);
-      return k.length ? Math.min(...k) : 128e3;
-    }), St = I(() => !G.value && (dt.value.length === 0 || dt.value.some((k) => !k.capabilities?.includes("reasoning")))), Yt = I(() => G.value ? "Extended thinking sets its own temperature." : "The selected models reason instead of sampling, so temperature is not applied."), ct = I(() => !Number.isInteger(i.value.max_tokens) || i.value.max_tokens < 1 || i.value.max_tokens > ut.value), $t = I(() => i.value.title.trim().length > 0 && !!i.value.model && !ct.value), Gt = Qn({
-      form: i,
-      valid: $t,
+    }), K = z(() => l.value.model.startsWith("class:") ? r.models.filter((g) => g.class?.includes(l.value.model.slice(6))) : r.models.filter((g) => g.name === l.value.model)), Z = z(() => {
+      const g = K.value.map((a) => a.output_tokens).filter((a) => typeof a == "number" && Number.isFinite(a) && a > 0);
+      return g.length ? Math.floor(Math.min(...g)) : void 0;
+    }), lt = z({
+      get: () => {
+        const g = Z.value;
+        return l.value.max_tokens ?? (g === void 0 ? void 0 : Math.min(or, g));
+      },
+      set: (g) => {
+        l.value.max_tokens = g;
+      }
+    }), $t = z(() => !J.value && (K.value.length === 0 || K.value.some((g) => !g.capabilities?.includes("reasoning")))), Gt = z(() => J.value ? "Extended thinking sets its own temperature." : "The selected models reason instead of sampling, so temperature is not applied."), bt = z(() => {
+      const g = lt.value, a = Z.value;
+      return g !== void 0 && (typeof g != "number" || !Number.isInteger(g) || g < 1 || a !== void 0 && g > a);
+    }), zt = z(() => l.value.title.trim().length > 0 && !!l.value.model && !bt.value), qt = to({
+      form: l,
+      maxTokens: lt,
+      valid: zt,
       tab: f,
-      blank: y,
+      blank: m,
       agentId: () => r.agentId,
       parentId: () => r.parentId,
       models: () => r.models,
-      redirectTrait: ht,
-      emitSaved: (k) => v("saved", k)
-    }), { loading: qt, saving: at, error: bt, loadAgent: Jt, save: Qt } = Gt;
-    yt(() => r.models, () => {
-      !h.value && !i.value.model && (i.value.model = c());
-    }, { immediate: !0 }), Ft(() => {
-      kt("wc-model-picker", { timeoutMs: 8e3 }).catch(() => {
-      }), kt("wc-agent-picker", { timeoutMs: 8e3 }).catch(() => {
+      redirectTrait: mt,
+      emitSaved: (g) => y("saved", g)
+    }), { loading: Jt, saving: st, error: pt, loadAgent: Qt, save: te } = qt;
+    kt(() => r.models, () => {
+      !v.value && !l.value.model && (l.value.model = p());
+    }, { immediate: !0 }), Vt(() => {
+      wt("wc-model-picker", { timeoutMs: 8e3 }).catch(() => {
+      }), wt("wc-agent-picker", { timeoutMs: 8e3 }).catch(() => {
       });
     });
-    function te(k) {
-      i.value.model = k.detail;
+    function ee(g) {
+      l.value.model = g.detail;
     }
-    const G = I({
-      get: () => i.value.thinking_effort !== null,
-      set: (k) => {
-        i.value.thinking_effort = k ? i.value.thinking_effort ?? 50 : null;
+    const J = z({
+      get: () => l.value.thinking_effort !== null,
+      set: (g) => {
+        l.value.thinking_effort = g ? l.value.thinking_effort ?? 50 : null;
       }
-    }), { selectableTraits: ee, selectedCapabilities: ne, activeTraits: zt, traitMountConfig: oe, onTraitConfig: re, onCapabilitiesChange: ae } = Yn({ form: i, traits: () => r.traits, redirectTrait: ht }), ie = Jn({
-      form: i,
+    }), { selectableTraits: ne, selectedCapabilities: oe, activeTraits: Et, traitMountConfig: re, onTraitConfig: ae, onCapabilitiesChange: ie } = Gn({ form: l, traits: () => r.traits, redirectTrait: mt }), le = Qn({
+      form: l,
       agentId: () => r.agentId,
       agents: () => r.agents,
-      redirectTrait: ht
+      redirectTrait: mt
     }), {
-      routeView: F,
-      pickIds: Et,
-      onDelegatesChange: le,
-      redirectTargets: W,
-      redirectSelectedIds: se,
-      onRedirectsChange: de,
-      redirectLabel: ue,
-      setRedirectCommentById: ce
-    } = ie;
-    yt(() => [r.open, r.agentId], ([k]) => {
-      k && (f.value = "prompt", F.value = "delegates", bt.value = "", r.agentId ? Jt(r.agentId) : i.value = y());
+      routeView: V,
+      pickIds: Lt,
+      onDelegatesChange: se,
+      redirectTargets: X,
+      redirectSelectedIds: de,
+      onRedirectsChange: ue,
+      redirectLabel: ce,
+      setRedirectCommentById: be
+    } = le;
+    kt(() => [r.open, r.agentId], ([g]) => {
+      g && (f.value = "prompt", V.value = "delegates", pt.value = "", r.agentId ? Qt(r.agentId) : l.value = m());
     }, { immediate: !0 });
-    const be = I(() => [
-      { key: "prompt", label: "Prompt", icon: "tabler:keyboard", meta: i.value.prompt.trim() ? "•" : "" },
+    const pe = z(() => [
+      { key: "prompt", label: "Prompt", icon: "tabler:keyboard", meta: l.value.prompt.trim() ? "•" : "" },
       { key: "model", label: "Model", icon: "tabler:cpu", meta: "" },
-      { key: "caps", label: "Capabilities", icon: "tabler:puzzle", meta: zt.value.length ? String(zt.value.length) : "" },
-      { key: "routing", label: "Routing", icon: "tabler:arrows-split-2", meta: i.value.delegates.length + W.value.length ? String(i.value.delegates.length + W.value.length) : "" }
+      { key: "caps", label: "Capabilities", icon: "tabler:puzzle", meta: Et.value.length ? String(Et.value.length) : "" },
+      { key: "routing", label: "Routing", icon: "tabler:arrows-split-2", meta: l.value.delegates.length + X.value.length ? String(l.value.delegates.length + X.value.length) : "" }
     ]);
-    return (k, a) => (u(), g(K, null, [
+    return (g, a) => (u(), h(W, null, [
       $(b(o), null, {
-        default: M(() => [
-          l("div", to, [
-            l("span", eo, [
+        default: j(() => [
+          i("div", eo, [
+            i("span", no, [
               $(b(T), {
-                icon: i.value.icon || "tabler:robot",
+                icon: l.value.icon || "tabler:robot",
                 "aria-hidden": "true"
               }, null, 8, ["icon"])
             ]),
-            l("span", no, [
-              l("span", oo, L(h.value ? "Edit agent" : "New agent"), 1),
-              l("span", ro, L(i.value.title.trim() || "Configure persona, model and capabilities."), 1)
+            i("span", oo, [
+              i("span", ro, I(v.value ? "Edit agent" : "New agent"), 1),
+              i("span", ao, I(l.value.title.trim() || "Configure persona, model and capabilities."), 1)
             ]),
-            l("button", {
+            i("button", {
               class: "kx-modal-x",
               "aria-label": "Close",
-              onClick: a[0] || (a[0] = (d) => v("close"))
+              onClick: a[0] || (a[0] = (d) => y("close"))
             }, [
               $(b(T), {
                 icon: "tabler:x",
@@ -2729,127 +2742,128 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
               })
             ])
           ]),
-          b(qt) ? (u(), g("div", ao, [
-            l("div", io, [
+          b(Jt) ? (u(), h("div", io, [
+            i("div", lo, [
               $(b(T), {
                 icon: "tabler:loader-2",
                 class: "spin",
                 "aria-hidden": "true"
               }),
-              a[17] || (a[17] = D(" Loading…", -1))
+              a[17] || (a[17] = A(" Loading…", -1))
             ])
-          ])) : (u(), g("div", lo, [
-            l("div", so, [
-              l("div", uo, [
-                l("div", co, [
-                  a[18] || (a[18] = l("span", { class: "kx-field-lbl" }, "Name", -1)),
-                  l("div", bo, [
-                    $(Xn, {
+          ])) : (u(), h("div", so, [
+            i("div", uo, [
+              i("div", co, [
+                i("div", bo, [
+                  a[18] || (a[18] = i("span", { class: "kx-field-lbl" }, "Name", -1)),
+                  i("div", po, [
+                    $(Yn, {
                       class: "kx-name-icon",
-                      modelValue: i.value.icon,
-                      "onUpdate:modelValue": a[1] || (a[1] = (d) => i.value.icon = d),
+                      modelValue: l.value.icon,
+                      "onUpdate:modelValue": a[1] || (a[1] = (d) => l.value.icon = d),
                       fallback: "tabler:robot"
                     }, null, 8, ["modelValue"]),
-                    V(l("input", {
+                    R(i("input", {
                       ref_key: "agentNameInput",
-                      ref: p,
-                      "onUpdate:modelValue": a[2] || (a[2] = (d) => i.value.title = d),
+                      ref: L,
+                      "onUpdate:modelValue": a[2] || (a[2] = (d) => l.value.title = d),
                       class: "kx-input",
                       "data-agent-name": "",
                       "aria-label": "Agent name",
                       placeholder: "e.g. Research assistant"
                     }, null, 512), [
-                      [Z, i.value.title]
+                      [Y, l.value.title]
                     ])
                   ])
                 ]),
-                l("label", po, [
-                  a[19] || (a[19] = l("span", { class: "kx-field-lbl" }, [
-                    D("Description "),
-                    l("span", { class: "kx-field-hint-inline" }, "— shown in pickers")
+                i("label", go, [
+                  a[19] || (a[19] = i("span", { class: "kx-field-lbl" }, [
+                    A("Description "),
+                    i("span", { class: "kx-field-hint-inline" }, "— shown in pickers")
                   ], -1)),
-                  V(l("textarea", {
-                    "onUpdate:modelValue": a[3] || (a[3] = (d) => i.value.description = d),
+                  R(i("textarea", {
+                    "onUpdate:modelValue": a[3] || (a[3] = (d) => l.value.description = d),
                     class: "kx-input kx-textarea kx-textarea-sm",
                     rows: "2",
                     placeholder: "What this agent is for."
                   }, null, 512), [
-                    [Z, i.value.description]
+                    [Y, l.value.description]
                   ])
                 ])
               ]),
-              $(Zn, {
-                items: be.value,
+              $(Xn, {
+                items: pe.value,
                 active: f.value,
                 onSelect: a[4] || (a[4] = (d) => f.value = d)
               }, null, 8, ["items", "active"])
             ]),
-            l("div", go, [
-              l("div", fo, L(x.value), 1),
-              l("div", ho, [
-                f.value === "prompt" ? (u(), g("div", mo, [
-                  l("label", vo, [
-                    a[20] || (a[20] = l("span", { class: "kx-field-lbl" }, [
-                      D("System prompt "),
-                      l("span", { class: "kx-field-hint-inline" }, "— the agent's persona and instructions")
+            i("div", fo, [
+              i("div", ho, I(x.value), 1),
+              i("div", mo, [
+                f.value === "prompt" ? (u(), h("div", vo, [
+                  i("label", yo, [
+                    a[20] || (a[20] = i("span", { class: "kx-field-lbl" }, [
+                      A("System prompt "),
+                      i("span", { class: "kx-field-hint-inline" }, "— the agent's persona and instructions")
                     ], -1)),
-                    V(l("textarea", {
-                      "onUpdate:modelValue": a[5] || (a[5] = (d) => i.value.prompt = d),
+                    R(i("textarea", {
+                      "onUpdate:modelValue": a[5] || (a[5] = (d) => l.value.prompt = d),
                       class: "kx-input kx-textarea kx-textarea-lg",
                       placeholder: "You are a helpful assistant that…"
                     }, null, 512), [
-                      [Z, i.value.prompt]
+                      [Y, l.value.prompt]
                     ])
                   ]),
-                  a[21] || (a[21] = l("p", { class: "kx-sec-foot" }, "Keep the prompt clear and operational. Capabilities and routing are configured in their own sections.", -1))
-                ])) : f.value === "model" ? (u(), g("div", yo, [
-                  l("div", ko, [
-                    a[22] || (a[22] = l("span", { class: "kx-field-lbl" }, "Model", -1)),
-                    l("wc-model-picker", {
-                      value: i.value.model || "",
-                      onSelect: te
-                    }, null, 40, wo)
+                  a[21] || (a[21] = i("p", { class: "kx-sec-foot" }, "Keep the prompt clear and operational. Capabilities and routing are configured in their own sections.", -1))
+                ])) : f.value === "model" ? (u(), h("div", ko, [
+                  i("div", wo, [
+                    a[22] || (a[22] = i("span", { class: "kx-field-lbl" }, "Model", -1)),
+                    i("wc-model-picker", {
+                      value: l.value.model || "",
+                      onSelect: ee
+                    }, null, 40, xo)
                   ]),
-                  l("label", xo, [
-                    a[23] || (a[23] = l("span", { class: "kx-field-lbl" }, [
-                      D("Max tokens "),
-                      l("span", { class: "kx-field-hint-inline" }, "— response length cap")
+                  i("label", Co, [
+                    a[23] || (a[23] = i("span", { class: "kx-field-lbl" }, [
+                      A("Max tokens "),
+                      i("span", { class: "kx-field-hint-inline" }, "— response length cap")
                     ], -1)),
-                    V(l("input", {
-                      "onUpdate:modelValue": a[6] || (a[6] = (d) => i.value.max_tokens = d),
+                    R(i("input", {
+                      "onUpdate:modelValue": a[6] || (a[6] = (d) => lt.value = d),
                       type: "number",
                       min: "1",
-                      max: ut.value,
+                      max: Z.value,
                       step: "1",
-                      class: R(["kx-input", ct.value && "kx-input-err"])
-                    }, null, 10, Co), [
+                      placeholder: Z.value === void 0 ? "Model default" : void 0,
+                      class: N(["kx-input", bt.value && "kx-input-err"])
+                    }, null, 10, _o), [
                       [
-                        Z,
-                        i.value.max_tokens,
+                        Y,
+                        lt.value,
                         void 0,
                         { number: !0 }
                       ]
                     ]),
-                    ct.value ? (u(), g("span", _o, "Must be between 1 and " + L(ut.value) + ".", 1)) : z("", !0)
+                    bt.value ? (u(), h("span", So, I(Z.value === void 0 ? "Must be a positive whole number." : `Must be a whole number between 1 and ${Z.value}.`), 1)) : E("", !0)
                   ]),
-                  l("div", So, [
-                    l("div", $o, [
-                      $(b(Ct), {
-                        modelValue: G.value,
-                        "onUpdate:modelValue": a[7] || (a[7] = (d) => G.value = d),
+                  i("div", $o, [
+                    i("div", zo, [
+                      $(b(_t), {
+                        modelValue: J.value,
+                        "onUpdate:modelValue": a[7] || (a[7] = (d) => J.value = d),
                         "input-id": "agent-thinking"
                       }, null, 8, ["modelValue"]),
-                      a[24] || (a[24] = l("label", {
+                      a[24] || (a[24] = i("label", {
                         for: "agent-thinking",
                         class: "kx-toggle-copy"
                       }, [
-                        l("span", { class: "kx-field-lbl" }, "Extended thinking")
+                        i("span", { class: "kx-field-lbl" }, "Extended thinking")
                       ], -1))
                     ]),
-                    G.value ? (u(), g("div", zo, [
-                      l("span", Eo, "Effort: " + L(i.value.thinking_effort) + "%", 1),
-                      V(l("input", {
-                        "onUpdate:modelValue": a[8] || (a[8] = (d) => i.value.thinking_effort = d),
+                    J.value ? (u(), h("div", Eo, [
+                      i("span", Lo, "Effort: " + I(l.value.thinking_effort) + "%", 1),
+                      R(i("input", {
+                        "onUpdate:modelValue": a[8] || (a[8] = (d) => l.value.thinking_effort = d),
                         type: "range",
                         min: "0",
                         max: "100",
@@ -2857,32 +2871,32 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
                         class: "kx-range"
                       }, null, 512), [
                         [
-                          Z,
-                          i.value.thinking_effort,
+                          Y,
+                          l.value.thinking_effort,
                           void 0,
                           { number: !0 }
                         ]
                       ])
-                    ])) : z("", !0)
+                    ])) : E("", !0)
                   ]),
-                  l("div", Io, [
-                    St.value ? (u(), g("div", Lo, [
-                      $(b(Ct), {
-                        modelValue: U.value,
-                        "onUpdate:modelValue": a[9] || (a[9] = (d) => U.value = d),
+                  i("div", Io, [
+                    $t.value ? (u(), h("div", Po, [
+                      $(b(_t), {
+                        modelValue: F.value,
+                        "onUpdate:modelValue": a[9] || (a[9] = (d) => F.value = d),
                         "input-id": "agent-temperature"
                       }, null, 8, ["modelValue"]),
-                      a[25] || (a[25] = l("label", {
+                      a[25] || (a[25] = i("label", {
                         for: "agent-temperature",
                         class: "kx-toggle-copy"
                       }, [
-                        l("span", { class: "kx-field-lbl" }, "Custom temperature")
+                        i("span", { class: "kx-field-lbl" }, "Custom temperature")
                       ], -1))
-                    ])) : (u(), g("p", Po, L(Yt.value), 1)),
-                    St.value && U.value ? (u(), g("div", Bo, [
-                      l("span", Do, L(j.value) + "% · higher is more creative · unsupported on most current models", 1),
-                      V(l("input", {
-                        "onUpdate:modelValue": a[10] || (a[10] = (d) => j.value = d),
+                    ])) : (u(), h("p", Bo, I(Gt.value), 1)),
+                    $t.value && F.value ? (u(), h("div", Do, [
+                      i("span", Ao, I(P.value) + "% · higher is more creative · unsupported on most current models", 1),
+                      R(i("input", {
+                        "onUpdate:modelValue": a[10] || (a[10] = (d) => P.value = d),
                         type: "range",
                         min: "0",
                         max: "100",
@@ -2890,154 +2904,154 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
                         class: "kx-range"
                       }, null, 512), [
                         [
-                          Z,
-                          j.value,
+                          Y,
+                          P.value,
                           void 0,
                           { number: !0 }
                         ]
                       ])
-                    ])) : z("", !0)
+                    ])) : E("", !0)
                   ])
-                ])) : f.value === "caps" ? (u(), g("div", Ao, [
-                  $(Ae, {
-                    traits: b(ee),
+                ])) : f.value === "caps" ? (u(), h("div", Oo, [
+                  $(Oe, {
+                    traits: b(ne),
                     tools: t.tools,
-                    selected: b(ne),
-                    onChange: b(ae)
+                    selected: b(oe),
+                    onChange: b(ie)
                   }, {
-                    config: M(({ trait: d }) => [
-                      d.web_component ? (u(), H(De, {
+                    config: j(({ trait: d }) => [
+                      d.web_component ? (u(), H(Ae, {
                         key: 0,
                         tag: d.web_component,
-                        config: b(oe)(d.id),
+                        config: b(re)(d.id),
                         schema: d.context_schema,
                         provider: d.provider,
-                        onChange: (O) => b(re)(d.id, O)
-                      }, null, 8, ["tag", "config", "schema", "provider", "onChange"])) : z("", !0)
+                        onChange: (M) => b(ae)(d.id, M)
+                      }, null, 8, ["tag", "config", "schema", "provider", "onChange"])) : E("", !0)
                     ]),
                     _: 1
                   }, 8, ["traits", "tools", "selected", "onChange"]),
-                  i.value.tools.length ? (u(), g("section", Oo, [
-                    l("div", To, [
-                      a[26] || (a[26] = l("span", { class: "kx-group-title" }, "Existing direct tools", -1)),
-                      l("span", Mo, L(i.value.tools.length), 1)
+                  l.value.tools.length ? (u(), h("section", Mo, [
+                    i("div", To, [
+                      a[26] || (a[26] = i("span", { class: "kx-group-title" }, "Existing direct tools", -1)),
+                      i("span", jo, I(l.value.tools.length), 1)
                     ]),
-                    l("ul", jo, [
-                      (u(!0), g(K, null, vt(m.value, ({ id: d, title: O }) => (u(), g("li", {
+                    i("ul", Fo, [
+                      (u(!0), h(W, null, yt(S.value, ({ id: d, title: M }) => (u(), h("li", {
                         key: d,
                         "data-tool-id": d
                       }, [
-                        l("span", null, L(O), 1),
-                        l("button", {
+                        i("span", null, I(M), 1),
+                        i("button", {
                           type: "button",
                           class: "kx-trait-x",
-                          "aria-label": `Remove ${O} tool`,
-                          onClick: (pt) => i.value.tools = i.value.tools.filter((pe) => pe !== d)
+                          "aria-label": `Remove ${M} tool`,
+                          onClick: (gt) => l.value.tools = l.value.tools.filter((ge) => ge !== d)
                         }, [
                           $(b(T), {
                             icon: "tabler:x",
                             "aria-hidden": "true"
                           })
-                        ], 8, Vo)
-                      ], 8, Fo))), 128))
+                        ], 8, Ro)
+                      ], 8, Vo))), 128))
                     ])
-                  ])) : z("", !0)
-                ])) : f.value === "routing" ? (u(), g("div", Ro, [
-                  l("div", Ho, [
-                    l("button", {
+                  ])) : E("", !0)
+                ])) : f.value === "routing" ? (u(), h("div", No, [
+                  i("div", Ho, [
+                    i("button", {
                       type: "button",
                       role: "tab",
-                      class: R(["kx-seg-btn", b(F) === "delegates" && "kx-seg-btn-on"]),
-                      "aria-selected": b(F) === "delegates",
-                      onClick: a[11] || (a[11] = (d) => F.value = "delegates")
+                      class: N(["kx-seg-btn", b(V) === "delegates" && "kx-seg-btn-on"]),
+                      "aria-selected": b(V) === "delegates",
+                      onClick: a[11] || (a[11] = (d) => V.value = "delegates")
                     }, [
                       $(b(T), {
                         icon: "tabler:arrow-ramp-right-3",
                         "aria-hidden": "true"
                       }),
-                      a[27] || (a[27] = D(" Delegates ", -1)),
-                      i.value.delegates.length ? (u(), g("span", Uo, L(i.value.delegates.length), 1)) : z("", !0)
-                    ], 10, No),
-                    l("button", {
+                      a[27] || (a[27] = A(" Delegates ", -1)),
+                      l.value.delegates.length ? (u(), h("span", Ko, I(l.value.delegates.length), 1)) : E("", !0)
+                    ], 10, Uo),
+                    i("button", {
                       type: "button",
                       role: "tab",
-                      class: R(["kx-seg-btn", b(F) === "redirects" && "kx-seg-btn-on"]),
-                      "aria-selected": b(F) === "redirects",
-                      onClick: a[12] || (a[12] = (d) => F.value = "redirects")
+                      class: N(["kx-seg-btn", b(V) === "redirects" && "kx-seg-btn-on"]),
+                      "aria-selected": b(V) === "redirects",
+                      onClick: a[12] || (a[12] = (d) => V.value = "redirects")
                     }, [
                       $(b(T), {
                         icon: "tabler:arrows-split-2",
                         "aria-hidden": "true"
                       }),
-                      a[28] || (a[28] = D(" Redirects ", -1)),
-                      b(W).length ? (u(), g("span", Wo, L(b(W).length), 1)) : z("", !0)
-                    ], 10, Ko)
+                      a[28] || (a[28] = A(" Redirects ", -1)),
+                      b(X).length ? (u(), h("span", Zo, I(b(X).length), 1)) : E("", !0)
+                    ], 10, Wo)
                   ]),
-                  b(F) === "delegates" ? (u(), g(K, { key: 0 }, [
-                    a[29] || (a[29] = l("p", { class: "kx-sec-foot" }, "When this agent decides a task belongs to another, it can hand off while keeping the chat. Pick the agents it may delegate to.", -1)),
-                    l("wc-agent-picker", {
+                  b(V) === "delegates" ? (u(), h(W, { key: 0 }, [
+                    a[29] || (a[29] = i("p", { class: "kx-sec-foot" }, "When this agent decides a task belongs to another, it can hand off while keeping the chat. Pick the agents it may delegate to.", -1)),
+                    i("wc-agent-picker", {
                       placeholder: "Search agents to delegate to…",
-                      selected: JSON.stringify(i.value.delegates),
-                      onChange: a[13] || (a[13] = (d) => b(le)(b(Et)(d)))
-                    }, null, 40, Zo)
-                  ], 64)) : (u(), g(K, { key: 1 }, [
-                    a[30] || (a[30] = l("p", { class: "kx-sec-foot" }, [
-                      D("A redirect is not a delegate: it "),
-                      l("strong", null, "transfers the whole chat"),
-                      D(" — the target agent takes over and this one stops. Pick the agents it may hand off to, and note when (injected into the prompt).")
+                      selected: JSON.stringify(l.value.delegates),
+                      onChange: a[13] || (a[13] = (d) => b(se)(b(Lt)(d)))
+                    }, null, 40, Xo)
+                  ], 64)) : (u(), h(W, { key: 1 }, [
+                    a[30] || (a[30] = i("p", { class: "kx-sec-foot" }, [
+                      A("A redirect is not a delegate: it "),
+                      i("strong", null, "transfers the whole chat"),
+                      A(" — the target agent takes over and this one stops. Pick the agents it may hand off to, and note when (injected into the prompt).")
                     ], -1)),
-                    l("wc-agent-picker", {
+                    i("wc-agent-picker", {
                       placeholder: "Search agents to redirect to…",
-                      selected: JSON.stringify(b(se)),
-                      onChange: a[14] || (a[14] = (d) => b(de)(b(Et)(d)))
-                    }, null, 40, Xo),
-                    b(W).length ? (u(), g("div", Yo, [
-                      (u(!0), g(K, null, vt(b(W), (d) => (u(), g("div", {
+                      selected: JSON.stringify(b(de)),
+                      onChange: a[14] || (a[14] = (d) => b(ue)(b(Lt)(d)))
+                    }, null, 40, Yo),
+                    b(X).length ? (u(), h("div", Go, [
+                      (u(!0), h(W, null, yt(b(X), (d) => (u(), h("div", {
                         key: d.agent_id,
                         class: "kx-redirect-comment-row"
                       }, [
-                        l("span", Go, [
+                        i("span", qo, [
                           $(b(T), {
                             icon: "tabler:arrows-split-2",
                             "aria-hidden": "true"
                           }),
-                          D(" " + L(b(ue)(d.agent_id)), 1)
+                          A(" " + I(b(ce)(d.agent_id)), 1)
                         ]),
-                        l("input", {
+                        i("input", {
                           value: d.comment,
                           class: "kx-input kx-redirect-comment",
                           placeholder: "When to redirect here (injected into the prompt)…",
-                          onInput: (O) => b(ce)(d.agent_id, O.target.value)
-                        }, null, 40, qo)
+                          onInput: (M) => b(be)(d.agent_id, M.target.value)
+                        }, null, 40, Jo)
                       ]))), 128))
-                    ])) : z("", !0)
+                    ])) : E("", !0)
                   ], 64))
-                ])) : z("", !0)
+                ])) : E("", !0)
               ])
             ])
           ])),
-          l("div", Jo, [
-            b(bt) ? (u(), g("div", Qo, L(b(bt)), 1)) : z("", !0),
-            $(b(st), {
+          i("div", Qo, [
+            b(pt) ? (u(), h("div", tr, I(b(pt)), 1)) : E("", !0),
+            $(b(ct), {
               type: "button",
               label: "Cancel",
               severity: "secondary",
               outlined: "",
-              disabled: b(at),
-              onClick: a[15] || (a[15] = (d) => v("close"))
+              disabled: b(st),
+              onClick: a[15] || (a[15] = (d) => y("close"))
             }, null, 8, ["disabled"]),
-            $(b(st), {
+            $(b(ct), {
               type: "button",
               "data-testid": "agent-form-save",
-              label: b(at) ? h.value ? "Saving…" : "Creating…" : h.value ? "Save changes" : "Create agent",
-              loading: b(at),
-              disabled: b(at) || !$t.value,
-              onClick: b(Qt)
+              label: b(st) ? v.value ? "Saving…" : "Creating…" : v.value ? "Save changes" : "Create agent",
+              loading: b(st),
+              disabled: b(st) || !zt.value,
+              onClick: b(te)
             }, {
-              icon: M(({ class: d }) => [
+              icon: j(({ class: d }) => [
                 $(b(T), {
-                  icon: h.value ? "tabler:device-floppy" : "tabler:plus",
-                  class: R(d),
+                  icon: v.value ? "tabler:device-floppy" : "tabler:plus",
+                  class: N(d),
                   "aria-hidden": "true"
                 }, null, 8, ["icon", "class"])
               ]),
@@ -3047,23 +3061,23 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
         ]),
         _: 1
       }),
-      t.embedded ? t.open ? (u(), g("div", tr, [
-        l("div", er, [
+      t.embedded ? t.open ? (u(), h("div", er, [
+        i("div", nr, [
           $(b(s))
         ])
-      ])) : z("", !0) : (u(), H(b(Xt), {
+      ])) : E("", !0) : (u(), H(b(Yt), {
         key: 0,
-        visible: C.value,
-        "onUpdate:visible": a[16] || (a[16] = (d) => C.value = d),
+        visible: w.value,
+        "onUpdate:visible": a[16] || (a[16] = (d) => w.value = d),
         modal: "",
         "block-scroll": "",
         "show-header": !1,
         "dismissable-mask": !0,
         draggable: !1,
-        pt: { root: { class: "kx-modal kx-modal-agent", role: "dialog", "aria-modal": "true", "aria-label": h.value ? "Edit agent" : "New agent" }, content: { class: "kx-modal-content" } },
-        onShow: E
+        pt: { root: { class: "kx-modal kx-modal-agent", role: "dialog", "aria-modal": "true", "aria-label": v.value ? "Edit agent" : "New agent" }, content: { class: "kx-modal-content" } },
+        onShow: c
       }, {
-        default: M(() => [
+        default: j(() => [
           $(b(s))
         ]),
         _: 1
@@ -3072,8 +3086,8 @@ const to = { class: "kx-modal-head" }, eo = { class: "kx-modal-head-icon" }, no 
   }
 });
 export {
-  dr as _,
-  Mt as e,
-  st as s
+  cr as _,
+  jt as e,
+  ct as s
 };
-//# sourceMappingURL=AgentForm.vue_vue_type_script_setup_true_lang-C6OGvOS1.js.map
+//# sourceMappingURL=AgentForm.vue_vue_type_script_setup_true_lang-TsWFrAkF.js.map

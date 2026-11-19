@@ -9,6 +9,7 @@ function M.reset(stage: string, source: any)
     M.proof, M.missing = nil, false
     M.releases, M.rollbacks, M.commits, M.calls, M.advances = 0, 0, 0, 0, 0
     M.failures, M.deterministic = 0, nil
+    M.previous_error, M.forwarded_error = nil, nil
     M.debounce = stage == "first" or stage == "latest" or stage == "type" or stage == "begin"
         or stage == "complete" or stage == "commit" or stage == "time"
     M.proc = stage == "process_host" or stage == "proc"
@@ -38,8 +39,9 @@ function M.post_commit_binding(_binding: any): (any, error?)
 end
 function M.query_event_rows(...: any): (any, error?) return M.outcome("events", {{seq = 1}}) end
 function M.common(_batch: any): any return nil end
-function M.run(_binding: any, _input: any): (any, error?)
+function M.run(_binding: any, input: any): (any, error?)
     M.calls = M.calls + 1
+    M.forwarded_error = input.cursor.last_error
     if M.stage == "failure" then return nil, errors.new({kind = errors.INVALID, message = "worker refusal",
         retryable = false, details = {reason = "worker_failed", code = "worker_refusal"}}) end
     return M.outcome(M.calls == 2 and "post_run" or "run", {})
@@ -72,6 +74,7 @@ function M.database(): any
             local row: any = {id = "cursor", job_id = "job", projection_id = "projection", thread_id = "thread",
                 body = "body", status = "active", event_count = 1, last_seq = 0, generation = 1,
                 debounce_idle_ms = M.debounce and 1000 or 0, debounce_max_ms = 10000}
+            if statement:find("c.last_error", 1, true) then row.last_error = M.previous_error end
             if M.stage == "identity" then row.actor_id, row.execution_identity_json = "actor", "identity" end
             if M.stage == "position" then row.last_seq = nil end
             return M.outcome("snapshot", {row})

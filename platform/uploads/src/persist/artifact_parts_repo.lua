@@ -9,6 +9,7 @@ local artifact_schema = require("artifact_schema")
 local artifact_content_repo = require("artifact_content_repo")
 
 local artifact_parts_repo = {}
+local PRIMARY_ARTIFACT_MISSING = "primary_artifact_missing"
 
 local function typed(kind: any, message: string): any
     return errors.new({ message = message, kind = kind })
@@ -210,7 +211,7 @@ function artifact_parts_repo.list_artifacts(upload_id)
         :query()
 
     db:release()
-    if query_err then return nil, "failed to list artifacts: " .. query_err end
+    if query_err then return nil, errors.wrap(query_err, "failed to list artifacts") end
     for _, row in ipairs(rows) do
         local _, decode_err = artifact_content_repo.normalize_artifact_row(row)
         if decode_err then return nil, decode_err end
@@ -338,7 +339,7 @@ function artifact_parts_repo.get_primary_content_artifact(upload_id)
         :query()
 
     db:release()
-    if query_err then return nil, "failed to get primary content artifact: " .. query_err end
+    if query_err then return nil, errors.wrap(query_err, "failed to get primary content artifact") end
     for _, row in ipairs(rows) do
         local _, decode_err = artifact_content_repo.normalize_artifact_row(row)
         if decode_err then return nil, decode_err end
@@ -348,7 +349,12 @@ function artifact_parts_repo.get_primary_content_artifact(upload_id)
             return artifact
         end
     end
-    return nil, typed(errors.NOT_FOUND, "primary content artifact not found")
+    return nil, errors.new({kind = errors.NOT_FOUND, message = "primary content artifact not found",
+        details = {code = PRIMARY_ARTIFACT_MISSING}})
+end
+
+function artifact_parts_repo.is_primary_artifact_missing(err)
+    return errors.is(err, errors.NOT_FOUND) and (err:details() or {}).code == PRIMARY_ARTIFACT_MISSING
 end
 
 function artifact_parts_repo.read_primary_content(upload_id)
@@ -356,7 +362,7 @@ function artifact_parts_repo.read_primary_content(upload_id)
     if artifact_err then return nil, artifact_err end
 
     local content, content_err, blob = artifact_content_repo.read_artifact_content(upload_id, artifact.artifact_id)
-    if content_err then return nil, content_err end
+    if content_err then return nil, content_err, artifact.artifact_id end
     return {
         content = content,
         mime_type = artifact.mime_type,

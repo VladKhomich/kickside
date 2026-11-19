@@ -21,7 +21,7 @@ local function is_public_system_agent(entry)
     return type(meta) == "table"
         and meta.type == "agent.gen1"
         and meta.public == true
-        and meta.private ~= true
+        and (meta.private == nil or meta.private == false)
 end
 
 local function get_agent_by_id(agent_id)
@@ -34,14 +34,14 @@ local function get_agent_by_id(agent_id)
         return nil, "Agent is not public"
     end
 
-    return entry.meta.title
+    return entry
 end
 
-local function get_agent_by_name(name)
+local function get_agent_by_name(name, key)
     local entries, err = registry.find({
         [".kind"] = "registry.entry",
         ["meta.type"] = "agent.gen1",
-        ["meta.title"] = name
+        ["meta." .. key] = name
     })
 
     if err or not entries or #entries == 0 then
@@ -50,7 +50,7 @@ local function get_agent_by_name(name)
 
     for _, entry in ipairs(entries) do
         if is_public_system_agent(entry) then
-            return entry.meta.title
+            return entry
         end
     end
     return nil, "Not found"
@@ -59,7 +59,7 @@ end
 -- User agents are workspace components, not registry entries: resolve the
 -- title through the component service under the caller's READ access, so a
 -- chat participant sees the agent's title while anyone else gets no answer.
-local function get_user_agent_title(ref)
+local function get_user_agent(ref)
     local component_id = agent_ref.user_component_id(ref)
     if not component_id then
         return nil
@@ -85,23 +85,66 @@ local function get_user_agent_title(ref)
 
     local meta = type(comp_result.meta) == "table" and comp_result.meta or {}
     if type(meta.title) == "string" and meta.title ~= "" then
-        return meta.title
+        return {id = ref, meta = meta}
     end
     return nil
+end
+
+local function resolve_agent(identifier, name_key)
+    if agent_ref.is_user(identifier) then return get_user_agent(identifier) end
+    if is_agent_id(identifier) then return get_agent_by_id(identifier) end
+    return get_agent_by_name(identifier, name_key)
 end
 
 local function resolve_identifiers(identifiers)
     local result = {}
     for _, identifier in ipairs(identifiers) do
-        if agent_ref.is_user(identifier) then
-            result[identifier] = get_user_agent_title(identifier)
-        elseif is_agent_id(identifier) then
-            result[identifier] = get_agent_by_id(identifier)
-        else
-            result[identifier] = get_agent_by_name(identifier)
-        end
+        local entry = resolve_agent(identifier, "title")
+        if entry then result[identifier] = entry.meta.title end
     end
     return result
+end
+
+local function describe_agent(identifier)
+    local entry = resolve_agent(identifier, "name")
+    if not entry then return nil end
+    local prompts = {}
+    local declared = entry.data and entry.data.start_prompts
+    if type(declared) == "table" then
+        for _, prompt in ipairs(declared) do
+            if type(prompt) == "string" and prompt ~= "" then
+                prompts[#prompts + 1] = prompt
+            end
+        end
+    end
+    local name = entry.meta.name or entry.id
+    return {id = entry.id, name = name, title = entry.meta.title or name, start_prompts = prompts}
+end
+
+local function details()
+    local req, res = http.request(), http.response()
+    if not req or not res then return end
+    res:set_header("Cache-Control", "no-store")
+    res:set_content_type(http.CONTENT.JSON)
+    if not security.actor() then
+        res:set_status(http.STATUS.UNAUTHORIZED)
+        res:write_json({success = false, error = "authentication required"})
+        return
+    end
+    local identifier = req:query("agent")
+    if type(identifier) ~= "string" or identifier == "" then
+        res:set_status(http.STATUS.BAD_REQUEST)
+        res:write_json({success = false, error = "Missing 'agent' query parameter"})
+        return
+    end
+    local agent = describe_agent(identifier)
+    if not agent then
+        res:set_status(http.STATUS.NOT_FOUND)
+        res:write_json({success = false, error = "Agent not found"})
+        return
+    end
+    res:set_status(http.STATUS.OK)
+    res:write_json({success = true, agent = agent})
 end
 
 local function handler()
@@ -140,6 +183,8 @@ end
 
 return {
     handler = handler,
+    details = details,
+    describe_agent = describe_agent,
     is_public_system_agent = is_public_system_agent,
     resolve_identifiers = resolve_identifiers,
 }
