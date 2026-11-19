@@ -1980,6 +1980,7 @@ entries:
       json: app:thread_cleanup_native_json
       clock: kickside.core.jobs:clock
       config: kickside.core.jobs:config
+      wake: kickside.core.jobs.persist:wake
       thread_fence: app:thread_cleanup_native_fixture
       sql_boundary: kickside.core.jobs.persist:sql_boundary
 
