@@ -34,6 +34,105 @@ end
 
 local function define_tests()
     test.describe("jobs-owned thread cleanup", function()
+        local function parked_slot(thread_id: string, key: string): table
+            return {
+                namespace = "test", scope = thread_id, key = key,
+                owner_locator = {kind = "thread", id = thread_id},
+                job_type = "test.slot_retirement", slot = true, parked = true,
+                immutable_payload = {},
+            }
+        end
+
+        local function fence_rows(db: sql.DB, thread_id: string): table
+            return assert(db:query("SELECT started,next_page_seq FROM kickside_job_thread_cleanup WHERE thread_id=$1",
+                {thread_id}))
+        end
+
+        test.it("retires the blank owner fence after purging its last parked slot", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local request = parked_slot(thread_id, "retire")
+            local original = assert(jobs.enqueue(request))
+            test.eq(#fence_rows(db, thread_id), 1)
+            test.eq(assert(jobs.purge_slot(request)), 1)
+            test.eq(#fence_rows(db, thread_id), 0)
+            test.eq(assert(jobs.purge_slot(request)), 0)
+            test.eq(#fence_rows(db, thread_id), 0)
+
+            local next_job = assert(jobs.enqueue(request))
+            test.is_false(next_job.existing)
+            test.is_true(original.id ~= next_job.id)
+            test.eq(#fence_rows(db, thread_id), 1)
+            test.eq(assert(jobs.purge_slot(request)), 1)
+            assert(db:release())
+        end)
+
+        test.it("preserves a sibling job and its lease during a parked slot purge", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local parked = parked_slot(thread_id, "retire")
+            local sibling_request = parked_slot(thread_id, "leased")
+            assert(jobs.enqueue(parked))
+            local sibling = assert(jobs.enqueue(sibling_request))
+            local lease = assert(job_fixture.lease_own(db, tostring(db:type()), sibling.id))
+            test.eq(assert(jobs.purge_slot(parked)), 1)
+            test.eq(#fence_rows(db, thread_id), 1)
+            local rows = assert(db:query([[SELECT status,lease_token,lease_until,execution_seq
+                FROM kickside_job WHERE id=$1]], {sibling.id}))
+            test.eq(#rows, 1)
+            test.eq(rows[1].status, "running")
+            test.eq(rows[1].lease_token, lease.lease_token)
+            test.eq(rows[1].lease_until, lease.lease_until)
+            test.eq(rows[1].execution_seq, lease.execution_seq)
+            local removed, err = jobs.purge_slot(sibling_request)
+            test.is_nil(removed)
+            test.eq(err:details().wait_for, "lease_release")
+            assert(db:release())
+        end)
+
+        test.it("preserves cleanup state when purging a slot with prior receipt history", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local request = parked_slot(thread_id, "history")
+            assert(jobs.enqueue(request))
+            assert(db:execute([[INSERT INTO kickside_job_thread_cleanup_receipt
+                (thread_id,page_seq,processed,done,discarded_json,unresolved_json,created_at,acknowledged_at)
+                VALUES ($1,0,5,TRUE,'{}','{}','2000-01-01T00:00:00Z','2000-01-01T00:00:00Z')]], {thread_id}))
+            test.eq(assert(jobs.purge_slot(request)), 1)
+            test.eq(#fence_rows(db, thread_id), 1)
+            local receipts = assert(db:query([[SELECT processed FROM kickside_job_thread_cleanup_receipt
+                WHERE thread_id=$1 AND page_seq=0 AND acknowledged_at IS NOT NULL]], {thread_id}))
+            test.eq(#receipts, 1)
+            test.eq(tonumber(receipts[1].processed), 5)
+            assert(db:release())
+        end)
+
+        test.it("admits a waiting enqueue after a purged owner fence is removed", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local dbtype = tostring(db:type())
+            if dbtype ~= sql.type.POSTGRES then db:release(); return end
+            local request = parked_slot(thread_id, "before")
+            local original = assert(jobs.enqueue(request))
+            local tx = assert(db:begin())
+            local pid = assert(tonumber(assert(tx:query("SELECT pg_backend_pid() AS pid"))[1].pid))
+            assert(thread_fence.lock(tx, thread_id))
+            assert(tx:execute("DELETE FROM kickside_job WHERE id=$1", {original.id}))
+            test.is_nil(thread_fence.remove_unused(tx, thread_id))
+            local finished = false
+            local result = channel.new(1)
+            coroutine.spawn(function()
+                local job, err = jobs.enqueue(parked_slot(thread_id, "after"))
+                finished = true
+                result:send({job = job, err = err})
+            end)
+            local waited = waits_for(db, pid, function() return finished end)
+            assert(tx:commit())
+            local completion = channel.select({result:case_receive(), time.after("10s"):case_receive()})
+            test.eq(completion.channel, result)
+            test.is_true(waited)
+            test.is_nil(completion.value.err, tostring(completion.value.err))
+            test.not_nil(completion.value.job)
+            test.eq(#fence_rows(db, thread_id), 1)
+            assert(db:release())
+        end)
+
         local function independent_link(thread_id, owner_id, key)
             return {
                 namespace = "thread", scope = thread_id, key = key, thread_id = thread_id,

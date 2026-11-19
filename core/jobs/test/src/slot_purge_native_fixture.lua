@@ -5,6 +5,7 @@ function M.reset(stage, source, dialect)
     M.queries, M.writes, M.rollbacks, M.commits, M.releases = 0, 0, 0, 0, 0
     M.empty, M.running, M.remaining, M.continuation = false, false, false, false
     M.thread_owned, M.fences, M.fence_id, M.queries_at_fence = false, 0, nil, nil
+    M.blank_fence, M.retired_owner = false, nil
 end
 function M.result(stage, value)
     if stage == M.stage then
@@ -17,7 +18,12 @@ end
 function M.lock(tx, thread_id)
     M.fences = M.fences + 1
     M.fence_id, M.queries_at_fence = thread_id, M.queries
-    return M.result("fence", {started = true})
+    return M.result("fence", {started = not M.blank_fence, next_page_seq = 0})
+end
+function M.remove_unused(tx, thread_id)
+    M.retired_owner = thread_id
+    local _, err = M.result("retire_fence", true)
+    return err
 end
 function M.database(): any
     local db: any = {}

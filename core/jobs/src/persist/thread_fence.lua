@@ -66,6 +66,23 @@ function M.lock_existing(tx: sql.Transaction, dbtype: string, thread_id: string)
     return { started = flag(row.started), next_page_seq = row.next_page_seq, completed_at = row.completed_at }, nil
 end
 
+-- The caller holds this owner's fence. Future admission can create a blank
+-- fence again, so it can be removed once the owner's last work has gone.
+function M.remove_unused(tx: sql.Transaction, thread_id: string): error?
+    local rows, err = tx:query("DELETE FROM " .. M.TABLE .. [[
+        WHERE thread_id=$1 AND started=FALSE AND next_page_seq=0 AND completed_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM kickside_job j WHERE j.owner_kind='thread' AND j.owner_id=$1)
+          AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.owner_kind='thread' AND r.owner_id=$1)
+          AND NOT EXISTS (SELECT 1 FROM kickside_job_thread_cleanup_receipt r WHERE r.thread_id=$1)
+        RETURNING thread_id]], { thread_id })
+    if err then return errors.wrap(err, "unused thread cleanup fence removal failed") end
+    if type(rows) ~= "table" or #rows > 1
+        or (#rows == 1 and (type(rows[1]) ~= "table" or rows[1].thread_id ~= thread_id)) then
+        return invalid_response("unused.rows", thread_id)
+    end
+    return nil
+end
+
 -- Linked producers can append a Core event later in the same transaction.
 -- A nonblocking lock avoids waiting on them with Core thread rows held.
 function M.lock_link(tx: sql.Transaction, dbtype: string, thread_id: string, cleanup: boolean): error?
