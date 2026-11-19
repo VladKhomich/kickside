@@ -2,6 +2,7 @@
 -- The single write path for model cards. The admin HTTP handlers and the
 -- kickside.models.cards:cards contract functions both save and disable cards
 -- here; persistence and cache publication stay in models_repo.
+local card_policy = require("card_policy")
 local model_catalog = require("model_catalog")
 local models_repo = require("models_repo")
 
@@ -21,10 +22,11 @@ end
 -- metadata stays readable. Disabling a disabled card succeeds unchanged.
 function M.disable(name: any): (any?, any?)
     if type(name) ~= "string" or name == "" then return nil, "Model name is required" end
-    local overlays, err = models_repo.list_card_overlays()
+    local snapshot, err = models_repo.snapshot()
     if err then return nil, err end
-    for _, item in ipairs(overlays) do
+    for _, item in ipairs(snapshot.cards) do
         if item.name == name then
+            if item.enabled == false then return card_policy.public_card(item) end
             return models_repo.upsert_card({ name = name, enabled = false }, item)
         end
     end
