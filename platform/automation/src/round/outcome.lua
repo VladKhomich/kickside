@@ -77,10 +77,11 @@ end
 function M.merge_items(d: Map, redelivery: { Map }, page: { Map }): { Map }
     local items: { Map } = {}
     local seen: { [string]: boolean } = {}
-    for _, list in ipairs({ redelivery, page }) do
+    for index, list in ipairs({ redelivery, page }) do
         for _, raw in ipairs(list) do
             local item: Map = {}
             for k, v in pairs(raw) do item[k] = v end
+            if index == 2 then item.pending_effect = nil end
             item.item_key = tostring(item.item_key or item.dedup_key or "")
             item.dedup_key = tostring(item.dedup_key or item.item_key)
             item.attempts = math.floor(tonumber(item.attempts) or 0)

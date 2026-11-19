@@ -2,7 +2,6 @@
 local base = require("thread_ingest_base")
 local status = require("thread_ingest_status")
 local thread_ingest = require("thread_ingest")
-local embed_sink = require("embed_sink")
 local ingest_upload = require("ingest_upload")
 local uploads = require("upload_read_model")
 local writable = require("writable_sink")
@@ -41,6 +40,10 @@ local function conflict(message: string): error
     return errors.new({kind = errors.CONFLICT, retryable = false, message = message})
 end
 
+local function retired(message: string): error
+    return errors.new({kind = errors.NOT_FOUND, retryable = false, message = message})
+end
+
 local function prior_delivery(exec: any, kb_id: string, delivery: any, upload_id: string): (boolean?, any?)
     local event, err = find(exec, kb_id, base.EVENT_CONTENT_UPSERTED,
         delivery.external_id, delivery.external_version)
@@ -62,18 +65,79 @@ local function publication(exec: any, kb_id: string, delivery: any, upload_id: s
     local thread, thread_err = status.find_primary_thread(exec, kb_id)
     if thread_err then return nil, thread_err end
     local head = thread and math.tointeger(thread.event_count) or nil
-    if not head then return nil, conflict("Upload delivery has no retained Knowledge thread") end
+    if not head then return nil, retired("Upload delivery has no retained Knowledge thread") end
     local deleted, delete_err = find(exec, kb_id, base.EVENT_CONTENT_DELETED, delivery.external_id, nil)
     if delete_err then return nil, delete_err end
     local upsert, upsert_err = find(exec, kb_id, base.EVENT_CONTENT_UPSERTED, delivery.external_id, nil)
     if upsert_err then return nil, upsert_err end
     if (deleted and tonumber(deleted.seq) > claim_seq)
         or (upsert and tonumber(upsert.seq) > claim_seq and upsert.external_version ~= delivery.external_version) then
-        return nil, conflict("Upload delivery was superseded by a newer Knowledge document change")
+        return nil, retired("Upload delivery was superseded by a newer Knowledge document change")
     end
     local found, receipt_err = prior_delivery(exec, kb_id, delivery, upload_id)
     if receipt_err then return nil, receipt_err end
+    if found and (not upsert or upsert.external_version ~= delivery.external_version
+        or (deleted and tonumber(deleted.seq) > tonumber(upsert.seq))) then
+        return nil, retired("Upload delivery is no longer the current Knowledge content")
+    end
+    local desired, desired_err = thread_ingest.latest_upload_intent(exec, kb_id, delivery.external_id)
+    if desired_err then return nil, desired_err end
+    if not desired or desired.external_version ~= delivery.key then
+        return nil, retired("Upload delivery is no longer the latest admitted file for this Knowledge document")
+    end
+    -- Prefix pruning does not move the head. A retained original claim after
+    -- the reads above proves that pruning could not have hidden a later delete.
+    local claim, claim_err = find(exec, kb_id, base.EVENT_DELIVERY_CLAIMED, "delivery:" .. delivery.key, "1")
+    if claim_err then return nil, claim_err end
+    if not claim or tonumber(claim.seq) ~= claim_seq then
+        return nil, retired("Upload delivery claim is no longer retained")
+    end
     return {head = head, committed = found == true}, nil
+end
+
+local function receipt(req: any, kb_id: string, external_id: string, version: string, result: string): any
+    local ref = { kb_id = kb_id, external_id = external_id }
+    local slot = trim(req.map_slot)
+    return { success = true, result = result, dest_ref = ref, dest_version = version,
+        dest_refs = { [slot ~= "" and slot or "default"] = {dest_ref = ref, dest_version = version} } }
+end
+
+local function delete_document(req: any, kb_id: string, external_id: string, key: string): any
+    local previous = trim(req.dest_version)
+    local ref = req.dest_ref
+    if previous == "" or type(ref) ~= "table" or ref.kb_id ~= kb_id or ref.external_id ~= external_id then
+        return fail("Upload deletion requires its current Knowledge destination receipt")
+    end
+    local _, claim_err = thread_ingest.claim_delivery(kb_id, key, "", {
+        operation = "upload.delete", external_id = external_id, dest_version = previous,
+    })
+    if claim_err then return refuse(claim_err) end
+    local exec, exec_err = base.current_executor()
+    if not exec then return refuse(exec_err) end
+    local thread, thread_err = status.find_primary_thread(exec, kb_id)
+    if thread_err then return refuse(thread_err) end
+    local head = thread and math.tointeger(thread.event_count) or nil
+    if not head then return refuse(retired("Upload deletion has no retained Knowledge thread")) end
+    local version = "delete:" .. key
+    local deleted, delete_err = find(exec, kb_id, base.EVENT_CONTENT_DELETED, external_id, version)
+    if delete_err then return refuse(delete_err) end
+    local latest, latest_err = find(exec, kb_id, base.EVENT_CONTENT_UPSERTED, external_id, nil)
+    if latest_err then return refuse(latest_err) end
+    if not latest then
+        return refuse(retired("Knowledge document version is no longer retained"))
+    end
+    if latest.external_version ~= previous then
+        -- The requested version is already gone. The round removes only its
+        -- observed destination receipt, so a newer delivery remains mapped.
+        return receipt(req, kb_id, external_id, version, "deleted")
+    end
+    if not deleted then
+        local appended, append_err = thread_ingest.delete_content(kb_id, {
+            external_id = external_id, external_version = version, trace_context = req.trace_context,
+        }, head)
+        if append_err or not appended then return refuse(append_err) end
+    end
+    return receipt(req, kb_id, external_id, version, "deleted")
 end
 
 function M.write(request: any): any
@@ -85,7 +149,7 @@ function M.write(request: any): any
     local key = trim(req.idempotency_key)
     if kb_id == "" then return fail("sink config.kb_id is required", "invalid_config", false, "flow") end
     if external_id == "" or key == "" then return fail("upload delivery requires identity_key and idempotency_key") end
-    if req.sink_op == "delete" then return embed_sink.write(req) end
+    if req.sink_op == "delete" then return delete_document(req, kb_id, external_id, key) end
     if req.sink_op ~= "upsert" then return fail("unsupported Knowledge upload operation") end
 
     local upload_id = trim(type(req.input) == "table" and req.input.upload_id)
@@ -102,27 +166,29 @@ function M.write(request: any): any
     if record.status ~= "processing" and record.status ~= "completed" then
         return fail(record.error or ("Upload cannot be delivered in state " .. tostring(record.status)))
     end
+    if record.status == "processing" and type(req.resume_effect) ~= "boolean" then
+        return fail("This upload is still processing. Upgrade Automation to resume pending effects.",
+            "invalid_config", false, "flow")
+    end
 
     local _, claim_err, claim = thread_ingest.claim_delivery(kb_id, key, "", {
         operation = "upload", origin = origin, external_id = external_id, upload_id = upload_id,
         source_version = source_version,
-    }, req.resume_effect == true)
+    }, req.resume_effect == true, external_id)
     if claim_err then return refuse(claim_err) end
     local claim_seq = claim and math.tointeger(claim.seq) or nil
     if not claim_seq then return refuse("Upload delivery has no durable claim") end
+    if record.status == "processing" then
+        return fail("Upload processing is in progress", "effect_pending", true)
+    end
 
-    local delivery = { external_id = external_id, external_version = "delivery:" .. key, source_version = source_version }
+    local delivery = { key = key, external_id = external_id, external_version = "delivery:" .. key, source_version = source_version }
     local exec, exec_err = base.current_executor()
     if not exec then return refuse(exec_err) end
     local guard, guard_err = publication(exec, kb_id, delivery, upload_id, claim_seq)
     if guard_err or not guard then return refuse(guard_err) end
 
     if not guard.committed then
-        if record.status == "processing" then
-            local pending = fail("Upload processing is in progress", "effect_pending", true)
-            pending.error.retry_after_ms = 1000
-            return pending
-        end
         delivery.expected_head = guard.head
         local _, ingest_err = ingest_upload.ingest_delivery(kb_id, record, delivery)
         if ingest_err then return refuse(ingest_err) end
@@ -130,14 +196,7 @@ function M.write(request: any): any
         if receipt_err or not committed then return refuse(receipt_err) end
     end
 
-    local ref = { kb_id = kb_id, external_id = external_id }
-    local slot = trim(req.map_slot)
-    local version = delivery.external_version
-    return {
-        success = true, result = guard.committed and "noop" or "created",
-        dest_ref = ref, dest_version = version,
-        dest_refs = { [slot ~= "" and slot or "default"] = {dest_ref = ref, dest_version = version} },
-    }
+    return receipt(req, kb_id, external_id, delivery.external_version, guard.committed and "noop" or "created")
 end
 
 return M

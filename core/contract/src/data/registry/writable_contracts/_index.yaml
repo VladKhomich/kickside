@@ -86,7 +86,7 @@ entries:
                   },
                   "resume_effect": {
                     "type": "boolean",
-                    "description": "Engine observation of an earlier effect_pending reply for this key."
+                    "description": "Present when the engine supports resumable effects. True if it recorded an earlier effect_pending reply for this key."
                   },
                   "map_slot": {
                     "type": "string",

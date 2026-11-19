@@ -163,6 +163,17 @@ function M.admit(executor: any, owner: string, port: string, items: { Map }, rou
         if not prior or (prior.state ~= M.STATE.RESOLVED and prior.state ~= M.STATE.DEAD
             and prior.identity_parked ~= true and prior.identity_parked ~= 1 and prior.state ~= M.STATE.UNCERTAIN
             and (prior.next_attempt_at == nil or not drive.after(prior.next_attempt_at,decision_at or drive.utc_now()))) then
+            if prior and item.pending_effect ~= true then
+                -- The collection page can replay a due key outside the bounded
+                -- redelivery slice. Resume the recorded effect and its input.
+                local retained, decode_err = json.decode(tostring(prior.envelope_json))
+                if decode_err or type(retained) ~= "table" then
+                    return nil, internal("failed to decode admitted ledger item", decode_err)
+                end
+                if retained.pending_effect == true then
+                    item.pending_effect, item.payload, item.ref = true, retained.payload, retained.ref
+                end
+            end
             pending[#pending + 1] = item
         end
     end
@@ -319,16 +330,16 @@ function M.record_tx(tx: any, owner_id: string, source_port: string, outcomes: {
             for k, v in pairs(item) do if k ~= "attempts" and k ~= "delivery_evidence" then stored[k] = v end end
             local prior_item: Map? = existing and existing.item or nil
             if prior_item and stored.reservation == nil then stored.reservation=prior_item.reservation end
+            local pending = o.state == M.STATE.WAITING and type(o.error) == "table"
+                and o.error.code == failure_classification.EFFECT_PENDING
+            stored.pending_effect = (pending or (prior_item and prior_item.pending_effect == true)) and true or nil
             local proof: Map? = prior_item and prior_item.delivery_evidence or nil
             if not existing or type(proof) == "table" or (prior_item and prior_item.reservation ~= nil) then
                 local refused=(proof and tonumber(proof.refused_attempts) or 0)
                 local effects = proof and tonumber(proof.effects) or 0
-                local pending = o.state == M.STATE.WAITING and type(o.error) == "table"
-                    and o.error.code == failure_classification.EFFECT_PENDING
                 if not refusal(o) and (not pending or effects == 0) then effects = effects + 1 end
                 proof={refused_attempts=refused + ((o.state ~= "waiting" and refusal(o)) and 1 or 0),
                     effects=effects,
-                    pending_effect=(pending or (proof and proof.pending_effect == true)) and true or nil,
                     event=proof and proof.event or nil}
                 if type(o.error) == "table" and o.error.code == "replay_evidence_unavailable" then
                     -- A refusal without proof cannot create proof for a later replay.
@@ -470,6 +481,7 @@ function M.unsent(executor: any, d: Map, delivery_key: string): (boolean?, error
     if not rows[1] then return false,nil end
     local item,decode_err=json.decode(tostring(rows[1].envelope_json))
     if decode_err or type(item) ~= "table" then return nil,internal("retained delivery is not an object",decode_err) end
+    if item.pending_effect == true then return false, nil end
     local function unavailable(): error
         return errors.new({kind=errors.INVALID,retryable=false,
             message="item replay evidence predates this version or has aged out",

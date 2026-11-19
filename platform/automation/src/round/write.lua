@@ -313,7 +313,7 @@ end
 -- each slot it wrote, which for a write to a known slot is that slot alone; a
 -- single dest_ref names the request's slot; an answer without a reference
 -- records nothing.
-local function slot_receipts(request: Map, r: Map, max_slots: integer): ({ Map }?, string?)
+local function slot_receipts(request: Map, r: Map, max_slots: integer, conditional_remove: boolean): ({ Map }?, string?)
     local slot = type(request.map_slot) == "string" and request.map_slot or ""
     local function receipt(map_slot: string, dest_ref: any, dest_version: any): Map
         return { map_slot = map_slot, identity_key = request.identity_key, idempotency_key = request.idempotency_key,
@@ -322,6 +322,7 @@ local function slot_receipts(request: Map, r: Map, max_slots: integer): ({ Map }
     if request.sink_op == "delete" then
         local removed = receipt(slot, nil, nil)
         removed.removed = true
+        if conditional_remove then removed.expected_dest_version = request.dest_version end
         return { removed }, nil
     end
     if type(r.dest_refs) == "table" then
@@ -399,8 +400,12 @@ function M.write(sink: Map, request: Map, d: Map, item: Map): Map
     if type(request.map_slot) == "string" and request.map_slot ~= "" then body.map_slot = request.map_slot end
     local can_resume = sink.resumes_effect and sink.delivery == M.DELIVERY.EXACTLY_ONCE
         and sink.input_shape == M.INPUT_SHAPE.RECORD and (body.map_slot == nil or body.map_slot == "default")
-    local evidence = item.delivery_evidence
-    if can_resume and type(evidence) == "table" and evidence.pending_effect == true then body.resume_effect = true end
+    if can_resume and body.sink_op == "upsert" then
+        -- A default receipt can appear or disappear while processing. Keep
+        -- the same delivery key regardless of how the caller names the slot.
+        body.idempotency_key = M.keys(d, item).idempotency_key
+    end
+    if can_resume then body.resume_effect = item.pending_effect == true end
     local fence_err = M.check_fence(d)
     if fence_err then return { state = "failed", error = failure_classification.classify(fence_err) } end
     local packet,send_err=funcs.call("kickside.automation:round_sink_effect",{
@@ -414,7 +419,7 @@ function M.write(sink: Map, request: Map, d: Map, item: Map): Map
     end
     local result,message,envelope=packet.result,packet.message,packet.envelope
     if result ~= nil then
-        local receipts, violation = slot_receipts(request, result :: Map, math.floor(max_slots))
+        local receipts, violation = slot_receipts(body, result :: Map, math.floor(max_slots), can_resume == true)
         if violation then
             -- The provider already answered success. Preserve uncertainty so a
             -- receipt shape or slot-bound violation cannot advance the cursor.

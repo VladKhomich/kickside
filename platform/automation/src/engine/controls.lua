@@ -127,8 +127,7 @@ function part.attach(M: any, dependencies: any, P: any): ()
             local item, decode_err = (dependencies.json :: any).decode(tostring(row.envelope_json))
             if decode_err then return nil, decode_err end
             -- An accepted durable effect can only be polled under its original key.
-            local evidence = item.delivery_evidence
-            if type(evidence) ~= "table" or evidence.pending_effect ~= true then
+            if item.pending_effect ~= true then
                 item.attempt_generation = math.floor(tonumber(item.attempt_generation) or 0) + 1
                 item.reservation = nil
                 identity.bind({ automation_id = d.automation_id, source_port = ledger.receipt_port(d), delivery_revision = d.delivery_revision }, item)

@@ -324,6 +324,16 @@ local function define_tests()
             test.is_true(processing.error.sink_effect)
             test.is_nil(processing.receipts)
 
+            local replacement = {item_key = "replacement", dedup_key = "2", op = "upsert"}
+            local unslotted = round_write.keys(held, replacement)
+            local slotted = round_write.keys(held, replacement, "default")
+            local resumed = round_write.write(store, {config = {}, sink_op = "upsert", input = {},
+                identity_key = unslotted.identity_key, idempotency_key = slotted.idempotency_key,
+                map_slot = "default"}, held, replacement)
+            test.eq(resumed.state, "delivered")
+            test.eq(resumed.receipts[1].idempotency_key, unslotted.idempotency_key)
+            test.eq(resumed.receipts[1].map_slot, "default")
+
             local retry = write(store, "timeout", "c")
             test.eq(retry.state, "failed")
             test.is_true(retry.error.retriable)

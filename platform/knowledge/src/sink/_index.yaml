@@ -20,7 +20,6 @@ entries:
       thread_ingest_base: kickside.knowledge.injection:thread_ingest_base
       thread_ingest_status: kickside.knowledge.injection:thread_ingest_status
       thread_ingest: kickside.knowledge.injection:thread_ingest
-      embed_sink: kickside.knowledge.sink:kb_embed_runtime
       ingest_upload: kickside.knowledge.api:ingest_upload
       upload_read_model: kickside.uploads.persist:upload_read_model
       writable_sink: kickside.data:writable_sink
@@ -48,7 +47,7 @@ entries:
     binding: kickside.knowledge.sink:kb_upload_sink
     operations:
       upsert: {}
-      delete: { requires_dest_ref: false }
+      delete: { requires_dest_ref: true }
     input_schema: |
       {"type":"object","properties":{"upload_id":{"type":"string"},
         "source_version":{"type":"string","maxLength":128}},"required":["upload_id"]}

@@ -18,6 +18,7 @@ local M = {
 local THREAD_CLASS = base.THREAD_CLASS
 local KB_STORE_CONTRACT = base.KB_STORE_CONTRACT
 local EXTERNAL_SOURCE = base.EXTERNAL_SOURCE
+local UPLOAD_INTENT_SOURCE = "knowledge.kb.upload-intent"
 local GRAPH_EXTERNAL_SOURCE = base.GRAPH_EXTERNAL_SOURCE
 local SOURCE_PROJECTION_KIND = base.SOURCE_PROJECTION_KIND
 local SOURCE_PROJECTION_KEY = base.SOURCE_PROJECTION_KEY
@@ -67,7 +68,7 @@ end
 -- remains keyed by document identity for reconciliation. A claim without a
 -- content event is safe to resume with the same immutable payload.
 function M.claim_delivery(kb_id: string, delivery_key: string, content: string, sink_write: any,
-        resume_effect: boolean?): (boolean, any?, any?)
+        resume_effect: boolean?, upload_document: string?): (boolean, any?, any?)
     local access_err = validate_kb_access(kb_id, component.ACCESS.WRITE)
     if access_err then return false, access_err end
     local exec, exec_err = current_executor()
@@ -85,34 +86,72 @@ function M.claim_delivery(kb_id: string, delivery_key: string, content: string, 
         if decode_err then return nil, decode_err end
         return body.content == content and util.same_value(body.sink_write, sink_write)
     end
-    local previous, lookup_err = existing_claim()
-    if lookup_err then return false, lookup_err end
-    if previous then
-        local same, match_err = matches(previous)
+    local function check_claim(event: any): (boolean, any?, any?)
+        local same, match_err = matches(event)
         if match_err then return false, match_err end
-        if same then return true, nil, previous end
+        if same then return true, nil, event end
         return false, errors.new({ message = "idempotency key already used for a different write",
             kind = errors.CONFLICT, retryable = false })
     end
+    local previous, lookup_err = existing_claim()
+    if lookup_err then return false, lookup_err end
+    if previous then return check_claim(previous) end
     if resume_effect then
         return false, errors.new({ message = "Upload delivery claim is no longer retained",
-            kind = errors.CONFLICT, retryable = false })
+            kind = errors.NOT_FOUND, retryable = false })
     end
-    local _, append_err = emit_event(exec, kb_id, {
+    local claim_event = {
         type = M.EVENT_DELIVERY_CLAIMED, role = "system",
         body = { kb_id = kb_id, content = content, sink_write = sink_write },
         external = { external_source = EXTERNAL_SOURCE, external_id = external_id, external_version = "1" },
-    })
+    }
+    local append_err
+    if upload_document then
+        local thread, thread_err = find_primary_thread(exec, kb_id)
+        if thread_err then return false, thread_err end
+        local head = thread and math.tointeger(thread.event_count) or nil
+        if not head then
+            return false, errors.new({message = "Upload delivery has no Knowledge thread", kind = errors.NOT_FOUND})
+        end
+        -- The claim identifies an immutable delivery. The second event gives
+        -- the stable document an indexed latest admitted upload. Publish both
+        -- atomically so a same-key race cannot create a different intent.
+        previous, lookup_err = existing_claim()
+        if lookup_err then return false, lookup_err end
+        if previous then return check_claim(previous) end
+        local published, publish_err = exec:find_event_by_external({
+            thread_id = kb_id, event_type = M.EVENT_CONTENT_UPSERTED, external_source = EXTERNAL_SOURCE,
+            external_id = upload_document, external_version = "delivery:" .. delivery_key,
+        })
+        if publish_err then return false, publish_err end
+        if published and published.event then
+            return false, errors.new({message = "Previously published upload delivery claim is no longer retained",
+                kind = errors.NOT_FOUND, retryable = false})
+        end
+        local intent = {
+            type = M.EVENT_DELIVERY_CLAIMED, role = "system", body = claim_event.body,
+            external = {external_source = UPLOAD_INTENT_SOURCE, external_id = upload_document, external_version = delivery_key},
+        }
+        _, append_err = call_threads(exec, "append_events", {
+            thread_id = kb_id, events = {claim_event, intent}, expect = {head = head},
+        })
+    else
+        _, append_err = emit_event(exec, kb_id, claim_event)
+    end
     if append_err then return false, append_err end
     local claimed, claim_err = existing_claim()
     if claim_err then return false, claim_err end
-    if claimed then
-        local same, match_err = matches(claimed)
-        if match_err then return false, match_err end
-        if same then return true, nil, claimed end
-    end
+    if claimed then return check_claim(claimed) end
     return false, errors.new({ message = "idempotency key already used for a different write",
         kind = errors.CONFLICT, retryable = false })
+end
+
+function M.latest_upload_intent(exec: any, kb_id: string, document: string): (any?, any?)
+    local answer, err = exec:find_event_by_external({
+        thread_id = kb_id, event_type = M.EVENT_DELIVERY_CLAIMED, external_source = UPLOAD_INTENT_SOURCE,
+        external_id = document, latest = true,
+    })
+    return answer and answer.event, err
 end
 
 -- A writable delivery key names one immutable request, independently of the
@@ -439,7 +478,7 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
     }, nil
 end
 
-function M.delete_content(kb_id, params)
+function M.delete_content(kb_id, params, expect_head)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end
     params = type(params) == "table" and params or {}
@@ -492,7 +531,7 @@ function M.delete_content(kb_id, params)
         if has_targets and not includes_self then return nil, "source projection excludes the selected knowledge base" end
     end
 
-    local appended, append_err = emit_event(exec, kb_id, {
+    local event = {
         type = M.EVENT_CONTENT_DELETED,
         role = "system",
         body = {
@@ -507,7 +546,15 @@ function M.delete_content(kb_id, params)
             external_version = external_version,
         },
         trace_context = event_trace,
-    })
+    }
+    local appended, append_err
+    if expect_head ~= nil then
+        appended, append_err = call_threads(exec, "append_event", {
+            thread_id = kb_id, event = event, expect = {head = expect_head},
+        })
+    else
+        appended, append_err = emit_event(exec, kb_id, event)
+    end
     if append_err then return nil, append_err end
 
     local cursor = projection_cursor(projection)
