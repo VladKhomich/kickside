@@ -42,13 +42,14 @@ end
 -- the KB primary thread. Pure lookup: it addresses the cursor by the declared
 -- (kind, projection_key, cursor_key), never registers it. Returns nil when the
 -- projection has not been provisioned (KB not yet created through the engine).
-local function lookup_source_projection(exec: any, kb_id: string, impl_id: string): (any?, any?)
+local function lookup_source_projection(exec: any, kb_id: string, impl_id: string, include_pending: boolean?): (any?, any?)
     local engine, engine_err = engines.by_impl(impl_id)
     if engine_err then return nil, engine_err end
     local declaration, declaration_err = engines.ingest_projection(engine)
     if declaration_err then return nil, declaration_err end
     local pair, err = exec:get_projection_cursor({ thread_id = kb_id,
-        kind = declaration.kind, projection_key = declaration.projection_key, cursor_key = declaration.cursor_key })
+        kind = declaration.kind, projection_key = declaration.projection_key, cursor_key = declaration.cursor_key,
+        pending_event_types = include_pending and { base.EVENT_CONTENT_UPSERTED, base.EVENT_CONTENT_DELETED } or nil })
     if err then
         if errors.is(err, errors.NOT_FOUND) then return nil, nil end
         return nil, err
@@ -68,6 +69,7 @@ local function lookup_source_projection(exec: any, kb_id: string, impl_id: strin
         thread_id = kb_id,
         projection_id = projection_id,
         cursor_id = trim(cursor.id),
+        pending_source = pair.pending_events,
         projection = {
             projection_id = projection_id,
             cursor_id = trim(cursor.id),
