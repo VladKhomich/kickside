@@ -98,6 +98,59 @@ entries:
     func: get_kb
     path: /knowledge/{id}
 
+  - name: drive_folder_access
+    kind: security.policy
+    meta: {private: true}
+    policy:
+      resources:
+        - kickside.google.source:browse_drive_folders
+        - kickside.knowledge.sink:kb_upload
+        - kickside.sync:sync
+      actions: [registry.get]
+      effect: allow
+
+  - name: drive_folder_call
+    kind: security.policy
+    meta: {private: true}
+    policy:
+      resources: [kickside.google.source:browse_drive_folders]
+      actions: [funcs.call, funcs.security]
+      effect: allow
+
+  - name: drive_folder_availability
+    kind: function.lua
+    security:
+      policies: [kickside.knowledge.api:drive_folder_access]
+    source: file://drive_folders.lua
+    modules: [http, security, registry, funcs, json]
+    imports: &drive_folder_imports
+      component: kickside.component:component
+      http_errors: kickside.contract:http_errors
+    method: availability
+
+  - name: drive_folder_availability.endpoint
+    kind: http.endpoint
+    meta: {}
+    method: GET
+    func: drive_folder_availability
+    path: /knowledge/{id}/drive-folders
+
+  - name: browse_drive_folders
+    kind: function.lua
+    security:
+      policies: [kickside.knowledge.api:drive_folder_access, kickside.knowledge.api:drive_folder_call]
+    source: file://drive_folders.lua
+    modules: [http, security, registry, funcs, json]
+    imports: *drive_folder_imports
+    method: browse
+
+  - name: browse_drive_folders.endpoint
+    kind: http.endpoint
+    meta: {}
+    method: POST
+    func: browse_drive_folders
+    path: /knowledge/{id}/drive-folders
+
   # Delete KB
 
   - name: delete_kb
