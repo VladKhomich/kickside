@@ -137,6 +137,42 @@ return { run = test.run_cases(function()
             local _, observed_release_err = observed:release()
             test.is_nil(observed_release_err)
         end)
+        test.it("returns once the cursor covers the requested sequence while the head is pending", function()
+            local id = thread()
+            local selected = register(id, "committed", "source", "ingest")
+            local db = assert(sql.get("app:db"))
+            test.is_nil(select(2, db:execute("UPDATE kickside_thread SET event_count=3 WHERE id=$1", { id })))
+            test.is_nil(select(2, db:execute("UPDATE kickside_projection_cursor SET last_seq=2 WHERE id=$1", { selected.cursor_id })))
+            test.is_nil(select(2, db:release()))
+
+            local result, err = context.as_owner("catch_up_projection", {
+                thread_id = id, kind = "committed", target_seq = 2, max_ticks = 1,
+            })
+            test.is_nil(err)
+            test.is_true(result.done)
+            test.eq(result.target_seq, 2)
+            test.eq(result.last_seq, 2)
+            test.eq(result.event_count, 3)
+            test.eq(result.ticks, 0)
+        end)
+        test.it("refuses an invalid or uncommitted sequence", function()
+            local id = thread()
+            register(id, "committed", "source", "ingest")
+            for _, target in ipairs({ -1, 0.5, "", 1 }) do
+                local result, err = context.as_owner("catch_up_projection", {
+                    thread_id = id, kind = "committed", target_seq = target, max_ticks = 1,
+                })
+                test.is_nil(result)
+                test.not_nil(err)
+                test.eq(err:kind(), errors.INVALID)
+            end
+            local result, err = context.as_owner("catch_up_projection", {
+                thread_id = id, kind = "committed", target_seq = 0,
+            })
+            test.is_nil(err)
+            test.eq(result.target_seq, 0)
+            test.eq(result.last_seq, 0)
+        end)
         test.it("finds a requested projection beyond one thousand unrelated definitions", function()
             local result, err = context.as_owner("catch_up_projection", { thread_id = crowded,
                 kind = "z.target", projection_key = "source", cursor_key = "ingest" })
