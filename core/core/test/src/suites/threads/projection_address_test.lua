@@ -96,13 +96,18 @@ return { run = test.run_cases(function()
             local head = append({ trigger })
             pending(2, true)
 
-            local db, db_err = sql.get("app:db")
-            test.is_nil(db_err)
-            local _, advance_err = db:execute(
-                "UPDATE kickside_projection_cursor SET last_seq=$1 WHERE id=$2 AND projection_id=$3",
-                { head - 1, cursor_id, registered.projection_id })
-            db:release()
-            test.is_nil(advance_err)
+            local function advance(seq)
+                local db, db_err = sql.get("app:db")
+                test.is_nil(db_err)
+                local _, advance_err = db:execute(
+                    "UPDATE kickside_projection_cursor SET last_seq=$1 WHERE id=$2 AND projection_id=$3",
+                    { seq, cursor_id, registered.projection_id })
+                db:release()
+                test.is_nil(advance_err)
+            end
+            advance(3)
+            pending(0, true)
+            advance(head - 1)
             pending(1, false)
         end)
         test.it("returns typed absence for an absent thread or pair", function()
