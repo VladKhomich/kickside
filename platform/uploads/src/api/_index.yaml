@@ -229,6 +229,7 @@ entries:
       - http
       - security
       - json
+      - logger
     imports:
       http_errors: kickside.contract:http_errors
       upload_lib: kickside.uploads:uploads
