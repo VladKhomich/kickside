@@ -388,28 +388,37 @@ local function prune_thread_cleanup_receipts(db: any, cutoff: string, limit: int
 end
 
 local function prune_completed_thread_fences(db: any, cutoff: string, limit: integer,
-        dbtype: string): (integer?, error?)
+        dbtype: string, after: table?): (integer?, error?, table?)
     local tx, begin_err = sql_boundary.begin(db, "thread cleanup fence prune begin failed", "transaction", response_error)
     if begin_err then return nil, begin_err end
     if not tx then return nil, response_error("transaction") end
-    local lock = dbtype == sql.type.POSTGRES and " FOR UPDATE SKIP LOCKED" or ""
-    local rows, read_err = tx:query([[SELECT f.thread_id FROM kickside_job_thread_cleanup f
-        WHERE f.completed_at < $1
-          AND NOT EXISTS (SELECT 1 FROM kickside_job_thread_cleanup_receipt r
-              WHERE r.thread_id=f.thread_id AND r.acknowledged_at IS NULL)
-          AND NOT EXISTS (SELECT 1 FROM kickside_job j WHERE j.owner_kind='thread' AND j.owner_id=f.thread_id)
-          AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.owner_kind='thread' AND r.owner_id=f.thread_id)
-        ORDER BY f.completed_at,f.thread_id LIMIT $2]] .. lock, { cutoff, limit })
-    if read_err then return nil, sql_boundary.rollback(tx,
-        errors.wrap(read_err, "thread cleanup fence prune selection failed"), "retention rollback failed") end
-    if type(rows) ~= "table" then return nil, sql_boundary.rollback(tx,
-        response_error("candidates.rows"), "retention rollback failed") end
+    local rows, read_err = thread_teardown.completed_window(tx, dbtype, limit, after, cutoff)
+    local window, window_err = sql_boundary.bounded_rows(rows, read_err, "thread cleanup fence prune selection failed",
+        "candidates.rows", 0, limit, response_error)
+    if window_err then return nil, sql_boundary.rollback(tx, window_err, "retention rollback failed") end
+    local selected: { string } = {}
+    for _, row in ipairs(window :: { any }) do
+        if type(row) ~= "table" or type(row.thread_id) ~= "string" or type(row.completed_at) ~= "string" then
+            return nil, sql_boundary.rollback(tx, response_error("candidates.key"), "retention rollback failed")
+        end
+        if row.eligible == true or row.eligible == 1 then selected[#selected + 1] = row.thread_id end
+    end
+    if dbtype == sql.type.POSTGRES and #selected > 0 then
+        local locked, lock_err = tx:query("SELECT thread_id FROM kickside_job_thread_cleanup WHERE thread_id IN ("
+            .. placeholders(1, #selected) .. ") ORDER BY thread_id FOR UPDATE SKIP LOCKED", selected)
+        local held, held_err = sql_boundary.bounded_rows(locked, lock_err, "thread cleanup fence prune lock failed",
+            "locked.rows", 0, #selected, response_error)
+        if held_err then return nil, sql_boundary.rollback(tx, held_err, "retention rollback failed") end
+        selected = {}
+        for _, row in ipairs(held :: { any }) do selected[#selected + 1] = row.thread_id end
+    end
     local total = 0
-    for _, row in ipairs(rows) do
-        local result, delete_err = tx:execute([[DELETE FROM kickside_job_thread_cleanup
-            WHERE thread_id=$1 AND completed_at < $2
-              AND NOT EXISTS (SELECT 1 FROM kickside_job_thread_cleanup_receipt r
-                  WHERE r.thread_id=$1 AND r.acknowledged_at IS NULL)]], { row.thread_id, cutoff })
+    for _, thread_id in ipairs(selected) do
+        -- Recheck references after taking the fence lock. A prior owner can
+        -- add a receipt or work before the candidate is locked.
+        local result, delete_err = tx:execute("DELETE FROM kickside_job_thread_cleanup WHERE thread_id=$1"
+            .. " AND completed_at < $2 AND " .. thread_teardown.completed_fence_clear("kickside_job_thread_cleanup.thread_id"),
+            { thread_id, cutoff })
         if delete_err then return nil, sql_boundary.rollback(tx, errors.wrap(delete_err, "thread cleanup fence prune delete failed"), "retention rollback failed") end
         local count, proof_err = affected(result, "thread cleanup fence prune", 1)
         if proof_err then return nil, sql_boundary.rollback(tx, proof_err, "retention rollback failed") end
@@ -417,7 +426,8 @@ local function prune_completed_thread_fences(db: any, cutoff: string, limit: int
     end
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "thread cleanup fence prune commit failed") end
-    return total, nil
+    local last = (window :: { any })[limit]
+    return total, nil, last and thread_teardown.fence_position(last) or nil
 end
 
 -- One bounded pass over each Jobs-owned retained table. Full batch counts
@@ -470,22 +480,31 @@ function M.sweep(db: any, dbtype: string, cursor: table?, completed_fence_cursor
     local cleanup_receipts, receipts_err = prune_thread_cleanup_receipts(db, receipt_cutoff, batch, dbtype)
     if receipts_err then return nil, receipts_err end
     local leftovers: integer? = 0
-    local next_completed_fence_cursor: table? = nil
+    local cleanup_fences: integer? = 0
+    local reclaim_cursor, expiry_cursor = nil, nil
     if completed_fence_cursor ~= false then
-        local leftovers_err: error?
-        leftovers, leftovers_err, next_completed_fence_cursor = thread_teardown.reclaim_completed(
-            db, dbtype, (policy :: any).thread_cleanup_batch, completed_fence_cursor :: table?)
-        if leftovers_err then return nil, leftovers_err end
+        local positions = type(completed_fence_cursor) == "table" and completed_fence_cursor or {}
+        if positions.reclaim ~= false then
+            local leftovers_err: error?
+            leftovers, leftovers_err, reclaim_cursor = thread_teardown.reclaim_completed(
+                db, dbtype, (policy :: any).thread_cleanup_batch, positions.reclaim)
+            if leftovers_err then return nil, leftovers_err end
+        end
+        if positions.expire ~= false then
+            local fences_err: error?
+            cleanup_fences, fences_err, expiry_cursor = prune_completed_thread_fences(
+                db, receipt_cutoff, batch, dbtype, positions.expire)
+            if fences_err then return nil, fences_err end
+        end
     end
-    local cleanup_fences, fences_err = prune_completed_thread_fences(db, receipt_cutoff, batch, dbtype)
-    if fences_err then return nil, fences_err end
     return {
         jobs = jobs :: integer, job_runs = runs :: integer, job_cursor = job_cursor,
         workers = workers :: integer, worker_pulses = pulses :: integer, wake_rows = wake_rows :: integer,
         thread_cleanup_receipts = cleanup_receipts :: integer,
         thread_cleanup_fences = cleanup_fences :: integer,
         thread_cleanup_leftovers = leftovers :: integer,
-        completed_fence_cursor = next_completed_fence_cursor,
+        completed_fence_cursor = (reclaim_cursor or expiry_cursor)
+            and {reclaim = reclaim_cursor or false, expire = expiry_cursor or false} or nil,
     }, nil
 end
 

@@ -359,25 +359,46 @@ function M.page(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer
     return result, nil
 end
 
-local function fence_cursor(row: table): table
+local function has_owned_rows(thread_id_sql: string): string
+    return "((SELECT 1 FROM " .. JOB .. " j WHERE j.owner_kind='thread' AND j.owner_id=" .. thread_id_sql
+        .. " LIMIT 1) IS NOT NULL OR (SELECT 1 FROM " .. RUN .. " r WHERE r.owner_kind='thread' AND r.owner_id="
+        .. thread_id_sql .. " LIMIT 1) IS NOT NULL)"
+end
+
+function M.completed_fence_clear(thread_id_sql: string): string
+    return "NOT " .. has_owned_rows(thread_id_sql) .. " AND (SELECT 1 FROM " .. RECEIPT
+        .. " r WHERE r.thread_id=" .. thread_id_sql .. " AND r.acknowledged_at IS NULL LIMIT 1) IS NULL"
+end
+
+function M.fence_position(row: table): table
     return { completed_at = row.completed_at, thread_id = row.thread_id }
 end
 
--- The ordered window bounds both the fence read and the leftover probes.
--- The cursor follows the last fence examined even if none owns leftover work.
-function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer, after: table?): (integer?, error?, table?)
+-- Select the bounded window before probing eligibility. The final examined key
+-- belongs to the scan even when none of its rows satisfies the probe.
+function M.completed_window(db: any, dbtype: string, limit: integer, after: table?, cutoff: string?): (any, error?)
     local source = thread_fence.TABLE
     if dbtype == sql.type.SQLITE then source = source .. " INDEXED BY idx_job_cleanup_completed_order" end
-    local seek, limit_arg, params = "", "$1", { limit }
-    if after and after.thread_id then
-        seek, limit_arg = " AND (completed_at,thread_id) > ($1,$2)", "$3"
-        params = { after.completed_at, after.thread_id, limit }
+    local predicate, params = "completed_at IS NOT NULL", {}
+    if cutoff then
+        params[1] = cutoff
+        predicate = predicate .. " AND completed_at < $1"
     end
-    local rows, read_err = db:query([[SELECT f.thread_id,f.completed_at,
-        ((SELECT 1 FROM kickside_job j WHERE j.owner_kind='thread' AND j.owner_id=f.thread_id LIMIT 1) IS NOT NULL
-         OR (SELECT 1 FROM kickside_job_run r WHERE r.owner_kind='thread' AND r.owner_id=f.thread_id LIMIT 1) IS NOT NULL) AS eligible
-        FROM (SELECT thread_id,completed_at FROM ]] .. source .. [[ WHERE completed_at IS NOT NULL]] .. seek .. [[
-              ORDER BY completed_at,thread_id LIMIT ]] .. limit_arg .. ") f ORDER BY f.completed_at,f.thread_id", params)
+    if after and after.thread_id then
+        local key = #params + 1
+        predicate = predicate .. " AND (completed_at,thread_id) > ($" .. key .. ",$" .. (key + 1) .. ")"
+        params[key], params[key + 1] = after.completed_at, after.thread_id
+    end
+    params[#params + 1] = limit
+    local eligible = cutoff and M.completed_fence_clear("f.thread_id") or has_owned_rows("f.thread_id")
+    return db:query("SELECT f.thread_id,f.completed_at,(" .. eligible .. ") AS eligible"
+        .. " FROM (SELECT thread_id,completed_at FROM " .. source .. " WHERE " .. predicate
+        .. " ORDER BY completed_at,thread_id LIMIT $" .. #params .. ") f ORDER BY f.completed_at,f.thread_id", params)
+end
+
+-- Reclaim owned jobs and runs under the fence that was found in the window.
+function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer, after: table?): (integer?, error?, table?)
+    local rows, read_err = M.completed_window(db, dbtype, limit, after)
     local window, window_err = sql_boundary.bounded_rows(rows, read_err, "completed cleanup leftover read failed",
         "owners.rows", 0, limit, response_error)
     if window_err or not window then return nil, window_err end
@@ -400,7 +421,7 @@ function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer, after: 
                 total = total + (result :: table).processed
                 -- Resume before the first owner whose cleanup still needs a page.
                 if not (result :: table).done and not retry then
-                    retry = index > 1 and fence_cursor(window[index - 1]) or after or {}
+                    retry = index > 1 and M.fence_position(window[index - 1]) or after or {}
                 end
             end
             local _, commit_err = tx:commit()
@@ -408,7 +429,7 @@ function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer, after: 
         end
     end
     local last = window[#window]
-    return total, nil, retry or (last and #window == limit and fence_cursor(last) or nil)
+    return total, nil, retry or (last and #window == limit and M.fence_position(last) or nil)
 end
 
 -- The caller holds the fence from page_tx or the standalone acknowledgment.

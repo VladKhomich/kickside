@@ -15,6 +15,9 @@ function M.result(stage, value)
     return value, nil
 end
 function M.reclaim_completed(...) return 0, nil end
+function M.completed_window(db) return db:query("SELECT completed fence window") end
+function M.completed_fence_clear(...) return "TRUE" end
+function M.fence_position(row) return {completed_at = row.completed_at, thread_id = row.thread_id} end
 function M.database(): any
     local db: any = {}
     function db:type() return M.result("dialect", M.dialect) end
@@ -41,7 +44,11 @@ function M.database(): any
         end
         if M.mode == "receipts" or M.mode == "fences" then
             if M.active == M.mode and statement:find("SELECT", 1, true) and M.begins > 0 then
-                return M.result("candidates", {{thread_id = "thread", page_seq = 1}})
+                if M.mode == "fences" and statement:find("FOR UPDATE", 1, true) then
+                    return M.result("lock", {{thread_id = "thread"}})
+                end
+                return M.result("candidates", {{thread_id = "thread", page_seq = 1,
+                    completed_at = "completed", eligible = true}})
             end
             return {}, nil
         end
