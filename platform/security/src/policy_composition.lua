@@ -122,7 +122,7 @@ end
 -- Plain rule policies are the only source kind whose bodies flow into
 -- policy_groups and scope_projection. Security's delegation declarations are
 -- source grants too, so only derived entries are excluded.
-local function derived(policy: any): boolean
+function M.is_derived(policy: any): boolean
     local meta = policy.meta or {}
     return meta.managed_by == consts.MANAGED_BY
         and (meta.scope_metadata == true or meta.scope_projection_policy ~= nil)
@@ -133,7 +133,7 @@ function M.native_group_policies(snap)
     local native, read_err = snap:find({[".kind"] = consts.POLICY_KIND})
     if read_err then return nil, read_err end
     for _, policy in ipairs(native) do
-        if not derived(policy) then
+        if not M.is_derived(policy) then
             local namespace = registry.parse_id(tostring(policy.id)).ns
             for _, group in ipairs((policy.data or {}).groups or {}) do
                 local id = registry.parse_id(group)
@@ -160,7 +160,7 @@ function M.native_runtime_policies(group: string): (any?, error?)
         local id = policy:id()
         local entry, entry_err = registry.get(id)
         if entry_err and not errors.is(entry_err, errors.NOT_FOUND) then return nil, entry_err end
-        if entry and not derived(entry) then
+        if entry and not M.is_derived(entry) then
             effective = effective or {}
             effective[id] = true
         end

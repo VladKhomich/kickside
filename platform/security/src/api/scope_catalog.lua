@@ -13,6 +13,7 @@ local consts = require("security_consts")
 local store = require("scope_store")
 local stypes = require("security_types")
 local scope_key = require("scope_key")
+local composition = require("policy_composition")
 
 local M = {}
 
@@ -45,18 +46,23 @@ local function policy_index(): (any?, error?)
     if read_err then return nil, read_err end
     local by_id: { [string]: stypes.PolicySummary } = {}
     local list: { stypes.PolicySummary } = {}
-    local group_policies = {}
+    local group_policies, native_groups = {}, {}
     for _, entry in ipairs(entries :: { any }) do
         local summary = policy_summary(entry)
+        local native = not composition.is_derived(entry)
         for _, group in ipairs(entry.data.groups or {}) do
             group_policies[group] = group_policies[group] or {}
             group_policies[group][#group_policies[group] + 1] = summary.id
+            if native then
+                native_groups[group] = native_groups[group] or {}
+                native_groups[group][#native_groups[group] + 1] = summary.id
+            end
         end
         by_id[summary.id] = summary
         list[#list + 1] = summary
     end
     table.sort(list, by_policy_id)
-    return {by_id = by_id, list = list, entries = entries, groups = group_policies}, nil
+    return {by_id = by_id, list = list, entries = entries, groups = group_policies, native_groups = native_groups}, nil
 end
 
 local function assignable_policies(): ({ stypes.PolicySummary }?, error?)
@@ -132,8 +138,8 @@ local function default_label(id: string): string
     return id:match("([^:%.]+)$") or id
 end
 
-local function descriptor_policies(entry, index, projection)
-    local data, selected, out = entry.data or {}, {}, {}
+local function descriptor_policies(data, groups, sources)
+    local selected, out = {}, {}
     local function include(ids)
         for _, id in ipairs(ids or {}) do
             if not selected[id] then selected[id] = true; out[#out + 1] = id end
@@ -141,10 +147,20 @@ local function descriptor_policies(entry, index, projection)
     end
     include(data.policies)
     include(data.direct_policies)
-    if projection then include((projection.data or {}).policies) end
-    for _, group in ipairs(data.groups or {}) do include(index.groups[group]) end
+    for _, ids in ipairs(sources) do include(ids) end
+    for _, group in ipairs(data.groups or {}) do include(groups[group]) end
     table.sort(out)
     return out
+end
+
+local function original_policies(id, data, index, projections)
+    local route = (projections[id] or {}).data or {}
+    local sources = {route.direct_policies or {}, index.native_groups[id] or {}}
+    for _, group in ipairs(route.groups or {}) do
+        local inherited = (projections[group] or {}).data or {}
+        sources[#sources + 1] = inherited.policies or index.native_groups[group] or {}
+    end
+    return descriptor_policies(data, index.native_groups, sources)
 end
 
 -- scopes returns the merged scope/role catalog. include_internal defaults false.
@@ -166,6 +182,10 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     end
     local descriptors, roles_err = role_descriptors()
     if roles_err then return nil, roles_err end
+    local scope_entries, scopes_err = registry.find({ [".kind"] = consts.SCOPE_KIND })
+    if scopes_err then return nil, scopes_err end
+    local declared_by_id = {}
+    for _, entry in ipairs(scope_entries or {}) do declared_by_id[tostring(entry.id)] = entry.data end
     local by_id = index.by_id
     local out: { stypes.CatalogScope } = {}
     local seen: { [string]: boolean } = {}
@@ -179,8 +199,12 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
         scope.policies = policies
         local overlay = overlays_by_target[scope.id]
         if overlay then
+            local original_ids = original_policies(scope.id, declared_by_id[scope.id] or {}, index, by_target)
+            local base_policies, base_err = resolve_policies(original_ids, by_id, false, include_unavailable)
+            if base_err then return nil, base_err end
             local overlay_policies, overlay_err = resolve_policies(overlay.policies, by_id, true, include_unavailable)
             if overlay_err then return nil, overlay_err end
+            scope.base_policies = base_policies
             scope.overlay_policies = overlay_policies
             scope.overlay_slug = overlay.slug
         end
@@ -214,11 +238,12 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     -- 2. Host-declared roles referenced by policies. Role descriptors are the
     -- ownership boundary; package code never assumes the host's namespace.
     local group_policies: { [string]: { string } } = {}
-    local declared_scopes, declared_err = registry.find({[".kind"] = consts.SCOPE_KIND})
-    if declared_err then return nil, declared_err end
-    for _, entry in ipairs(declared_scopes or {}) do
+    for _, entry in ipairs(scope_entries or {}) do
         local id = tostring(entry.id)
-        if descriptors[id] then group_policies[id] = descriptor_policies(entry, index, by_target[tostring(entry.id)]) end
+        if descriptors[id] then
+            local route = (by_target[id] or {}).data or {}
+            group_policies[id] = descriptor_policies(entry.data or {}, index.groups, {route.policies or {}})
+        end
     end
     for id, projection in pairs(by_target) do
         if descriptors[id] and not group_policies[id] then group_policies[id] = projection.data.policies or {} end
@@ -263,12 +288,11 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     -- 3. Registry-shipped security.scope entries. Skip the ones THIS service
     -- projects (managed_by) — those are represented as custom scopes or as
     -- overlays on their base scope, not as separate registry scopes.
-    local scope_entries, scopes_err = registry.find({ [".kind"] = consts.SCOPE_KIND })
-    if scopes_err then return nil, scopes_err end
     for _, entry in ipairs(scope_entries :: { any }) do
         local id = tostring(entry.id)
         local meta = meta_of(entry)
         if meta.managed_by ~= consts.MANAGED_BY then
+            local route = (by_target[id] or {}).data or {}
             local _, emit_err = emit({
                 id = id,
                 label = meta.title or id,
@@ -277,7 +301,7 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
                 internal = meta.internal == true,
                 built_in = false,
                 enabled = true,
-                policies = descriptor_policies(entry, index, by_target[tostring(entry.id)]),
+                policies = descriptor_policies(entry.data or {}, index.groups, {route.policies or {}}),
             })
             if emit_err then return nil, emit_err end
         end

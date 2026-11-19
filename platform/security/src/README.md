@@ -45,6 +45,10 @@ never the reverse:
 | GET | `/security/policies` | Policy inventory (`?include_private=true` includes private entries). `?assignable=true` lists named module access, module management, and tool access grants available in the role editor. A declaration can exclude infrastructure grants with `meta.assignable: false`. |
 | GET | `/security/projection` | current scope resolution status |
 
+For an extended role, `GET /security/scopes` returns its original grants in
+`base_policies` and its saved selections in `overlay_policies`. `policies`
+continues to describe the role’s effective grants.
+
 `GET /security/projection` resolves the caller's native groups and live selected
 policy IDs through the same resolver and scope constructor as Users. `current`
 reports whether that authority is available without writing registry entries or

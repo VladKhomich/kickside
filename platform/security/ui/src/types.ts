@@ -27,6 +27,7 @@ export interface Scope {
   enabled: boolean
   policies: Policy[]
   // For a built-in/registry scope an admin has extended via an overlay.
+  base_policies?: Policy[]
   overlay_slug?: string
   overlay_policies?: Policy[]
 }

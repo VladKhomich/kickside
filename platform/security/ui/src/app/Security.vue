@@ -50,7 +50,8 @@ const filteredScopes = computed(() => {
 const selectedScope = computed(() => scopes.value.find(s => s.id === selectedId.value) || null)
 const readOnlyScope = computed(() => (selectedScope.value && selectedScope.value.source !== 'custom') ? selectedScope.value : null)
 const isOverlay = computed(() => !!draft.value?.target)
-const basePolicies = computed(() => isOverlay.value ? readOnlyScope.value?.policies ?? [] : [])
+const originalPolicies = computed(() => readOnlyScope.value?.base_policies ?? readOnlyScope.value?.policies ?? [])
+const basePolicies = computed(() => isOverlay.value ? originalPolicies.value : [])
 
 const installedById = computed(() => new Map(installedPolicies.value.map(policy => [policy.id, policy])))
 
@@ -86,7 +87,7 @@ function copyScope(s: Scope) {
   Object.assign(draft.value!, {
     label: s.label ? `Copy of ${s.label}` : '',
     description: s.description,
-    policyIds: [...s.policies, ...(s.overlay_policies ?? [])].filter(p => p.available !== false).map(p => p.id),
+    policyIds: [...new Set([...s.policies, ...(s.overlay_policies ?? [])].filter(p => p.available !== false).map(p => p.id))],
   })
 }
 
@@ -349,8 +350,8 @@ function shortId(id: string): string {
           Included with the application. Adding permissions affects everyone with this role. For restricted access, create a new role with only the permissions needed and assign it in System → Users instead of this role. Other assigned roles may still grant access.
         </p>
         <div class="ks-pane-body ks-view-list">
-          <PolicyCard v-for="p in readOnlyScope.policies" :key="p.id" :policy="p" mode="locked" />
-          <div v-if="!readOnlyScope.policies.length" class="ks-pane-empty">No permissions in this role.</div>
+          <PolicyCard v-for="p in originalPolicies" :key="p.id" :policy="p" mode="locked" />
+          <div v-if="!originalPolicies.length" class="ks-pane-empty">No permissions in this role.</div>
         </div>
 
         <div v-if="readOnlyScope.overlay_policies && readOnlyScope.overlay_policies.length" class="ks-ext-block">

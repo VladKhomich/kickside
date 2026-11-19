@@ -45,6 +45,7 @@ type CatalogScope = {
     slug: string?,         -- present for custom (DB-backed) scopes
     -- For a built-in/registry scope that an admin has extended: the overlay's DB
     -- slug + the extra policies it grants (unioned onto the base at runtime).
+    base_policies: { PolicySummary }?,
     overlay_slug: string?,
     overlay_policies: { PolicySummary }?,
 }
