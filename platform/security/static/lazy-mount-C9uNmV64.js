@@ -1,8 +1,8 @@
-import { B as J, R as Kt, s as Y, f as rt, k as Yt, b as wn, Q as xt, z as St, a as At, c as _t, T as xn, C as Cn, K as Ct, v as Sn, V as Gt, l as tn, d as Ft, e as Bn, P as Tn } from "./wc-runtime-E4NYBaIN.js";
-import { mergeProps as k, resolveDirective as Ut, withDirectives as ut, openBlock as a, createBlock as $, resolveDynamicComponent as lt, withCtx as C, renderSlot as _, normalizeClass as X, createElementBlock as u, createElementVNode as s, createCommentVNode as y, defineComponent as D, unref as i, createVNode as m, Fragment as et, renderList as ot, createTextVNode as T, toDisplayString as x, resolveComponent as qt, getCurrentInstance as Pn, computed as F, createSlots as In, ref as A, onMounted as An, watch as Vt, onBeforeUnmount as zn, nextTick as nn, useId as Ln, withModifiers as pt, onUnmounted as _n, vShow as Zt } from "vue";
-import { Icon as V } from "@iconify/vue";
-import { loadByTagName as Nn, api as it, host as en } from "@wippy-fe/proxy";
-var Fn = {
+import { B as Z, R as Mt, s as Y, f as rt, k as nn, b as Cn, Q as St, z as Pt, a as _t, c as Ft, T as Sn, C as Bn, K as Bt, v as Pn, V as Zt, l as en, d as Ot, e as In, P as Tn } from "./wc-runtime-E4NYBaIN.js";
+import { mergeProps as k, resolveDirective as Wt, withDirectives as ut, openBlock as a, createBlock as $, resolveDynamicComponent as st, withCtx as S, renderSlot as F, normalizeClass as X, createElementBlock as d, createElementVNode as l, createCommentVNode as y, defineComponent as K, unref as i, createVNode as m, Fragment as et, renderList as ot, createTextVNode as P, toDisplayString as C, resolveComponent as Jt, getCurrentInstance as An, computed as N, createSlots as zn, ref as I, onMounted as _n, watch as Rt, onBeforeUnmount as Ln, nextTick as on, useId as Nn, withModifiers as ht, onUnmounted as Fn, vShow as Qt } from "vue";
+import { Icon as R } from "@iconify/vue";
+import { loadByTagName as Vn, api as at, host as rn } from "@wippy-fe/proxy";
+var On = {
   root: function(n) {
     var e = n.instance, o = n.props;
     return ["p-tab", {
@@ -10,10 +10,10 @@ var Fn = {
       "p-disabled": o.disabled
     }];
   }
-}, Vn = J.extend({
+}, Rn = Z.extend({
   name: "tab",
-  classes: Fn
-}), On = {
+  classes: On
+}), En = {
   name: "BaseTab",
   extends: Y,
   props: {
@@ -34,16 +34,16 @@ var Fn = {
       default: !1
     }
   },
-  style: Vn,
+  style: Rn,
   provide: function() {
     return {
       $pcTab: this,
       $parentInstance: this
     };
   }
-}, on = {
+}, an = {
   name: "Tab",
-  extends: On,
+  extends: En,
   inheritAttrs: !1,
   inject: ["$pcTabs", "$pcTabList"],
   methods: {
@@ -107,11 +107,11 @@ var Fn = {
     },
     findNextTab: function(n) {
       var e = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : !1, o = e ? n : n.nextElementSibling;
-      return o ? xt(o, "data-p-disabled") || xt(o, "data-pc-section") === "activebar" ? this.findNextTab(o) : St(o, '[data-pc-name="tab"]') : null;
+      return o ? St(o, "data-p-disabled") || St(o, "data-pc-section") === "activebar" ? this.findNextTab(o) : Pt(o, '[data-pc-name="tab"]') : null;
     },
     findPrevTab: function(n) {
       var e = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : !1, o = e ? n : n.previousElementSibling;
-      return o ? xt(o, "data-p-disabled") || xt(o, "data-pc-section") === "activebar" ? this.findPrevTab(o) : St(o, '[data-pc-name="tab"]') : null;
+      return o ? St(o, "data-p-disabled") || St(o, "data-pc-section") === "activebar" ? this.findPrevTab(o) : Pt(o, '[data-pc-name="tab"]') : null;
     },
     findFirstTab: function() {
       return this.findNextTab(this.$pcTabList.$refs.tabs.firstElementChild, !0);
@@ -123,7 +123,7 @@ var Fn = {
       this.$pcTabs.updateValue(this.value);
     },
     changeFocusedTab: function(n, e) {
-      wn(e), this.scrollInView(e);
+      Cn(e), this.scrollInView(e);
     },
     scrollInView: function(n) {
       var e;
@@ -135,7 +135,7 @@ var Fn = {
   computed: {
     active: function() {
       var n;
-      return Yt((n = this.$pcTabs) === null || n === void 0 ? void 0 : n.d_value, this.value);
+      return nn((n = this.$pcTabs) === null || n === void 0 ? void 0 : n.d_value, this.value);
     },
     id: function() {
       var n;
@@ -182,139 +182,139 @@ var Fn = {
     }
   },
   directives: {
-    ripple: Kt
+    ripple: Mt
   }
 };
-function Rn(t, n, e, o, d, r) {
-  var h = Ut("ripple");
-  return t.asChild ? _(t.$slots, "default", {
+function jn(t, n, e, o, u, r) {
+  var f = Wt("ripple");
+  return t.asChild ? F(t.$slots, "default", {
     key: 1,
     dataP: r.dataP,
     class: X(t.cx("root")),
     active: r.active,
     a11yAttrs: r.a11yAttrs,
     onClick: r.onClick
-  }) : ut((a(), $(lt(t.as), k({
+  }) : ut((a(), $(st(t.as), k({
     key: 0,
     class: t.cx("root"),
     "data-p": r.dataP,
     onClick: r.onClick
   }, r.attrs), {
-    default: C(function() {
-      return [_(t.$slots, "default")];
+    default: S(function() {
+      return [F(t.$slots, "default")];
     }),
     _: 3
-  }, 16, ["class", "data-p", "onClick"])), [[h]]);
+  }, 16, ["class", "data-p", "onClick"])), [[f]]);
 }
-on.render = Rn;
-var rn = {
+an.render = jn;
+var ln = {
   name: "ChevronLeftIcon",
-  extends: At
+  extends: _t
 };
-function En(t) {
-  return Un(t) || Kn(t) || Dn(t) || jn();
+function Dn(t) {
+  return Wn(t) || Mn(t) || Un(t) || Kn();
 }
-function jn() {
+function Kn() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function Dn(t, n) {
+function Un(t, n) {
   if (t) {
-    if (typeof t == "string") return Ot(t, n);
+    if (typeof t == "string") return Et(t, n);
     var e = {}.toString.call(t).slice(8, -1);
-    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? Ot(t, n) : void 0;
+    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? Et(t, n) : void 0;
   }
 }
-function Kn(t) {
+function Mn(t) {
   if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
 }
-function Un(t) {
-  if (Array.isArray(t)) return Ot(t);
+function Wn(t) {
+  if (Array.isArray(t)) return Et(t);
 }
-function Ot(t, n) {
+function Et(t, n) {
   (n == null || n > t.length) && (n = t.length);
   for (var e = 0, o = Array(n); e < n; e++) o[e] = t[e];
   return o;
 }
-function Mn(t, n, e, o, d, r) {
-  return a(), u("svg", k({
+function Hn(t, n, e, o, u, r) {
+  return a(), d("svg", k({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), En(n[0] || (n[0] = [s("path", {
+  }, t.pti()), Dn(n[0] || (n[0] = [l("path", {
     d: "M9.61296 13C9.50997 13.0005 9.40792 12.9804 9.3128 12.9409C9.21767 12.9014 9.13139 12.8433 9.05902 12.7701L3.83313 7.54416C3.68634 7.39718 3.60388 7.19795 3.60388 6.99022C3.60388 6.78249 3.68634 6.58325 3.83313 6.43628L9.05902 1.21039C9.20762 1.07192 9.40416 0.996539 9.60724 1.00012C9.81032 1.00371 10.0041 1.08597 10.1477 1.22959C10.2913 1.37322 10.3736 1.56698 10.3772 1.77005C10.3808 1.97313 10.3054 2.16968 10.1669 2.31827L5.49496 6.99022L10.1669 11.6622C10.3137 11.8091 10.3962 12.0084 10.3962 12.2161C10.3962 12.4238 10.3137 12.6231 10.1669 12.7701C10.0945 12.8433 10.0083 12.9014 9.91313 12.9409C9.81801 12.9804 9.71596 13.0005 9.61296 13Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-rn.render = Mn;
-var an = {
+ln.render = Hn;
+var sn = {
   name: "ChevronRightIcon",
-  extends: At
+  extends: _t
 };
-function Wn(t) {
-  return Zn(t) || qn(t) || Gn(t) || Hn();
+function Gn(t) {
+  return Qn(t) || Jn(t) || Zn(t) || qn();
 }
-function Hn() {
+function qn() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function Gn(t, n) {
+function Zn(t, n) {
   if (t) {
-    if (typeof t == "string") return Rt(t, n);
+    if (typeof t == "string") return jt(t, n);
     var e = {}.toString.call(t).slice(8, -1);
-    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? Rt(t, n) : void 0;
+    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? jt(t, n) : void 0;
   }
 }
-function qn(t) {
+function Jn(t) {
   if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
 }
-function Zn(t) {
-  if (Array.isArray(t)) return Rt(t);
+function Qn(t) {
+  if (Array.isArray(t)) return jt(t);
 }
-function Rt(t, n) {
+function jt(t, n) {
   (n == null || n > t.length) && (n = t.length);
   for (var e = 0, o = Array(n); e < n; e++) o[e] = t[e];
   return o;
 }
-function Jn(t, n, e, o, d, r) {
-  return a(), u("svg", k({
+function Xn(t, n, e, o, u, r) {
+  return a(), d("svg", k({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), Wn(n[0] || (n[0] = [s("path", {
+  }, t.pti()), Gn(n[0] || (n[0] = [l("path", {
     d: "M4.38708 13C4.28408 13.0005 4.18203 12.9804 4.08691 12.9409C3.99178 12.9014 3.9055 12.8433 3.83313 12.7701C3.68634 12.6231 3.60388 12.4238 3.60388 12.2161C3.60388 12.0084 3.68634 11.8091 3.83313 11.6622L8.50507 6.99022L3.83313 2.31827C3.69467 2.16968 3.61928 1.97313 3.62287 1.77005C3.62645 1.56698 3.70872 1.37322 3.85234 1.22959C3.99596 1.08597 4.18972 1.00371 4.3928 1.00012C4.59588 0.996539 4.79242 1.07192 4.94102 1.21039L10.1669 6.43628C10.3137 6.58325 10.3962 6.78249 10.3962 6.99022C10.3962 7.19795 10.3137 7.39718 10.1669 7.54416L4.94102 12.7701C4.86865 12.8433 4.78237 12.9014 4.68724 12.9409C4.59212 12.9804 4.49007 13.0005 4.38708 13Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-an.render = Jn;
-var Qn = {
+sn.render = Xn;
+var Yn = {
   root: "p-tablist",
   content: "p-tablist-content p-tablist-viewport",
   tabList: "p-tablist-tab-list",
   activeBar: "p-tablist-active-bar",
   prevButton: "p-tablist-prev-button p-tablist-nav-button",
   nextButton: "p-tablist-next-button p-tablist-nav-button"
-}, Xn = J.extend({
+}, te = Z.extend({
   name: "tablist",
-  classes: Qn
-}), Yn = {
+  classes: Yn
+}), ne = {
   name: "BaseTabList",
   extends: Y,
   props: {},
-  style: Xn,
+  style: te,
   provide: function() {
     return {
       $pcTabList: this,
       $parentInstance: this
     };
   }
-}, ln = {
+}, dn = {
   name: "TabList",
-  extends: Yn,
+  extends: ne,
   inheritAttrs: !1,
   inject: ["$pcTabs"],
   data: function() {
@@ -353,12 +353,12 @@ var Qn = {
       this.showNavigators && this.updateButtonState(), n.preventDefault();
     },
     onPrevButtonClick: function() {
-      var n = this.$refs.content, e = this.getVisibleButtonWidths(), o = _t(n) - e, d = Math.abs(n.scrollLeft), r = o * 0.8, h = d - r, w = Math.max(h, 0);
-      n.scrollLeft = Gt(n) ? -1 * w : w;
+      var n = this.$refs.content, e = this.getVisibleButtonWidths(), o = Ft(n) - e, u = Math.abs(n.scrollLeft), r = o * 0.8, f = u - r, x = Math.max(f, 0);
+      n.scrollLeft = Zt(n) ? -1 * x : x;
     },
     onNextButtonClick: function() {
-      var n = this.$refs.content, e = this.getVisibleButtonWidths(), o = _t(n) - e, d = Math.abs(n.scrollLeft), r = o * 0.8, h = d + r, w = n.scrollWidth - o, I = Math.min(h, w);
-      n.scrollLeft = Gt(n) ? -1 * I : I;
+      var n = this.$refs.content, e = this.getVisibleButtonWidths(), o = Ft(n) - e, u = Math.abs(n.scrollLeft), r = o * 0.8, f = u + r, x = n.scrollWidth - o, T = Math.min(f, x);
+      n.scrollLeft = Zt(n) ? -1 * T : T;
     },
     bindResizeObserver: function() {
       var n = this;
@@ -373,7 +373,7 @@ var Qn = {
     bindInkBarObserver: function() {
       var n = this;
       this.unbindInkBarObserver();
-      var e = this.$refs.content, o = St(e, '[data-pc-name="tab"][data-p-active="true"]');
+      var e = this.$refs.content, o = Pt(e, '[data-pc-name="tab"][data-p-active="true"]');
       o && (this.inkBarObserver = new ResizeObserver(function() {
         return n.updateInkBar();
       }), this.inkBarObserver.observe(o));
@@ -383,19 +383,19 @@ var Qn = {
       (n = this.inkBarObserver) === null || n === void 0 || n.disconnect(), this.inkBarObserver = void 0;
     },
     updateInkBar: function() {
-      var n = this.$refs, e = n.content, o = n.inkbar, d = n.tabs;
+      var n = this.$refs, e = n.content, o = n.inkbar, u = n.tabs;
       if (o) {
-        var r = St(e, '[data-pc-name="tab"][data-p-active="true"]');
-        this.$pcTabs.isVertical() ? (o.style.height = Cn(r) + "px", o.style.top = Ct(r).top - Ct(d).top + "px") : (o.style.width = Sn(r) + "px", o.style.left = Ct(r).left - Ct(d).left + "px");
+        var r = Pt(e, '[data-pc-name="tab"][data-p-active="true"]');
+        this.$pcTabs.isVertical() ? (o.style.height = Bn(r) + "px", o.style.top = Bt(r).top - Bt(u).top + "px") : (o.style.width = Pn(r) + "px", o.style.left = Bt(r).left - Bt(u).left + "px");
       }
     },
     updateButtonState: function() {
-      var n = this.$refs, e = n.list, o = n.content, d = o.scrollTop, r = o.scrollWidth, h = o.scrollHeight, w = o.offsetWidth, I = o.offsetHeight, B = Math.abs(o.scrollLeft), l = [_t(o), xn(o)], S = l[0], O = l[1];
-      this.$pcTabs.isVertical() ? (this.isPrevButtonEnabled = d !== 0, this.isNextButtonEnabled = e.offsetHeight >= I && parseInt(d) !== h - O) : (this.isPrevButtonEnabled = B !== 0, this.isNextButtonEnabled = e.offsetWidth >= w && parseInt(B) !== r - S);
+      var n = this.$refs, e = n.list, o = n.content, u = o.scrollTop, r = o.scrollWidth, f = o.scrollHeight, x = o.offsetWidth, T = o.offsetHeight, L = Math.abs(o.scrollLeft), w = [Ft(o), Sn(o)], s = w[0], z = w[1];
+      this.$pcTabs.isVertical() ? (this.isPrevButtonEnabled = u !== 0, this.isNextButtonEnabled = e.offsetHeight >= T && parseInt(u) !== f - z) : (this.isPrevButtonEnabled = L !== 0, this.isNextButtonEnabled = e.offsetWidth >= x && parseInt(L) !== r - s);
     },
     getVisibleButtonWidths: function() {
-      var n = this.$refs, e = n.prevButton, o = n.nextButton, d = 0;
-      return this.showNavigators && (d = (e?.offsetWidth || 0) + (o?.offsetWidth || 0)), d;
+      var n = this.$refs, e = n.prevButton, o = n.nextButton, u = 0;
+      return this.showNavigators && (u = (e?.offsetWidth || 0) + (o?.offsetWidth || 0)), u;
     }
   },
   computed: {
@@ -421,20 +421,20 @@ var Qn = {
     }
   },
   components: {
-    ChevronLeftIcon: rn,
-    ChevronRightIcon: an
+    ChevronLeftIcon: ln,
+    ChevronRightIcon: sn
   },
   directives: {
-    ripple: Kt
+    ripple: Mt
   }
-}, te = ["data-p"], ne = ["aria-label", "tabindex"], ee = ["data-p"], oe = ["aria-orientation"], re = ["aria-label", "tabindex"];
-function ae(t, n, e, o, d, r) {
-  var h = Ut("ripple");
-  return a(), u("div", k({
+}, ee = ["data-p"], oe = ["aria-label", "tabindex"], re = ["data-p"], ae = ["aria-orientation"], ie = ["aria-label", "tabindex"];
+function le(t, n, e, o, u, r) {
+  var f = Wt("ripple");
+  return a(), d("div", k({
     ref: "list",
     class: t.cx("root"),
     "data-p": r.dataP
-  }, t.ptmi("root")), [r.showNavigators && d.isPrevButtonEnabled ? ut((a(), u("button", k({
+  }, t.ptmi("root")), [r.showNavigators && u.isPrevButtonEnabled ? ut((a(), d("button", k({
     key: 0,
     ref: "prevButton",
     type: "button",
@@ -446,26 +446,26 @@ function ae(t, n, e, o, d, r) {
     })
   }, t.ptm("prevButton"), {
     "data-pc-group-section": "navigator"
-  }), [(a(), $(lt(r.templates.previcon || "ChevronLeftIcon"), k({
+  }), [(a(), $(st(r.templates.previcon || "ChevronLeftIcon"), k({
     "aria-hidden": "true"
-  }, t.ptm("prevIcon")), null, 16))], 16, ne)), [[h]]) : y("", !0), s("div", k({
+  }, t.ptm("prevIcon")), null, 16))], 16, oe)), [[f]]) : y("", !0), l("div", k({
     ref: "content",
     class: t.cx("content"),
     onScroll: n[1] || (n[1] = function() {
       return r.onScroll && r.onScroll.apply(r, arguments);
     }),
     "data-p": r.dataP
-  }, t.ptm("content")), [s("div", k({
+  }, t.ptm("content")), [l("div", k({
     ref: "tabs",
     class: t.cx("tabList"),
     role: "tablist",
     "aria-orientation": r.$pcTabs.orientation || "horizontal"
-  }, t.ptm("tabList")), [_(t.$slots, "default"), s("span", k({
+  }, t.ptm("tabList")), [F(t.$slots, "default"), l("span", k({
     ref: "inkbar",
     class: t.cx("activeBar"),
     role: "presentation",
     "aria-hidden": "true"
-  }, t.ptm("activeBar")), null, 16)], 16, oe)], 16, ee), r.showNavigators && d.isNextButtonEnabled ? ut((a(), u("button", k({
+  }, t.ptm("activeBar")), null, 16)], 16, ae)], 16, re), r.showNavigators && u.isNextButtonEnabled ? ut((a(), d("button", k({
     key: 1,
     ref: "nextButton",
     type: "button",
@@ -477,12 +477,12 @@ function ae(t, n, e, o, d, r) {
     })
   }, t.ptm("nextButton"), {
     "data-pc-group-section": "navigator"
-  }), [(a(), $(lt(r.templates.nexticon || "ChevronRightIcon"), k({
+  }), [(a(), $(st(r.templates.nexticon || "ChevronRightIcon"), k({
     "aria-hidden": "true"
-  }, t.ptm("nextIcon")), null, 16))], 16, re)), [[h]]) : y("", !0)], 16, te);
+  }, t.ptm("nextIcon")), null, 16))], 16, ie)), [[f]]) : y("", !0)], 16, ee);
 }
-ln.render = ae;
-var ie = `
+dn.render = le;
+var se = `
     .p-tabs {
         display: flex;
         flex-direction: column;
@@ -630,18 +630,18 @@ var ie = `
         background: dt('tabs.active.bar.background');
         transition: 250ms cubic-bezier(0.35, 0, 0.25, 1);
     }
-`, le = {
+`, de = {
   root: function(n) {
     var e = n.props;
     return ["p-tabs p-component", {
       "p-tabs-scrollable": e.scrollable
     }];
   }
-}, se = J.extend({
+}, ue = Z.extend({
   name: "tabs",
-  style: ie,
-  classes: le
-}), de = {
+  style: se,
+  classes: de
+}), ce = {
   name: "BaseTabs",
   extends: Y,
   props: {
@@ -670,16 +670,16 @@ var ie = `
       default: !1
     }
   },
-  style: se,
+  style: ue,
   provide: function() {
     return {
       $pcTabs: this,
       $parentInstance: this
     };
   }
-}, sn = {
+}, un = {
   name: "Tabs",
-  extends: de,
+  extends: ce,
   inheritAttrs: !1,
   emits: ["update:value"],
   data: function() {
@@ -701,16 +701,16 @@ var ie = `
     }
   }
 };
-function ue(t, n, e, o, d, r) {
-  return a(), u("div", k({
+function be(t, n, e, o, u, r) {
+  return a(), d("div", k({
     class: t.cx("root")
-  }, t.ptmi("root")), [_(t.$slots, "default")], 16);
+  }, t.ptmi("root")), [F(t.$slots, "default")], 16);
 }
-sn.render = ue;
-const ce = {
+un.render = be;
+const pe = {
   key: 0,
   class: "kx-system-tab-count"
-}, be = /* @__PURE__ */ D({
+}, ve = /* @__PURE__ */ K({
   __name: "SystemTabs",
   props: {
     value: {},
@@ -719,24 +719,24 @@ const ce = {
   },
   emits: ["update:value"],
   setup(t) {
-    return (n, e) => (a(), $(i(sn), {
+    return (n, e) => (a(), $(i(un), {
       class: "kx-system-tabs",
       "data-kx-separator": "surface",
       value: t.value,
       "onUpdate:value": e[0] || (e[0] = (o) => n.$emit("update:value", String(o)))
     }, {
-      default: C(() => [
-        m(i(ln), {
+      default: S(() => [
+        m(i(dn), {
           pt: { tabList: { "aria-label": t.label } }
         }, {
-          default: C(() => [
-            (a(!0), u(et, null, ot(t.items, (o) => (a(), $(i(on), k({
+          default: S(() => [
+            (a(!0), d(et, null, ot(t.items, (o) => (a(), $(i(an), k({
               key: o.value,
               value: o.value
             }, { ref_for: !0 }, o.controls ? { "aria-controls": o.controls } : {}), {
-              default: C(() => [
-                T(x(o.label), 1),
-                o.count !== void 0 ? (a(), u("b", ce, x(o.count), 1)) : y("", !0)
+              default: S(() => [
+                P(C(o.label), 1),
+                o.count !== void 0 ? (a(), d("b", pe, C(o.count), 1)) : y("", !0)
               ]),
               _: 2
             }, 1040, ["value"]))), 128))
@@ -747,79 +747,79 @@ const ce = {
       _: 1
     }, 8, ["value"]));
   }
-}), pe = { class: "kx-shell" }, ve = { class: "kx-rail" }, fe = { class: "kx-main kx-system-pane" }, he = /* @__PURE__ */ D({
+}), fe = { class: "kx-shell" }, he = { class: "kx-rail" }, ge = { class: "kx-main kx-system-pane" }, me = /* @__PURE__ */ K({
   __name: "Shell",
   setup(t) {
-    return (n, e) => (a(), u("div", pe, [
-      s("aside", ve, [
-        _(n.$slots, "rail")
+    return (n, e) => (a(), d("div", fe, [
+      l("aside", he, [
+        F(n.$slots, "rail")
       ]),
-      s("main", fe, [
-        _(n.$slots, "default")
+      l("main", ge, [
+        F(n.$slots, "default")
       ])
     ]));
   }
-}), ge = { class: "kx-railhead" }, me = { class: "kx-railhead-title" }, ye = { key: 0 }, ke = { class: "kx-railhead-acts" }, $e = /* @__PURE__ */ D({
+}), ye = { class: "kx-railhead" }, ke = { class: "kx-railhead-title" }, $e = { key: 0 }, we = { class: "kx-railhead-acts" }, xe = /* @__PURE__ */ K({
   __name: "RailHeader",
   props: {
     title: {},
     count: {}
   },
   setup(t) {
-    return (n, e) => (a(), u("div", ge, [
-      s("span", me, [
-        T(x(t.title), 1),
-        t.count !== void 0 ? (a(), u("b", ye, x(t.count), 1)) : y("", !0)
+    return (n, e) => (a(), d("div", ye, [
+      l("span", ke, [
+        P(C(t.title), 1),
+        t.count !== void 0 ? (a(), d("b", $e, C(t.count), 1)) : y("", !0)
       ]),
-      s("div", ke, [
-        _(n.$slots, "actions")
+      l("div", we, [
+        F(n.$slots, "actions")
       ])
     ]));
   }
 });
-var Mt = {
+var Ht = {
   name: "SpinnerIcon",
-  extends: At
+  extends: _t
 };
-function we(t) {
-  return Be(t) || Se(t) || Ce(t) || xe();
+function Ce(t) {
+  return Ie(t) || Pe(t) || Be(t) || Se();
 }
-function xe() {
+function Se() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function Ce(t, n) {
+function Be(t, n) {
   if (t) {
-    if (typeof t == "string") return Et(t, n);
+    if (typeof t == "string") return Dt(t, n);
     var e = {}.toString.call(t).slice(8, -1);
-    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? Et(t, n) : void 0;
+    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? Dt(t, n) : void 0;
   }
 }
-function Se(t) {
+function Pe(t) {
   if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
 }
-function Be(t) {
-  if (Array.isArray(t)) return Et(t);
+function Ie(t) {
+  if (Array.isArray(t)) return Dt(t);
 }
-function Et(t, n) {
+function Dt(t, n) {
   (n == null || n > t.length) && (n = t.length);
   for (var e = 0, o = Array(n); e < n; e++) o[e] = t[e];
   return o;
 }
-function Te(t, n, e, o, d, r) {
-  return a(), u("svg", k({
+function Te(t, n, e, o, u, r) {
+  return a(), d("svg", k({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), we(n[0] || (n[0] = [s("path", {
+  }, t.pti()), Ce(n[0] || (n[0] = [l("path", {
     d: "M6.99701 14C5.85441 13.999 4.72939 13.7186 3.72012 13.1832C2.71084 12.6478 1.84795 11.8737 1.20673 10.9284C0.565504 9.98305 0.165424 8.89526 0.041387 7.75989C-0.0826496 6.62453 0.073125 5.47607 0.495122 4.4147C0.917119 3.35333 1.59252 2.4113 2.46241 1.67077C3.33229 0.930247 4.37024 0.413729 5.4857 0.166275C6.60117 -0.0811796 7.76026 -0.0520535 8.86188 0.251112C9.9635 0.554278 10.9742 1.12227 11.8057 1.90555C11.915 2.01493 11.9764 2.16319 11.9764 2.31778C11.9764 2.47236 11.915 2.62062 11.8057 2.73C11.7521 2.78503 11.688 2.82877 11.6171 2.85864C11.5463 2.8885 11.4702 2.90389 11.3933 2.90389C11.3165 2.90389 11.2404 2.8885 11.1695 2.85864C11.0987 2.82877 11.0346 2.78503 10.9809 2.73C9.9998 1.81273 8.73246 1.26138 7.39226 1.16876C6.05206 1.07615 4.72086 1.44794 3.62279 2.22152C2.52471 2.99511 1.72683 4.12325 1.36345 5.41602C1.00008 6.70879 1.09342 8.08723 1.62775 9.31926C2.16209 10.5513 3.10478 11.5617 4.29713 12.1803C5.48947 12.7989 6.85865 12.988 8.17414 12.7157C9.48963 12.4435 10.6711 11.7264 11.5196 10.6854C12.3681 9.64432 12.8319 8.34282 12.8328 7C12.8328 6.84529 12.8943 6.69692 13.0038 6.58752C13.1132 6.47812 13.2616 6.41667 13.4164 6.41667C13.5712 6.41667 13.7196 6.47812 13.8291 6.58752C13.9385 6.69692 14 6.84529 14 7C14 8.85651 13.2622 10.637 11.9489 11.9497C10.6356 13.2625 8.85432 14 6.99701 14Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-Mt.render = Te;
-var Pe = `
+Ht.render = Te;
+var Ae = `
     .p-badge {
         display: inline-flex;
         border-radius: dt('badge.border.radius');
@@ -894,12 +894,12 @@ var Pe = `
         min-width: dt('badge.xl.min.width');
         height: dt('badge.xl.height');
     }
-`, Ie = {
+`, ze = {
   root: function(n) {
     var e = n.props, o = n.instance;
     return ["p-badge p-component", {
-      "p-badge-circle": Ft(e.value) && String(e.value).length === 1,
-      "p-badge-dot": tn(e.value) && !o.$slots.default,
+      "p-badge-circle": Ot(e.value) && String(e.value).length === 1,
+      "p-badge-dot": en(e.value) && !o.$slots.default,
       "p-badge-sm": e.size === "small",
       "p-badge-lg": e.size === "large",
       "p-badge-xl": e.size === "xlarge",
@@ -911,11 +911,11 @@ var Pe = `
       "p-badge-contrast": e.severity === "contrast"
     }];
   }
-}, Ae = J.extend({
+}, _e = Z.extend({
   name: "badge",
-  style: Pe,
-  classes: Ie
-}), ze = {
+  style: Ae,
+  classes: ze
+}), Le = {
   name: "BaseBadge",
   extends: Y,
   props: {
@@ -932,7 +932,7 @@ var Pe = `
       default: null
     }
   },
-  style: Ae,
+  style: _e,
   provide: function() {
     return {
       $pcBadge: this,
@@ -940,54 +940,54 @@ var Pe = `
     };
   }
 };
-function vt(t) {
+function gt(t) {
   "@babel/helpers - typeof";
-  return vt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return gt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, vt(t);
+  }, gt(t);
 }
-function Jt(t, n, e) {
-  return (n = Le(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+function Xt(t, n, e) {
+  return (n = Ne(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function Le(t) {
-  var n = _e(t, "string");
-  return vt(n) == "symbol" ? n : n + "";
+function Ne(t) {
+  var n = Fe(t, "string");
+  return gt(n) == "symbol" ? n : n + "";
 }
-function _e(t, n) {
-  if (vt(t) != "object" || !t) return t;
+function Fe(t, n) {
+  if (gt(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (vt(o) != "object") return o;
+    if (gt(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var dn = {
+var cn = {
   name: "Badge",
-  extends: ze,
+  extends: Le,
   inheritAttrs: !1,
   computed: {
     dataP: function() {
-      return rt(Jt(Jt({
+      return rt(Xt(Xt({
         circle: this.value != null && String(this.value).length === 1,
         empty: this.value == null && !this.$slots.default
       }, this.severity, this.severity), this.size, this.size));
     }
   }
-}, Ne = ["data-p"];
-function Fe(t, n, e, o, d, r) {
-  return a(), u("span", k({
+}, Ve = ["data-p"];
+function Oe(t, n, e, o, u, r) {
+  return a(), d("span", k({
     class: t.cx("root"),
     "data-p": r.dataP
-  }, t.ptmi("root")), [_(t.$slots, "default", {}, function() {
-    return [T(x(t.value), 1)];
-  })], 16, Ne);
+  }, t.ptmi("root")), [F(t.$slots, "default", {}, function() {
+    return [P(C(t.value), 1)];
+  })], 16, Ve);
 }
-dn.render = Fe;
-var Ve = `
+cn.render = Oe;
+var Re = `
     .p-button {
         display: inline-flex;
         cursor: pointer;
@@ -1638,32 +1638,32 @@ var Ve = `
         color: dt('button.link.active.color');
     }
 `;
-function ft(t) {
+function mt(t) {
   "@babel/helpers - typeof";
-  return ft = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return mt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, ft(t);
+  }, mt(t);
 }
 function nt(t, n, e) {
-  return (n = Oe(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+  return (n = Ee(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function Oe(t) {
-  var n = Re(t, "string");
-  return ft(n) == "symbol" ? n : n + "";
+function Ee(t) {
+  var n = je(t, "string");
+  return mt(n) == "symbol" ? n : n + "";
 }
-function Re(t, n) {
-  if (ft(t) != "object" || !t) return t;
+function je(t, n) {
+  if (mt(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (ft(o) != "object") return o;
+    if (mt(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var Ee = {
+var De = {
   root: function(n) {
     var e = n.instance, o = n.props;
     return ["p-button p-component", nt(nt(nt(nt(nt(nt(nt(nt(nt({
@@ -1679,11 +1679,11 @@ var Ee = {
     return ["p-button-icon", nt({}, "p-button-icon-".concat(e.iconPos), e.label)];
   },
   label: "p-button-label"
-}, je = J.extend({
+}, Ke = Z.extend({
   name: "button",
-  style: Ve,
-  classes: Ee
-}), De = {
+  style: Re,
+  classes: De
+}), Ue = {
   name: "BaseButton",
   extends: Y,
   props: {
@@ -1772,7 +1772,7 @@ var Ee = {
       default: null
     }
   },
-  style: je,
+  style: Ke,
   provide: function() {
     return {
       $pcButton: this,
@@ -1780,34 +1780,34 @@ var Ee = {
     };
   }
 };
-function ht(t) {
+function yt(t) {
   "@babel/helpers - typeof";
-  return ht = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return yt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, ht(t);
+  }, yt(t);
 }
 function W(t, n, e) {
-  return (n = Ke(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+  return (n = Me(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function Ke(t) {
-  var n = Ue(t, "string");
-  return ht(n) == "symbol" ? n : n + "";
+function Me(t) {
+  var n = We(t, "string");
+  return yt(n) == "symbol" ? n : n + "";
 }
-function Ue(t, n) {
-  if (ht(t) != "object" || !t) return t;
+function We(t, n) {
+  if (yt(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (ht(o) != "object") return o;
+    if (yt(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var kt = {
+var xt = {
   name: "Button",
-  extends: De,
+  extends: Ue,
   inheritAttrs: !1,
   inject: {
     $pcFluid: {
@@ -1852,7 +1852,7 @@ var kt = {
       };
     },
     hasFluid: function() {
-      return tn(this.fluid) ? !!this.$pcFluid : this.fluid;
+      return en(this.fluid) ? !!this.$pcFluid : this.fluid;
     },
     dataP: function() {
       return rt(W(W(W(W(W(W(W(W(W(W({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge), "loading", this.loading), "fluid", this.hasFluid), "rounded", this.rounded), "raised", this.raised), "outlined", this.outlined || this.variant === "outlined"), "text", this.text || this.variant === "text"), "link", this.link || this.variant === "link"), "vertical", (this.iconPos === "top" || this.iconPos === "bottom") && this.label));
@@ -1865,53 +1865,53 @@ var kt = {
     }
   },
   components: {
-    SpinnerIcon: Mt,
-    Badge: dn
+    SpinnerIcon: Ht,
+    Badge: cn
   },
   directives: {
-    ripple: Kt
+    ripple: Mt
   }
-}, Me = ["data-p"], We = ["data-p"];
-function He(t, n, e, o, d, r) {
-  var h = qt("SpinnerIcon"), w = qt("Badge"), I = Ut("ripple");
-  return t.asChild ? _(t.$slots, "default", {
+}, He = ["data-p"], Ge = ["data-p"];
+function qe(t, n, e, o, u, r) {
+  var f = Jt("SpinnerIcon"), x = Jt("Badge"), T = Wt("ripple");
+  return t.asChild ? F(t.$slots, "default", {
     key: 1,
     class: X(t.cx("root")),
     a11yAttrs: r.a11yAttrs
-  }) : ut((a(), $(lt(t.as), k({
+  }) : ut((a(), $(st(t.as), k({
     key: 0,
     class: t.cx("root"),
     "data-p": r.dataP
   }, r.attrs), {
-    default: C(function() {
-      return [_(t.$slots, "default", {}, function() {
-        return [t.loading ? _(t.$slots, "loadingicon", k({
+    default: S(function() {
+      return [F(t.$slots, "default", {}, function() {
+        return [t.loading ? F(t.$slots, "loadingicon", k({
           key: 0,
           class: [t.cx("loadingIcon"), t.cx("icon")]
         }, t.ptm("loadingIcon")), function() {
-          return [t.loadingIcon ? (a(), u("span", k({
+          return [t.loadingIcon ? (a(), d("span", k({
             key: 0,
             class: [t.cx("loadingIcon"), t.cx("icon"), t.loadingIcon]
-          }, t.ptm("loadingIcon")), null, 16)) : (a(), $(h, k({
+          }, t.ptm("loadingIcon")), null, 16)) : (a(), $(f, k({
             key: 1,
             class: [t.cx("loadingIcon"), t.cx("icon")],
             spin: ""
           }, t.ptm("loadingIcon")), null, 16, ["class"]))];
-        }) : _(t.$slots, "icon", k({
+        }) : F(t.$slots, "icon", k({
           key: 1,
           class: [t.cx("icon")]
         }, t.ptm("icon")), function() {
-          return [t.icon ? (a(), u("span", k({
+          return [t.icon ? (a(), d("span", k({
             key: 0,
             class: [t.cx("icon"), t.icon, t.iconClass],
             "data-p": r.dataIconP
-          }, t.ptm("icon")), null, 16, Me)) : y("", !0)];
-        }), t.label ? (a(), u("span", k({
+          }, t.ptm("icon")), null, 16, He)) : y("", !0)];
+        }), t.label ? (a(), d("span", k({
           key: 2,
           class: t.cx("label")
         }, t.ptm("label"), {
           "data-p": r.dataLabelP
-        }), x(t.label), 17, We)) : y("", !0), t.badge ? (a(), $(w, {
+        }), C(t.label), 17, Ge)) : y("", !0), t.badge ? (a(), $(x, {
           key: 3,
           value: t.badge,
           class: X(t.badgeClass),
@@ -1922,10 +1922,10 @@ function He(t, n, e, o, d, r) {
       })];
     }),
     _: 3
-  }, 16, ["class", "data-p"])), [[I]]);
+  }, 16, ["class", "data-p"])), [[T]]);
 }
-kt.render = He;
-const Bt = /* @__PURE__ */ D({
+xt.render = qe;
+const It = /* @__PURE__ */ K({
   __name: "IconButton",
   props: {
     icon: {},
@@ -1938,19 +1938,19 @@ const Bt = /* @__PURE__ */ D({
   },
   emits: ["click"],
   setup(t, { emit: n }) {
-    const e = t, o = n, d = Pn(), r = F(
-      () => Object.prototype.hasOwnProperty.call(d?.vnode.props ?? {}, "active")
-    ), h = F(
+    const e = t, o = n, u = An(), r = N(
+      () => Object.prototype.hasOwnProperty.call(u?.vnode.props ?? {}, "active")
+    ), f = N(
       () => e.variant === "danger" ? "danger" : e.variant === "bordered" ? "secondary" : void 0
-    ), w = F(
+    ), x = N(
       () => e.size === "sm" ? "small" : e.size === "lg" ? "large" : void 0
     );
-    return (I, B) => (a(), $(i(kt), {
+    return (T, L) => (a(), $(i(xt), {
       type: "button",
-      severity: h.value,
+      severity: f.value,
       text: t.variant !== "bordered" && !t.active,
       outlined: t.variant === "bordered",
-      size: w.value,
+      size: x.value,
       loading: t.spin,
       disabled: t.disabled || t.spin,
       pt: {
@@ -1960,10 +1960,10 @@ const Bt = /* @__PURE__ */ D({
           title: t.label
         }
       },
-      onClick: B[0] || (B[0] = (l) => o("click"))
+      onClick: L[0] || (L[0] = (w) => o("click"))
     }, {
-      icon: C(() => [
-        m(i(V), {
+      icon: S(() => [
+        m(i(R), {
           icon: t.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"])
@@ -1971,7 +1971,7 @@ const Bt = /* @__PURE__ */ D({
       _: 1
     }, 8, ["severity", "text", "outlined", "size", "loading", "disabled", "pt"]));
   }
-}), Q = /* @__PURE__ */ D({
+}), Q = /* @__PURE__ */ K({
   __name: "Button",
   props: {
     icon: {},
@@ -1983,36 +1983,36 @@ const Bt = /* @__PURE__ */ D({
   },
   emits: ["click"],
   setup(t, { emit: n }) {
-    const e = t, o = n, d = F(
+    const e = t, o = n, u = N(
       () => e.variant === "danger" ? "danger" : e.variant === "primary" ? void 0 : "secondary"
     );
-    return (r, h) => (a(), $(i(kt), {
+    return (r, f) => (a(), $(i(xt), {
       type: t.type,
-      severity: d.value,
+      severity: u.value,
       outlined: t.variant === "ghost",
       loading: t.loading,
       disabled: t.disabled || t.loading,
       size: t.small ? "small" : void 0,
-      onClick: h[0] || (h[0] = (w) => o("click"))
+      onClick: f[0] || (f[0] = (x) => o("click"))
     }, {
-      default: C(() => [
-        t.loading ? (a(), $(i(Mt), {
+      default: S(() => [
+        t.loading ? (a(), $(i(Ht), {
           key: 0,
           class: "p-button-loading-icon p-button-icon",
           spin: ""
         })) : y("", !0),
-        t.icon && !t.loading ? (a(), $(i(V), {
+        t.icon && !t.loading ? (a(), $(i(R), {
           key: 1,
           icon: t.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"])) : y("", !0),
-        _(r.$slots, "default")
+        F(r.$slots, "default")
       ]),
       _: 3
     }, 8, ["type", "severity", "outlined", "loading", "disabled", "size"]));
   }
 });
-var Ge = {
+var Ze = {
   name: "BaseEditableHolder",
   extends: Y,
   emits: ["update:modelValue", "value-change"],
@@ -2099,8 +2099,8 @@ var Ge = {
   formField: {},
   methods: {
     writeValue: function(n, e) {
-      var o, d;
-      this.controlled && (this.d_value = n, this.$emit("update:modelValue", n)), this.$emit("value-change", n), (o = (d = this.formField).onChange) === null || o === void 0 || o.call(d, {
+      var o, u;
+      this.controlled && (this.d_value = n, this.$emit("update:modelValue", n)), this.$emit("value-change", n), (o = (u = this.formField).onChange) === null || o === void 0 || o.call(u, {
         originalEvent: e,
         value: n
       });
@@ -2109,12 +2109,12 @@ var Ge = {
     findNonEmpty: function() {
       for (var n = arguments.length, e = new Array(n), o = 0; o < n; o++)
         e[o] = arguments[o];
-      return e.find(Ft);
+      return e.find(Ot);
     }
   },
   computed: {
     $filled: function() {
-      return Ft(this.d_value);
+      return Ot(this.d_value);
     },
     $invalid: function() {
       var n, e;
@@ -2148,9 +2148,9 @@ var Ge = {
       return this.$filled;
     }
   }
-}, un = {
+}, bn = {
   name: "BaseInput",
-  extends: Ge,
+  extends: Ze,
   props: {
     size: {
       type: String,
@@ -2187,7 +2187,7 @@ var Ge = {
       return this.$fluid;
     }
   }
-}, qe = `
+}, Je = `
     .p-inputtext {
         font-family: inherit;
         font-feature-settings: inherit;
@@ -2265,7 +2265,7 @@ var Ge = {
     .p-inputtext-fluid {
         width: 100%;
     }
-`, Ze = {
+`, Qe = {
   root: function(n) {
     var e = n.instance, o = n.props;
     return ["p-inputtext p-component", {
@@ -2277,14 +2277,14 @@ var Ge = {
       "p-inputtext-fluid": e.$fluid
     }];
   }
-}, Je = J.extend({
+}, Xe = Z.extend({
   name: "inputtext",
-  style: qe,
-  classes: Ze
-}), Qe = {
-  name: "BaseInputText",
-  extends: un,
   style: Je,
+  classes: Qe
+}), Ye = {
+  name: "BaseInputText",
+  extends: bn,
+  style: Xe,
   provide: function() {
     return {
       $pcInputText: this,
@@ -2292,34 +2292,34 @@ var Ge = {
     };
   }
 };
-function gt(t) {
+function kt(t) {
   "@babel/helpers - typeof";
-  return gt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return kt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, gt(t);
+  }, kt(t);
 }
-function Xe(t, n, e) {
-  return (n = Ye(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+function to(t, n, e) {
+  return (n = no(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function Ye(t) {
-  var n = to(t, "string");
-  return gt(n) == "symbol" ? n : n + "";
+function no(t) {
+  var n = eo(t, "string");
+  return kt(n) == "symbol" ? n : n + "";
 }
-function to(t, n) {
-  if (gt(t) != "object" || !t) return t;
+function eo(t, n) {
+  if (kt(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (gt(o) != "object") return o;
+    if (kt(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var Wt = {
+var Gt = {
   name: "InputText",
-  extends: Qe,
+  extends: Ye,
   inheritAttrs: !1,
   methods: {
     onInput: function(n) {
@@ -2336,16 +2336,16 @@ var Wt = {
       }), this.formField);
     },
     dataP: function() {
-      return rt(Xe({
+      return rt(to({
         invalid: this.$invalid,
         fluid: this.$fluid,
         filled: this.$variant === "filled"
       }, this.size, this.size));
     }
   }
-}, no = ["value", "name", "disabled", "aria-invalid", "data-p"];
-function eo(t, n, e, o, d, r) {
-  return a(), u("input", k({
+}, oo = ["value", "name", "disabled", "aria-invalid", "data-p"];
+function ro(t, n, e, o, u, r) {
+  return a(), d("input", k({
     type: "text",
     class: t.cx("root"),
     value: t.d_value,
@@ -2356,10 +2356,10 @@ function eo(t, n, e, o, d, r) {
     onInput: n[0] || (n[0] = function() {
       return r.onInput && r.onInput.apply(r, arguments);
     })
-  }, r.attrs), null, 16, no);
+  }, r.attrs), null, 16, oo);
 }
-Wt.render = eo;
-var oo = `
+Gt.render = ro;
+var ao = `
     .p-iconfield {
         position: relative;
         display: block;
@@ -2404,42 +2404,42 @@ var oo = `
         height: dt('form.field.lg.font.size');
         margin-top: calc(-1 * (dt('form.field.lg.font.size') / 2));
     }
-`, ro = {
+`, io = {
   root: "p-iconfield"
-}, ao = J.extend({
+}, lo = Z.extend({
   name: "iconfield",
-  style: oo,
-  classes: ro
-}), io = {
+  style: ao,
+  classes: io
+}), so = {
   name: "BaseIconField",
   extends: Y,
-  style: ao,
+  style: lo,
   provide: function() {
     return {
       $pcIconField: this,
       $parentInstance: this
     };
   }
-}, cn = {
+}, pn = {
   name: "IconField",
-  extends: io,
+  extends: so,
   inheritAttrs: !1
 };
-function lo(t, n, e, o, d, r) {
-  return a(), u("div", k({
+function uo(t, n, e, o, u, r) {
+  return a(), d("div", k({
     class: t.cx("root")
-  }, t.ptmi("root")), [_(t.$slots, "default")], 16);
+  }, t.ptmi("root")), [F(t.$slots, "default")], 16);
 }
-cn.render = lo;
-var so = {
+pn.render = uo;
+var co = {
   root: "p-inputicon"
-}, uo = J.extend({
+}, bo = Z.extend({
   name: "inputicon",
-  classes: so
-}), co = {
+  classes: co
+}), po = {
   name: "BaseInputIcon",
   extends: Y,
-  style: uo,
+  style: bo,
   props: {
     class: null
   },
@@ -2449,9 +2449,9 @@ var so = {
       $parentInstance: this
     };
   }
-}, bn = {
+}, vn = {
   name: "InputIcon",
-  extends: co,
+  extends: po,
   inheritAttrs: !1,
   computed: {
     containerClass: function() {
@@ -2459,15 +2459,15 @@ var so = {
     }
   }
 };
-function bo(t, n, e, o, d, r) {
-  return a(), u("span", k({
+function vo(t, n, e, o, u, r) {
+  return a(), d("span", k({
     class: r.containerClass
   }, t.ptmi("root"), {
     "aria-hidden": "true"
-  }), [_(t.$slots, "default")], 16);
+  }), [F(t.$slots, "default")], 16);
 }
-bn.render = bo;
-const Qt = /* @__PURE__ */ D({
+vn.render = vo;
+const Yt = /* @__PURE__ */ K({
   __name: "SearchField",
   props: {
     modelValue: {},
@@ -2476,34 +2476,34 @@ const Qt = /* @__PURE__ */ D({
   emits: ["update:modelValue"],
   setup(t, { emit: n }) {
     const e = n;
-    return (o, d) => (a(), $(i(cn), { class: "km-search" }, {
-      default: C(() => [
-        m(i(bn), null, {
-          default: C(() => [
-            m(i(V), {
+    return (o, u) => (a(), $(i(pn), { class: "km-search" }, {
+      default: S(() => [
+        m(i(vn), null, {
+          default: S(() => [
+            m(i(R), {
               icon: "tabler:search",
               "aria-hidden": "true"
             })
           ]),
           _: 1
         }),
-        m(i(Wt), {
+        m(i(Gt), {
           class: "km-search-input",
           "aria-label": t.placeholder || "Search",
           "model-value": t.modelValue,
           placeholder: t.placeholder || "Search",
-          "onUpdate:modelValue": d[0] || (d[0] = (r) => e("update:modelValue", r ?? ""))
+          "onUpdate:modelValue": u[0] || (u[0] = (r) => e("update:modelValue", r ?? ""))
         }, null, 8, ["aria-label", "model-value", "placeholder"]),
-        t.modelValue ? (a(), $(i(kt), {
+        t.modelValue ? (a(), $(i(xt), {
           key: 0,
           text: "",
           severity: "secondary",
           class: "km-search-clear",
           "aria-label": "Clear search",
-          onClick: d[1] || (d[1] = (r) => e("update:modelValue", ""))
+          onClick: u[1] || (u[1] = (r) => e("update:modelValue", ""))
         }, {
-          icon: C(() => [
-            m(i(V), {
+          icon: S(() => [
+            m(i(R), {
               icon: "tabler:x",
               "aria-hidden": "true"
             })
@@ -2514,23 +2514,23 @@ const Qt = /* @__PURE__ */ D({
       _: 1
     }));
   }
-}), po = { class: "km-field" }, vo = { class: "km-field-label" }, fo = {
+}), fo = { class: "km-field" }, ho = { class: "km-field-label" }, go = {
   key: 0,
   class: "km-field-help"
-}, Tt = /* @__PURE__ */ D({
+}, Tt = /* @__PURE__ */ K({
   __name: "FormField",
   props: {
     label: {},
     help: {}
   },
   setup(t) {
-    return (n, e) => (a(), u("label", po, [
-      s("span", vo, x(t.label), 1),
-      _(n.$slots, "default"),
-      t.help ? (a(), u("small", fo, x(t.help), 1)) : y("", !0)
+    return (n, e) => (a(), d("label", fo, [
+      l("span", ho, C(t.label), 1),
+      F(n.$slots, "default"),
+      t.help ? (a(), d("small", go, C(t.help), 1)) : y("", !0)
     ]));
   }
-}), Xt = /* @__PURE__ */ D({
+}), tn = /* @__PURE__ */ K({
   __name: "TextInput",
   props: {
     modelValue: {},
@@ -2547,7 +2547,7 @@ const Qt = /* @__PURE__ */ D({
   emits: ["update:modelValue"],
   setup(t, { emit: n }) {
     const e = n;
-    return (o, d) => (a(), $(i(Wt), {
+    return (o, u) => (a(), $(i(Gt), {
       class: X(["km-input", t.mono && "mono"]),
       type: t.type,
       "model-value": String(t.modelValue),
@@ -2558,11 +2558,11 @@ const Qt = /* @__PURE__ */ D({
       min: t.min,
       max: t.max,
       step: t.step,
-      "onUpdate:modelValue": d[0] || (d[0] = (r) => e("update:modelValue", r ?? ""))
+      "onUpdate:modelValue": u[0] || (u[0] = (r) => e("update:modelValue", r ?? ""))
     }, null, 8, ["class", "type", "model-value", "placeholder", "readonly", "disabled", "autocomplete", "min", "max", "step"]));
   }
 });
-var ho = `
+var mo = `
     .p-tag {
         display: inline-flex;
         align-items: center;
@@ -2615,7 +2615,7 @@ var ho = `
         background: dt('tag.contrast.background');
         color: dt('tag.contrast.color');
     }
-`, go = {
+`, yo = {
   root: function(n) {
     var e = n.props;
     return ["p-tag p-component", {
@@ -2630,11 +2630,11 @@ var ho = `
   },
   icon: "p-tag-icon",
   label: "p-tag-label"
-}, mo = J.extend({
+}, ko = Z.extend({
   name: "tag",
-  style: ho,
-  classes: go
-}), yo = {
+  style: mo,
+  classes: yo
+}), $o = {
   name: "BaseTag",
   extends: Y,
   props: {
@@ -2643,7 +2643,7 @@ var ho = `
     rounded: Boolean,
     icon: String
   },
-  style: mo,
+  style: ko,
   provide: function() {
     return {
       $pcTag: this,
@@ -2651,67 +2651,67 @@ var ho = `
     };
   }
 };
-function mt(t) {
+function $t(t) {
   "@babel/helpers - typeof";
-  return mt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return $t = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, mt(t);
+  }, $t(t);
 }
-function ko(t, n, e) {
-  return (n = $o(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+function wo(t, n, e) {
+  return (n = xo(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function $o(t) {
-  var n = wo(t, "string");
-  return mt(n) == "symbol" ? n : n + "";
+function xo(t) {
+  var n = Co(t, "string");
+  return $t(n) == "symbol" ? n : n + "";
 }
-function wo(t, n) {
-  if (mt(t) != "object" || !t) return t;
+function Co(t, n) {
+  if ($t(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (mt(o) != "object") return o;
+    if ($t(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var pn = {
+var fn = {
   name: "Tag",
-  extends: yo,
+  extends: $o,
   inheritAttrs: !1,
   computed: {
     dataP: function() {
-      return rt(ko({
+      return rt(wo({
         rounded: this.rounded
       }, this.severity, this.severity));
     }
   }
-}, xo = ["data-p"];
-function Co(t, n, e, o, d, r) {
-  return a(), u("span", k({
+}, So = ["data-p"];
+function Bo(t, n, e, o, u, r) {
+  return a(), d("span", k({
     class: t.cx("root"),
     "data-p": r.dataP
-  }, t.ptmi("root")), [t.$slots.icon ? (a(), $(lt(t.$slots.icon), k({
+  }, t.ptmi("root")), [t.$slots.icon ? (a(), $(st(t.$slots.icon), k({
     key: 0,
     class: t.cx("icon")
-  }, t.ptm("icon")), null, 16, ["class"])) : t.icon ? (a(), u("span", k({
+  }, t.ptm("icon")), null, 16, ["class"])) : t.icon ? (a(), d("span", k({
     key: 1,
     class: [t.cx("icon"), t.icon]
-  }, t.ptm("icon")), null, 16)) : y("", !0), t.value != null || t.$slots.default ? _(t.$slots, "default", {
+  }, t.ptm("icon")), null, 16)) : y("", !0), t.value != null || t.$slots.default ? F(t.$slots, "default", {
     key: 2
   }, function() {
-    return [s("span", k({
+    return [l("span", k({
       class: t.cx("label")
-    }, t.ptm("label")), x(t.value), 17)];
-  }) : y("", !0)], 16, xo);
+    }, t.ptm("label")), C(t.value), 17)];
+  }) : y("", !0)], 16, So);
 }
-pn.render = Co;
-const So = {
+fn.render = Bo;
+const Po = {
   key: 0,
   class: "km-pill-dot",
   "aria-hidden": "true"
-}, Pt = /* @__PURE__ */ D({
+}, At = /* @__PURE__ */ K({
   __name: "Pill",
   props: {
     severity: { default: "secondary" },
@@ -2719,46 +2719,46 @@ const So = {
     icon: {}
   },
   setup(t) {
-    return (n, e) => (a(), $(i(pn), {
+    return (n, e) => (a(), $(i(fn), {
       severity: t.severity || void 0,
       class: "km-pill kx-tag-sm"
     }, {
-      default: C(() => [
-        t.dot ? (a(), u("span", So)) : t.icon ? (a(), $(i(V), {
+      default: S(() => [
+        t.dot ? (a(), d("span", Po)) : t.icon ? (a(), $(i(R), {
           key: 1,
           icon: t.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"])) : y("", !0),
-        _(n.$slots, "default")
+        F(n.$slots, "default")
       ]),
       _: 3
     }, 8, ["severity"]));
   }
-}), Bo = { class: "km-notice-text" }, It = /* @__PURE__ */ D({
+}), Io = { class: "km-notice-text" }, zt = /* @__PURE__ */ K({
   __name: "Notice",
   props: {
     severity: { default: "info" }
   },
   emits: ["dismiss"],
   setup(t, { emit: n }) {
-    const e = n, o = (d) => d === "danger" ? "tabler:alert-triangle" : d === "success" ? "tabler:circle-check" : "tabler:info-circle";
-    return (d, r) => (a(), u("div", {
+    const e = n, o = (u) => u === "danger" ? "tabler:alert-triangle" : u === "success" ? "tabler:circle-check" : "tabler:info-circle";
+    return (u, r) => (a(), d("div", {
       class: X(["km-notice", `is-${t.severity}`]),
       role: "status"
     }, [
-      m(i(V), {
+      m(i(R), {
         icon: o(t.severity),
         "aria-hidden": "true"
       }, null, 8, ["icon"]),
-      s("span", Bo, [
-        _(d.$slots, "default")
+      l("span", Io, [
+        F(u.$slots, "default")
       ]),
-      s("button", {
+      l("button", {
         class: "km-notice-x",
         "aria-label": "Dismiss",
-        onClick: r[0] || (r[0] = (h) => e("dismiss"))
+        onClick: r[0] || (r[0] = (f) => e("dismiss"))
       }, [
-        m(i(V), {
+        m(i(R), {
           icon: "tabler:x",
           "aria-hidden": "true"
         })
@@ -2839,15 +2839,15 @@ var To = `
             stroke: dt('progressspinner.color.four');
         }
     }
-`, Po = {
+`, Ao = {
   root: "p-progressspinner",
   spin: "p-progressspinner-spin",
   circle: "p-progressspinner-circle"
-}, Io = J.extend({
+}, zo = Z.extend({
   name: "progressspinner",
   style: To,
-  classes: Po
-}), Ao = {
+  classes: Ao
+}), _o = {
   name: "BaseProgressSpinner",
   extends: Y,
   props: {
@@ -2864,16 +2864,16 @@ var To = `
       default: "2s"
     }
   },
-  style: Io,
+  style: zo,
   provide: function() {
     return {
       $pcProgressSpinner: this,
       $parentInstance: this
     };
   }
-}, vn = {
+}, hn = {
   name: "ProgressSpinner",
-  extends: Ao,
+  extends: _o,
   inheritAttrs: !1,
   computed: {
     svgStyle: function() {
@@ -2882,16 +2882,16 @@ var To = `
       };
     }
   }
-}, zo = ["fill", "stroke-width"];
-function Lo(t, n, e, o, d, r) {
-  return a(), u("div", k({
+}, Lo = ["fill", "stroke-width"];
+function No(t, n, e, o, u, r) {
+  return a(), d("div", k({
     class: t.cx("root"),
     role: "progressbar"
-  }, t.ptmi("root")), [(a(), u("svg", k({
+  }, t.ptmi("root")), [(a(), d("svg", k({
     class: t.cx("spin"),
     viewBox: "25 25 50 50",
     style: r.svgStyle
-  }, t.ptm("spin")), [s("circle", k({
+  }, t.ptm("spin")), [l("circle", k({
     class: t.cx("circle"),
     cx: "50",
     cy: "50",
@@ -2899,27 +2899,27 @@ function Lo(t, n, e, o, d, r) {
     fill: t.fill,
     "stroke-width": t.strokeWidth,
     strokeMiterlimit: "10"
-  }, t.ptm("circle")), null, 16, zo)], 16))], 16);
+  }, t.ptm("circle")), null, 16, Lo)], 16))], 16);
 }
-vn.render = Lo;
-const _o = { class: "km-loading" }, No = { key: 0 }, fn = /* @__PURE__ */ D({
+hn.render = No;
+const Fo = { class: "km-loading" }, Vo = { key: 0 }, gn = /* @__PURE__ */ K({
   __name: "Spinner",
   props: {
     label: {}
   },
   setup(t) {
-    return (n, e) => (a(), u("div", _o, [
-      m(i(vn), {
+    return (n, e) => (a(), d("div", Fo, [
+      m(i(hn), {
         style: { width: "22px", height: "22px", margin: "0" },
         "aria-label": t.label || "Loading"
       }, null, 8, ["aria-label"]),
-      t.label ? (a(), u("span", No, x(t.label), 1)) : y("", !0)
+      t.label ? (a(), d("span", Vo, C(t.label), 1)) : y("", !0)
     ]));
   }
-}), Fo = { class: "kx-empty" }, Vo = { class: "kx-empty-ico" }, Oo = { class: "kx-empty-title" }, Ro = {
+}), Oo = { class: "kx-empty" }, Ro = { class: "kx-empty-ico" }, Eo = { class: "kx-empty-title" }, jo = {
   key: 0,
   class: "kx-empty-sub"
-}, hn = /* @__PURE__ */ D({
+}, mn = /* @__PURE__ */ K({
   __name: "EmptyState",
   props: {
     icon: {},
@@ -2930,28 +2930,28 @@ const _o = { class: "km-loading" }, No = { key: 0 }, fn = /* @__PURE__ */ D({
   },
   emits: ["cta"],
   setup(t) {
-    return (n, e) => (a(), u("div", Fo, [
-      s("div", Vo, [
-        m(i(V), {
+    return (n, e) => (a(), d("div", Oo, [
+      l("div", Ro, [
+        m(i(R), {
           icon: t.icon,
           "aria-hidden": "true"
         }, null, 8, ["icon"])
       ]),
-      s("div", Oo, x(t.title), 1),
-      t.hint || n.$slots.hint ? (a(), u("p", Ro, [
-        _(n.$slots, "hint", {}, () => [
-          T(x(t.hint), 1)
+      l("div", Eo, C(t.title), 1),
+      t.hint || n.$slots.hint ? (a(), d("p", jo, [
+        F(n.$slots, "hint", {}, () => [
+          P(C(t.hint), 1)
         ])
       ])) : y("", !0),
-      t.cta ? (a(), $(i(kt), {
+      t.cta ? (a(), $(i(xt), {
         key: 1,
         label: t.cta,
         onClick: e[0] || (e[0] = (o) => n.$emit("cta"))
-      }, In({ _: 2 }, [
+      }, zn({ _: 2 }, [
         t.ctaIcon ? {
           name: "icon",
-          fn: C(({ class: o }) => [
-            m(i(V), {
+          fn: S(({ class: o }) => [
+            m(i(R), {
               icon: t.ctaIcon,
               class: X(o),
               "aria-hidden": "true"
@@ -2963,51 +2963,51 @@ const _o = { class: "km-loading" }, No = { key: 0 }, fn = /* @__PURE__ */ D({
     ]));
   }
 });
-var gn = {
+var yn = {
   name: "TimesCircleIcon",
-  extends: At
+  extends: _t
 };
-function Eo(t) {
-  return Uo(t) || Ko(t) || Do(t) || jo();
+function Do(t) {
+  return Wo(t) || Mo(t) || Uo(t) || Ko();
 }
-function jo() {
+function Ko() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function Do(t, n) {
+function Uo(t, n) {
   if (t) {
-    if (typeof t == "string") return jt(t, n);
+    if (typeof t == "string") return Kt(t, n);
     var e = {}.toString.call(t).slice(8, -1);
-    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? jt(t, n) : void 0;
+    return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? Kt(t, n) : void 0;
   }
 }
-function Ko(t) {
+function Mo(t) {
   if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
 }
-function Uo(t) {
-  if (Array.isArray(t)) return jt(t);
+function Wo(t) {
+  if (Array.isArray(t)) return Kt(t);
 }
-function jt(t, n) {
+function Kt(t, n) {
   (n == null || n > t.length) && (n = t.length);
   for (var e = 0, o = Array(n); e < n; e++) o[e] = t[e];
   return o;
 }
-function Mo(t, n, e, o, d, r) {
-  return a(), u("svg", k({
+function Ho(t, n, e, o, u, r) {
+  return a(), d("svg", k({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), Eo(n[0] || (n[0] = [s("path", {
+  }, t.pti()), Do(n[0] || (n[0] = [l("path", {
     "fill-rule": "evenodd",
     "clip-rule": "evenodd",
     d: "M7 14C5.61553 14 4.26215 13.5895 3.11101 12.8203C1.95987 12.0511 1.06266 10.9579 0.532846 9.67879C0.00303296 8.3997 -0.13559 6.99224 0.134506 5.63437C0.404603 4.2765 1.07129 3.02922 2.05026 2.05026C3.02922 1.07129 4.2765 0.404603 5.63437 0.134506C6.99224 -0.13559 8.3997 0.00303296 9.67879 0.532846C10.9579 1.06266 12.0511 1.95987 12.8203 3.11101C13.5895 4.26215 14 5.61553 14 7C14 8.85652 13.2625 10.637 11.9497 11.9497C10.637 13.2625 8.85652 14 7 14ZM7 1.16667C5.84628 1.16667 4.71846 1.50879 3.75918 2.14976C2.79989 2.79074 2.05222 3.70178 1.61071 4.76768C1.16919 5.83358 1.05367 7.00647 1.27876 8.13803C1.50384 9.26958 2.05941 10.309 2.87521 11.1248C3.69102 11.9406 4.73042 12.4962 5.86198 12.7212C6.99353 12.9463 8.16642 12.8308 9.23232 12.3893C10.2982 11.9478 11.2093 11.2001 11.8502 10.2408C12.4912 9.28154 12.8333 8.15373 12.8333 7C12.8333 5.45291 12.2188 3.96918 11.1248 2.87521C10.0308 1.78125 8.5471 1.16667 7 1.16667ZM4.66662 9.91668C4.58998 9.91704 4.51404 9.90209 4.44325 9.87271C4.37246 9.84333 4.30826 9.8001 4.2544 9.74557C4.14516 9.6362 4.0838 9.48793 4.0838 9.33335C4.0838 9.17876 4.14516 9.0305 4.2544 8.92113L6.17553 7L4.25443 5.07891C4.15139 4.96832 4.09529 4.82207 4.09796 4.67094C4.10063 4.51982 4.16185 4.37563 4.26872 4.26876C4.3756 4.16188 4.51979 4.10066 4.67091 4.09799C4.82204 4.09532 4.96829 4.15142 5.07887 4.25446L6.99997 6.17556L8.92106 4.25446C9.03164 4.15142 9.1779 4.09532 9.32903 4.09799C9.48015 4.10066 9.62434 4.16188 9.73121 4.26876C9.83809 4.37563 9.89931 4.51982 9.90198 4.67094C9.90464 4.82207 9.84855 4.96832 9.74551 5.07891L7.82441 7L9.74554 8.92113C9.85478 9.0305 9.91614 9.17876 9.91614 9.33335C9.91614 9.48793 9.85478 9.6362 9.74554 9.74557C9.69168 9.8001 9.62748 9.84333 9.55669 9.87271C9.4859 9.90209 9.40996 9.91704 9.33332 9.91668C9.25668 9.91704 9.18073 9.90209 9.10995 9.87271C9.03916 9.84333 8.97495 9.8001 8.9211 9.74557L6.99997 7.82444L5.07884 9.74557C5.02499 9.8001 4.96078 9.84333 4.88999 9.87271C4.81921 9.90209 4.74326 9.91704 4.66662 9.91668Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-gn.render = Mo;
-var Wo = `
+yn.render = Ho;
+var Go = `
     .p-chip {
         display: inline-flex;
         align-items: center;
@@ -3060,17 +3060,17 @@ var Wo = `
         outline: dt('chip.remove.icon.focus.ring.width') dt('chip.remove.icon.focus.ring.style') dt('chip.remove.icon.focus.ring.color');
         outline-offset: dt('chip.remove.icon.focus.ring.offset');
     }
-`, Ho = {
+`, qo = {
   root: "p-chip p-component",
   image: "p-chip-image",
   icon: "p-chip-icon",
   label: "p-chip-label",
   removeIcon: "p-chip-remove-icon"
-}, Go = J.extend({
+}, Zo = Z.extend({
   name: "chip",
-  style: Wo,
-  classes: Ho
-}), qo = {
+  style: Go,
+  classes: qo
+}), Jo = {
   name: "BaseChip",
   extends: Y,
   props: {
@@ -3095,16 +3095,16 @@ var Wo = `
       default: void 0
     }
   },
-  style: Go,
+  style: Zo,
   provide: function() {
     return {
       $pcChip: this,
       $parentInstance: this
     };
   }
-}, mn = {
+}, kn = {
   name: "Chip",
-  extends: qo,
+  extends: Jo,
   inheritAttrs: !1,
   emits: ["remove"],
   data: function() {
@@ -3128,46 +3128,46 @@ var Wo = `
     }
   },
   components: {
-    TimesCircleIcon: gn
+    TimesCircleIcon: yn
   }
-}, Zo = ["aria-label", "data-p"], Jo = ["src"];
-function Qo(t, n, e, o, d, r) {
-  return d.visible ? (a(), u("div", k({
+}, Qo = ["aria-label", "data-p"], Xo = ["src"];
+function Yo(t, n, e, o, u, r) {
+  return u.visible ? (a(), d("div", k({
     key: 0,
     class: t.cx("root"),
     "aria-label": t.label
   }, t.ptmi("root"), {
     "data-p": r.dataP
-  }), [_(t.$slots, "default", {}, function() {
-    return [t.image ? (a(), u("img", k({
+  }), [F(t.$slots, "default", {}, function() {
+    return [t.image ? (a(), d("img", k({
       key: 0,
       src: t.image
     }, t.ptm("image"), {
       class: t.cx("image")
-    }), null, 16, Jo)) : t.$slots.icon ? (a(), $(lt(t.$slots.icon), k({
+    }), null, 16, Xo)) : t.$slots.icon ? (a(), $(st(t.$slots.icon), k({
       key: 1,
       class: t.cx("icon")
-    }, t.ptm("icon")), null, 16, ["class"])) : t.icon ? (a(), u("span", k({
+    }, t.ptm("icon")), null, 16, ["class"])) : t.icon ? (a(), d("span", k({
       key: 2,
       class: [t.cx("icon"), t.icon]
-    }, t.ptm("icon")), null, 16)) : y("", !0), t.label !== null ? (a(), u("div", k({
+    }, t.ptm("icon")), null, 16)) : y("", !0), t.label !== null ? (a(), d("div", k({
       key: 3,
       class: t.cx("label")
-    }, t.ptm("label")), x(t.label), 17)) : y("", !0)];
-  }), t.removable ? _(t.$slots, "removeicon", {
+    }, t.ptm("label")), C(t.label), 17)) : y("", !0)];
+  }), t.removable ? F(t.$slots, "removeicon", {
     key: 0,
     removeCallback: r.close,
     keydownCallback: r.onKeydown
   }, function() {
-    return [(a(), $(lt(t.removeIcon ? "span" : "TimesCircleIcon"), k({
+    return [(a(), $(st(t.removeIcon ? "span" : "TimesCircleIcon"), k({
       class: [t.cx("removeIcon"), t.removeIcon],
       onClick: r.close,
       onKeydown: r.onKeydown
     }, t.ptm("removeIcon")), null, 16, ["class", "onClick", "onKeydown"]))];
-  }) : y("", !0)], 16, Zo)) : y("", !0);
+  }) : y("", !0)], 16, Qo)) : y("", !0);
 }
-mn.render = Qo;
-var Xo = `
+kn.render = Yo;
+var tr = `
     .p-radiobutton {
         position: relative;
         display: inline-flex;
@@ -3311,7 +3311,7 @@ var Xo = `
         width: dt('radiobutton.icon.lg.size');
         height: dt('radiobutton.icon.lg.size');
     }
-`, Yo = {
+`, nr = {
   root: function(n) {
     var e = n.instance, o = n.props;
     return ["p-radiobutton p-component", {
@@ -3326,13 +3326,13 @@ var Xo = `
   box: "p-radiobutton-box",
   input: "p-radiobutton-input",
   icon: "p-radiobutton-icon"
-}, tr = J.extend({
+}, er = Z.extend({
   name: "radiobutton",
-  style: Xo,
-  classes: Yo
-}), nr = {
+  style: tr,
+  classes: nr
+}), or = {
   name: "BaseRadioButton",
-  extends: un,
+  extends: bn,
   props: {
     value: null,
     binary: Boolean,
@@ -3365,7 +3365,7 @@ var Xo = `
       default: null
     }
   },
-  style: tr,
+  style: er,
   provide: function() {
     return {
       $pcRadioButton: this,
@@ -3373,34 +3373,34 @@ var Xo = `
     };
   }
 };
-function yt(t) {
+function wt(t) {
   "@babel/helpers - typeof";
-  return yt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return wt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, yt(t);
+  }, wt(t);
 }
-function er(t, n, e) {
-  return (n = or(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+function rr(t, n, e) {
+  return (n = ar(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function or(t) {
-  var n = rr(t, "string");
-  return yt(n) == "symbol" ? n : n + "";
+function ar(t) {
+  var n = ir(t, "string");
+  return wt(n) == "symbol" ? n : n + "";
 }
-function rr(t, n) {
-  if (yt(t) != "object" || !t) return t;
+function ir(t, n) {
+  if (wt(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (yt(o) != "object") return o;
+    if (wt(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var Dt = {
+var Ut = {
   name: "RadioButton",
-  extends: nr,
+  extends: or,
   inheritAttrs: !1,
   emits: ["change", "focus", "blur"],
   inject: {
@@ -3438,10 +3438,10 @@ var Dt = {
     },
     checked: function() {
       var n = this.$pcRadioButtonGroup ? this.$pcRadioButtonGroup.d_value : this.d_value;
-      return n != null && (this.binary ? !!n : Yt(n, this.value));
+      return n != null && (this.binary ? !!n : nn(n, this.value));
     },
     dataP: function() {
-      return rt(er({
+      return rt(rr({
         invalid: this.$invalid,
         checked: this.checked,
         disabled: this.disabled,
@@ -3449,15 +3449,15 @@ var Dt = {
       }, this.size, this.size));
     }
   }
-}, ar = ["data-p-checked", "data-p-disabled", "data-p"], ir = ["id", "value", "name", "checked", "tabindex", "disabled", "readonly", "aria-labelledby", "aria-label", "aria-invalid"], lr = ["data-p"], sr = ["data-p"];
-function dr(t, n, e, o, d, r) {
-  return a(), u("div", k({
+}, lr = ["data-p-checked", "data-p-disabled", "data-p"], sr = ["id", "value", "name", "checked", "tabindex", "disabled", "readonly", "aria-labelledby", "aria-label", "aria-invalid"], dr = ["data-p"], ur = ["data-p"];
+function cr(t, n, e, o, u, r) {
+  return a(), d("div", k({
     class: t.cx("root")
   }, r.getPTOptions("root"), {
     "data-p-checked": r.checked,
     "data-p-disabled": t.disabled,
     "data-p": r.dataP
-  }), [s("input", k({
+  }), [l("input", k({
     id: t.inputId,
     type: "radio",
     class: [t.cx("input"), t.inputClass],
@@ -3480,22 +3480,22 @@ function dr(t, n, e, o, d, r) {
     onChange: n[2] || (n[2] = function() {
       return r.onChange && r.onChange.apply(r, arguments);
     })
-  }, r.getPTOptions("input")), null, 16, ir), s("div", k({
+  }, r.getPTOptions("input")), null, 16, sr), l("div", k({
     class: t.cx("box")
   }, r.getPTOptions("box"), {
     "data-p": r.dataP
-  }), [s("div", k({
+  }), [l("div", k({
     class: t.cx("icon")
   }, r.getPTOptions("icon"), {
     "data-p": r.dataP
-  }), null, 16, sr)], 16, lr)], 16, ar);
+  }), null, 16, ur)], 16, dr)], 16, lr);
 }
-Dt.render = dr;
-const ur = { class: "kx-wcmount" }, cr = {
+Ut.render = cr;
+const br = { class: "kx-wcmount" }, pr = {
   key: 0,
   class: "kx-wcmount-fail",
   role: "alert"
-}, Nt = /* @__PURE__ */ D({
+}, Vt = /* @__PURE__ */ K({
   __name: "WcMount",
   props: {
     tag: {},
@@ -3508,28 +3508,28 @@ const ur = { class: "kx-wcmount" }, cr = {
   },
   emits: ["change", "select", "created", "close", "error"],
   setup(t, { emit: n }) {
-    const e = t, o = n, d = A(null), r = A(!1);
-    let h = null, w = 0;
-    const I = /* @__PURE__ */ new Set();
-    function B(g) {
-      g.composedPath()[0] === h && (g.stopPropagation(), o("change", g.detail));
+    const e = t, o = n, u = I(null), r = I(!1);
+    let f = null, x = 0;
+    const T = /* @__PURE__ */ new Set();
+    function L(g) {
+      g.composedPath()[0] === f && (g.stopPropagation(), o("change", g.detail));
     }
-    function l(g) {
-      return g.composedPath()[0] !== h ? !1 : (g.stopPropagation(), !0);
+    function w(g) {
+      return g.composedPath()[0] !== f ? !1 : (g.stopPropagation(), !0);
     }
-    function S(g) {
-      l(g) && o("select", g.detail);
+    function s(g) {
+      w(g) && o("select", g.detail);
     }
-    function O(g) {
-      l(g) && o("created", g.detail);
+    function z(g) {
+      w(g) && o("created", g.detail);
     }
-    function Z(g) {
-      l(g) && o("close", g.detail);
+    function U(g) {
+      w(g) && o("close", g.detail);
+    }
+    function M(g) {
+      w(g) && o("error", g.detail);
     }
     function H(g) {
-      l(g) && o("error", g.detail);
-    }
-    function G(g) {
       if (typeof g == "string") return g;
       try {
         return JSON.stringify(g ?? {});
@@ -3538,402 +3538,403 @@ const ur = { class: "kx-wcmount" }, cr = {
       }
     }
     function j() {
-      if (!h) return;
-      const g = G(e.config);
-      if (g !== null && h.setAttribute("config", g), e.schema !== void 0 && e.schema !== null) {
-        const z = G(e.schema);
-        z !== null && h.setAttribute("schema", z);
+      if (!f) return;
+      const g = H(e.config);
+      if (g !== null && f.setAttribute("config", g), e.schema !== void 0 && e.schema !== null) {
+        const A = H(e.schema);
+        A !== null && f.setAttribute("schema", A);
       }
       if (e.meta !== void 0 && e.meta !== null) {
-        const z = G(e.meta);
-        z !== null && h.setAttribute("meta", z);
+        const A = H(e.meta);
+        A !== null && f.setAttribute("meta", A);
       }
-      e.provider && h.setAttribute("provider", e.provider), e.label && h.setAttribute("label", e.label);
-      const R = e.attrs || {};
-      for (const z of [...I])
-        (!(z in R) || R[z] == null) && (h.removeAttribute(z), I.delete(z));
-      for (const [z, N] of Object.entries(R)) {
-        if (N == null) continue;
-        const st = typeof N == "object" ? G(N) : String(N);
-        st !== null && (h.setAttribute(z, st), I.add(z));
+      e.provider && f.setAttribute("provider", e.provider), e.label && f.setAttribute("label", e.label);
+      const D = e.attrs || {};
+      for (const A of [...T])
+        (!(A in D) || D[A] == null) && (f.removeAttribute(A), T.delete(A));
+      for (const [A, V] of Object.entries(D)) {
+        if (V == null) continue;
+        const it = typeof V == "object" ? H(V) : String(V);
+        it !== null && (f.setAttribute(A, it), T.add(A));
       }
     }
-    function L(g = h) {
-      g && (g.removeEventListener("config-changed", B), g.removeEventListener("change", B), g.removeEventListener("select", S), g.removeEventListener("created", O), g.removeEventListener("close", Z), g.removeEventListener("error", H), g === h && (h = null), I.clear());
+    function _(g = f) {
+      g && (g.removeEventListener("config-changed", L), g.removeEventListener("change", L), g.removeEventListener("select", s), g.removeEventListener("created", z), g.removeEventListener("close", U), g.removeEventListener("error", M), g === f && (f = null), T.clear());
     }
     async function E(g) {
       if (!customElements.get(g))
         try {
-          await Nn(g, { timeoutMs: 8e3 });
+          await Vn(g, { timeoutMs: 8e3 });
         } catch {
         }
     }
-    async function at() {
-      const g = ++w, R = d.value, z = e.tag;
-      if (r.value = !1, !!R && (L(), R.innerHTML = "", !!z))
+    async function O() {
+      const g = ++x, D = u.value, A = e.tag;
+      if (r.value = !1, !!D && (_(), D.innerHTML = "", !!A))
         try {
-          if (await E(z), g !== w || d.value !== R || e.tag !== z) return;
-          const N = document.createElement(z);
-          N.classList.add("kx-wcmount-surface"), h = N, j(), N.addEventListener("config-changed", B), N.addEventListener("change", B), N.addEventListener("select", S), N.addEventListener("created", O), N.addEventListener("close", Z), N.addEventListener("error", H), N.style.display = "block", R.appendChild(N), r.value = !customElements.get(z);
+          if (await E(A), g !== x || u.value !== D || e.tag !== A) return;
+          const V = document.createElement(A);
+          V.classList.add("kx-wcmount-surface"), f = V, j(), V.addEventListener("config-changed", L), V.addEventListener("change", L), V.addEventListener("select", s), V.addEventListener("created", z), V.addEventListener("close", U), V.addEventListener("error", M), V.style.display = "block", D.appendChild(V), r.value = !customElements.get(A);
         } catch {
-          g === w && (r.value = !0);
+          g === x && (r.value = !0);
         }
     }
-    async function tt() {
-      r.value = !1, await nn(), await at();
+    async function q() {
+      r.value = !1, await on(), await O();
     }
-    return An(at), Vt(() => e.tag, at), Vt(() => [e.config, e.schema, e.meta, e.provider, e.label, e.attrs], j, { deep: !0 }), zn(() => {
-      w += 1, L();
-    }), (g, R) => (a(), u("div", ur, [
-      r.value ? (a(), u("div", cr, [
-        R[0] || (R[0] = s("span", null, "This setup panel couldn’t load.", -1)),
-        s("button", {
+    return _n(O), Rt(() => e.tag, O), Rt(() => [e.config, e.schema, e.meta, e.provider, e.label, e.attrs], j, { deep: !0 }), Ln(() => {
+      x += 1, _();
+    }), (g, D) => (a(), d("div", br, [
+      r.value ? (a(), d("div", pr, [
+        D[0] || (D[0] = l("span", null, "This setup panel couldn’t load.", -1)),
+        l("button", {
           type: "button",
-          onClick: tt
+          onClick: q
         }, "Try again")
-      ])) : (a(), u("div", {
+      ])) : (a(), d("div", {
         key: 1,
         ref_key: "host",
-        ref: d
+        ref: u
       }, null, 512))
     ]));
   }
 });
-function bt(t, n) {
+function ft(t, n) {
   const e = t?.response?.data ?? t?.data;
   return typeof e?.error == "string" && e.error ? e.error : typeof e?.message == "string" && e.message ? e.message : t instanceof Error ? t.message : n;
 }
-function br() {
-  const t = A([]), n = A([]), e = A(!0), o = A(!1), d = A("");
-  let r = 0;
-  async function h() {
-    const B = ++r;
-    e.value = !0, d.value = "";
+function vr() {
+  const t = I([]), n = I([]), e = I([]), o = I(!0), u = I(!1), r = I("");
+  let f = 0;
+  async function x() {
+    const w = ++f;
+    o.value = !0, r.value = "";
     try {
-      const [l, S] = await Promise.all([
-        it.get("/api/v1/security/scopes"),
-        it.get("/api/v1/security/policies")
+      const [s, z, U] = await Promise.all([
+        at.get("/api/v1/security/scopes?include_unavailable=true"),
+        at.get("/api/v1/security/policies?assignable=true"),
+        at.get("/api/v1/security/policies?include_private=true")
       ]);
-      if (B !== r) return;
-      t.value = l.data?.scopes ?? [], n.value = S.data?.policies ?? [];
-    } catch (l) {
-      B === r && (d.value = bt(l, "failed to load security"));
+      if (w !== f) return;
+      t.value = s.data?.scopes ?? [], n.value = z.data?.policies ?? [], e.value = U.data?.policies ?? [];
+    } catch (s) {
+      w === f && (r.value = ft(s, "failed to load security"));
     } finally {
-      B === r && (e.value = !1);
+      w === f && (o.value = !1);
     }
   }
-  async function w(B) {
-    o.value = !0, d.value = "";
+  async function T(w) {
+    u.value = !0, r.value = "";
     try {
-      return await it.post("/api/v1/security/scopes", B), await h(), !0;
-    } catch (l) {
-      return d.value = bt(l, "failed to save scope"), !1;
+      return await at.post("/api/v1/security/scopes", w), await x(), !0;
+    } catch (s) {
+      return r.value = ft(s, "failed to save scope"), !1;
     } finally {
-      o.value = !1;
+      u.value = !1;
     }
   }
-  async function I(B) {
-    o.value = !0, d.value = "";
+  async function L(w) {
+    u.value = !0, r.value = "";
     try {
-      return await it.delete(`/api/v1/security/scopes?slug=${encodeURIComponent(B)}`), await h(), !0;
-    } catch (l) {
-      return d.value = bt(l, "failed to delete scope"), !1;
+      return await at.delete(`/api/v1/security/scopes?slug=${encodeURIComponent(w)}`), await x(), !0;
+    } catch (s) {
+      return r.value = ft(s, "failed to delete scope"), !1;
     } finally {
-      o.value = !1;
+      u.value = !1;
     }
   }
-  return { scopes: t, policies: n, loading: e, saving: o, error: d, load: h, saveScope: w, deleteScope: I };
+  return { scopes: t, assignablePolicies: n, installedPolicies: e, loading: o, saving: u, error: r, load: x, saveScope: T, deleteScope: L };
 }
-function pr() {
-  const t = A([]), n = A(!1), e = A(!1), o = A(""), d = A(""), r = A(null);
-  let h = 0;
-  async function w() {
-    const l = ++h;
+function fr() {
+  const t = I([]), n = I(!1), e = I(!1), o = I(""), u = I(""), r = I(null);
+  let f = 0;
+  async function x() {
+    const w = ++f;
     n.value = !0, o.value = "";
     try {
-      const { data: S } = await it.get("/api/v1/security/delegations");
-      if (S?.success !== !0 || !Array.isArray(S.delegations))
-        throw new Error(S?.error || "Delegation inventory is unconfirmed");
-      l === h && (t.value = S.delegations);
-    } catch (S) {
-      l === h && (o.value = bt(S, "Could not load run-as permissions"));
+      const { data: s } = await at.get("/api/v1/security/delegations");
+      if (s?.success !== !0 || !Array.isArray(s.delegations))
+        throw new Error(s?.error || "Delegation inventory is unconfirmed");
+      w === f && (t.value = s.delegations);
+    } catch (s) {
+      w === f && (o.value = ft(s, "Could not load run-as permissions"));
     } finally {
-      l === h && (n.value = !1);
+      w === f && (n.value = !1);
     }
   }
-  async function I() {
+  async function T() {
     if (!r.value || e.value) return;
-    const l = r.value;
-    e.value = !0, o.value = "", d.value = "";
+    const w = r.value;
+    e.value = !0, o.value = "", u.value = "";
     try {
-      const { data: S } = l.method === "save" ? await it.post("/api/v1/security/delegations", l.request) : await it.delete("/api/v1/security/delegations", { data: l.request });
-      if (S?.success !== !0) throw new Error(S?.error || "Run-as request is unconfirmed");
-      r.value = null, d.value = l.method === "save" ? "Run-as permission saved" : "Run-as permission revoked", await w();
-    } catch (S) {
-      o.value = bt(S, "Could not confirm run-as request");
-      const O = S?.response?.status;
-      O && O >= 400 && O < 500 && (r.value = null);
+      const { data: s } = w.method === "save" ? await at.post("/api/v1/security/delegations", w.request) : await at.delete("/api/v1/security/delegations", { data: w.request });
+      if (s?.success !== !0) throw new Error(s?.error || "Run-as request is unconfirmed");
+      r.value = null, u.value = w.method === "save" ? "Run-as permission saved" : "Run-as permission revoked", await x();
+    } catch (s) {
+      o.value = ft(s, "Could not confirm run-as request");
+      const z = s?.response?.status;
+      z && z >= 400 && z < 500 && (r.value = null);
     } finally {
       e.value = !1;
     }
   }
-  async function B(l, S) {
-    r.value || e.value || (r.value = { method: l, request: {
-      ...S,
-      principal: { ...S.principal },
-      ...S.groups ? { groups: [...S.groups].sort() } : {}
-    } }, await I());
+  async function L(w, s) {
+    r.value || e.value || (r.value = { method: w, request: {
+      ...s,
+      principal: { ...s.principal },
+      ...s.groups ? { groups: [...s.groups].sort() } : {}
+    } }, await T());
   }
-  return { delegations: t, loading: n, saving: e, error: o, confirmation: d, pending: r, load: w, mutate: B, submit: I };
+  return { delegations: t, loading: n, saving: e, error: o, confirmation: u, pending: r, load: x, mutate: L, submit: T };
 }
-const vr = {
+const hr = {
   class: "ks-runas kx-system-pane",
   "aria-label": "Run-as permissions"
-}, fr = { class: "kx-system-tools" }, hr = { class: "ks-runas-head kx-system-toolbar" }, gr = { class: "ks-runas-count" }, mr = { class: "ks-runas-acts" }, yr = { class: "kx-system-body ks-runas-body" }, kr = {
+}, gr = { class: "kx-system-tools" }, mr = { class: "ks-runas-head kx-system-toolbar" }, yr = { class: "ks-runas-count" }, kr = { class: "ks-runas-acts" }, $r = { class: "kx-system-body ks-runas-body" }, wr = {
   key: 0,
   role: "alert"
-}, $r = { class: "ks-runas-form-head" }, wr = ["disabled", "inert"], xr = { class: "ks-runas-steps" }, Cr = {
+}, xr = { class: "ks-runas-form-head" }, Cr = ["disabled", "inert"], Sr = { class: "ks-runas-steps" }, Br = {
   key: 0,
   class: "ks-runas-chips",
   "aria-label": "Selected groups"
-}, Sr = { class: "ks-runas-component-options" }, Br = ["for"], Tr = ["for"], Pr = { class: "ks-runas-form-foot" }, Ir = {
+}, Pr = { class: "ks-runas-component-options" }, Ir = ["for"], Tr = ["for"], Ar = { class: "ks-runas-form-foot" }, zr = {
   key: 3,
   class: "ks-runas-pending"
-}, Ar = {
+}, _r = {
   key: 6,
   class: "ks-runas-list"
-}, zr = { class: "ks-runas-grant-body" }, Lr = { class: "ks-runas-grant-line" }, _r = {
+}, Lr = { class: "ks-runas-grant-body" }, Nr = { class: "ks-runas-grant-line" }, Fr = {
   key: 0,
   class: "ks-runas-who"
-}, Nr = { class: "ks-runas-verb" }, Fr = { class: "ks-runas-who" }, Vr = { class: "ks-runas-grant-meta" }, Or = { key: 0 }, Rr = { key: 1 }, Er = { key: 2 }, jr = /* @__PURE__ */ D({
+}, Vr = { class: "ks-runas-verb" }, Or = { class: "ks-runas-who" }, Rr = { class: "ks-runas-grant-meta" }, Er = { key: 0 }, jr = { key: 1 }, Dr = { key: 2 }, Kr = /* @__PURE__ */ K({
   __name: "Delegations",
   props: {
     scopes: {}
   },
   setup(t, { expose: n }) {
-    const e = t, o = pr(), { delegations: d, loading: r, saving: h, error: w, confirmation: I, pending: B } = o, l = A(!1), S = A(!1), O = A(""), Z = A(""), H = A(!0), G = Ln(), j = A([]), L = F(() => h.value || !!B.value), E = F(() => !!O.value && j.value.length > 0 && (H.value || !!Z.value)), at = F(() => {
-      const P = {};
-      for (const v of e.scopes) P[v.id] = v.label || "Group unavailable";
-      return P;
-    }), tt = A({});
-    Vt(d, async (P) => {
-      const v = [...new Set(P.map((f) => f.principal.id))].filter((f) => !tt.value[f]);
+    const e = t, o = fr(), { delegations: u, loading: r, saving: f, error: x, confirmation: T, pending: L } = o, w = I(!1), s = I(!1), z = I(""), U = I(""), M = I(!0), H = Nn(), j = I([]), _ = N(() => f.value || !!L.value), E = N(() => !!z.value && j.value.length > 0 && (M.value || !!U.value)), O = N(() => {
+      const B = {};
+      for (const v of e.scopes) B[v.id] = v.label || "Group unavailable";
+      return B;
+    }), q = I({});
+    Rt(u, async (B) => {
+      const v = [...new Set(B.map((h) => h.principal.id))].filter((h) => !q.value[h]);
       if (v.length)
         try {
-          const { data: f } = await it.post("/api/v1/principals/resolve", { refs: v.map((U) => ({ type: "user", id: U })) }), M = { ...tt.value };
-          for (const U of Array.isArray(f?.principals) ? f.principals : [])
-            U && typeof U.id == "string" && typeof U.label == "string" && (M[U.id] = U.label);
-          tt.value = M;
-        } catch (f) {
-          w.value = f && typeof f == "object" && "message" in f ? String(f.message) : "Could not resolve account names";
+          const { data: h } = await at.post("/api/v1/principals/resolve", { refs: v.map((J) => ({ type: "user", id: J })) }), tt = { ...q.value };
+          for (const J of Array.isArray(h?.principals) ? h.principals : [])
+            J && typeof J.id == "string" && typeof J.label == "string" && (tt[J.id] = J.label);
+          q.value = tt;
+        } catch (h) {
+          x.value = h && typeof h == "object" && "message" in h ? String(h.message) : "Could not resolve account names";
         }
     });
-    const g = F(() => d.value.filter((P) => P.active)), R = F(() => d.value.filter((P) => !P.active)), z = F(() => S.value ? [...g.value, ...R.value] : g.value);
-    function N(P, v) {
-      if (!P || typeof P != "object") return;
-      const f = P;
-      L.value || f.type !== v || typeof f.id != "string" || (v === "user" ? O.value = f.id : f.id && !j.value.some((M) => M.id === f.id) && j.value.push({ id: f.id, label: typeof f.label == "string" ? f.label : f.id }));
+    const g = N(() => u.value.filter((B) => B.active)), D = N(() => u.value.filter((B) => !B.active)), A = N(() => s.value ? [...g.value, ...D.value] : g.value);
+    function V(B, v) {
+      if (!B || typeof B != "object") return;
+      const h = B;
+      _.value || h.type !== v || typeof h.id != "string" || (v === "user" ? z.value = h.id : h.id && !j.value.some((tt) => tt.id === h.id) && j.value.push({ id: h.id, label: typeof h.label == "string" ? h.label : h.id }));
     }
-    function st(P) {
-      const v = P && typeof P == "object" ? P.thread_id : void 0;
-      !L.value && typeof v == "string" && (Z.value = v);
+    function it(B) {
+      const v = B && typeof B == "object" ? B.thread_id : void 0;
+      !_.value && typeof v == "string" && (U.value = v);
     }
-    function K(P) {
-      w.value = P && typeof P == "object" && "message" in P ? String(P.message) : "Could not load the picker";
+    function lt(B) {
+      x.value = B && typeof B == "object" && "message" in B ? String(B.message) : "Could not load the picker";
     }
-    function $t() {
-      O.value = "", Z.value = "", H.value = !0, j.value = [], l.value = !0;
+    function Ct() {
+      z.value = "", U.value = "", M.value = !0, j.value = [], w.value = !0;
     }
-    async function wt() {
+    async function ct() {
       E.value && (await o.mutate("save", {
-        principal: { kind: "user", id: O.value },
-        root: H.value ? "*" : Z.value,
-        groups: j.value.map((P) => P.id)
-      }), !w.value && !B.value && (l.value = !1));
+        principal: { kind: "user", id: z.value },
+        root: M.value ? "*" : U.value,
+        groups: j.value.map((B) => B.id)
+      }), !x.value && !L.value && (w.value = !1));
     }
-    async function zt(P) {
-      await en.confirm({
+    async function Lt(B) {
+      await rn.confirm({
         header: "Revoke run-as permission?",
-        message: `Members of ${P.groups.map((f) => at.value[f] || "Group unavailable").join(", ")} can no longer choose ${tt.value[P.principal.id] || "Account unavailable"} in the Run as setting.`,
+        message: `Members of ${B.groups.map((h) => O.value[h] || "Group unavailable").join(", ")} can no longer choose ${q.value[B.principal.id] || "Account unavailable"} in the Run as setting.`,
         icon: "tabler:user-off",
         acceptLabel: "Revoke",
         rejectLabel: "Cancel",
         acceptClass: "p-button-danger"
-      }) && await o.mutate("revoke", { principal: P.principal, root: P.root });
+      }) && await o.mutate("revoke", { principal: B.principal, root: B.root });
     }
-    return n({ load: o.load }), (P, v) => (a(), u("section", vr, [
-      s("div", fr, [
-        s("header", hr, [
-          s("span", gr, x(g.value.length) + " active " + x(g.value.length === 1 ? "permission" : "permissions"), 1),
-          s("div", mr, [
-            m(i(Bt), {
+    return n({ load: o.load }), (B, v) => (a(), d("section", hr, [
+      l("div", gr, [
+        l("header", mr, [
+          l("span", yr, C(g.value.length) + " active " + C(g.value.length === 1 ? "permission" : "permissions"), 1),
+          l("div", kr, [
+            m(i(It), {
               icon: "tabler:refresh",
               label: "Refresh",
-              disabled: i(r) || L.value,
+              disabled: i(r) || _.value,
               spin: i(r),
               onClick: i(o).load
             }, null, 8, ["disabled", "spin", "onClick"]),
-            l.value ? y("", !0) : (a(), $(i(Q), {
+            w.value ? y("", !0) : (a(), $(i(Q), {
               key: 0,
               variant: "primary",
               icon: "tabler:plus",
-              disabled: L.value,
-              onClick: $t
+              disabled: _.value,
+              onClick: Ct
             }, {
-              default: C(() => [...v[9] || (v[9] = [
-                T("New permission", -1)
+              default: S(() => [...v[9] || (v[9] = [
+                P("New permission", -1)
               ])]),
               _: 1
             }, 8, ["disabled"]))
           ])
         ]),
-        v[10] || (v[10] = s("p", { class: "ks-runas-lede" }, [
-          T(" Agents, automations and workflows run with the access of the account set in their "),
-          s("b", null, "Run as"),
-          T(" setting. A permission lets members of a group choose a specific account there, typically a bot account, so the component works with that account's access instead of their own. ")
+        v[10] || (v[10] = l("p", { class: "ks-runas-lede" }, [
+          P(" Agents, automations and workflows run with the access of the account set in their "),
+          l("b", null, "Run as"),
+          P(" setting. A permission lets members of a group choose a specific account there, typically a bot account, so the component works with that account's access instead of their own. ")
         ], -1))
       ]),
-      s("div", yr, [
-        i(w) ? (a(), u("div", kr, [
-          m(i(It), {
+      l("div", $r, [
+        i(x) ? (a(), d("div", wr, [
+          m(i(zt), {
             severity: "danger",
-            onDismiss: v[0] || (v[0] = (f) => w.value = "")
+            onDismiss: v[0] || (v[0] = (h) => x.value = "")
           }, {
-            default: C(() => [
-              T(x(i(w)), 1)
+            default: S(() => [
+              P(C(i(x)), 1)
             ]),
             _: 1
           })
         ])) : y("", !0),
-        i(I) ? (a(), $(i(It), {
+        i(T) ? (a(), $(i(zt), {
           key: 1,
           "data-test": "delegation-confirmation",
           severity: "success",
-          onDismiss: v[1] || (v[1] = (f) => I.value = "")
+          onDismiss: v[1] || (v[1] = (h) => T.value = "")
         }, {
-          default: C(() => [
-            T(x(i(I)), 1)
+          default: S(() => [
+            P(C(i(T)), 1)
           ]),
           _: 1
         })) : y("", !0),
-        l.value ? (a(), u("form", {
+        w.value ? (a(), d("form", {
           key: 2,
           class: "ks-runas-form",
-          onSubmit: pt(wt, ["prevent"])
+          onSubmit: ht(ct, ["prevent"])
         }, [
-          s("div", $r, [
-            v[11] || (v[11] = s("span", null, "New run-as permission", -1)),
-            m(i(Bt), {
+          l("div", xr, [
+            v[11] || (v[11] = l("span", null, "New run-as permission", -1)),
+            m(i(It), {
               icon: "tabler:x",
               label: "Cancel",
-              disabled: L.value,
-              onClick: v[2] || (v[2] = (f) => l.value = !1)
+              disabled: _.value,
+              onClick: v[2] || (v[2] = (h) => w.value = !1)
             }, null, 8, ["disabled"])
           ]),
-          s("fieldset", {
-            disabled: L.value,
-            inert: L.value
+          l("fieldset", {
+            disabled: _.value,
+            inert: _.value
           }, [
-            s("ol", xr, [
-              s("li", null, [
+            l("ol", Sr, [
+              l("li", null, [
                 m(i(Tt), {
                   label: "Account to run as",
                   help: "The account whose access the component uses. Its group memberships decide what the component can do."
                 }, {
-                  default: C(() => [
-                    m(Nt, {
+                  default: S(() => [
+                    m(Vt, {
                       tag: "wc-principal-picker",
                       attrs: { kinds: "user", placeholder: "Choose an account…" },
-                      config: { principal_id: O.value },
-                      onChange: v[3] || (v[3] = (f) => N(f, "user")),
-                      onError: K
+                      config: { principal_id: z.value },
+                      onChange: v[3] || (v[3] = (h) => V(h, "user")),
+                      onError: lt
                     }, null, 8, ["config"])
                   ]),
                   _: 1
                 })
               ]),
-              s("li", null, [
+              l("li", null, [
                 m(i(Tt), {
                   label: "Who may choose it",
                   help: "Members of these groups see this account in the Run as setting. Nobody's group membership changes."
                 }, {
-                  default: C(() => [
-                    m(Nt, {
+                  default: S(() => [
+                    m(Vt, {
                       tag: "wc-principal-picker",
                       attrs: { kinds: "group", placeholder: "Add a group…" },
                       config: {},
-                      onChange: v[4] || (v[4] = (f) => N(f, "group")),
-                      onError: K
+                      onChange: v[4] || (v[4] = (h) => V(h, "group")),
+                      onError: lt
                     })
                   ]),
                   _: 1
                 }),
-                j.value.length ? (a(), u("div", Cr, [
-                  (a(!0), u(et, null, ot(j.value, (f) => (a(), $(i(mn), {
-                    key: f.id,
-                    label: f.label,
-                    removable: !L.value,
-                    pt: { removeIcon: { "aria-label": `Remove group ${f.label}` } },
-                    onRemove: (M) => j.value = j.value.filter((U) => U.id !== f.id)
+                j.value.length ? (a(), d("div", Br, [
+                  (a(!0), d(et, null, ot(j.value, (h) => (a(), $(i(kn), {
+                    key: h.id,
+                    label: h.label,
+                    removable: !_.value,
+                    pt: { removeIcon: { "aria-label": `Remove group ${h.label}` } },
+                    onRemove: (tt) => j.value = j.value.filter((J) => J.id !== h.id)
                   }, null, 8, ["label", "removable", "pt", "onRemove"]))), 128))
                 ])) : y("", !0)
               ]),
-              s("li", null, [
-                s("fieldset", null, [
-                  v[14] || (v[14] = s("legend", { class: "km-field-label" }, "On which components", -1)),
-                  s("div", Sr, [
-                    s("label", {
+              l("li", null, [
+                l("fieldset", null, [
+                  v[14] || (v[14] = l("legend", { class: "km-field-label" }, "On which components", -1)),
+                  l("div", Pr, [
+                    l("label", {
                       class: "ks-runas-component-option",
-                      for: `${i(G)}-any`
+                      for: `${i(H)}-any`
                     }, [
-                      m(i(Dt), {
-                        modelValue: H.value,
-                        "onUpdate:modelValue": v[5] || (v[5] = (f) => H.value = f),
-                        "input-id": `${i(G)}-any`,
-                        name: i(G),
+                      m(i(Ut), {
+                        modelValue: M.value,
+                        "onUpdate:modelValue": v[5] || (v[5] = (h) => M.value = h),
+                        "input-id": `${i(H)}-any`,
+                        name: i(H),
                         value: !0,
-                        disabled: L.value
+                        disabled: _.value
                       }, null, 8, ["modelValue", "input-id", "name", "disabled"]),
-                      v[12] || (v[12] = T(" Any component ", -1))
-                    ], 8, Br),
-                    s("label", {
+                      v[12] || (v[12] = P(" Any component ", -1))
+                    ], 8, Ir),
+                    l("label", {
                       class: "ks-runas-component-option",
-                      for: `${i(G)}-one`
+                      for: `${i(H)}-one`
                     }, [
-                      m(i(Dt), {
-                        modelValue: H.value,
-                        "onUpdate:modelValue": v[6] || (v[6] = (f) => H.value = f),
-                        "input-id": `${i(G)}-one`,
-                        name: i(G),
+                      m(i(Ut), {
+                        modelValue: M.value,
+                        "onUpdate:modelValue": v[6] || (v[6] = (h) => M.value = h),
+                        "input-id": `${i(H)}-one`,
+                        name: i(H),
                         value: !1,
-                        disabled: L.value
+                        disabled: _.value
                       }, null, 8, ["modelValue", "input-id", "name", "disabled"]),
-                      v[13] || (v[13] = T(" One component ", -1))
+                      v[13] || (v[13] = P(" One component ", -1))
                     ], 8, Tr)
                   ]),
-                  v[15] || (v[15] = s("small", { class: "km-field-help" }, "The person choosing the account must also be able to manage the component.", -1))
+                  v[15] || (v[15] = l("small", { class: "km-field-help" }, "The person choosing the account must also be able to manage the component.", -1))
                 ]),
-                H.value ? y("", !0) : (a(), $(Nt, {
+                M.value ? y("", !0) : (a(), $(Vt, {
                   key: 0,
                   class: "ks-runas-component",
                   tag: "wc-component-picker",
                   attrs: { source: "/api/v1/security/delegations/roots", title: "Component", placeholder: "Choose a component you manage…" },
-                  config: Z.value ? { thread_id: Z.value } : {},
-                  onChange: st,
-                  onError: K
+                  config: U.value ? { thread_id: U.value } : {},
+                  onChange: it,
+                  onError: lt
                 }, null, 8, ["config"]))
               ])
             ])
-          ], 8, wr),
-          s("div", Pr, [
+          ], 8, Cr),
+          l("div", Ar, [
             m(i(Q), {
               variant: "ghost",
               small: "",
-              disabled: L.value,
-              onClick: v[7] || (v[7] = (f) => l.value = !1)
+              disabled: _.value,
+              onClick: v[7] || (v[7] = (h) => w.value = !1)
             }, {
-              default: C(() => [...v[16] || (v[16] = [
-                T("Cancel", -1)
+              default: S(() => [...v[16] || (v[16] = [
+                P("Cancel", -1)
               ])]),
               _: 1
             }, 8, ["disabled"]),
@@ -3941,110 +3942,113 @@ const vr = {
               variant: "primary",
               small: "",
               icon: "tabler:device-floppy",
-              disabled: !E.value || L.value,
-              loading: i(h),
-              onClick: wt
+              disabled: !E.value || _.value,
+              loading: i(f),
+              onClick: ct
             }, {
-              default: C(() => [...v[17] || (v[17] = [
-                T("Save permission", -1)
+              default: S(() => [...v[17] || (v[17] = [
+                P("Save permission", -1)
               ])]),
               _: 1
             }, 8, ["disabled", "loading"])
           ])
         ], 32)) : y("", !0),
-        i(B) && !i(h) ? (a(), u("div", Ir, [
-          v[19] || (v[19] = s("span", null, "We could not confirm whether the permission changed. Select Retry to check before making another change.", -1)),
+        i(L) && !i(f) ? (a(), d("div", zr, [
+          v[19] || (v[19] = l("span", null, "We could not confirm whether the permission changed. Select Retry to check before making another change.", -1)),
           m(i(Q), {
             small: "",
             onClick: i(o).submit
           }, {
-            default: C(() => [...v[18] || (v[18] = [
-              T("Retry", -1)
+            default: S(() => [...v[18] || (v[18] = [
+              P("Retry", -1)
             ])]),
             _: 1
           }, 8, ["onClick"])
         ])) : y("", !0),
-        R.value.length ? (a(), $(i(Q), {
+        D.value.length ? (a(), $(i(Q), {
           key: 4,
           class: "ks-runas-history",
           variant: "ghost",
           small: "",
-          "aria-expanded": S.value,
-          onClick: v[8] || (v[8] = (f) => S.value = !S.value)
+          "aria-expanded": s.value,
+          onClick: v[8] || (v[8] = (h) => s.value = !s.value)
         }, {
-          default: C(() => [
-            T(x(S.value ? "Hide revoked permissions" : "Show revoked permissions"), 1)
+          default: S(() => [
+            P(C(s.value ? "Hide revoked permissions" : "Show revoked permissions"), 1)
           ]),
           _: 1
         }, 8, ["aria-expanded"])) : y("", !0),
-        i(r) && !i(d).length ? (a(), $(i(fn), {
+        i(r) && !i(u).length ? (a(), $(i(gn), {
           key: 5,
           label: "Loading run-as permissions…"
-        })) : z.value.length ? (a(), u("div", Ar, [
-          (a(!0), u(et, null, ot(z.value, (f) => (a(), u("article", {
-            key: f.policy_id,
-            class: X(["kx-card ks-runas-grant", { revoked: !f.active }])
+        })) : A.value.length ? (a(), d("div", _r, [
+          (a(!0), d(et, null, ot(A.value, (h) => (a(), d("article", {
+            key: h.policy_id,
+            class: X(["kx-card ks-runas-grant", { revoked: !h.active }])
           }, [
-            m(i(V), {
+            m(i(R), {
               class: "ks-runas-grant-icon",
               icon: "tabler:user-shield",
               "aria-hidden": "true"
             }),
-            s("div", zr, [
-              s("div", Lr, [
-                f.active ? (a(), u("span", _r, x(f.groups.map((M) => at.value[M] || "Group unavailable").join(", ")), 1)) : y("", !0),
-                s("span", Nr, x(f.active ? "can run as" : "Permission to run as"), 1),
-                s("span", Fr, x(tt.value[f.principal.id] || "Account unavailable"), 1)
+            l("div", Lr, [
+              l("div", Nr, [
+                h.active ? (a(), d("span", Fr, C(h.groups.map((tt) => O.value[tt] || "Group unavailable").join(", ")), 1)) : y("", !0),
+                l("span", Vr, C(h.active ? "can run as" : "Permission to run as"), 1),
+                l("span", Or, C(q.value[h.principal.id] || "Account unavailable"), 1)
               ]),
-              s("div", Vr, [
-                f.root === "*" ? (a(), u("span", Or, "on any component they manage")) : f.root_label ? (a(), u("span", Rr, [
-                  v[20] || (v[20] = T("on ", -1)),
-                  s("b", null, x(f.root_label), 1)
-                ])) : (a(), u("span", Er, "on an unavailable component"))
+              l("div", Rr, [
+                h.root === "*" ? (a(), d("span", Er, "on any component they manage")) : h.root_label ? (a(), d("span", jr, [
+                  v[20] || (v[20] = P("on ", -1)),
+                  l("b", null, C(h.root_label), 1)
+                ])) : (a(), d("span", Dr, "on an unavailable component"))
               ])
             ]),
-            f.active ? (a(), $(i(Q), {
+            h.active ? (a(), $(i(Q), {
               key: 1,
               variant: "ghost",
               small: "",
               icon: "tabler:user-off",
-              disabled: L.value,
-              "aria-label": `Revoke run-as permission for ${tt.value[f.principal.id] || "Account unavailable"}`,
-              onClick: (M) => zt(f)
+              disabled: _.value,
+              "aria-label": `Revoke run-as permission for ${q.value[h.principal.id] || "Account unavailable"}`,
+              onClick: (tt) => Lt(h)
             }, {
-              default: C(() => [...v[22] || (v[22] = [
-                T("Revoke", -1)
+              default: S(() => [...v[22] || (v[22] = [
+                P("Revoke", -1)
               ])]),
               _: 1
-            }, 8, ["disabled", "aria-label", "onClick"])) : (a(), $(i(Pt), {
+            }, 8, ["disabled", "aria-label", "onClick"])) : (a(), $(i(At), {
               key: 0,
               severity: "secondary"
             }, {
-              default: C(() => [...v[21] || (v[21] = [
-                T("revoked", -1)
+              default: S(() => [...v[21] || (v[21] = [
+                P("revoked", -1)
               ])]),
               _: 1
             }))
           ], 2))), 128))
-        ])) : !i(w) && !l.value ? (a(), $(i(hn), {
+        ])) : !i(x) && !w.value ? (a(), $(i(mn), {
           key: 7,
           icon: "tabler:user-shield",
           title: "No active run-as permissions"
         }, {
-          hint: C(() => [...v[23] || (v[23] = [
-            T("Without an active permission, the Run as setting offers only ", -1),
-            s("b", null, "Me", -1),
-            T(".", -1)
+          hint: S(() => [...v[23] || (v[23] = [
+            P("Without an active permission, the Run as setting offers only ", -1),
+            l("b", null, "Me", -1),
+            P(".", -1)
           ])]),
           _: 1
         })) : y("", !0)
       ])
     ]));
   }
-}), Dr = ["draggable"], Kr = { class: "ks-pcard-row" }, Ur = { class: "ks-pcard-body" }, Mr = { class: "ks-pcard-head" }, Wr = ["title"], Hr = {
+}), Ur = ["draggable"], Mr = { class: "ks-pcard-row" }, Wr = { class: "ks-pcard-body" }, Hr = { class: "ks-pcard-head" }, Gr = ["title"], qr = {
   key: 0,
   class: "ks-pcard-comment"
-}, Gr = ["aria-label"], qr = ["aria-label"], ct = /* @__PURE__ */ D({
+}, Zr = {
+  key: 1,
+  class: "ks-pcard-comment"
+}, Jr = ["aria-label"], Qr = ["aria-label"], vt = /* @__PURE__ */ K({
   __name: "PolicyCard",
   props: {
     policy: {},
@@ -4052,207 +4056,201 @@ const vr = {
   },
   emits: ["add", "remove"],
   setup(t, { emit: n }) {
-    const e = t, o = n, d = F(() => e.policy.title && e.policy.title !== e.policy.id ? e.policy.title : "Unnamed permission");
-    function r(h) {
-      e.mode === "locked" || !h.dataTransfer || (h.dataTransfer.setData("text/plain", e.policy.id), h.dataTransfer.effectAllowed = e.mode === "palette" ? "copy" : "move");
+    const e = t, o = n, u = N(() => e.policy.available === !1 ? e.policy.id : e.policy.title && e.policy.title !== e.policy.id ? e.policy.title : "Unnamed permission");
+    function r(f) {
+      e.mode === "locked" || !f.dataTransfer || (f.dataTransfer.setData("text/plain", e.policy.id), f.dataTransfer.effectAllowed = e.mode === "palette" ? "copy" : "move");
     }
-    return (h, w) => (a(), u("div", {
+    return (f, x) => (a(), d("div", {
       class: X(["kx-card ks-pcard", t.mode]),
       draggable: t.mode !== "locked",
       onDragstart: r,
-      onDblclick: w[2] || (w[2] = (I) => t.mode === "palette" && o("add"))
+      onDblclick: x[2] || (x[2] = (T) => t.mode === "palette" && o("add"))
     }, [
-      s("div", Kr, [
-        t.mode === "locked" ? (a(), $(i(V), {
+      l("div", Mr, [
+        t.mode === "locked" ? (a(), $(i(R), {
           key: 0,
           icon: "tabler:lock",
           class: "ks-pcard-grip locked",
           "aria-hidden": "true"
-        })) : (a(), $(i(V), {
+        })) : (a(), $(i(R), {
           key: 1,
           icon: "tabler:grip-vertical",
           class: "ks-pcard-grip",
           "aria-hidden": "true"
         })),
-        s("div", Ur, [
-          s("div", Mr, [
-            t.policy.effect === "allow" || t.policy.effect === "deny" ? (a(), $(Pt, {
+        l("div", Wr, [
+          l("div", Hr, [
+            t.policy.effect === "allow" || t.policy.effect === "deny" ? (a(), $(At, {
               key: 0,
               severity: t.policy.effect === "allow" ? "success" : "danger"
             }, {
-              default: C(() => [
-                T(x(t.policy.effect === "deny" ? "Blocks" : "Allows"), 1)
+              default: S(() => [
+                P(C(t.policy.effect === "deny" ? "Blocks" : "Allows"), 1)
               ]),
               _: 1
             }, 8, ["severity"])) : y("", !0),
-            s("span", {
+            l("span", {
               class: "ks-pcard-title",
-              title: d.value
-            }, x(d.value), 9, Wr)
+              title: u.value
+            }, C(u.value), 9, Gr)
           ]),
-          t.policy.comment ? (a(), u("div", Hr, x(t.policy.comment), 1)) : y("", !0)
+          t.policy.available === !1 ? (a(), d("div", qr, "No longer available")) : t.policy.comment ? (a(), d("div", Zr, C(t.policy.comment), 1)) : y("", !0)
         ]),
-        t.mode === "palette" ? (a(), u("button", {
+        t.mode === "palette" ? (a(), d("button", {
           key: 2,
           class: "ks-pcard-act add",
-          "aria-label": `Add permission ${d.value}`,
-          onClick: w[0] || (w[0] = pt((I) => o("add"), ["stop"]))
+          "aria-label": `Add permission ${u.value}`,
+          onClick: x[0] || (x[0] = ht((T) => o("add"), ["stop"]))
         }, [
-          m(i(V), {
+          m(i(R), {
             icon: "tabler:plus",
             "aria-hidden": "true"
           })
-        ], 8, Gr)) : t.mode === "selected" ? (a(), u("button", {
+        ], 8, Jr)) : t.mode === "selected" ? (a(), d("button", {
           key: 3,
           class: "ks-pcard-act remove",
-          "aria-label": `Remove permission ${d.value}`,
-          onClick: w[1] || (w[1] = pt((I) => o("remove"), ["stop"]))
+          "aria-label": `Remove permission ${u.value}`,
+          onClick: x[1] || (x[1] = ht((T) => o("remove"), ["stop"]))
         }, [
-          m(i(V), {
+          m(i(R), {
             icon: "tabler:x",
             "aria-hidden": "true"
           })
-        ], 8, qr)) : y("", !0)
+        ], 8, Qr)) : y("", !0)
       ])
-    ], 42, Dr));
+    ], 42, Ur));
   }
-}), Zr = { class: "ks" }, Jr = { class: "ks-rail-search" }, Qr = { class: "ks-rail-list" }, Xr = {
+}), Xr = { class: "ks" }, Yr = { class: "ks-rail-search" }, ta = { class: "ks-rail-list" }, na = {
   key: 0,
   class: "ks-rail-group"
-}, Yr = ["onClick"], ta = { class: "ks-scope-name" }, na = ["onClick"], ea = { class: "ks-scope-name" }, oa = {
+}, ea = ["onClick"], oa = { class: "ks-scope-name" }, ra = ["onClick"], aa = { class: "ks-scope-name" }, ia = {
   key: 0,
   class: "ks-builder"
-}, ra = { class: "ks-builder-head" }, aa = { class: "ks-builder-title" }, ia = { class: "ks-builder-acts" }, la = {
+}, la = { class: "ks-builder-head" }, sa = { class: "ks-builder-title" }, da = { class: "ks-builder-acts" }, ua = {
   key: 0,
   class: "ks-overlay-warn"
-}, sa = {
+}, ca = {
   key: 1,
   class: "ks-view-note"
-}, da = { class: "ks-fields" }, ua = {
+}, ba = { class: "ks-fields" }, pa = {
   key: 0,
   class: "ks-pane locked-pane"
-}, ca = { class: "ks-pane-head" }, ba = { class: "ks-pane-sub" }, pa = { class: "ks-pane-body" }, va = {
+}, va = { class: "ks-pane-head" }, fa = { class: "ks-pane-sub" }, ha = { class: "ks-pane-body" }, ga = {
   key: 0,
   class: "ks-pane-empty"
-}, fa = { class: "ks-pane" }, ha = { class: "ks-pane-search" }, ga = { class: "ks-pane-body" }, ma = {
+}, ma = { class: "ks-pane" }, ya = { class: "ks-pane-search" }, ka = { class: "ks-pane-body" }, $a = {
   key: 0,
   class: "ks-pane-empty"
-}, ya = { class: "ks-pane-head" }, ka = { class: "ks-pane-sub" }, $a = { class: "ks-pane-body" }, wa = ["onDrop"], xa = {
+}, wa = { class: "ks-pane-head" }, xa = { class: "ks-pane-sub" }, Ca = { class: "ks-pane-body" }, Sa = ["onDrop"], Ba = {
   key: 0,
   class: "ks-drop-hint"
-}, Ca = {
+}, Pa = {
   key: 1,
   class: "ks-view"
-}, Sa = { class: "ks-builder-head" }, Ba = { class: "ks-builder-title" }, Ta = { class: "ks-builder-acts" }, Pa = { class: "ks-pane-body ks-view-list" }, Ia = {
+}, Ia = { class: "ks-builder-head" }, Ta = { class: "ks-builder-title" }, Aa = { class: "ks-builder-acts" }, za = { class: "ks-pane-body ks-view-list" }, _a = {
   key: 0,
   class: "ks-pane-empty"
-}, Aa = {
+}, La = {
   key: 0,
   class: "ks-ext-block"
-}, za = { class: "ks-ext-head" }, La = { class: "ks-pane-body ks-view-list" }, _a = {
+}, Na = { class: "ks-ext-head" }, Fa = { class: "ks-pane-body ks-view-list" }, Va = {
   key: 2,
   class: "kx-system-body"
-}, Na = /* @__PURE__ */ D({
+}, Oa = /* @__PURE__ */ K({
   __name: "Security",
   setup(t) {
-    const n = br(), { scopes: e, policies: o, loading: d, saving: r, error: h } = n, w = A(""), I = A(""), B = A(null), l = A(null), S = A("scopes"), O = A(null), Z = A(!1);
+    const n = vr(), { scopes: e, assignablePolicies: o, installedPolicies: u, loading: r, saving: f, error: x } = n, T = I(""), L = I(""), w = I(null), s = I(null), z = I("scopes"), U = I(null), M = I(!1);
     async function H(b) {
-      S.value = String(b), b === "delegations" && (Z.value = !0, await nn(), await O.value?.load());
+      z.value = String(b), b === "delegations" && (M.value = !0, await on(), await U.value?.load());
     }
-    Bn(async () => {
-      await n.load(), S.value === "delegations" && await O.value?.load();
+    In(async () => {
+      await n.load(), z.value === "delegations" && await U.value?.load();
     });
-    const G = F(() => {
-      const b = {};
-      for (const c of o.value) b[c.id] = c;
-      return b;
-    }), j = F(() => {
-      const b = w.value.trim().toLowerCase(), c = (p) => !b || p.label.toLowerCase().includes(b) || p.id.toLowerCase().includes(b);
+    const j = N(() => {
+      const b = T.value.trim().toLowerCase(), c = (p) => !b || p.label.toLowerCase().includes(b) || p.id.toLowerCase().includes(b);
       return {
         custom: e.value.filter((p) => p.source === "custom" && c(p)),
         builtin: e.value.filter((p) => p.source !== "custom" && c(p))
       };
-    }), L = F(() => e.value.find((b) => b.id === B.value) || null), E = F(() => L.value && L.value.source !== "custom" ? L.value : null), at = F(() => {
-      if (!l.value) return [];
-      const b = /* @__PURE__ */ new Set([...l.value.policies, ...l.value.base.map((p) => p.id)]), c = I.value.trim().toLowerCase();
+    }), _ = N(() => e.value.find((b) => b.id === w.value) || null), E = N(() => _.value && _.value.source !== "custom" ? _.value : null), O = N(() => !!s.value?.target), q = N(() => E.value?.base_policies ?? E.value?.policies ?? []), g = N(() => O.value ? q.value : []), D = N(() => new Map(u.value.map((b) => [b.id, b]))), A = N(() => (s.value?.policyIds ?? []).map((b) => D.value.get(b) ?? { id: b, available: !1 })), V = N(() => {
+      if (!s.value) return [];
+      const b = /* @__PURE__ */ new Set([...s.value.policyIds, ...g.value.map((p) => p.id)]), c = L.value.trim().toLowerCase();
       return o.value.filter((p) => !b.has(p.id) && (!c || (p.title || "").toLowerCase().includes(c) || p.id.toLowerCase().includes(c) || (p.comment || "").toLowerCase().includes(c)));
-    }), tt = F(
-      () => l.value ? l.value.policies.map((b) => G.value[b] || { id: b }) : []
-    );
-    function g(b) {
-      B.value = b.id, l.value = b.source === "custom" ? { slug: b.slug || "", label: b.label, description: b.description, policies: b.policies.map((c) => c.id), enabled: b.enabled, isNew: !1, target: "", base: [] } : null;
+    });
+    function it(b) {
+      w.value = b.id, s.value = b.source === "custom" ? { slug: b.slug || "", label: b.label, description: b.description, policyIds: b.policies.map((c) => c.id), enabled: b.enabled, isNew: !1, target: "" } : null;
     }
-    function R() {
-      B.value = null, l.value = { slug: Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join(""), label: "", description: "", policies: [], enabled: !0, isNew: !0, target: "", base: [] };
+    function lt() {
+      w.value = null, s.value = { slug: Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join(""), label: "", description: "", policyIds: [], enabled: !0, isNew: !0, target: "" };
     }
-    function z(b) {
-      R(), Object.assign(l.value, {
+    function Ct(b) {
+      lt(), Object.assign(s.value, {
         label: b.label ? `Copy of ${b.label}` : "",
         description: b.description,
-        policies: [...b.policies.map((c) => c.id), ...(b.overlay_policies ?? []).map((c) => c.id)]
+        policyIds: [...new Set([...b.policies, ...b.overlay_policies ?? []].filter((c) => c.available !== !1).map((c) => c.id))]
       });
     }
-    function N(b) {
+    function ct(b) {
       return b.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
     }
-    function st(b) {
-      B.value = b.id, l.value = {
-        slug: b.overlay_slug || N(b.id),
+    function Lt(b) {
+      w.value = b.id, s.value = {
+        slug: b.overlay_slug || ct(b.id),
         label: b.label || dt(b.id),
         description: b.description,
-        policies: (b.overlay_policies ?? []).map((c) => c.id),
+        policyIds: (b.overlay_policies ?? []).map((c) => c.id),
         enabled: !0,
         isNew: !b.overlay_slug,
-        target: b.id,
-        base: b.policies
+        target: b.id
       };
     }
-    const K = F(() => !!l.value && l.value.target !== "");
-    function $t(b) {
-      l.value && !l.value.policies.includes(b) && l.value.policies.push(b);
+    function B(b, c) {
+      !s.value || s.value.policyIds.includes(b) || g.value.some((p) => p.id === b) || o.value.some((p) => p.id === b) && s.value.policyIds.splice(c ?? s.value.policyIds.length, 0, b);
     }
-    function wt(b) {
-      l.value && (l.value.policies = l.value.policies.filter((c) => c !== b));
+    function v(b) {
+      s.value && (s.value.policyIds = s.value.policyIds.filter((c) => c !== b));
     }
-    function zt(b) {
+    function h(b) {
       const c = b.dataTransfer?.getData("text/plain");
-      c && $t(c);
+      c && B(c);
     }
-    function P(b, c) {
+    function tt(b, c) {
       b.stopPropagation();
       const p = b.dataTransfer?.getData("text/plain");
-      if (!p || !l.value || p === c) return;
-      const q = l.value.policies, Lt = q.indexOf(p);
-      Lt !== -1 && q.splice(Lt, 1);
-      const Ht = q.indexOf(c);
-      q.splice(Ht === -1 ? q.length : Ht, 0, p);
+      if (!p || !s.value || p === c) return;
+      const G = s.value.policyIds, Nt = G.indexOf(p);
+      if (Nt === -1) {
+        B(p, G.indexOf(c));
+        return;
+      }
+      G.splice(Nt, 1), G.splice(G.indexOf(c), 0, p);
     }
-    const v = F(() => l.value ? !l.value.isNew || l.value.target ? l.value.slug : `${N(l.value.label.normalize("NFKD").replace(/\p{M}/gu, "")).toLowerCase() || "role"}_${l.value.slug}` : ""), f = F(() => !!l.value && l.value.label.trim() !== "" && l.value.policies.length > 0), M = A("");
-    let U = null;
-    _n(() => {
-      U && clearTimeout(U);
+    const J = N(() => s.value ? !s.value.isNew || s.value.target ? s.value.slug : `${ct(s.value.label.normalize("NFKD").replace(/\p{M}/gu, "")).toLowerCase() || "role"}_${s.value.slug}` : ""), qt = N(() => !!s.value && s.value.label.trim() !== "" && (!s.value.isNew || s.value.policyIds.length > 0)), bt = I("");
+    let pt = null;
+    Fn(() => {
+      pt && clearTimeout(pt);
     });
-    function yn(b) {
-      M.value = b, U && clearTimeout(U), U = setTimeout(() => {
-        M.value = "";
+    function $n(b) {
+      bt.value = b, pt && clearTimeout(pt), pt = setTimeout(() => {
+        bt.value = "";
       }, 3e3);
     }
-    async function kn() {
-      if (!l.value || !f.value) return;
-      const b = l.value, c = v.value, p = l.value.target, q = l.value.label.trim() || c;
+    async function wn() {
+      if (!s.value || !qt.value) return;
+      const b = s.value, c = J.value, p = s.value.target, G = s.value.label.trim() || c;
       await n.saveScope({
         slug: c,
         target: p,
-        label: l.value.label.trim(),
-        description: l.value.description.trim(),
-        policies: l.value.policies,
-        enabled: l.value.enabled
-      }) && (b.slug = c, b.isNew = !1, l.value === b && (B.value = p || `kickside.security.scopes:${c}`), yn(`Saved “${q}”. The role will be available when assigning users.`));
+        label: s.value.label.trim(),
+        description: s.value.description.trim(),
+        policies: [...s.value.policyIds],
+        enabled: s.value.enabled
+      }) && (b.slug = c, b.isNew = !1, s.value === b && (w.value = p || `kickside.security.scopes:${c}`), $n(`Saved “${G}”. The role will be available when assigning users.`));
     }
-    async function $n() {
-      if (!l.value || l.value.isNew) return;
-      const b = K.value;
-      if (!await en.confirm({
+    async function xn() {
+      if (!s.value || s.value.isNew) return;
+      const b = O.value;
+      if (!await rn.confirm({
         header: b ? "Remove extension?" : "Delete role?",
         message: b ? "This removes the added permissions. Users keep the role’s original permissions." : "This removes the custom role and its permissions.",
         icon: "tabler:trash",
@@ -4260,14 +4258,14 @@ const vr = {
         rejectLabel: "Cancel",
         acceptClass: "p-button-danger"
       })) return;
-      await n.deleteScope(l.value.slug) && (l.value = null, B.value = null);
+      await n.deleteScope(s.value.slug) && (s.value = null, w.value = null);
     }
     function dt(b) {
       return b.includes(":") ? b.split(":").slice(-1)[0] : b;
     }
-    return (b, c) => (a(), u("div", Zr, [
-      m(be, {
-        value: S.value,
+    return (b, c) => (a(), d("div", Xr, [
+      m(ve, {
+        value: z.value,
         label: "Security administration",
         items: [
           { value: "scopes", label: "Roles" },
@@ -4275,130 +4273,130 @@ const vr = {
         ],
         "onUpdate:value": H
       }, null, 8, ["value"]),
-      Z.value ? ut((a(), $(jr, {
+      M.value ? ut((a(), $(Kr, {
         key: 0,
         ref_key: "delegationPanel",
-        ref: O,
+        ref: U,
         scopes: i(e)
       }, null, 8, ["scopes"])), [
-        [Zt, S.value === "delegations"]
+        [Qt, z.value === "delegations"]
       ]) : y("", !0),
-      i(h) ? (a(), $(i(It), {
+      i(x) ? (a(), $(i(zt), {
         key: 1,
         severity: "danger",
         class: "ks-top-notice",
-        onDismiss: c[0] || (c[0] = (p) => h.value = "")
+        onDismiss: c[0] || (c[0] = (p) => x.value = "")
       }, {
-        default: C(() => [
-          T(x(i(h)), 1)
+        default: S(() => [
+          P(C(i(x)), 1)
         ]),
         _: 1
-      })) : M.value ? (a(), $(i(It), {
+      })) : bt.value ? (a(), $(i(zt), {
         key: 2,
         severity: "success",
         class: "ks-top-notice",
-        onDismiss: c[1] || (c[1] = (p) => M.value = "")
+        onDismiss: c[1] || (c[1] = (p) => bt.value = "")
       }, {
-        default: C(() => [
-          T(x(M.value), 1)
+        default: S(() => [
+          P(C(bt.value), 1)
         ]),
         _: 1
       })) : y("", !0),
-      S.value === "scopes" && i(d) && !i(e).length ? (a(), $(i(fn), {
+      z.value === "scopes" && i(r) && !i(e).length ? (a(), $(i(gn), {
         key: 3,
         label: "Loading security…"
-      })) : ut((a(), $(i(he), { key: 4 }, {
-        rail: C(() => [
-          m(i($e), {
+      })) : ut((a(), $(i(me), { key: 4 }, {
+        rail: S(() => [
+          m(i(xe), {
             title: "Roles",
             count: i(e).length
           }, {
-            actions: C(() => [
-              m(i(Bt), {
+            actions: S(() => [
+              m(i(It), {
                 icon: "tabler:plus",
                 label: "New role",
-                disabled: i(r),
-                onClick: R
+                disabled: i(f),
+                onClick: lt
               }, null, 8, ["disabled"]),
-              m(i(Bt), {
+              m(i(It), {
                 icon: "tabler:refresh",
                 label: "Refresh",
-                disabled: i(d),
-                spin: i(d),
+                disabled: i(r),
+                spin: i(r),
                 onClick: i(n).load
               }, null, 8, ["disabled", "spin", "onClick"])
             ]),
             _: 1
           }, 8, ["count"]),
-          s("div", Jr, [
-            m(i(Qt), {
-              modelValue: w.value,
-              "onUpdate:modelValue": c[2] || (c[2] = (p) => w.value = p),
+          l("div", Yr, [
+            m(i(Yt), {
+              modelValue: T.value,
+              "onUpdate:modelValue": c[2] || (c[2] = (p) => T.value = p),
               placeholder: "Find a role…"
             }, null, 8, ["modelValue"])
           ]),
-          s("div", Qr, [
-            j.value.custom.length ? (a(), u("div", Xr, "Custom")) : y("", !0),
-            (a(!0), u(et, null, ot(j.value.custom, (p) => (a(), u("button", {
+          l("div", ta, [
+            j.value.custom.length ? (a(), d("div", na, "Custom")) : y("", !0),
+            (a(!0), d(et, null, ot(j.value.custom, (p) => (a(), d("button", {
               key: p.id,
-              class: X(["ks-scope-row", { active: p.id === B.value }]),
-              onClick: (q) => g(p)
+              class: X(["ks-scope-row", { active: p.id === w.value }]),
+              onClick: (G) => it(p)
             }, [
-              s("span", ta, x(p.label || dt(p.id)), 1)
-            ], 10, Yr))), 128)),
-            c[11] || (c[11] = s("div", { class: "ks-rail-group" }, "Default", -1)),
-            (a(!0), u(et, null, ot(j.value.builtin, (p) => (a(), u("button", {
+              l("span", oa, C(p.label || dt(p.id)), 1)
+            ], 10, ea))), 128)),
+            c[11] || (c[11] = l("div", { class: "ks-rail-group" }, "Default", -1)),
+            (a(!0), d(et, null, ot(j.value.builtin, (p) => (a(), d("button", {
               key: p.id,
-              class: X(["ks-scope-row", { active: p.id === B.value }]),
-              onClick: (q) => g(p)
+              class: X(["ks-scope-row", { active: p.id === w.value }]),
+              onClick: (G) => it(p)
             }, [
-              s("span", ea, x(p.label || dt(p.id)), 1)
-            ], 10, na))), 128))
+              l("span", aa, C(p.label || dt(p.id)), 1)
+            ], 10, ra))), 128))
           ])
         ]),
-        default: C(() => [
-          l.value ? (a(), u("div", oa, [
-            s("div", ra, [
-              s("div", aa, [
-                m(i(V), {
-                  icon: K.value ? "tabler:stack-2" : "tabler:shield-lock",
+        default: S(() => [
+          s.value ? (a(), d("div", ia, [
+            l("div", la, [
+              l("div", sa, [
+                m(i(R), {
+                  icon: O.value ? "tabler:stack-2" : "tabler:shield-lock",
                   "aria-hidden": "true"
                 }, null, 8, ["icon"]),
-                s("span", null, x(K.value ? `Extend ${l.value.label || dt(l.value.target)}` : l.value.isNew ? "New role" : l.value.label || l.value.slug), 1),
-                K.value ? (a(), $(i(Pt), {
+                l("span", null, C(O.value ? `Extend ${s.value.label || dt(s.value.target)}` : s.value.isNew ? "New role" : s.value.label || s.value.slug), 1),
+                O.value ? (a(), $(i(At), {
                   key: 0,
                   severity: "warn"
                 }, {
-                  default: C(() => [...c[12] || (c[12] = [
-                    T("Additional permissions", -1)
+                  default: S(() => [...c[12] || (c[12] = [
+                    P("Additional permissions", -1)
                   ])]),
                   _: 1
                 })) : y("", !0)
               ]),
-              s("div", ia, [
-                !l.value.isNew && !K.value && L.value ? (a(), $(i(Q), {
+              l("div", da, [
+                !s.value.isNew && !O.value && _.value ? (a(), $(i(Q), {
                   key: 0,
                   variant: "soft",
                   small: "",
                   icon: "tabler:copy",
-                  disabled: i(r),
-                  onClick: c[3] || (c[3] = (p) => z(L.value))
+                  disabled: i(f),
+                  onClick: c[3] || (c[3] = (p) => Ct(_.value))
                 }, {
-                  default: C(() => [...c[13] || (c[13] = [
-                    T("Duplicate", -1)
+                  default: S(() => [...c[13] || (c[13] = [
+                    P("Duplicate", -1)
                   ])]),
                   _: 1
                 }, 8, ["disabled"])) : y("", !0),
-                l.value.isNew ? y("", !0) : (a(), $(i(Q), {
+                s.value.isNew ? y("", !0) : (a(), $(i(Q), {
                   key: 1,
                   variant: "danger",
                   small: "",
                   icon: "tabler:trash",
-                  disabled: i(r),
-                  onClick: $n
+                  disabled: i(f),
+                  onClick: xn
                 }, {
-                  default: C(() => [
-                    T(x(K.value ? "Remove extension" : "Delete"), 1)
+                  default: S(() => [
+                    P(C(O.value ? "Remove extension" : "Delete"), 1)
                   ]),
                   _: 1
                 }, 8, ["disabled"])),
@@ -4406,140 +4404,140 @@ const vr = {
                   variant: "primary",
                   small: "",
                   icon: "tabler:device-floppy",
-                  loading: i(r),
-                  disabled: !f.value,
-                  onClick: kn
+                  loading: i(f),
+                  disabled: !qt.value,
+                  onClick: wn
                 }, {
-                  default: C(() => [
-                    T(x(K.value ? "Save extension" : "Save role"), 1)
+                  default: S(() => [
+                    P(C(O.value ? "Save extension" : "Save role"), 1)
                   ]),
                   _: 1
                 }, 8, ["loading", "disabled"])
               ])
             ]),
-            K.value ? (a(), u("div", la, [
-              m(i(V), {
+            O.value ? (a(), d("div", ua, [
+              m(i(R), {
                 icon: "tabler:alert-triangle",
                 "aria-hidden": "true"
               }),
-              s("span", null, [
-                c[14] || (c[14] = T("Adding permissions grants them to ", -1)),
-                s("b", null, "everyone assigned " + x(L.value?.label || dt(l.value.target)), 1),
-                c[15] || (c[15] = T(". Original permissions cannot be removed here. To restrict access, create a new role with only the permissions needed.", -1))
+              l("span", null, [
+                c[14] || (c[14] = P("Adding permissions grants them to ", -1)),
+                l("b", null, "everyone assigned " + C(_.value?.label || dt(s.value.target)), 1),
+                c[15] || (c[15] = P(". Original permissions cannot be removed here. To restrict access, create a new role with only the permissions needed.", -1))
               ])
-            ])) : (a(), u("p", sa, "Choose the permissions this role grants, then assign it in System → Users. To restrict a Member, assign this role instead of Member; other assigned roles may still grant access.")),
-            s("div", da, [
+            ])) : (a(), d("p", ca, "Choose the permissions this role grants, then assign it in System → Users. To restrict a Member, assign this role instead of Member; other assigned roles may still grant access.")),
+            l("div", ba, [
               m(i(Tt), { label: "Name" }, {
-                default: C(() => [
-                  m(i(Xt), {
-                    modelValue: l.value.label,
-                    "onUpdate:modelValue": c[4] || (c[4] = (p) => l.value.label = p),
+                default: S(() => [
+                  m(i(tn), {
+                    modelValue: s.value.label,
+                    "onUpdate:modelValue": c[4] || (c[4] = (p) => s.value.label = p),
                     placeholder: "Reviewer"
                   }, null, 8, ["modelValue"])
                 ]),
                 _: 1
               }),
               m(i(Tt), { label: "Description" }, {
-                default: C(() => [
-                  m(i(Xt), {
-                    modelValue: l.value.description,
-                    "onUpdate:modelValue": c[5] || (c[5] = (p) => l.value.description = p),
+                default: S(() => [
+                  m(i(tn), {
+                    modelValue: s.value.description,
+                    "onUpdate:modelValue": c[5] || (c[5] = (p) => s.value.description = p),
                     placeholder: "Read-only reviewer role"
                   }, null, 8, ["modelValue"])
                 ]),
                 _: 1
               })
             ]),
-            s("div", {
-              class: X(["ks-panes", { three: K.value }])
+            l("div", {
+              class: X(["ks-panes", { three: O.value }])
             }, [
-              K.value ? (a(), u("section", ua, [
-                s("header", ca, [
-                  c[16] || (c[16] = s("span", null, "Original permissions", -1)),
-                  s("span", ba, x(l.value.base.length) + " · locked", 1)
+              O.value ? (a(), d("section", pa, [
+                l("header", va, [
+                  c[16] || (c[16] = l("span", null, "Original permissions", -1)),
+                  l("span", fa, C(g.value.length) + " · locked", 1)
                 ]),
-                s("div", pa, [
-                  (a(!0), u(et, null, ot(l.value.base, (p) => (a(), $(ct, {
+                l("div", ha, [
+                  (a(!0), d(et, null, ot(g.value, (p) => (a(), $(vt, {
                     key: p.id,
                     policy: p,
                     mode: "locked"
                   }, null, 8, ["policy"]))), 128)),
-                  l.value.base.length ? y("", !0) : (a(), u("div", va, "No original permissions."))
+                  g.value.length ? y("", !0) : (a(), d("div", ga, "No original permissions."))
                 ])
               ])) : y("", !0),
-              s("section", fa, [
-                c[17] || (c[17] = s("header", { class: "ks-pane-head" }, [
-                  s("span", null, "Available permissions"),
-                  s("span", { class: "ks-pane-sub" }, "Click + to add")
+              l("section", ma, [
+                c[17] || (c[17] = l("header", { class: "ks-pane-head" }, [
+                  l("span", null, "Available permissions"),
+                  l("span", { class: "ks-pane-sub" }, "Click + to add")
                 ], -1)),
-                s("div", ha, [
-                  m(i(Qt), {
-                    modelValue: I.value,
-                    "onUpdate:modelValue": c[6] || (c[6] = (p) => I.value = p),
+                l("div", ya, [
+                  m(i(Yt), {
+                    modelValue: L.value,
+                    "onUpdate:modelValue": c[6] || (c[6] = (p) => L.value = p),
                     placeholder: "Search permissions…"
                   }, null, 8, ["modelValue"])
                 ]),
-                s("div", ga, [
-                  (a(!0), u(et, null, ot(at.value, (p) => (a(), $(ct, {
+                l("div", ka, [
+                  (a(!0), d(et, null, ot(V.value, (p) => (a(), $(vt, {
                     key: p.id,
                     policy: p,
                     mode: "palette",
-                    onAdd: (q) => $t(p.id)
+                    onAdd: (G) => B(p.id)
                   }, null, 8, ["policy", "onAdd"]))), 128)),
-                  at.value.length ? y("", !0) : (a(), u("div", ma, "No matching permissions."))
+                  V.value.length ? y("", !0) : (a(), d("div", $a, "No matching permissions."))
                 ])
               ]),
-              s("section", {
+              l("section", {
                 class: "ks-pane drop",
-                onDragover: c[8] || (c[8] = pt(() => {
+                onDragover: c[8] || (c[8] = ht(() => {
                 }, ["prevent"])),
-                onDrop: zt
+                onDrop: h
               }, [
-                s("header", ya, [
-                  s("span", null, x(K.value ? "Added by you" : "In this role"), 1),
-                  s("span", ka, x(l.value.policies.length) + " " + x(l.value.policies.length === 1 ? "permission" : "permissions"), 1)
+                l("header", wa, [
+                  l("span", null, C(O.value ? "Added by you" : "In this role"), 1),
+                  l("span", xa, C(A.value.length) + " " + C(A.value.length === 1 ? "permission" : "permissions"), 1)
                 ]),
-                s("div", $a, [
-                  (a(!0), u(et, null, ot(tt.value, (p) => (a(), u("div", {
+                l("div", Ca, [
+                  (a(!0), d(et, null, ot(A.value, (p) => (a(), d("div", {
                     key: p.id,
-                    onDragover: c[7] || (c[7] = pt(() => {
+                    onDragover: c[7] || (c[7] = ht(() => {
                     }, ["prevent"])),
-                    onDrop: (q) => P(q, p.id)
+                    onDrop: (G) => tt(G, p.id)
                   }, [
-                    m(ct, {
+                    m(vt, {
                       policy: p,
                       mode: "selected",
-                      onRemove: (q) => wt(p.id)
+                      onRemove: (G) => v(p.id)
                     }, null, 8, ["policy", "onRemove"])
-                  ], 40, wa))), 128)),
-                  l.value.policies.length ? y("", !0) : (a(), u("div", xa, [
-                    m(i(V), {
+                  ], 40, Sa))), 128)),
+                  A.value.length ? y("", !0) : (a(), d("div", Ba, [
+                    m(i(R), {
                       icon: "tabler:drag-drop",
                       "aria-hidden": "true"
                     }),
-                    c[18] || (c[18] = s("span", null, "Use + on an available permission, or drag it here.", -1))
+                    c[18] || (c[18] = l("span", null, "Use + on an available permission, or drag it here.", -1))
                   ]))
                 ])
               ], 32)
             ], 2)
-          ])) : E.value ? (a(), u("div", Ca, [
-            s("div", Sa, [
-              s("div", Ba, [
-                m(i(V), {
+          ])) : E.value ? (a(), d("div", Pa, [
+            l("div", Ia, [
+              l("div", Ta, [
+                m(i(R), {
                   icon: "tabler:shield",
                   "aria-hidden": "true"
                 }),
-                s("span", null, x(E.value.label || dt(E.value.id)), 1)
+                l("span", null, C(E.value.label || dt(E.value.id)), 1)
               ]),
-              s("div", Ta, [
+              l("div", Aa, [
                 m(i(Q), {
                   variant: "primary",
                   small: "",
                   icon: "tabler:stack-2",
-                  onClick: c[9] || (c[9] = (p) => st(E.value))
+                  onClick: c[9] || (c[9] = (p) => Lt(E.value))
                 }, {
-                  default: C(() => [
-                    T(x(E.value.overlay_slug ? "Edit extension" : "Add permissions"), 1)
+                  default: S(() => [
+                    P(C(E.value.overlay_slug ? "Edit extension" : "Add permissions"), 1)
                   ]),
                   _: 1
                 }),
@@ -4547,68 +4545,68 @@ const vr = {
                   variant: "soft",
                   small: "",
                   icon: "tabler:copy",
-                  onClick: c[10] || (c[10] = (p) => z(E.value))
+                  onClick: c[10] || (c[10] = (p) => Ct(E.value))
                 }, {
-                  default: C(() => [...c[19] || (c[19] = [
-                    T("Copy role", -1)
+                  default: S(() => [...c[19] || (c[19] = [
+                    P("Copy role", -1)
                   ])]),
                   _: 1
                 })
               ])
             ]),
-            c[21] || (c[21] = s("p", { class: "ks-view-note" }, " Included with the application. Adding permissions affects everyone with this role. For restricted access, create a new role with only the permissions needed and assign it in System → Users instead of this role. Other assigned roles may still grant access. ", -1)),
-            s("div", Pa, [
-              (a(!0), u(et, null, ot(E.value.policies, (p) => (a(), $(ct, {
+            c[21] || (c[21] = l("p", { class: "ks-view-note" }, " Included with the application. Adding permissions affects everyone with this role. For restricted access, create a new role with only the permissions needed and assign it in System → Users instead of this role. Other assigned roles may still grant access. ", -1)),
+            l("div", za, [
+              (a(!0), d(et, null, ot(q.value, (p) => (a(), $(vt, {
                 key: p.id,
                 policy: p,
                 mode: "locked"
               }, null, 8, ["policy"]))), 128)),
-              E.value.policies.length ? y("", !0) : (a(), u("div", Ia, "No permissions in this role."))
+              q.value.length ? y("", !0) : (a(), d("div", _a, "No permissions in this role."))
             ]),
-            E.value.overlay_policies && E.value.overlay_policies.length ? (a(), u("div", Aa, [
-              s("div", za, [
-                m(i(V), {
+            E.value.overlay_policies && E.value.overlay_policies.length ? (a(), d("div", La, [
+              l("div", Na, [
+                m(i(R), {
                   icon: "tabler:stack-2",
                   "aria-hidden": "true"
                 }),
-                c[20] || (c[20] = s("span", null, "Additional permissions", -1)),
-                m(i(Pt), { severity: "warn" }, {
-                  default: C(() => [
-                    T(x(E.value.overlay_policies.length), 1)
+                c[20] || (c[20] = l("span", null, "Additional permissions", -1)),
+                m(i(At), { severity: "warn" }, {
+                  default: S(() => [
+                    P(C(E.value.overlay_policies.length), 1)
                   ]),
                   _: 1
                 })
               ]),
-              s("div", La, [
-                (a(!0), u(et, null, ot(E.value.overlay_policies, (p) => (a(), $(ct, {
+              l("div", Fa, [
+                (a(!0), d(et, null, ot(E.value.overlay_policies, (p) => (a(), $(vt, {
                   key: p.id,
                   policy: p,
                   mode: "locked"
                 }, null, 8, ["policy"]))), 128))
               ])
             ])) : y("", !0)
-          ])) : (a(), u("div", _a, [
-            m(i(hn), {
+          ])) : (a(), d("div", Va, [
+            m(i(mn), {
               icon: "tabler:shield-lock",
               title: "Roles",
               hint: "Choose a role to view its permissions, or create one with the permissions your team needs. Assign roles in System → Users.",
               cta: "New role",
               "cta-icon": "tabler:plus",
-              onCta: R
+              onCta: lt
             })
           ]))
         ]),
         _: 1
       }, 512)), [
-        [Zt, S.value === "scopes"]
+        [Qt, z.value === "scopes"]
       ])
     ]));
   }
-}), Ea = {
-  rootComponent: Na,
+}), Ka = {
+  rootComponent: Oa,
   plugins: [Tn]
 };
 export {
-  Ea as mountConfig
+  Ka as mountConfig
 };
-//# sourceMappingURL=lazy-mount-B5iLzLvg.js.map
+//# sourceMappingURL=lazy-mount-C9uNmV64.js.map

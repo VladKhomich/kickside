@@ -14,7 +14,15 @@ function M.result(phase, value)
 end
 function M.policy(...) return M.result("policy", {max_row_bytes = 1000, wake_fanout_batch = 2}) end
 function M.now(...) return "2026-10-10 00:00:00" end
-function M.check_update(...) local _, err = M.result("size", true); return err end
+function M.check_update(_, _, id, changes, _, _, snapshot)
+    local _, err = M.result("size", true)
+    if err then return err end
+    if type(changes) == "function" then
+        local _, transition_err = changes(snapshot or {id = id, status = "pending"})
+        return transition_err
+    end
+    return nil
+end
 function M.decode_payload(...) return M.result("payload", {wake_key = "key"}) end
 function M.identity_parts(...) return M.result("identity", "identity") end
 function M.enqueue_job(...) return M.result("enqueue", "continuation") end

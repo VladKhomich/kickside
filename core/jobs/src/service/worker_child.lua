@@ -1,6 +1,7 @@
 -- Own the supervised execution child, its token-qualified owner registration,
 -- and the durable quarantine used when termination cannot be confirmed.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local logger = require("logger")
 local time = require("time")
@@ -23,11 +24,6 @@ local function response_error(field: string): error
 end
 local PROC_TIMEOUT_MARKER = worker_dispatch.PROC_TIMEOUT_MARKER
 worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- Returns (err, control, retire): retire reports that the supervising loop's
 -- code became outdated while the execution ran to its own end.

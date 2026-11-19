@@ -37,6 +37,7 @@ entries:
     modules: [http, json]
     imports:
       models_repo: kickside.models.persist:repo
+      http_params: kickside.contract:http_params
     method: handler
     security:
       policies:
@@ -56,6 +57,7 @@ entries:
     modules: [http, json]
     imports:
       models_repo: kickside.models.persist:repo
+      http_params: kickside.contract:http_params
     method: handler
     security:
       policies:

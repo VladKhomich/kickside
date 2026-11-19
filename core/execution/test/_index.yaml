@@ -121,6 +121,7 @@ entries:
     source: file://encoder_native_identity.lua
     modules: [security, funcs, contract]
     imports:
+      text_trim: kickside.contract:text_trim
       identity_failure: kickside.execution:identity_failure
       identity_codec: app:encoder_native_codec
       identity_restrictions: kickside.execution:identity_restrictions

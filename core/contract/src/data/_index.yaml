@@ -11,6 +11,8 @@ entries:
     meta:
       comment: Shared writable-sink request helpers — input trim and the DataError failure envelope.
     source: file://writable_sink.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: pullable
     kind: contract.definition

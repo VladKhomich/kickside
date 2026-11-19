@@ -110,15 +110,36 @@ local function run_page(tx: sql.Transaction, dbtype: string, thread_id: string,
         limit: integer, wake_keys: { string }?): (table?, error?)
     local result = { processed = 0, discarded = {}, unresolved = {} }
     local remaining = limit
+    local selected: {{ any }} = {}
+    local last_owned: { any }? = nil
+    for index, slice in ipairs(SLICES) do
+        if slice.detach and slice.name == JOB and last_owned then
+            -- Completed-owner retention discovers work by ownership. Hold
+            -- the last owned row until the surviving links fit on the page.
+            remaining = remaining + 1
+        end
+        if slice.detach and remaining == 0 then break end
+        local candidate_limit = slice.detach and remaining or remaining + 1
+        local rows, read_err = candidates(tx, slice, thread_id, candidate_limit)
+        if read_err then return nil, read_err end
+        local page = rows :: { any }
+        selected[index] = page
+        if #page > remaining then
+            table.remove(page)
+            break
+        end
+        remaining = remaining - #page
+        if not slice.detach and #page > 0 then last_owned = page end
+        if slice.detach and remaining == 0 and last_owned then table.remove(last_owned) end
+    end
+
     local pages: {{ string }} = {}
     local parent_ids: { string } = {}
     local seen: { [string]: boolean } = {}
-    for index, slice in ipairs(SLICES) do
-        if remaining == 0 then break end
-        local rows, read_err = candidates(tx, slice, thread_id, remaining)
-        if read_err then return nil, read_err end
+    for index, rows in ipairs(selected) do
+        local slice = SLICES[index]
         local ids: { string } = {}
-        for _, row in ipairs(rows :: { any }) do
+        for _, row in ipairs(rows) do
             local parent = slice.name == RUN and row.job_id or row.id
             if type(row.id) ~= "string" or row.id == "" or type(parent) ~= "string" or parent == "" then
                 return nil, response_error("candidates.id")
@@ -130,7 +151,6 @@ local function run_page(tx: sql.Transaction, dbtype: string, thread_id: string,
             end
         end
         pages[index] = ids
-        remaining = remaining - #ids
     end
     local function mutate_locked(snapshots: { [string]: table }?): error?
         for index, ids in ipairs(pages) do

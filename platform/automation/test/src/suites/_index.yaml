@@ -354,6 +354,17 @@ entries:
     round_harness: kickside.automation:round_harness
     round_ledger: kickside.automation:round_ledger
     row_size: kickside.core:row_size
+- name: round_redelivery_wake_test
+  kind: function.lua
+  meta:
+    type: test
+    suite: kickside_automation_round
+  source: file://round/redelivery_wake_test.lua
+  method: run
+  modules: [time]
+  imports:
+    test: wippy.test:test
+    round_harness: kickside.automation:round_harness
 - name: round_more_test
   kind: function.lua
   meta:

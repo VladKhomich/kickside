@@ -6,6 +6,7 @@ local component = require("component")
 local upload_types = require("types")
 local ctx = require("ctx")
 local metadata_sanitizer = require("metadata_sanitizer")
+local upload_mime = require("upload_mime")
 
 local function handle(args)
     local upload_id, err = ctx.get("upload_id")
@@ -35,20 +36,22 @@ local function handle(args)
     local _, access_err = component.validate_access(component_id, component.ACCESS.READ)
     if access_err then return nil, binding_errors.from(access_err, errors.PERMISSION_DENIED, "access_denied") end
 
-    local content_type = upload.mime_type
+    local description
+    local raw = args and args.format == "raw"
     local size = upload.size
-    local metadata = upload.metadata or {}
+    local original_metadata = upload.metadata or {}
+    local metadata = original_metadata
     local artifact_id = nil
     local checksum = nil
 
-    if not args or args.format ~= "raw" then
-        local artifact, artifact_err = artifact_parts_repo.get_primary_content_artifact(upload_id)
+    if not raw then
+        local artifact, artifact_err, effective = artifact_parts_repo.get_primary_content_artifact(upload_id, { upload = upload, include_files = true })
         if artifact_err and not errors.is(artifact_err, errors.NOT_FOUND) then
             return nil, binding_errors.from(artifact_err, errors.UNAVAILABLE, "artifact_read_failed")
         end
         if artifact then
             local artifact_meta = artifact.metadata or {}
-            content_type = artifact.mime_type
+            description = effective
             size = artifact.size
             metadata = artifact_meta
             artifact_id = artifact.artifact_id
@@ -58,14 +61,20 @@ local function handle(args)
         checksum = upload.content_sha256
     end
 
+    if not description then
+        local describe_err
+        description, describe_err = upload_mime.describe(upload.mime_type, metadata.filename)
+        if describe_err then return nil, binding_errors.from(describe_err, errors.UNAVAILABLE, "upload_content_description_failed") end
+    end
     metadata = metadata_sanitizer.public(metadata)
 
-    -- Extract filename from upload metadata
-    local filename = metadata.filename or metadata.original_filename or "unknown"
+    local filename = metadata.filename or metadata.original_filename
+        or original_metadata.filename or original_metadata.original_filename or "unknown"
 
     return {
         success = true,
-        content_type = content_type,
+        content_type = raw and upload.mime_type or description.mime_type,
+        content_description = description,
         size = size,
         filename = filename,
         created_at = upload.created_at,

@@ -1,7 +1,7 @@
-import { openBlock as l, createElementBlock as p, mergeProps as v, createElementVNode as c, renderSlot as P, createTextVNode as N, toDisplayString as S, resolveComponent as q, resolveDirective as st, withDirectives as ut, createBlock as k, resolveDynamicComponent as ct, withCtx as y, createCommentVNode as m, normalizeClass as A, defineComponent as F, computed as $, unref as u, createVNode as g, ref as bt, reactive as pt, watch as gt, withModifiers as ht, Fragment as L, renderList as U } from "vue";
+import { openBlock as l, createElementBlock as p, mergeProps as v, createElementVNode as c, renderSlot as P, createTextVNode as N, toDisplayString as x, resolveComponent as q, resolveDirective as st, withDirectives as ut, createBlock as y, resolveDynamicComponent as ct, withCtx as f, createCommentVNode as m, normalizeClass as A, defineComponent as F, computed as w, unref as u, createVNode as g, ref as bt, reactive as pt, watch as gt, withModifiers as ht, Fragment as L, renderList as U } from "vue";
 import { Icon as j } from "@iconify/vue";
 import { E as vt } from "./provider-tags-C0mtMONl.js";
-import { a as mt, B as W, y as Z, g as G, s as Y, f as O, R as ft } from "./wc-runtime-CHL0PH8L.js";
+import { a as mt, B as Y, y as Z, g as G, s as M, f as O, R as ft } from "./wc-runtime-CHL0PH8L.js";
 var Q = {
   name: "SpinnerIcon",
   extends: mt
@@ -136,13 +136,13 @@ var _t = `
       "p-badge-contrast": e.severity === "contrast"
     }];
   }
-}, Ct = W.extend({
+}, Ct = Y.extend({
   name: "badge",
   style: _t,
   classes: Pt
 }), It = {
   name: "BaseBadge",
-  extends: Y,
+  extends: M,
   props: {
     value: {
       type: [String, Number],
@@ -208,7 +208,7 @@ function Bt(t, n, e, o, b, a) {
     class: t.cx("root"),
     "data-p": a.dataP
   }, t.ptmi("root")), [P(t.$slots, "default", {}, function() {
-    return [N(S(t.value), 1)];
+    return [N(x(t.value), 1)];
   })], 16, Ft);
 }
 tt.render = Bt;
@@ -871,7 +871,7 @@ function z(t) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
   }, z(t);
 }
-function w(t, n, e) {
+function k(t, n, e) {
   return (n = Tt(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
 function Tt(t) {
@@ -891,7 +891,7 @@ function zt(t, n) {
 var Et = {
   root: function(n) {
     var e = n.instance, o = n.props;
-    return ["p-button p-component", w(w(w(w(w(w(w(w(w({
+    return ["p-button p-component", k(k(k(k(k(k(k(k(k({
       "p-button-icon-only": e.hasIcon && !o.label && !o.badge,
       "p-button-vertical": (o.iconPos === "top" || o.iconPos === "bottom") && o.label,
       "p-button-loading": o.loading,
@@ -901,16 +901,16 @@ var Et = {
   loadingIcon: "p-button-loading-icon",
   icon: function(n) {
     var e = n.props;
-    return ["p-button-icon", w({}, "p-button-icon-".concat(e.iconPos), e.label)];
+    return ["p-button-icon", k({}, "p-button-icon-".concat(e.iconPos), e.label)];
   },
   label: "p-button-label"
-}, Nt = W.extend({
+}, Nt = Y.extend({
   name: "button",
   style: Ot,
   classes: Et
 }), jt = {
   name: "BaseButton",
-  extends: Y,
+  extends: M,
   props: {
     label: {
       type: String,
@@ -1098,17 +1098,17 @@ var nt = {
   }
 }, Ut = ["data-p"], Dt = ["data-p"];
 function Gt(t, n, e, o, b, a) {
-  var x = q("SpinnerIcon"), _ = q("Badge"), C = st("ripple");
+  var $ = q("SpinnerIcon"), S = q("Badge"), C = st("ripple");
   return t.asChild ? P(t.$slots, "default", {
     key: 1,
     class: A(t.cx("root")),
     a11yAttrs: a.a11yAttrs
-  }) : ut((l(), k(ct(t.as), v({
+  }) : ut((l(), y(ct(t.as), v({
     key: 0,
     class: t.cx("root"),
     "data-p": a.dataP
   }, a.attrs), {
-    default: y(function() {
+    default: f(function() {
       return [P(t.$slots, "default", {}, function() {
         return [t.loading ? P(t.$slots, "loadingicon", v({
           key: 0,
@@ -1117,7 +1117,7 @@ function Gt(t, n, e, o, b, a) {
           return [t.loadingIcon ? (l(), p("span", v({
             key: 0,
             class: [t.cx("loadingIcon"), t.cx("icon"), t.loadingIcon]
-          }, t.ptm("loadingIcon")), null, 16)) : (l(), k(x, v({
+          }, t.ptm("loadingIcon")), null, 16)) : (l(), y($, v({
             key: 1,
             class: [t.cx("loadingIcon"), t.cx("icon")],
             spin: ""
@@ -1136,7 +1136,7 @@ function Gt(t, n, e, o, b, a) {
           class: t.cx("label")
         }, t.ptm("label"), {
           "data-p": a.dataLabelP
-        }), S(t.label), 17, Dt)) : m("", !0), t.badge ? (l(), k(_, {
+        }), x(t.label), 17, Dt)) : m("", !0), t.badge ? (l(), y(S, {
           key: 3,
           value: t.badge,
           class: A(t.badgeClass),
@@ -1162,20 +1162,20 @@ const D = /* @__PURE__ */ F({
   },
   emits: ["click"],
   setup(t, { emit: n }) {
-    const e = t, o = n, b = $(
+    const e = t, o = n, b = w(
       () => e.variant === "danger" ? "danger" : e.variant === "primary" ? void 0 : "secondary"
     );
-    return (a, x) => (l(), k(u(nt), {
+    return (a, $) => (l(), y(u(nt), {
       type: t.type,
       severity: b.value,
       outlined: t.variant === "ghost",
       loading: t.loading,
       disabled: t.disabled || t.loading,
       size: t.small ? "small" : void 0,
-      onClick: x[0] || (x[0] = (_) => o("click"))
+      onClick: $[0] || ($[0] = (S) => o("click"))
     }, {
-      default: y(() => [
-        t.icon && !t.loading ? (l(), k(u(j), {
+      default: f(() => [
+        t.icon && !t.loading ? (l(), y(u(j), {
           key: 0,
           icon: t.icon,
           "aria-hidden": "true"
@@ -1188,7 +1188,7 @@ const D = /* @__PURE__ */ F({
 });
 var Kt = {
   name: "BaseEditableHolder",
-  extends: Y,
+  extends: M,
   emits: ["update:modelValue", "value-change"],
   props: {
     modelValue: {
@@ -1323,7 +1323,7 @@ var Kt = {
     }
   }
 };
-const Mt = { class: "km-field" }, Wt = { class: "km-field-label" }, Yt = {
+const Wt = { class: "km-field" }, Yt = { class: "km-field-label" }, Mt = {
   key: 0,
   class: "km-field-help"
 }, I = /* @__PURE__ */ F({
@@ -1333,10 +1333,10 @@ const Mt = { class: "km-field" }, Wt = { class: "km-field-label" }, Yt = {
     help: {}
   },
   setup(t) {
-    return (n, e) => (l(), p("label", Mt, [
-      c("span", Wt, S(t.label), 1),
+    return (n, e) => (l(), p("label", Wt, [
+      c("span", Yt, x(t.label), 1),
       P(n.$slots, "default"),
-      t.help ? (l(), p("small", Yt, S(t.help), 1)) : m("", !0)
+      t.help ? (l(), p("small", Mt, x(t.help), 1)) : m("", !0)
     ]));
   }
 }), Jt = ["type", "value", "placeholder", "readonly", "disabled", "autocomplete", "min", "max", "step"], V = /* @__PURE__ */ F({
@@ -1505,7 +1505,7 @@ var Ht = `
   input: "p-toggleswitch-input",
   slider: "p-toggleswitch-slider",
   handle: "p-toggleswitch-handle"
-}, Zt = W.extend({
+}, Zt = Y.extend({
   name: "toggleswitch",
   style: Ht,
   classes: Xt,
@@ -1656,19 +1656,19 @@ const dn = {
   },
   emits: ["update:modelValue"],
   setup(t, { emit: n }) {
-    const e = t, o = n, b = $({
+    const e = t, o = n, b = w({
       get: () => e.modelValue,
       set: (a) => o("update:modelValue", a)
     });
-    return (a, x) => (l(), p("label", {
+    return (a, $) => (l(), p("label", {
       class: A(["km-switch", { disabled: t.disabled }])
     }, [
       g(u(et), {
         modelValue: b.value,
-        "onUpdate:modelValue": x[0] || (x[0] = (_) => b.value = _),
+        "onUpdate:modelValue": $[0] || ($[0] = (S) => b.value = S),
         disabled: t.disabled
       }, null, 8, ["modelValue", "disabled"]),
-      t.label ? (l(), p("span", dn, S(t.label), 1)) : m("", !0)
+      t.label ? (l(), p("span", dn, x(t.label), 1)) : m("", !0)
     ], 2));
   }
 }), ln = /* @__PURE__ */ F({
@@ -1687,7 +1687,7 @@ const dn = {
       }, null, 8, ["icon"])
     ], 2));
   }
-}), M = {
+}), W = {
   openai_compat: {
     key: "openai_compat",
     title: "OpenAI Compatible",
@@ -1792,7 +1792,7 @@ function Vn(t) {
   return !!(t && ot[t]);
 }
 function An(t) {
-  return M[sn(t)];
+  return W[sn(t)];
 }
 const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, bn = { class: "km-editor-head-title" }, pn = { class: "km-editor-head-sub" }, gn = { class: "km-form-sec" }, hn = { class: "km-form-grid" }, vn = {
   key: 0,
@@ -1820,22 +1820,22 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
   },
   emits: ["save", "cancel", "test"],
   setup(t, { emit: n }) {
-    const e = t, o = n, b = $(() => M[e.specKey] ?? M.openai_compat), a = $(() => e.mode === "edit"), x = $(() => a.value), _ = $(() => e.testState?.status === "testing"), C = $(() => b.value.fields), R = (s) => s.section ?? "endpoint", J = $(() => C.value.filter((s) => R(s) === "endpoint")), H = $(() => C.value.filter((s) => R(s) === "auth")), rt = $(() => C.value.filter((s) => R(s) === "advanced")), B = bt(!1), i = pt({
+    const e = t, o = n, b = w(() => W[e.specKey] ?? W.openai_compat), a = w(() => e.mode === "edit"), $ = w(() => a.value), S = w(() => e.testState?.status === "testing"), C = w(() => b.value.fields), R = (s) => s.section ?? "endpoint", J = w(() => C.value.filter((s) => R(s) === "endpoint")), H = w(() => C.value.filter((s) => R(s) === "auth")), rt = w(() => C.value.filter((s) => R(s) === "advanced")), B = bt(!1), i = pt({
       id: "",
       name: "",
       provider_id: "",
-      retry_attempts: 0,
-      retry_backoff_ms: 0,
+      retry_attempts: "",
+      retry_backoff_ms: "",
       enabled: !0
     });
     function dt(s, d) {
       if (s.secret) return "";
       const r = d[s.key];
-      return s.type === "number" ? Number(r || 0) : r || "";
+      return s.type === "number" ? r ?? "" : r || "";
     }
     function at() {
       const s = e.profile?.config || e.preset?.config || {};
-      i.id = e.profile?.id || "", i.name = e.profile?.name || e.preset?.title || b.value.title, i.provider_id = e.profile?.provider_id || e.preset?.provider_id || e.adapter?.id || b.value.defaultProviderId, i.retry_attempts = Number(s.retry?.attempts || 0), i.retry_backoff_ms = Number(s.retry?.backoff_ms || 0), i.enabled = e.profile?.enabled !== !1;
+      i.id = e.profile?.id || "", i.name = e.profile?.name || e.preset?.title || b.value.title, i.provider_id = e.profile?.provider_id || e.preset?.provider_id || e.adapter?.id || b.value.defaultProviderId, i.retry_attempts = s.retry?.attempts ?? "", i.retry_backoff_ms = s.retry?.backoff_ms ?? "", i.enabled = e.profile?.enabled !== !1;
       for (const d of C.value) i[d.key] = dt(d, s);
     }
     gt(() => [e.profile, e.preset, e.adapter, e.mode, e.specKey], at, { immediate: !0 });
@@ -1846,13 +1846,12 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
         return;
       }
       if (d.type === "number") {
-        const f = Number(r);
-        Number.isFinite(f) && f > 0 && (s[d.key] = f);
+        r !== "" ? s[d.key] = Number(r) : e.profile?.config?.[d.key] != null && (s[d.key] = "");
         return;
       }
       if (typeof r == "string") {
-        const f = r.trim();
-        f && (s[d.key] = f);
+        const _ = r.trim();
+        _ && (s[d.key] = _);
         return;
       }
       r != null && r !== "" && (s[d.key] = r);
@@ -1864,11 +1863,9 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
         provider_id: i.provider_id,
         enabled: i.enabled
       };
-      for (const d of C.value) lt(s, d);
-      s.retry = {
-        attempts: Math.max(0, Math.floor(Number(i.retry_attempts) || 0)),
-        backoff_ms: Math.max(0, Math.floor(Number(i.retry_backoff_ms) || 0))
-      }, o("save", s);
+      for (const r of C.value) lt(s, r);
+      const d = {};
+      i.retry_attempts !== "" && (d.attempts = Number(i.retry_attempts)), i.retry_backoff_ms !== "" && (d.backoff_ms = Number(i.retry_backoff_ms)), s.retry = d, o("save", s);
     }
     return (s, d) => (l(), p("form", {
       class: "km-form",
@@ -1879,15 +1876,15 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
           icon: b.value.icon
         }, null, 8, ["icon"]),
         c("div", cn, [
-          c("div", bn, S(e.preset?.title || b.value.title), 1),
-          c("div", pn, S(b.value.subtitle), 1)
+          c("div", bn, x(e.preset?.title || b.value.title), 1),
+          c("div", pn, x(b.value.subtitle), 1)
         ])
       ]),
       c("section", gn, [
         d[8] || (d[8] = c("div", { class: "km-form-sec-title" }, "Identity", -1)),
         c("div", hn, [
           g(u(I), { label: "Name" }, {
-            default: y(() => [
+            default: f(() => [
               g(u(V), {
                 modelValue: i.name,
                 "onUpdate:modelValue": d[0] || (d[0] = (r) => i.name = r),
@@ -1901,15 +1898,15 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
       J.value.length ? (l(), p("section", vn, [
         d[9] || (d[9] = c("div", { class: "km-form-sec-title" }, "Endpoint", -1)),
         c("div", mn, [
-          (l(!0), p(L, null, U(J.value, (r) => (l(), k(u(I), {
+          (l(!0), p(L, null, U(J.value, (r) => (l(), y(u(I), {
             key: r.key,
             label: r.label,
             help: r.help
           }, {
-            default: y(() => [
+            default: f(() => [
               g(u(V), {
                 modelValue: i[r.key],
-                "onUpdate:modelValue": (f) => i[r.key] = f,
+                "onUpdate:modelValue": (_) => i[r.key] = _,
                 type: r.type === "number" ? "number" : "text",
                 placeholder: r.placeholder,
                 disabled: e.saving
@@ -1922,15 +1919,15 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
       H.value.length ? (l(), p("section", fn, [
         d[10] || (d[10] = c("div", { class: "km-form-sec-title" }, "Authentication", -1)),
         c("div", yn, [
-          (l(!0), p(L, null, U(H.value, (r) => (l(), k(u(I), {
+          (l(!0), p(L, null, U(H.value, (r) => (l(), y(u(I), {
             key: r.key,
             label: r.label,
             help: r.help
           }, {
-            default: y(() => [
+            default: f(() => [
               g(u(V), {
                 modelValue: i[r.key],
-                "onUpdate:modelValue": (f) => i[r.key] = f,
+                "onUpdate:modelValue": (_) => i[r.key] = _,
                 type: r.type === "password" ? "password" : "text",
                 placeholder: r.placeholder,
                 autocomplete: r.secret ? "new-password" : void 0,
@@ -1955,12 +1952,12 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
       ], 8, kn),
       B.value ? (l(), p("section", wn, [
         c("div", $n, [
-          a.value ? m("", !0) : (l(), k(u(I), {
+          a.value ? m("", !0) : (l(), y(u(I), {
             key: 0,
             label: "ID",
             help: "Optional; generated when left blank."
           }, {
-            default: y(() => [
+            default: f(() => [
               g(u(V), {
                 modelValue: i.id,
                 "onUpdate:modelValue": d[2] || (d[2] = (r) => i.id = r),
@@ -1970,42 +1967,43 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
             ]),
             _: 1
           })),
-          (l(!0), p(L, null, U(rt.value, (r) => (l(), k(u(I), {
+          (l(!0), p(L, null, U(rt.value, (r) => (l(), y(u(I), {
             key: r.key,
             label: r.label,
             help: r.help
           }, {
-            default: y(() => [
+            default: f(() => [
               g(u(V), {
                 modelValue: i[r.key],
-                "onUpdate:modelValue": (f) => i[r.key] = f,
+                "onUpdate:modelValue": (_) => i[r.key] = _,
                 type: r.type === "number" ? "number" : r.type === "password" ? "password" : "text",
+                step: r.type === "number" ? "any" : void 0,
                 placeholder: r.placeholder,
                 autocomplete: r.secret ? "new-password" : void 0,
                 disabled: e.saving
-              }, null, 8, ["modelValue", "onUpdate:modelValue", "type", "placeholder", "autocomplete", "disabled"])
+              }, null, 8, ["modelValue", "onUpdate:modelValue", "type", "step", "placeholder", "autocomplete", "disabled"])
             ]),
             _: 2
           }, 1032, ["label", "help"]))), 128)),
           g(u(I), { label: "Retry attempts" }, {
-            default: y(() => [
+            default: f(() => [
               g(u(V), {
                 modelValue: i.retry_attempts,
                 "onUpdate:modelValue": d[3] || (d[3] = (r) => i.retry_attempts = r),
                 type: "number",
-                min: 0,
+                step: "any",
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
             ]),
             _: 1
           }),
           g(u(I), { label: "Retry backoff (ms)" }, {
-            default: y(() => [
+            default: f(() => [
               g(u(V), {
                 modelValue: i.retry_backoff_ms,
                 "onUpdate:modelValue": d[4] || (d[4] = (r) => i.retry_backoff_ms = r),
                 type: "number",
-                min: 0,
+                step: "any",
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
             ]),
@@ -2013,7 +2011,7 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
           })
         ])
       ])) : m("", !0),
-      a.value ? (l(), k(u(an), {
+      a.value ? (l(), y(u(an), {
         key: 3,
         modelValue: i.enabled,
         "onUpdate:modelValue": d[5] || (d[5] = (r) => i.enabled = r),
@@ -2024,23 +2022,23 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
         key: 4,
         class: A(["km-test-result", e.testState.status])
       }, [
-        _.value ? (l(), p("span", xn)) : (l(), k(u(j), {
+        S.value ? (l(), p("span", xn)) : (l(), y(u(j), {
           key: 1,
           icon: e.testState.status === "ok" ? "tabler:circle-check" : "tabler:circle-x",
           "aria-hidden": "true"
         }, null, 8, ["icon"])),
-        c("span", null, S(_.value ? "Testing connection…" : e.testState.message), 1)
+        c("span", null, x(S.value ? "Testing connection…" : e.testState.message), 1)
       ], 2)) : m("", !0),
       c("div", Sn, [
-        x.value ? (l(), k(u(D), {
+        $.value ? (l(), y(u(D), {
           key: 0,
           variant: "soft",
           icon: "tabler:plug-connected",
-          loading: _.value,
+          loading: S.value,
           disabled: e.saving,
           onClick: d[6] || (d[6] = (r) => o("test"))
         }, {
-          default: y(() => [...d[12] || (d[12] = [
+          default: f(() => [...d[12] || (d[12] = [
             N(" Test connection ", -1)
           ])]),
           _: 1
@@ -2051,7 +2049,7 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
           disabled: e.saving,
           onClick: d[7] || (d[7] = (r) => o("cancel"))
         }, {
-          default: y(() => [...d[13] || (d[13] = [
+          default: f(() => [...d[13] || (d[13] = [
             N("Cancel", -1)
           ])]),
           _: 1
@@ -2061,8 +2059,8 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
           icon: "tabler:device-floppy",
           loading: e.saving
         }, {
-          default: y(() => [
-            N(S(e.saving ? "Saving" : "Save provider"), 1)
+          default: f(() => [
+            N(x(e.saving ? "Saving" : "Save provider"), 1)
           ]),
           _: 1
         }, 8, ["loading"])
@@ -2084,4 +2082,4 @@ export {
   an as j,
   nt as s
 };
-//# sourceMappingURL=ProviderProfileEditor.vue_vue_type_script_setup_true_lang-CIcOG-gh.js.map
+//# sourceMappingURL=ProviderProfileEditor.vue_vue_type_script_setup_true_lang-ZRGEU-eL.js.map

@@ -12,6 +12,7 @@ entries:
       http_errors: kickside.contract:http_errors
       llm_mapper: wippy.llm.openai_compat:mapper
       llm_output: wippy.llm:output
+      llm_transport: wippy.llm.util:transport
 
   - name: mapper
     kind: library.lua

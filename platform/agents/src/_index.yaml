@@ -35,11 +35,15 @@ entries:
         path: .meta.router
       - entry: kickside.agents.api:agents_by_name.endpoint
         path: .meta.router
+      - entry: kickside.agents.api:agent_details.endpoint
+        path: .meta.router
       - entry: kickside.agents.api:list_traits.endpoint
         path: .meta.router
       - entry: kickside.agents.api:list_namespaces.endpoint
         path: .meta.router
       - entry: kickside.agents.api:list_tools.endpoint
+        path: .meta.router
+      - entry: kickside.agents.api:tools_by_name.endpoint
         path: .meta.router
       - entry: kickside.agents.api:list_memory_options.endpoint
         path: .meta.router
@@ -286,6 +290,8 @@ entries:
     meta:
       comment: Canonical helpers for user-agent references (user_agent:<component_id>).
     source: file://agent_ref.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: checkpoint_policy
     kind: library.lua

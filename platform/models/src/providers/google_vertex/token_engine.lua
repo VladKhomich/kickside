@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local base64 = require("base64")
 local crypto = require("crypto")
 local env = require("env")
@@ -25,11 +26,6 @@ local DIRECT_TOKEN_TTL_SECONDS = 600
 local GRANT_TYPE = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 local SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 local TOKEN_TIMEOUT_SECONDS = 300
-
-local function trim(value)
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function resolve_value(context: any, key: string): string?
     context = type(context) == "table" and context or {}

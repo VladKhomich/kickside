@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.85](https://github.com/kicksideai/kickside/compare/jobs-v0.1.84...jobs-v0.1.85) (2026-11-19)
+
+
+### Features
+
+* **jobs:** allow demand to advance optional rearm deadlines ([#561](https://github.com/kicksideai/kickside/issues/561)) ([5bdfdbf](https://github.com/kicksideai/kickside/commit/5bdfdbf630afbc77405b42702a0d32908d67f137))
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.1.84](https://github.com/kicksideai/kickside/compare/jobs-v0.1.83...jobs-v0.1.84) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** prune workers by lease liveness ([#525](https://github.com/kicksideai/kickside/issues/525)) ([5108208](https://github.com/kicksideai/kickside/commit/5108208556e4085cf25734a5f8d0eb24b76ca383))
+* **models:** probe first-party OpenAI generation through Responses ([#559](https://github.com/kicksideai/kickside/issues/559)) ([2e3eea9](https://github.com/kicksideai/kickside/commit/2e3eea93c4eddae321e27f8b34f87ae9d28e2ca8))
+
+## [0.1.83](https://github.com/kicksideai/kickside/compare/jobs-v0.1.82...jobs-v0.1.83) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound pool shutdown without interrupting planned drains ([#552](https://github.com/kicksideai/kickside/issues/552)) ([d18abd2](https://github.com/kicksideai/kickside/commit/d18abd2fb96215dc025542ed232fd93ca1e2324e))
+* **jobs:** bound retention pages across blocked history ([#517](https://github.com/kicksideai/kickside/issues/517)) ([286818c](https://github.com/kicksideai/kickside/commit/286818ca89dc00d3d645a469675f2aa867f7f370))
+* **jobs:** close the run of a cancelled execution when cancellation settles ([#526](https://github.com/kicksideai/kickside/issues/526)) ([452a15e](https://github.com/kicksideai/kickside/commit/452a15e51c0268cf1f435b9393e19969bc1ee2d4))
+* **jobs:** keep the runtime policy readable during live upgrades ([#567](https://github.com/kicksideai/kickside/issues/567)) ([201033d](https://github.com/kicksideai/kickside/commit/201033dd8305b502e46a88dd57fd29dcb9022048))
+* **jobs:** preserve running executions on pool cancellation ([#564](https://github.com/kicksideai/kickside/issues/564)) ([f48642e](https://github.com/kicksideai/kickside/commit/f48642eb20431096508f754209b48e3ab84c67ae))
+
 ## [0.1.82](https://github.com/kicksideai/kickside/compare/jobs-v0.1.81...jobs-v0.1.82) (2026-11-17)
 
 

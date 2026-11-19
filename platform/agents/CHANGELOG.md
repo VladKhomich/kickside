@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.21](https://github.com/kicksideai/kickside/compare/agents-v0.2.20...agents-v0.2.21) (2026-11-19)
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.2.20](https://github.com/kicksideai/kickside/compare/agents-v0.2.19...agents-v0.2.20) (2026-11-19)
+
+
+### Bug Fixes
+
+* **agents:** fit the default output budget to the selected model ([#572](https://github.com/kicksideai/kickside/issues/572)) ([428571c](https://github.com/kicksideai/kickside/commit/428571c9104a19aad80e36ba6dcce37fe5f78fc9))
+
+## [0.2.19](https://github.com/kicksideai/kickside/compare/agents-v0.2.18...agents-v0.2.19) (2026-11-19)
+
+
+### Bug Fixes
+
+* **agents:** keep HTML artifact validation bounded to the prefix ([#568](https://github.com/kicksideai/kickside/issues/568)) ([2a3e46f](https://github.com/kicksideai/kickside/commit/2a3e46f915d2b203fb2c37f0def08ab9b6341238))
+* **agents:** serve Web Host agent and tool details ([#577](https://github.com/kicksideai/kickside/issues/577)) ([ccbdcfe](https://github.com/kicksideai/kickside/commit/ccbdcfeafeaca5e7b3436caffe6bf5687500ca5d))
+
 ## [0.2.18](https://github.com/kicksideai/kickside/compare/agents-v0.2.17...agents-v0.2.18) (2026-11-16)
 
 

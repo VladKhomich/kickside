@@ -354,7 +354,7 @@ function jobs.health(): (table?, error?)
         local policy, policy_err = runtime_policy.resolve()
         if policy_err then return nil, policy_err end
         if type(policy) ~= "table" then return nil, response_error("health.policy") end
-        local fresh_seconds = (policy :: any).lease_timeout_seconds
+        local fresh_seconds = cfg.worker_liveness(policy)
         local now = clock.now(dbtype)
         local fresh_predicate = dbtype == sql.type.POSTGRES
             and "p.last_seen_at > CAST($1 AS TIMESTAMPTZ) - ($2 * INTERVAL '1 second')"

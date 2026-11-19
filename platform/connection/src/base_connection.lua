@@ -40,10 +40,7 @@ type StatusResult = {
     updated_at: string?,
 }
 
-function M.trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+M.trim = require("text_trim").trim
 
 -- Plan worker ownership from the committed connection snapshot. Tokens are
 -- compared at spawn boundaries because a running transport caches its credential.

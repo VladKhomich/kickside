@@ -35,6 +35,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.models.migrations:05_optional_model_limits
         path: .meta.target_db
+      - entry: kickside.models.migrations:06_unset_zero_profile_timeouts
+        path: .meta.target_db
       - entry: kickside.models:db_config
         path: .meta.db_id
       - entry: kickside.models.catalog:catalog_database
@@ -191,8 +193,8 @@ entries:
       timeout:
         default_env: OPENAI_COMPAT_TIMEOUT
         default_value: 600
-        description: Request timeout in seconds.
-        type: integer
+        description: Positive request timeout in seconds. Omit to use the provider default.
+        type: number
       retry:
         description: Provider-level retry policy for transient transport/provider failures.
         type: object
@@ -371,7 +373,7 @@ entries:
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
-    version: '>=0.3.8'
+    version: '>=0.3.9'
 
   - name: encryption_key
     kind: ns.requirement

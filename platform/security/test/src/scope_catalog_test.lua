@@ -40,6 +40,29 @@ local function define_tests()
                 test.is_false(p.private == true)
             end
         end)
+
+        test.it("offers only declared module and tool permissions by exact id", function()
+            local by_id = {}
+            local intents = {module_access = true, module_management = true, tool_access = true}
+            for _, policy in ipairs(assert(scope_catalog.policies({ assignable = true }))) do
+                test.is_true(intents[policy.intent] == true, "Unexpected permission: " .. policy.id)
+                test.is_false(policy.private)
+                test.is_true(policy.title ~= policy.id and policy.title:find("%S") ~= nil)
+                test.is_nil(by_id[policy.id])
+                by_id[policy.id] = policy
+            end
+            test.is_nil(by_id["app:sample_service"])
+            test.is_nil(by_id["app:sample_infrastructure"])
+            test.is_nil(by_id["kickside.contract.security:module_access"])
+            test.is_nil(by_id["kickside.execution.security:module_access"])
+            test.eq(by_id["app:module_access"].title, "Module access")
+            test.eq(by_id["app:module_access"].comment, "Opens the sample module.")
+            test.eq(by_id["app:manage_samples"].title, "Sample management")
+            test.eq(by_id["app:manage_samples"].comment, "Manages sample records.")
+            test.not_nil(by_id["app:sample_tool"])
+            test.eq(by_id["app:sample_tool"].title, "Sample tools")
+            test.eq(by_id["app:sample_tool"].comment, "Runs sample tools.")
+        end)
     end)
 end
 

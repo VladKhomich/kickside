@@ -12,6 +12,7 @@ entries:
     source: file://agent_invoke.lua
     modules: [contract, json, registry, security]
     imports:
+      text_trim: kickside.contract:text_trim
       flow: userspace.dataflow.flow:flow
       component: kickside.component:component
       agent_types: kickside.agents:types
@@ -29,6 +30,7 @@ entries:
     method: write
     modules: [contract, json, registry, security]
     imports:
+      text_trim: kickside.contract:text_trim
       flow: userspace.dataflow.flow:flow
       component: kickside.component:component
       agent_types: kickside.agents:types
@@ -46,6 +48,7 @@ entries:
     method: invoke
     modules: [contract, json, registry, security]
     imports:
+      text_trim: kickside.contract:text_trim
       flow: userspace.dataflow.flow:flow
       component: kickside.component:component
       agent_types: kickside.agents:types

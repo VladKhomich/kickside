@@ -8,6 +8,8 @@
 -- pick and a mapping draft); the model is threaded from the flow input so it stays
 -- tunable.
 
+local trim = require("text_trim").trim
+local unfence = require("unfence").unfence
 local json = require("json")
 local production_prompt = require("prompt")
 local production_llm = require("llm")
@@ -23,19 +25,6 @@ local M = {}
 type Map = { [string]: any }
 
 local DEFAULT_MODEL = "class:fast"
-
-local function trim(v: any): string
-    if type(v) ~= "string" then return "" end
-    return ((v :: string):gsub("^%s+", ""):gsub("%s+$", ""))
-end
-
--- Strip markdown code fences an LLM may wrap around a bare expression/prompt.
-local function unfence(text: string): string
-    local t = trim(text)
-    local body = t:match("^```[%w]*%s*(.-)%s*```$")
-    if body then return trim(body) end
-    return t
-end
 
 local function resp_text(resp: any, err: any): string
     if err then error(err) end

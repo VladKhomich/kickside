@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local logger = require("logger"):named("kickside.channel.bridge")
 local time = require("time")
 local channel = require("channel")
@@ -26,10 +27,6 @@ local MIN_RUNTIME_IDLE_SECONDS = 60
 local MAX_RUNTIME_IDLE_SECONDS = 24 * 60 * 60
 
 type Map = { [string]: any }
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- The public bridge boundary applies the declared idle-policy default and
 -- bounds timer values to the supported interval.
@@ -282,7 +279,6 @@ local function prepare_session_turn(params: any): any
         id = source_event and (source_event :: Map).id or nil,
     }
 end
-
 
 return {
     trim = trim,

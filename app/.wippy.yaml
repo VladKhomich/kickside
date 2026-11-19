@@ -161,6 +161,7 @@ workspace:
     kickside/connection: ../platform/connection
     kickside/contract: ../core/contract
     kickside/core: ../core/core
+    kickside/execution: ../core/execution
     kickside/jobs: ../core/jobs
     kickside/sso: ../../components/sso
     kickside/sso-google: ../../providers/sso-google

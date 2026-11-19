@@ -2,10 +2,7 @@ local test_state = require("test_state")
 
 local M = {}
 
-function M.trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+M.trim = require("text_trim").trim
 
 function M.normalize(args: any, opts: any): (any?, string?)
     if type(args) ~= "table" then return nil, "invalid inbound" end

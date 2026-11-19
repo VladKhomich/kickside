@@ -56,6 +56,16 @@ entries:
       test: wippy.test:test
       writable_sink: kickside.data:writable_sink
 
+  - name: text_trim_test
+    kind: function.lua
+    meta: { type: test, suite: kickside_contract }
+    source: file://text_trim_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      text_trim: kickside.contract:text_trim
+      unfence: kickside.contract:unfence
+
   - name: db
     kind: db.sql.sqlite
     foreign_keys: true

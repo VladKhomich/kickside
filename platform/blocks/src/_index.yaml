@@ -22,7 +22,7 @@ entries:
     meta:
       comment: The canonical JSON codec Flow artifact checksums encode through.
     component: kickside/contract
-    version: "*"
+    version: '>=0.3.9'
 
   - name: blocks
     kind: library.lua
@@ -59,6 +59,7 @@ entries:
     source: file://flow_contract.lua
     modules: [json]
     imports:
+      text_trim: kickside.contract:text_trim
       canonical_json: kickside.contract:canonical_json
 
   - name: lower

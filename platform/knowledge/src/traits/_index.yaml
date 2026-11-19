@@ -348,7 +348,7 @@ entries:
       mcp: { required_scopes: [state.read] }
       title: Ask Knowledge Base
       llm_alias: AskKB
-      llm_description: "Ask a question of one knowledge base and get a grounded answer plus the source passages it relied on. Failures return no result and a typed tool error with a clear message."
+      llm_description: "Ask a question of one knowledge base and get a grounded answer with source passages, or cited query results when answers are disabled or the default answer class has no models. Failures return a typed tool error."
       input_schema: |
         {
           "type": "object",
@@ -365,11 +365,12 @@ entries:
           "required": ["success", "answer", "count", "sources"],
           "properties": {
             "success": {"type": "boolean", "const": true},
-            "answer": { "type": "string", "description": "The grounded answer text; empty when retrieval found no passages or synthesis returned no text." },
+            "mode": { "type": "string", "const": "query", "description": "Present when Ask returns query results without answer generation." },
+            "answer": { "type": "string", "description": "The grounded answer, or the reason and numbered source passages in query mode. In answer mode, empty when retrieval finds no passages." },
             "count": { "type": "integer", "description": "Number of source passages." },
             "sources": {
               "type": "array",
-              "description": "The source passages the answer relied on, each the engine's full item: id, content, similarity and meta.",
+              "description": "The ranked source passages, in citation order.",
               "items": { "type": "object" }
             }
           }

@@ -33,6 +33,7 @@ entries:
     source: file://support.lua
     modules: [json]
     imports:
+      text_trim: kickside.contract:text_trim
       canonical_json: kickside.contract:canonical_json
       execution_identity: kickside.execution:execution_identity
       types: kickside.automation:types
@@ -49,6 +50,7 @@ entries:
       comment: "Automation declaration validation: install results, rollback chains and the declared main source."
     source: file://declaration.lua
     imports:
+      text_trim: kickside.contract:text_trim
       types: kickside.automation:types
       drive: kickside.automation:drive
 

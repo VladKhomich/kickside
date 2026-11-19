@@ -8,10 +8,7 @@ local M = {}
 M.default_model = "class:fast"
 M.default_prompt = "Summarize the item as concise plain text."
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return ((value :: string):gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 type Map = { [string]: any }
 

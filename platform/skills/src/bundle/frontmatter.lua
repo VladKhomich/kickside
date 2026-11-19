@@ -12,9 +12,7 @@ local M = {}
 type Frontmatter = { [string]: any }
 
 -- Trim ASCII whitespace from both ends of a string.
-local function trim(s: string): string
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 M.trim = trim
 
 -- Strip a single pair of matching surrounding quotes from a scalar value.

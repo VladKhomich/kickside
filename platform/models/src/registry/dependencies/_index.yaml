@@ -2,10 +2,10 @@ version: "1.0"
 namespace: kickside.models
 entries:
   - name: dep.wippy.llm
-    version: '*'
+    version: '>=0.5.14'
     kind: ns.dependency
     meta:
-      comment: Large language model calls for transform and agent work.
+      comment: Language model calls and the provider timeout parser.
     component: wippy/llm
 
   - name: dep.wippy.migration

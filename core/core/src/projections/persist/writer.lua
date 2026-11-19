@@ -1,5 +1,6 @@
 -- The projection write boundary. Registration and control share one cursor;
 -- jobs owns dispatch, leases, retries and wake demand.
+local trim = require("text_trim").trim
 local sql = require("sql")
 local sql_boundary = require("sql_boundary")
 local error_envelope = require("error_envelope")
@@ -22,10 +23,6 @@ local M = {
 M._modules = {} :: { [string]: any }
 local function failure(message: string, kind: string): error
     return (errors.new({ message = message, kind = kind }) :: error)
-end
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 local function transaction_response(field: string): error
     return errors.new({kind = errors.INTERNAL, retryable = false,

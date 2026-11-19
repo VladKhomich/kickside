@@ -1,7 +1,5 @@
--- GET /security/policies — the policy catalog (the grants a scope can include),
--- for the scope editor's policy picker. Internal policies excluded unless
--- ?include_internal=true. Admin-only via firewall and an explicit endpoint access
--- check.
+-- GET /security/policies — policy inventory and the role editor's assignable
+-- permissions. Admin-only via firewall and an explicit endpoint access check.
 
 local http = require("http")
 local api_errors = require("api_errors")
@@ -20,8 +18,10 @@ local function handler()
         return api_errors.write(res, http.STATUS.FORBIDDEN, api_errors.denied())
     end
 
-    local include_private = req:query("include_private") == "true"
-    local policies, read_err = catalog.policies({ include_private = include_private })
+    local policies, read_err = catalog.policies({
+        assignable = req:query("assignable") == "true",
+        include_private = req:query("include_private") == "true",
+    })
     if read_err then return api_errors.write(res, http.STATUS.INTERNAL_ERROR, read_err) end
     return api_errors.respond(res, http.STATUS.OK, { success = true, policies = policies })
 end

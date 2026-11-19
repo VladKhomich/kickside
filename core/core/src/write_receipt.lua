@@ -27,10 +27,7 @@ local STATE_COMMITTED = "committed"
 local STATE_RESERVED = "reserved"
 local STATE_UNRESOLVED = "unresolved"
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function invalid(message: string): any
     return (errors.new({ message = message, kind = errors.INVALID }) :: any)

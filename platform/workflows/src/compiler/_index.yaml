@@ -17,12 +17,15 @@ entries:
     kind: library.lua
     meta: { comment: "Edge predicate -> engine expr DSL (output/state field-ref binding), with negation + disjunction for else fan-out." }
     source: file://conditions.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: graph
     kind: library.lua
     meta: { comment: "Canvas document -> validated IR — Start entry, reachability, acyclicity, convergence classification, allowlist freeze." }
     source: file://graph.lua
     imports:
+      text_trim: kickside.contract:text_trim
       retry: userspace.dataflow:retry
       blocks: kickside.blocks:blocks
       graph_start: kickside.workflows.compiler:graph_start

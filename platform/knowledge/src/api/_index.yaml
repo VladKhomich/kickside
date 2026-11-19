@@ -22,6 +22,7 @@ entries:
     source: file://list_kb.lua
     modules: [http, json, security, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       deletion_progress: kickside.component:deletion_progress
       component: kickside.component:component
       engines: kickside.knowledge:engines
@@ -235,6 +236,7 @@ entries:
     source: file://ingest_upload.lua
     modules: [contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       engines: kickside.knowledge:engines
       component: kickside.component:component
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo

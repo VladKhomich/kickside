@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local user_groups_repo = require("user_groups_repo")
 
 -- kickside.contract:group_members implementation, near users. Expands a security
@@ -9,11 +10,6 @@ local M = {}
 local PAGE = 500
 -- Defensive bound so a pathological membership/backend can never spin forever.
 local MAX_PAGES = 2000
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 function M.members(args: any): any
     local group_id = type(args) == "table" and trim((args :: any).group_id) or ""

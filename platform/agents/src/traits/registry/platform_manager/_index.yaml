@@ -40,6 +40,7 @@ entries:
     source: file://../../platform_manager_support.lua
     modules: [contract, funcs, security]
     imports:
+      text_trim: kickside.contract:text_trim
       agent_ref: kickside.agents:agent_ref
 
   - name: platform_manager_discovery

@@ -9,6 +9,7 @@ entries:
     method: bind_describe
     modules: [json]
     imports:
+      text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt
       strategy_reference: kickside.transform:strategy_reference
@@ -33,6 +34,7 @@ entries:
     method: bind_apply
     modules: [funcs, security]
     imports:
+      text_trim: kickside.contract:text_trim
       strategy_reference: kickside.transform:strategy_reference
 
   - name: strategy_code_describe
@@ -43,6 +45,7 @@ entries:
     method: bind_describe
     modules: [funcs, security]
     imports:
+      text_trim: kickside.contract:text_trim
       strategy_reference: kickside.transform:strategy_reference
 
   - name: strategy_code_binding
@@ -65,6 +68,7 @@ entries:
     method: bind_apply
     modules: [funcs, security]
     imports:
+      text_trim: kickside.contract:text_trim
       strategy_reference: kickside.transform:strategy_reference
 
   - name: strategy_func_describe
@@ -75,6 +79,7 @@ entries:
     method: bind_describe
     modules: [funcs, security]
     imports:
+      text_trim: kickside.contract:text_trim
       strategy_reference: kickside.transform:strategy_reference
 
   - name: strategy_func_binding

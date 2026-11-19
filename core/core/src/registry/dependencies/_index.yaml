@@ -21,7 +21,7 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.9'
     kind: ns.dependency
     meta:
       comment: Implements the shared component and deletable contracts.

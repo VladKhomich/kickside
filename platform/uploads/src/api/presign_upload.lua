@@ -101,9 +101,6 @@ local function handler()
         return
     end
 
-    -- Get content type or default to octet-stream
-    local mime_type = body.content_type or "application/octet-stream"
-
     -- Set expiration for presigned URL (default: 15 minutes)
     local expires_in = body.expires_in or upload_types.DEFAULT_PRESIGN_EXPIRES_SECONDS
 
@@ -126,7 +123,7 @@ local function handler()
         actor_id,
         body.filename,
         body.size,
-        mime_type,
+        body.content_type,
         expires_in,
         metadata
     )

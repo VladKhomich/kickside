@@ -9,6 +9,8 @@ local records = require("records")
 local provision = require("provision")
 local types = require("types")
 local artifacts = require("artifacts")
+local artifact_parts = require("artifact_parts")
+local reader = require("reader")
 
 local owner, stranger, delete_owner, corrupt_owner, cleanup_owner
 local owner_component, delete_component, corrupt_component, cleanup_component
@@ -114,7 +116,9 @@ return {run = test.run_cases(function()
         end)
         test.after_all(function()
             if not volume then return end
-            if uploads.normal then volume:remove(uploads.normal) end
+            for _, name in ipairs({"normal", "legacy_table", "large_table"}) do
+                if uploads[name] then assert(volume:remove(uploads[name])) end
+            end
             local db = assert(sql.get("app:db"))
             for _, id in ipairs(seeded) do
                 local _, err = db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", {id})
@@ -241,6 +245,19 @@ return {run = test.run_cases(function()
             test.is_false(err:retryable())
             test.eq(err:details().field, "kickside_uploads.metadata")
         end)
+        for _, raw in ipairs({false, true}) do
+            test.it("honors a byte limit on the " .. (raw and "raw" or "default") .. " original read", function()
+                local value, err = invoke("get_content", {upload_id = uploads.normal}, nil,
+                    {format = raw and "raw" or nil, max_size = 3})
+                test.is_nil(err, tostring(err))
+                test.is_true(value.success)
+                test.eq(value.content, "byt")
+                test.eq(value.size, 3)
+                test.eq(value.total_size, 5)
+                test.is_true(value.truncated)
+            end)
+        end
+
         test.it("content reports absent extracted artifacts", function()
             local value, err = invoke("get_content", {upload_id = uploads.normal}, nil, {extracted_only = true})
             test.is_nil(err, tostring(err))
@@ -248,6 +265,305 @@ return {run = test.run_cases(function()
             test.eq(value.state, "unreadable")
             check(value.error, errors.NOT_FOUND, "artifact_read_failed")
             test.eq(value.error:message(), "extracted text is not available: primary content artifact not found")
+            test.is_nil(value.error:retryable())
+            local cause = value.error:details().cause
+            test.eq(cause.details.code, "primary_artifact_missing")
+            test.eq(cause.details.upload_id, uploads.normal)
+            test.is_nil(cause.details.artifact_id)
+        end)
+        test.it("keeps native database errors when artifact queries fail", function()
+            local id = uploads.normal
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("ALTER TABLE kickside_upload_artifact_blobs RENAME TO unavailable_artifact_blobs"))
+            local _, native = db:query("SELECT blob_id FROM kickside_upload_artifact_blobs")
+            local primary_ok, primary, primary_err = pcall(artifact_parts.read_primary_content, id)
+            local list_ok, found, list_err = pcall(artifact_parts.list_artifacts, id)
+            local blob_ok, blob, blob_err = pcall(artifacts.read_blob, id)
+            local artifact_ok, artifact, artifact_err = pcall(artifacts.read_artifact_content, id, id)
+            assert(db:execute("ALTER TABLE unavailable_artifact_blobs RENAME TO kickside_upload_artifact_blobs"))
+            db:release()
+
+            test.not_nil(native)
+            test.is_true(primary_ok, tostring(primary))
+            test.is_true(blob_ok, tostring(blob))
+            test.is_true(artifact_ok, tostring(artifact))
+            test.is_nil(primary)
+            test.is_nil(blob)
+            test.is_nil(artifact)
+            test.is_true(list_ok, tostring(found))
+            test.is_nil(found)
+            for _, failure in ipairs({
+                {operation = "primary", error = primary_err},
+                {operation = "list", error = list_err},
+                {operation = "blob", error = blob_err},
+                {operation = "artifact", error = artifact_err},
+            }) do
+                local err = failure.error
+                test.eq(type(err), "userdata", failure.operation .. ": " .. tostring(err))
+                check(err, native:kind())
+                test.eq(err:retryable(), native:retryable())
+                test.contains(tostring(err), "kickside_upload_artifact_blobs")
+            end
+        end)
+        for _, backing in ipairs({"blob", "locator"}) do
+            test.describe(backing .. " artifact reads", function()
+                local id, artifact, path
+                local bytes = "artifact bytes"
+
+                local function set_location(storage_id, storage_path)
+                    if artifact.blob_id then
+                        local db = assert(sql.get("app:db"))
+                        local _, err = db:execute([[UPDATE kickside_upload_artifact_blobs
+                            SET storage_id=$1, storage_path=$2 WHERE blob_id=$3]],
+                            {storage_id, storage_path, artifact.blob_id})
+                        db:release()
+                        test.is_nil(err, tostring(err))
+                    else
+                        update(id, "storage_id", storage_id)
+                        update(id, "storage_path", storage_path)
+                    end
+                end
+
+                test.before_each(function()
+                    seed(backing .. " read")
+                    id = uploads[backing .. " read"]
+                    artifact = assert(artifacts.create_artifact({
+                        upload_id = id, kind = "text", role = "primary", mime_type = "text/plain",
+                        content = backing == "blob" and bytes or nil,
+                        locator = {type = "upload.original"},
+                    }))
+                    if artifact.blob_id then
+                        path = assert(artifacts.get_blob(artifact.blob_id)).storage_path
+                    else
+                        path = id
+                        assert(volume:writefile(path, bytes))
+                    end
+                end)
+
+                test.after_each(function()
+                    local db = assert(sql.get("app:db"))
+                    assert(db:execute("DELETE FROM kickside_upload_artifacts WHERE artifact_id=$1", {artifact.artifact_id}))
+                    if artifact.blob_id then
+                        assert(db:execute("DELETE FROM kickside_upload_artifact_blobs WHERE blob_id=$1", {artifact.blob_id}))
+                    end
+                    db:release()
+                    assert(volume:remove(path))
+                end)
+
+                test.it("preserves the storage fault and reads the bytes after it clears", function()
+                    set_location("app.upload_errors:unreadable_storage", path)
+                    local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    set_location("app:uploads", path)
+                    local recovered, recovery_err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    test.is_nil(recovery_err, tostring(recovery_err))
+                    test.eq(recovered, bytes)
+                    test.is_nil(content)
+                    check(err, errors.UNAVAILABLE)
+                    test.is_true(err:retryable())
+                    test.contains(tostring(err), "upload test storage read failed")
+                end)
+
+                test.it("preserves storage kinds independently of diagnostic text", function()
+                    local function read_failure(storage_id, storage_path)
+                        set_location(storage_id, storage_path)
+                        local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                        test.is_nil(content)
+                        test.not_nil(err)
+                        return err
+                    end
+                    local unavailable = read_failure("app.upload_errors:unreadable_storage", path)
+                    local invalid = read_failure("app.upload_errors:invalid_storage", path)
+                    local other = read_failure("app.upload_errors:unreadable_storage", path .. ".different")
+                    test.eq(unavailable:message(), invalid:message())
+                    test.is_true(unavailable:message() ~= other:message())
+                    check(unavailable, errors.UNAVAILABLE, "upload_test_storage_unavailable")
+                    check(other, errors.UNAVAILABLE, "upload_test_storage_unavailable")
+                    check(invalid, errors.INVALID, "upload_test_storage_invalid")
+                    test.is_true(unavailable:retryable())
+                    test.is_true(other:retryable())
+                    test.is_false(invalid:retryable())
+                end)
+
+                test.it("reports missing backing bytes as not found", function()
+                    set_location("app:uploads", path .. ".missing")
+                    local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    test.is_nil(content)
+                    check(err, errors.NOT_FOUND)
+                    test.is_false(err:retryable() == true)
+
+                    local _, foreign = artifacts.read_artifact_content(uploads.normal, artifact.artifact_id)
+                    local _, absent = artifacts.read_artifact_content(id, uuid.v4())
+                    check(foreign, errors.NOT_FOUND, "artifact_reference_not_found")
+                    check(absent, errors.NOT_FOUND, "artifact_reference_not_found")
+                    test.is_true((err:details() or {}).code ~= "artifact_reference_not_found")
+                end)
+
+                test.it("distinguishes an unregistered volume from missing backing bytes", function()
+                    for _, location in ipairs({
+                        {storage_id = "app:unregistered_volume", path = path},
+                        {storage_id = "app:uploads", path = "fs://app:unregistered_volume/" .. path},
+                    }) do
+                        set_location(location.storage_id, location.path)
+                        local content, read_err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                        test.is_nil(content)
+                        check(read_err, errors.UNAVAILABLE, "storage_unavailable")
+                        test.eq(read_err:details().cause.kind, errors.NOT_FOUND)
+
+                        local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+                        test.is_nil(err, tostring(err))
+                        test.is_false(value.success)
+                        test.eq(value.error:kind(), errors.UNAVAILABLE)
+                        local cause = value.error:details().cause
+                        test.eq(cause.details.code, "storage_unavailable")
+                        test.eq(cause.details.artifact_id, artifact.artifact_id)
+                        test.is_nil(cause.details.cause)
+                    end
+                end)
+
+                test.it("reports malformed stored locations as invalid", function()
+                    set_location("app:uploads", backing == "blob" and "fs://" or "")
+                    local content, err = artifacts.read_artifact_content(id, artifact.artifact_id)
+                    test.is_nil(content)
+                    check(err, errors.INVALID)
+                    if backing == "blob" then
+                        test.is_false(err:retryable())
+                    else
+                        test.is_nil(err:retryable())
+                    end
+                end)
+
+                test.it("extracted-only content preserves storage acquisition errors", function()
+                    for _, fixture in ipairs({
+                        {storage = "app.upload_errors:unavailable_storage", code = "artifact_read_failed"},
+                        {storage = "app.upload_errors:legacy_storage", code = "storage_unavailable"},
+                    }) do
+                        set_location(fixture.storage, path)
+                        local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+                        test.is_nil(err, tostring(err))
+                        test.is_false(value.success)
+                        test.eq(value.state, "unreadable")
+                        check(value.error, errors.UNAVAILABLE, fixture.code)
+                        test.is_true(value.error:retryable())
+                        test.eq(value.error:message(), "extracted text is not available")
+                        local cause = value.error:details().cause
+                        test.eq(cause.kind, errors.UNAVAILABLE)
+                        test.is_true(cause.retryable)
+                        test.eq(cause.message, value.error:message())
+                        test.eq(cause.details.upload_id, id)
+                        test.eq(cause.details.artifact_id, artifact.artifact_id)
+                        test.is_nil(value.error:details().operation)
+                        test.is_nil(cause.details.cause)
+                    end
+                end)
+
+                for _, fixture in ipairs({
+                    {name = "invalid storage path", kind = errors.INVALID, path = "fs://", retryable = false,
+                        cause_code = "invalid_storage_path", diagnostic = "Packed storage path requires an entry id and path"},
+                    {name = "missing backing bytes", kind = errors.NOT_FOUND, path = "private/missing.txt",
+                        diagnostic = "private/missing.txt"},
+                    {name = "unavailable storage", kind = errors.UNAVAILABLE, path = "s3://private/unavailable.txt?token=fixture-secret",
+                        retryable = true, storage_id = "app.upload_errors:unreadable_storage", diagnostic = "fixture-secret"},
+                }) do
+                    test.it("extracted-only content preserves the public error for " .. fixture.name, function()
+                        set_location(fixture.storage_id or "app:uploads", fixture.path)
+                        local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+                        test.is_nil(err, tostring(err))
+                        test.is_false(value.success)
+                        test.eq(value.state, "unreadable")
+                        check(value.error, fixture.kind, "artifact_read_failed")
+                        local target = backing == "blob" and "blob" or "bytes"
+                        local public_message = "failed to read artifact " .. target
+                        test.eq(value.error:message(), "extracted text is not available: " .. public_message)
+                        test.eq(value.error:retryable(), fixture.retryable)
+                        local native = value.error:details().cause
+                        test.eq(native.kind, fixture.kind)
+                        test.eq(native.retryable, fixture.retryable)
+                        test.is_nil(native.message:find(fixture.diagnostic, 1, true))
+                        test.eq(native.message, public_message)
+                        local public_details = {
+                            code = fixture.cause_code,
+                            upload_id = id,
+                            artifact_id = artifact.artifact_id,
+                        }
+                        for key, expected in pairs(public_details) do test.eq(native.details[key], expected) end
+                        for key, actual in pairs(native.details) do test.eq(actual, public_details[key], key) end
+                        test.is_nil(value.error:details().operation)
+                    end)
+                end
+            end)
+        end
+        test.it("reads an existing binary-labelled table as extracted text", function()
+            seed("legacy_table")
+            local id = uploads.legacy_table
+            local mime = "application/octet-stream"
+            local bytes = "item\tquantity\nPencils\t12\n"
+            update(id, "mime_type", mime)
+            update(id, "metadata", '{"filename":"inventory.tsv"}')
+            assert(volume:writefile(id, bytes))
+            local artifact = assert(artifacts.create_artifact({
+                upload_id = id, kind = "table", role = "primary", mime_type = mime,
+                locator = {type = "upload.original"}, metadata = {delimiter = "tab"},
+            }))
+
+            local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+            test.is_nil(err, tostring(err))
+            test.eq(value.state, "ready")
+            test.eq(value.content, bytes)
+            test.eq(value.artifact_id, artifact.artifact_id)
+            test.eq(value.content_type, "text/tab-separated-values")
+            local info = assert(invoke("get_info", {upload_id = id}))
+            test.eq(info.content_type, value.content_type)
+        end)
+        test.it("reads only a bounded prefix of a 100 MiB legacy table", function()
+            seed("large_table")
+            local id = uploads.large_table
+            local mime = "application/octet-stream"
+            local block = ("a\tb\n"):rep(256 * 1024)
+            local size = #block * 100
+            update(id, "mime_type", mime)
+            update(id, "metadata", '{"filename":"large.tsv"}')
+            update(id, "size", size)
+            local file = assert(volume:open(id, "w"))
+            for _ = 1, 100 do assert(file:write(block)) end
+            assert(file:close())
+            assert(artifacts.create_artifact({
+                upload_id = id, kind = "table", role = "primary", mime_type = mime,
+                locator = {type = "upload.original"},
+            }))
+
+            local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true, limit = size})
+            test.is_nil(err, tostring(err))
+            test.is_true(value.success, tostring(value.error))
+            test.eq(value.content, block:sub(1, 24 * 1024))
+            test.eq(value.total_size, size)
+            test.is_true(value.content_truncated)
+            local trusted, trusted_err = reader.primary_text(id, 4096)
+            test.is_nil(trusted_err, tostring(trusted_err))
+            test.eq(trusted.text, block:sub(1, 4096))
+            test.eq(trusted.chars, size)
+            test.is_true(trusted.truncated)
+            for _, options in ipairs({{max_size = 32}, {format = "raw", max_size = 32}}) do
+                local content = assert(invoke("get_content", {upload_id = id}, nil, options))
+                test.eq(content.content, block:sub(1, 32))
+                test.eq(content.size, 32)
+                test.eq(content.total_size, size)
+                test.is_true(content.truncated)
+            end
+        end)
+        test.it("keeps original binary bytes out of extracted text when the linked artifact is labelled text", function()
+            seed("original_binary")
+            local id = uploads.original_binary
+            update(id, "mime_type", "image/png")
+            assert(artifacts.create_artifact({
+                upload_id = id, kind = "markdown", role = "primary", mime_type = "text/markdown",
+                locator = {type = "upload.original"},
+            }))
+            local info = assert(invoke("get_info", {upload_id = id}))
+            test.eq(info.content_type, "image/png")
+            test.is_false(info.content_description.text_available)
+            local content = assert(invoke("get_content", {upload_id = id}, nil, {extracted_only = true}))
+            test.is_false(content.success)
+            test.eq(content.state, "unreadable")
         end)
         for _, fixture in ipairs({
             { name = "blob", content = "derived bytes", metadata = {size = 101, original_size = 102, file_size = 103} },
@@ -261,7 +577,7 @@ return {run = test.run_cases(function()
                 seed(fixture.name)
                 local id = uploads[fixture.name]
                 assert(volume:writefile(id, "bytes"))
-                update(id, "mime_type", "application/pdf")
+                update(id, "mime_type", fixture.content ~= nil and "application/pdf" or "text/plain")
                 fixture.metadata.mime_type = "image/png"
                 fixture.metadata.checksum = string.rep("0", 64)
                 local artifact = assert(artifacts.create_artifact({
