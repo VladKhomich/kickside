@@ -16,6 +16,7 @@ function M.reset()
 end
 
 M.MILLISECOND, M.RFC3339, M.utc, M.parse = time.MILLISECOND, time.RFC3339, time.utc, time.parse
+M.new = native.new
 
 function M.now(): any return M.at or time.now() end
 

@@ -140,6 +140,10 @@ eligibility change. Grant the producer the existing
 authority. The notification lets a new earlier deadline rearm an idle sweeper;
 a missing sweeper discovers durable work on its boot recovery pass.
 
+The sweeper receives lifecycle events during retention work and handles queued
+control events before the next wake. On cancellation it releases its database
+handle and listeners. Boot recovery picks up durable work after restart.
+
 ## Testing
 
 From the module root:
