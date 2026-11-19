@@ -119,6 +119,7 @@ entries:
     source: file://component_query.lua
     modules:
       - sql
+      - security
     imports:
       access_subjects: kickside.component.persist:access_subjects
       component_types: kickside.component:types

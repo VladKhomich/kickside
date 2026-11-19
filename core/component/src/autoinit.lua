@@ -199,6 +199,7 @@ local function parse_projections(raw: any): { ProjectionBinding }
     end
     return out
 end
+M.parse_projections = parse_projections
 
 local function parse_grants(raw: any): { Grant }
     if type(raw) ~= "table" then return {} end

@@ -8,6 +8,10 @@ function M.key_exists(...)
     if M.stage == "key" then return nil, M.source end
     return false, nil
 end
+function M.pending_thread_reap(...)
+    if M.stage == "reap" then return nil, M.source end
+    return M.stage == "pending_reap", nil
+end
 function M.read_node(...)
     M.reads = M.reads + 1
     return {impl_id = "app:legacy_kind", path = M.reads == 1 and "/old/" or "/parent/", position = "old-position"}, nil
