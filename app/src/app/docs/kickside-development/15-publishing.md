@@ -103,7 +103,30 @@ channel; the app shell refreshes its catalog after those events
 (`app/frontend/applications/main/src/app/app.vue`). Do not install by copying
 source into the host or editing `wippy.lock` by hand.
 
-Use **System → Modules → Update all**, review the plan, apply it, and restart from the same installation directory. Module migrations update existing data as part of the Hub update; no separate data-conversion step is required.
+On a current installation, use **System → Modules → Update all** and restart
+from the same installation directory. Module migrations update existing data
+as part of the Hub update.
+
+### Update older installations
+
+On a published installation, open **System → Modules → Installed** and check
+the versions on the `keeper/keeper` and `kickside/hub` rows. A Modules page
+served by Hub 0.1.76 can submit App and Keeper in one **Update all** request.
+If Keeper 0.5.114 or 0.5.115 handles that request, it can replace existing
+host settings even when the new App declares newer dependency floors.
+
+1. When Keeper is earlier than 0.5.116, select **Scan updates**, then
+   **Update keeper/keeper** on its row. Wait for the standalone operation to
+   finish, reload the page, and confirm **Installed** lists Keeper 0.5.116 or newer. For an
+   authenticated API check, confirm `GET /api/v1/security/projection` returns
+   `current: true`.
+2. When Hub is earlier than 0.1.77, select **Scan updates**, then
+   **Update kickside/hub** on its row. Wait for the standalone operation to
+   finish, reload the page, and confirm **Installed** lists Hub 0.1.77 or newer.
+3. Before using **Update all**, preview the App plan through **Open update
+   planner for kickside/kickside** on the App row or through Keeper's Hub API.
+   Check that it preserves the installation's root bindings and configured
+   constraints. Leave the App update unapplied if its plan omits those settings.
 
 A release that retires a stored shape includes a forward-only, idempotent,
 resumable migration in the owning module, tested against the previous published
