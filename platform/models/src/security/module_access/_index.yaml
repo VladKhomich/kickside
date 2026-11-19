@@ -109,3 +109,25 @@ entries:
     resources: [resolve]
     actions: [contract.call]
     effect: allow
+
+- name: card_registrar
+  kind: security.policy
+  meta:
+    title: Model card registration
+    comment: Grants a module the kickside.models.cards:cards contract, so it registers and retires model cards without admin HTTP.
+  groups: []
+  policy:
+    resources:
+    - kickside.models.cards:cards
+    - kickside.models.cards:cards_binding
+    - kickside.models.cards:upsert_card
+    - kickside.models.cards:disable_card
+    - upsert_card
+    - disable_card
+    actions:
+    - contract.get
+    - contract.open
+    - contract.call
+    - funcs.call
+    - funcs.security
+    effect: allow

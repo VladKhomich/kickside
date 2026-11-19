@@ -150,8 +150,7 @@ entries:
     source: file://upsert_card.lua
     modules: [http, json]
     imports:
-      models_repo: kickside.models.persist:repo
-      model_catalog: kickside.models.catalog:model_catalog
+      card_service: kickside.models.catalog:card_service
     method: handler
     security:
       policies:

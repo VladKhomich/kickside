@@ -68,3 +68,12 @@ entries:
       resources: []
       actions: [db.get]
       effect: allow
+
+  - name: card_service
+    kind: library.lua
+    meta:
+      comment: Single write path for model cards, shared by the admin handlers and the cards contract.
+    source: file://card_service.lua
+    imports:
+      model_catalog: kickside.models.catalog:model_catalog
+      models_repo: kickside.models.persist:repo
