@@ -286,7 +286,9 @@ local function define_tests()
                     test.is_true(plan:find("idx_kickside_job_lease_reap", 1, true) ~= nil, plan)
                     test.is_true(plan:find("lease_until>?", 1, true) ~= nil, plan)
                 else
-                    test.is_true(plan:find("Index Cond: (lease_until >", 1, true) ~= nil, plan)
+                    -- PostgreSQL gives the copied partial index a new name in this fixture.
+                    local lease_scan = plan:match("Index [^\n]*using kickside_job_lease_until_idx[^\n]*") or ""
+                    test.is_true(lease_scan:find("rows=1 loops=1", 1, true) ~= nil, plan)
                 end
             end
             local pending = assert(lifecycle.enqueue_job(db, dbtype, {
@@ -301,9 +303,14 @@ local function define_tests()
             test.eq(earlier_kind, "due")
             assert(db:execute("UPDATE kickside_job SET lease_until=$1 WHERE status='running'", {dispatch_at}))
             assert(db:execute("UPDATE kickside_job SET scheduled_at=$1 WHERE id=$2", {dispatch_at, pending}))
+            local expired_delay, expired_kind, expired_err = worker_pool.next_deadline(db, dbtype, dispatch_at)
+            test.is_nil(expired_err)
+            test.eq(expired_delay, 0, "the expired lease is ready for reclaim")
+            test.eq(expired_kind, "lease")
+            assert(db:execute("UPDATE kickside_job SET lease_until=NULL WHERE status='running'"))
             local none, no_kind, no_err = worker_pool.next_deadline(db, dbtype, dispatch_at)
             test.is_nil(no_err)
-            test.is_nil(none, "deadlines at the dispatch snapshot were already judged")
+            test.is_nil(none, "pending jobs at the dispatch snapshot were already considered")
             test.is_nil(no_kind)
             db:release()
         end)

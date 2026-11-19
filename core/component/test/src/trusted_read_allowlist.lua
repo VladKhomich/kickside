@@ -229,6 +229,13 @@ M.ALLOW = {
             entry = "kickside.core.threads:append_event_method",
         },
     },
+    ["core/core/src/threads/persist/thread_crud.lua"] = {
+        list_system = {
+            count = 1,
+            why = "a checked or maintenance thread attach resolves the stored kind for declaration validation, after canonical component WRITE or under the maintenance identity",
+            entry = "kickside.core.threads.persist:thread_crud",
+        },
+    },
     ["core/core/src/threads/contract/event_authorization.lua"] = {
         list_system = {
             count = 2,

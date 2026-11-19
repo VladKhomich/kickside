@@ -108,6 +108,20 @@ local function main(): (any?, error?)
         return nil, response_failure("Core retention SQL acquisition returns no database", "sql.get")
     end
 
+    -- The lifecycle channel is unbuffered. Keep a receiver waiting while
+    -- retention is busy so control events can precede the next ready wake.
+    local control = channel.new(1)
+    coroutine.spawn(function()
+        while true do
+            local event, open = process_events:receive()
+            if not open then
+                control:close()
+                return
+            end
+            control:send(event)
+        end
+    end)
+
     -- All wakes, including coalesced continuations, share the current position.
     local traversal = {}
     local initial, initial_err = runner.recover(db :: sql.DB, pid, traversal)
@@ -125,7 +139,7 @@ local function main(): (any?, error?)
     local timer_deadline: integer? = nil
     while true do
         local cases = {
-            process_events:case_receive(),
+            control:case_receive(),
             registry_events:case_receive(),
             changes:case_receive(),
             releases:case_receive(),
@@ -153,7 +167,11 @@ local function main(): (any?, error?)
         end
 
         local selected = channel.select(cases)
-        if selected.channel == process_events then
+        if selected.channel == control then
+            if selected.ok == false then
+                close(db :: sql.DB, subscription, changes, releases, timer)
+                return nil, unavailable("Core retention lifecycle channel closed", nil)
+            end
             local event = selected.value
             if type(event) == "table" and event.kind == process.event.CANCEL then
                 close(db :: sql.DB, subscription, changes, releases, timer)

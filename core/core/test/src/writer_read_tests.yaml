@@ -23,6 +23,7 @@ entries:
   modules:
   - logger
   imports:
+    event_access: kickside.core.threads:event_access
     threads_normalize: kickside.core.threads.persist:normalize
     threads_component: app:writer_read_component
     core_types: kickside.core:types

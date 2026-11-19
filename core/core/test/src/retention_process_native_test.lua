@@ -1,6 +1,9 @@
 local test = require("test")
 local source = require("source")
 local fixture = require("fixture")
+local process = require("process")
+local channel = require("channel")
+local time = require("time")
 local cases = {
     {stage = "claim", registers = 0, subscribes = 0, acquisitions = 0, recoveries = 0, unregisters = 0, unlistens = 1, closes = 0, releases = 0},
     {stage = "register", registers = 1, subscribes = 0, acquisitions = 0, recoveries = 0, unregisters = 2, unlistens = 2, closes = 0, releases = 0},
@@ -10,6 +13,31 @@ local cases = {
 }
 return {run = test.run_cases(function()
     test.describe("native retention process dependencies", function()
+        test.it("stops after an in-flight pass even when another commit wake is ready", function()
+            local events = process.events()
+            local pid = assert(process.spawn_monitored("app:retention_shutdown_process", "app:processes"))
+            local timeout = time.after("5s")
+            while true do
+                local selected = channel.select({events:case_receive(), timeout:case_receive()})
+                if selected.channel == timeout then
+                    process.terminate(pid)
+                    error("busy retention process did not exit")
+                end
+                local event = selected.value
+                if event.kind == process.event.EXIT and tostring(event.from) == tostring(pid) then
+                    test.is_nil(event.result.error, tostring(event.result.error))
+                    break
+                end
+            end
+        end)
+        test.it("releases resources and reports a closed lifecycle channel", function()
+            fixture.reset("lifecycle_closed", nil)
+            local result, err = source.main()
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.eq(fixture.releases, 1)
+            test.eq(fixture.wakes, 0)
+        end)
         test.it("runs an elapsed deadline before a ready scoped wake", function()
             fixture.reset("scoped_wake", nil)
             fixture.responses.recover = {value = {deadline_ms = 1}}

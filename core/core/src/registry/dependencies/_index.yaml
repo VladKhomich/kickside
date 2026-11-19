@@ -2,8 +2,8 @@ version: "1.0"
 namespace: kickside.core
 entries:
   - name: dep.kickside.component
-    # Boot convergence seeks owners through the index from Component migration 16.
-    version: '>=0.3.23'
+    # Thread reads and projection workers use the Component access snapshot.
+    version: '>=0.3.25'
     kind: ns.dependency
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.

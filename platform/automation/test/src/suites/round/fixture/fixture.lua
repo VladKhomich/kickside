@@ -342,6 +342,10 @@ function M.write(request: any): (any, any)
         if err then return nil, err end
     end
     if r.sink_op == "delete" then
+        if json.encode(r.input) == "[]" or json.encode(r.config) == "[]" then
+            return { success = false, error = { code = "invalid_request", scope = "item",
+                retriable = false, message = "writable input and config must be objects" } }, nil
+        end
         if type(r.dest_ref) == "table" and (r.dest_ref :: Map).id == "fail-delete" then
             return { success = false, error = { code = "provider_unavailable", retriable = true,
                 message = "destination deletion has no acknowledgment" } }, nil

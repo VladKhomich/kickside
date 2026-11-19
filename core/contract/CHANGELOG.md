@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.12](https://github.com/kicksideai/kickside/compare/contract-v0.3.11...contract-v0.3.12) (2026-11-19)
+
+
+### Bug Fixes
+
+* **contract:** describe resumable pending writable effects ([#682](https://github.com/kicksideai/kickside/issues/682)) ([b86456f](https://github.com/kicksideai/kickside/commit/b86456f7ebd2d8964c40ac10986b8ecc7a43c065))
+
 ## [0.3.11](https://github.com/kicksideai/kickside/compare/contract-v0.3.10...contract-v0.3.11) (2026-11-19)
 
 

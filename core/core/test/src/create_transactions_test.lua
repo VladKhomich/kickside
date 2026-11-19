@@ -11,7 +11,7 @@ local function encoded(value: any): string
     return data
 end
 local function call(): (any, error?)
-    return api.create(fixture.database(), {component_id = "thread", trusted_audit = true, impl_id = "kickside.core.retention.pin_tests:inherited_retention_descriptor"}, nil, {system = true}, nil, true)
+    return api.create_audit(fixture.database(), {component_id = "thread", impl_id = "kickside.core.retention.pin_tests:inherited_retention_descriptor"}, nil, {system = true}, nil)
 end
 return {run = test.run_cases(function()
     test.describe("native existing-component thread creation transactions", function()
@@ -69,6 +69,26 @@ return {run = test.run_cases(function()
             fixture.reset("", nil, nil); local value, err = call()
             test.is_nil(err); test.eq(value.component_id, "thread"); test.eq(value.thread.marker, "kept")
             test.eq(fixture.commits, 1); test.eq(fixture.rollbacks, 0); test.eq(fixture.attachments, 1)
+        end)
+        for _, supplied in ipairs({false, true}) do
+            test.it("resolves the authoritative attachment kind once/" .. tostring(supplied), function()
+                fixture.reset("", nil, nil)
+                local value, err = api.create(fixture.database(), {component_id = "thread",
+                    impl_id = supplied and "kickside.core.retention.pin_tests:inherited_retention_descriptor" or nil},
+                    nil, {system = true}, nil)
+                test.is_nil(err); test.eq(value.thread.marker, "kept")
+                test.eq(fixture.impl_reads, 0)
+                test.eq(fixture.system_reads, 1)
+                test.eq(fixture.prepared_impl, supplied and "kickside.core.retention.pin_tests:inherited_retention_descriptor" or "guard:kind")
+            end)
+        end
+        test.it("a component kind lookup error prevents any attachment transaction", function()
+            local source = errors.new({kind = errors.UNAVAILABLE, message = "component kind lookup unavailable"})
+            fixture.reset("kind", source, nil)
+            local value, err = api.create(fixture.database(), {component_id = "thread", impl_id = "guard:supplied"},
+                nil, {system = true}, nil)
+            test.is_nil(value); test.eq(err:kind(), source:kind())
+            test.eq(fixture.system_reads, 1); test.eq(fixture.begins, 0); test.eq(fixture.inserts, 0)
         end)
         test.it("real transaction lifecycle returns explicit success proof", function()
             local db, err = sql.get("app:db")

@@ -390,7 +390,8 @@ function M.write(sink: Map, request: Map, d: Map, item: Map): Map
         if not decision.send then return { state = decision.state, receipts = {} } end
     end
     local body: Map = {
-        config = request.config or {}, sink_op = request.sink_op, input = request.input,
+        config = canonical_json.object(request.config or {}), sink_op = request.sink_op,
+        input = type(request.input) == "table" and canonical_json.object(request.input) or request.input,
         identity_key = request.identity_key, idempotency_key = request.idempotency_key,
         dest_ref = request.dest_ref, dest_version = request.dest_version,
         origin = tostring(d.automation_id),

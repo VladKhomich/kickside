@@ -4,7 +4,6 @@
 
 local sql = require("sql")
 local time = require("time")
-local jobs = require("jobs")
 local writer = require("threads_writer")
 local reader = require("threads_reader")
 local proj_writer = require("proj_writer")
@@ -35,31 +34,18 @@ local function release(db: sql.DB, primary: error?, committed: boolean?): (error
     return primary, true
 end
 
--- gate_thread_write opens the db and confirms the actor has WRITE on the thread
--- before a projection mutation. Returns the db handle (caller releases) on success.
-local function gate_thread_access(thread_id: string, mask: integer, lifecycle_registration: boolean?): (sql.DB?, table?, error?, boolean?)
-    local db, db_err = open_db()
-    if db_err then return nil, nil, db_err end
-    local _db = db :: sql.DB
-    local thread, gate_err = reader.gate_read(_db, thread_id, mask, lifecycle_registration)
-    if gate_err then
-        local err, released = release(_db, gate_err)
-        return nil, nil, err, released and errors.is(gate_err, errors.NOT_FOUND)
-    end
-    return _db, thread, nil
-end
-
+-- Confirm WRITE before a projection control mutation.
 local function gate_thread_write(thread_id: string): (sql.DB?, error?)
-    local db, _, err = gate_thread_access(thread_id, (masks.ACCESS.WRITE :: integer))
-    return db, err
-end
-
-local function gate_thread_read(thread_id: string): (sql.DB?, table?, error?, boolean?)
-    return gate_thread_access(thread_id, (masks.ACCESS.READ :: integer))
+    local db, db_err = open_db()
+    if db_err then return nil, db_err end
+    local _db = db :: sql.DB
+    local _, gate_err = reader.gate_read(_db, thread_id, (masks.ACCESS.WRITE :: integer))
+    if gate_err then return nil, (release(_db, gate_err)) end
+    return _db, nil
 end
 
 -- register_projection defines a projection on a thread (reversible via
--- remove_projection). Component-backed threads require WRITE. Component lifecycle
+-- remove_projection). Component-backed threads require WRITE and, for restricted event kinds, ADMIN. Component lifecycle
 -- threads require lifecycle ADMIN or a maintenance actor and use system identity.
 function M.register_projection(args: any): (any?, error?)
     args = type(args) == "table" and args or {}
@@ -72,10 +58,12 @@ function M.register_projection(args: any): (any?, error?)
         return nil, parse_err
     end
 
-    local db, thread, gate_err = gate_thread_access(args.thread_id :: string, masks.ACCESS.WRITE, true)
-    if gate_err then return nil, gate_err end
+    local db, db_err = open_db()
+    if db_err then return nil, db_err end
     local _db = db :: sql.DB
-    local lifecycle_thread = (thread :: table).component_id == ""
+    local source, gate_err = reader.gate_projection_registration(_db, args.thread_id :: string)
+    if gate_err then return nil, (release(_db, gate_err)) end
+    local lifecycle_thread = source.lifecycle == true
 
     local identity, identity_load_err
     if lifecycle_thread then
@@ -106,7 +94,7 @@ function M.register_projection(args: any): (any?, error?)
     register_args.execution_identity_row = identity.row
     register_args.system_identity = identity.system == true
 
-    local result, register_err = proj_writer.register_projection(_db, args.thread_id :: string, register_args)
+    local result, register_err = proj_writer.register_projection(_db, args.thread_id :: string, register_args, nil, nil, not lifecycle_thread and source or nil)
     register_err = release(_db, register_err, register_err == nil and result ~= nil)
     if register_err or not result then
         return nil, register_err
@@ -124,8 +112,8 @@ function M.register_projection(args: any): (any?, error?)
     }, nil
 end
 
--- list_projections exposes the projections and cursors attached to a thread after
--- a READ gate. This is the control-plane view automations use to inspect and clean
+-- list_projections exposes projections and cursors under the event read policy.
+-- This is the control-plane view automations use to inspect and clean
 -- managed projections without importing persistence modules.
 function M.list_projections(args: any): (any?, error?)
     args = type(args) == "table" and args or {}
@@ -139,30 +127,26 @@ function M.list_projections(args: any): (any?, error?)
     local cursors_after, cursors_after_err = page_cursor.decode(args.cursors_cursor, args.thread_id, "cursors")
     if cursors_after_err then return nil, cursors_after_err end
 
-    local db, thread, gate_err, missing_thread = gate_thread_read(args.thread_id :: string)
-    if gate_err then
-        -- A lazy thread that has never been emitted to has no thread row yet, hence no
-        -- projections -- that reads as empty, not an error (the canonical lazy-thread
-        -- read). Other gate failures (e.g. permission denied on an existing thread) still
-        -- surface, so a real access denial is never masked as empty.
-        if missing_thread then
-            return { thread_id = args.thread_id, event_count = 0, projections = {}, cursors = {}, count = 0,
-                projections_has_more = false, cursors_has_more = false }, nil
-        end
-        return nil, gate_err
-    end
+    local db, db_err = open_db()
+    if db_err then return nil, db_err end
     local _db = db :: sql.DB
-
-    local projections, projections_err, projections_page = proj_reader.list_projections(_db, args.thread_id :: string, limit, projections_after)
+    local authorize = {}
+    local projections, projections_err, projections_page, event_count, missing =
+        proj_reader.list_projections(_db, args.thread_id :: string, limit, projections_after, authorize)
     if projections_err then
-        return nil, (release(_db, projections_err))
+        local err, released = release(_db, projections_err)
+        if not missing or not released then return nil, err end
+        -- Component-first lazy threads have no projections before their first attachment.
+        return {thread_id = args.thread_id, event_count = 0, projections = {}, cursors = {}, count = 0,
+            projections_has_more = false, cursors_has_more = false}, nil
     end
-    local cursors, cursors_err, cursors_page = proj_reader.list_cursors(_db, args.thread_id :: string, limit, cursors_after)
+    local cursors, cursors_err, cursors_page =
+        proj_reader.list_cursors(_db, args.thread_id :: string, limit, cursors_after, authorize)
     cursors_err = release(_db, cursors_err)
     if cursors_err then return nil, cursors_err end
     local result, page_err = page_cursor.response(args.thread_id, projections or {}, cursors or {}, projections_page, cursors_page)
     if page_err or not result then return nil, page_err end
-    result.event_count = tonumber((thread :: table).event_count) or 0
+    result.event_count = event_count
     return result, nil
 end
 
@@ -190,11 +174,14 @@ function M.get_projection_cursor(args: any): (any?, error?)
             end
         end
     end
-    local db, thread, gate_err = gate_thread_read(args.thread_id :: string)
-    if gate_err then return nil, gate_err end
-    local pair, find_err = proj_reader.find_projection_cursor(db :: sql.DB, args.thread_id :: string, args)
+    local db, db_err = open_db()
+    if db_err then return nil, db_err end
+    local authorize = {}
+    local thread_id = args.thread_id :: string
+    local pair, find_err, source = proj_reader.find_projection_cursor(db :: sql.DB, thread_id, args, authorize)
     if pair and not find_err and pending_types then
-        pair.pending_events, find_err = proj_reader.pending_events(db :: sql.DB, thread :: table, pair.cursor, pending_types)
+        pair.pending_events, find_err = proj_reader.pending_events(db :: sql.DB, thread_id, source :: table,
+            pair.cursor, pending_types, authorize)
     end
     find_err = release(db :: sql.DB, find_err)
     if find_err then return nil, find_err end
@@ -207,7 +194,7 @@ local function deadline_passed(): error
 end
 
 -- catch_up_projection asks the supervised Jobs pool to advance one projection
--- cursor, then observes its committed progress after a READ gate. This is the
+-- cursor, then observes its committed progress under the event read policy. This is the
 -- read-after-write consistency seam for components whose public read model is a
 -- projection body: callers do not replay events or query private tables.
 -- The caller's deadline (an RFC3339 instant), parsed at the contract boundary.
@@ -241,11 +228,13 @@ function M.catch_up_projection(args: any): (any?, error?)
     local deadline, deadline_err = parse_deadline(args.deadline)
     if deadline_err then return nil, deadline_err end
 
-    local db, thread, gate_err = gate_thread_read(args.thread_id :: string)
-    if gate_err then return nil, gate_err end
+    local db, db_err = open_db()
+    if db_err then return nil, db_err end
     local _db = db :: sql.DB
 
-    local selected, select_err = proj_reader.select_projection_cursor(_db, args.thread_id :: string, args)
+    local authorize = {}
+    local selected, select_err, event_count =
+        proj_reader.select_projection_cursor(_db, args.thread_id :: string, args, authorize)
     select_err = release(_db, select_err)
     if select_err or not selected then return nil, select_err end
     local projection_id = tostring(selected.projection_id)
@@ -262,7 +251,7 @@ function M.catch_up_projection(args: any): (any?, error?)
     if initial_seq == nil then
         return nil, (errors.new({ message = "projection cursor sequence missing", kind = errors.INTERNAL }) :: error)
     end
-    local target = math.floor(tonumber((thread :: table).event_count) or 0)
+    local target = math.floor(event_count or 0)
     local tick_limit = max_ticks :: integer
     local bound_ms = tick_limit * CATCH_UP_MS_PER_TICK
     local bounded_by_deadline = false
@@ -281,10 +270,8 @@ function M.catch_up_projection(args: any): (any?, error?)
     local waiter, waiter_err = cursor_waiters.begin_wait(cursor_id, target, bound_ms)
     if waiter_err or not waiter then return nil, waiter_err end
     local function close_wait(): () cursor_waiters.close_wait(waiter :: table) end
-    local _, wake_err = jobs.wake_job(job_id, { control = true, ensure_due = true })
-    if wake_err then close_wait(); return nil, wake_err end
-
     local observations = 0
+    local wake = true
     while true do
         -- Registration is acknowledged before this authoritative snapshot, so
         -- a commit racing the read is either visible here or queued to waiter.
@@ -293,12 +280,15 @@ function M.catch_up_projection(args: any): (any?, error?)
             close_wait()
             return nil, progress_db_err
         end
-        local rows, read_err = (progress_db :: sql.DB):query(
-            "SELECT last_seq,status FROM kickside_projection_cursor WHERE id=$1", { cursor_id })
-        if read_err then read_err = errors.wrap(read_err, "projection cursor progress read failed") end
+        local current, read_err
+        if wake then
+            local _, wake_err = proj_writer.wake_catch_up(progress_db, args.thread_id, selected, authorize)
+            read_err = wake_err
+            wake = false
+        end
+        if not read_err then current, read_err = proj_reader.catch_up_progress(progress_db, args.thread_id, selected, authorize) end
         read_err = release(progress_db :: sql.DB, read_err)
         if read_err then close_wait(); return nil, read_err end
-        local current = rows and rows[1]
         if not current then
             close_wait()
             return nil, (errors.new({ message = "projection cursor was removed", kind = errors.NOT_FOUND }) :: error)
@@ -344,7 +334,7 @@ function M.pause_projection(args: any): (any?, error?)
     if gate_err then return nil, gate_err end
     local _db = db :: sql.DB
 
-    local result, pause_err = proj_writer.pause(_db, args.thread_id :: string, args)
+    local result, pause_err = proj_writer.pause(_db, args.thread_id :: string, args, true)
     pause_err = release(_db, pause_err, pause_err == nil and result ~= nil)
     if pause_err or not result then
         return nil, pause_err
@@ -368,7 +358,7 @@ function M.resume_projection(args: any): (any?, error?)
     if gate_err then return nil, gate_err end
     local _db = db :: sql.DB
 
-    local result, resume_err = proj_writer.resume(_db, args.thread_id :: string, args)
+    local result, resume_err = proj_writer.resume(_db, args.thread_id :: string, args, true)
     resume_err = release(_db, resume_err, resume_err == nil and result ~= nil)
     if resume_err or not result then
         return nil, resume_err

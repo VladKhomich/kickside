@@ -30,6 +30,7 @@ entries:
   - json
   - uuid
   imports:
+    event_access: kickside.core.threads:event_access
     clock: kickside.core.jobs:clock
     jobs_wake: kickside.core.jobs.persist:wake
     threads_consts: kickside.core.threads:consts

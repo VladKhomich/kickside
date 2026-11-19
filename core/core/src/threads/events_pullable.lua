@@ -1,7 +1,7 @@
 -- Thread events as a pullable source (CONTRACTS threads events_pullable).
 --
 -- The cursor is the last consumed sequence; a pull reads list_events from
--- cursor + 1 under the caller's READ access. Each item is one appended event (op upsert) keyed by its
+-- cursor + 1 under the component's live event read policy. Each item is one appended event (op upsert) keyed by its
 -- event id, which is stable across replay. When cursor < max_pruned_seq the
 -- events after the cursor are gone: the pull returns no items, keeps the cursor
 -- and reports source_gap with the boundary and the earliest available sequence,

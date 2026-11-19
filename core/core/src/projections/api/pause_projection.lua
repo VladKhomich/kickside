@@ -60,7 +60,7 @@ local function handler(): ()
         return
     end
 
-    local result, pause_err = writer.pause(db, thread_id, data)
+    local result, pause_err = writer.pause(db, thread_id, data, true)
     if not pause_err then result, pause_err = error_envelope.binding(result, nil, nil, "pause projection", "core_http_operation_response") end
     local err = release_error(db, pause_err, pause_err == nil)
     if err then

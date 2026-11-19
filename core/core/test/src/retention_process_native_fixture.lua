@@ -1,9 +1,11 @@
 local M = {stage = "", source = nil, claims = 0, registers = 0, subscribes = 0,
     acquisitions = 0, recoveries = 0, unregisters = 0, unlistens = 0, closes = 0, releases = 0, selects = 0, wakes = 0, responses = {}}
 local function mailbox(): any
-    return {case_receive = function(self: any): table return {channel = self} end}
+    return {case_receive = function(self: any): table return {channel = self} end,
+        receive = function(): (any, boolean) return nil, false end, close = function() end}
 end
 M.process_events = mailbox()
+function M.new(_size: integer): any return M.process_events end
 function M.reset(stage: string, source: any)
     M.stage, M.source = stage, source
     M.responses, M.wakes = {}, 0
@@ -54,6 +56,9 @@ function M.recover(db: any, pid: string, _traversal: table?): (any, error?)
 end
 function M.select(cases: table): table
     M.selects = M.selects + 1
+    if M.stage == "lifecycle_closed" then
+        return {channel = M.process_events, ok = false}
+    end
     if M.stage == "scoped_wake" then
         if #cases == 2 then return {default = true} end
         if M.selects == 1 then

@@ -46,8 +46,9 @@ return {run = test.run_cases(function()
                 assert(db:execute([[CREATE TABLE IF NOT EXISTS checkpoint_scheduler_effect (
                     thread_id TEXT NOT NULL, ordinal INTEGER NOT NULL, PRIMARY KEY (thread_id,ordinal))]]))
                 assert(db:execute("INSERT INTO checkpoint_scheduler_gate (thread_id,available) VALUES ($1,0)", {thread_id}))
-                assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test',$2)]],
-                    {thread_id, thread_id}))
+                -- This system worker exercises the checkpoint scheduler on an unbound fixture thread.
+                assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test','')]],
+                    {thread_id}))
                 add(db, thread_id, 1, 1000)
                 add(db, thread_id, 2, 1500)
                 return assert(projections.register_projection(db, thread_id, {kind = "checkpoint-scheduler",

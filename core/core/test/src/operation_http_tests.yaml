@@ -64,7 +64,9 @@ entries:
   source: file://operation_http_list_source.lua
   modules:
   - env
+  - uuid
   imports:
+    event_access: kickside.core.threads:event_access
     error_envelope: kickside.contract:error_envelope
     http_errors: kickside.contract:http_errors
     core_db: kickside.core:db
