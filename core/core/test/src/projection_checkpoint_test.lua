@@ -112,9 +112,9 @@ return {run = test.run_cases(function()
                 assert(projections.pause(db, current.thread_id, {cursor_id = current.id}))
                 db:release()
                 local called = false
-                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function()
+                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function(_tx, _dialect)
                     called = true
-                    return true
+                    return true, nil
                 end)
                 test.is_nil(receipt)
                 test.is_true(errors.is(err, errors.CONFLICT), tostring(err))
@@ -150,7 +150,9 @@ return {run = test.run_cases(function()
                 assert(apply.checkpoint(DATABASE, job, stored, 2, {last_seq = 1}, write_effect(current.thread_id, 3)))
                 stored, _, effects = persisted(job, current)
                 test.eq(tonumber(stored.last_seq), 1)
-                test.is_nil(apply.continuation(stored))
+                local continuation, continuation_err = apply.continuation(stored)
+                test.is_nil(continuation_err)
+                test.is_nil(continuation)
                 test.eq(#effects, 3)
             end)
         end)
@@ -179,8 +181,10 @@ return {run = test.run_cases(function()
                     local after = persisted(job, current)
                     test.eq(registered.cursor_id, current.id)
                     test.eq(tonumber(after.last_seq), rewind and 0 or 1)
-                    test.eq(tonumber(after.generation), tonumber(before.generation) + 1)
-                    test.is_nil(apply.continuation(after))
+                    test.eq(tonumber(after.generation), assert(tonumber(before.generation)) + 1)
+                    local continuation, continuation_err = apply.continuation(after)
+                    test.is_nil(continuation_err)
+                    test.is_nil(continuation)
                 end)
             end)
         end
@@ -208,9 +212,9 @@ return {run = test.run_cases(function()
                 assert(teardown.mark(db, current.thread_id) == nil)
                 db:release()
                 local called = false
-                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function()
+                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function(_tx, _dialect)
                     called = true
-                    return true
+                    return true, nil
                 end)
                 test.is_nil(receipt)
                 test.is_true(job_types.is_lease_lost_error(err), tostring(err))
@@ -282,9 +286,9 @@ return {run = test.run_cases(function()
         test.it("checks the existing lease and database binding before calling the owner writer", function()
             with_execution(function(job, current)
                 local called = false
-                local function effect()
+                local function effect(_tx, _dialect)
                     called = true
-                    return true
+                    return true, nil
                 end
                 local receipt, binding_err = apply.checkpoint("app:isolated", job, current, 2, {last_seq = 1}, effect)
                 test.is_nil(receipt)
@@ -307,9 +311,9 @@ return {run = test.run_cases(function()
                 db:release()
 
                 local called = false
-                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function()
+                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function(_tx, _dialect)
                     called = true
-                    return true
+                    return true, nil
                 end)
                 test.is_nil(receipt)
                 test.is_true(job_types.is_lease_lost_error(err), tostring(err))
@@ -327,7 +331,7 @@ return {run = test.run_cases(function()
                     assert(write_effect(current.thread_id, 1)(tx))
                     assert(tx:execute("UPDATE kickside_job SET lease_until=$1 WHERE id=$2",
                         {clock.format(time.now():add("-1m"), dialect), job.id}))
-                    return true
+                    return true, nil
                 end)
                 test.is_nil(receipt)
                 test.is_true(job_types.is_lease_lost_error(err), tostring(err))

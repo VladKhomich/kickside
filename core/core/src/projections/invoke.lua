@@ -159,6 +159,7 @@ end
 local function run_checkpointed(binding: table, input: table, host: string, db_id: string, job: table,
         current: table, prefetched_last: number): (table?, error?, table?)
     local first = tonumber(current.last_seq)
+    if first == nil then return nil, response_error("cursor.position"), current end
     local first_continuation = current.continuation
     local assigned_cursor = {}
     for key, value in pairs(current) do assigned_cursor[key] = value end
