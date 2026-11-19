@@ -34,6 +34,7 @@ local component_lifecycle = require("component_lifecycle")
 local jobs_wake = require("jobs_wake")
 local proj_register = require("proj_register")
 local persisted_json = require("persisted_json")
+local thread_crud = require("thread_crud")
 
 local M = {}
 
@@ -312,7 +313,9 @@ local function inspect_page(db: any, dialect: string, kind: table, owners: table
         return " LEFT JOIN " .. table_name .. " " .. alias .. " ON " .. predicate
     end
     local states = {}
-    for _, row in ipairs(owners) do states[tostring(row.component_id)] = {thread_missing = {}, lifecycle_missing = {}, refusals = {}} end
+    for _, row in ipairs(owners) do
+        states[tostring(row.component_id)] = {thread_missing = {}, lifecycle_missing = {}, transitions = {}, refusals = {}}
+    end
     if kind.primary then
         local query = "SELECT owners.component_id,t.id AS thread_id" .. (kind.class and
             ",t.thread_class,ty.value AS component_type,cl.value AS component_class" or "") .. from
@@ -346,21 +349,37 @@ local function inspect_page(db: any, dialect: string, kind: table, owners: table
         local rows, err = db:query(query, args)
         if err then return nil, err end
         if type(rows) ~= "table" or #rows ~= #owners then return nil, missing_result("projection_page") end
+        local predecessor_checked = false
+        local predecessor, predecessor_err
         for _, row in ipairs(rows) do
             local state = states[tostring(row.component_id)]
             if decl.own or state.has_primary then
                 local refusal: error? = nil
+                local transition = false
                 if row.cursor_id then
                     local stored, body_err = persisted_json.decode_table(row.declaration_body, "kickside_projection.body")
                     refusal = body_err
-                    if not refusal and (not proj_register.declaration_matches(stored, decl.body)
-                        or tonumber(row.debounce_idle_ms) ~= decl.idle or tonumber(row.debounce_max_ms) ~= decl.maximum) then
-                        refusal = proj_register.declaration_refusal(row.thread_id, row.projection_id, decl.kind,
-                            decl.projection_key, decl.cursor_key)
+                    local same_debounce = tonumber(row.debounce_idle_ms) == decl.idle
+                        and tonumber(row.debounce_max_ms) == decl.maximum
+                    if not refusal and (not proj_register.declaration_matches(stored, decl.body) or not same_debounce) then
+                        if not decl.own and same_debounce and row.job_id then
+                            if not predecessor_checked then
+                                local _
+                                predecessor, _, predecessor_err = proj_register.transition_predecessor(decl.body)
+                                predecessor_checked = true
+                            end
+                            transition = predecessor ~= nil and proj_register.declaration_matches(stored, predecessor)
+                        end
+                        if not transition then
+                            refusal = predecessor_err or proj_register.declaration_refusal(row.thread_id, row.projection_id,
+                                decl.kind, decl.projection_key, decl.cursor_key)
+                        end
                     end
                 end
                 if refusal then
                     state.refusals[#state.refusals + 1] = refusal
+                elseif transition then
+                    state.transitions[tostring(decl.index)] = true
                 elseif row.job_id == nil then
                     if decl.own then
                         state.lifecycle_missing[#state.lifecycle_missing + 1] = decl.raw
@@ -429,6 +448,25 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
             projection_indexes = state.has_primary and state.thread_missing or nil})
         return converge_err and errors.wrap(converge_err, "converge_thread failed") or nil
     end
+    -- Only the lifecycle converger may switch an existing worker. The
+    -- callable thread completion method can repair missing state under WRITE.
+    local function repair_transitions(kind: table, state: table, component_id: string): error?
+        local stored, load_err = component_identity.execution_identity_of(component_id)
+        if load_err then return load_err end
+        if not stored then
+            return errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+                message = "projection transition requires the stored component identity"})
+        end
+        local authorized, auth_err = execution_identity.authorize(stored,
+            {deferred_owner = CONVERGE_OWNER, execution_root = component_id})
+        if auth_err then return auth_err end
+        if not authorized then return missing_result("transition.authority") end
+        local row, row_err = execution_identity.to_row(stored)
+        if row_err then return row_err end
+        if not row then return missing_result("transition.identity") end
+        return thread_crud.apply_thread_declaration(db, component_id, kind.impl_id, {row = row},
+            state.transitions, true)
+    end
     local function repair_lifecycle(kind: table, component_id: string, declaration: table): error?
         local tx, begin_err = db:begin()
         if begin_err then return begin_err end
@@ -483,12 +521,20 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                 for _, owner in ipairs(owners) do
                     local id = tostring(owner.component_id)
                     local state = states[id]
-                    if state.thread or #state.lifecycle_missing > 0 or #state.refusals > 0 then
+                    local transition = next(state.transitions) ~= nil
+                    if state.thread or transition or #state.lifecycle_missing > 0 or #state.refusals > 0 then
                         summary.checked = summary.checked + 1
                         local failed = #state.refusals > 0
                         for _, refusal in ipairs(state.refusals) do skip(id, kind.impl_id, refusal) end
                         if state.thread then
                             local err = repair_thread(kind, state, id)
+                            if err then
+                                failed = true
+                                skip(id, kind.impl_id, err)
+                            end
+                        end
+                        if transition then
+                            local err = repair_transitions(kind, state, id)
                             if err then
                                 failed = true
                                 skip(id, kind.impl_id, err)

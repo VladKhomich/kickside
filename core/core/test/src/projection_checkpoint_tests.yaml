@@ -54,7 +54,13 @@ entries:
 
   - name: declared_checkpoint_worker
     kind: process.lua
-    meta: {type: projection.worker, private: true, checkpointed_apply: true}
+    meta:
+      type: projection.worker
+      private: true
+      checkpointed_apply: true
+      transition_from:
+        worker_ref: func://app:test_count_worker
+        shared_db_config: app:projection_transition_database
     source: file://projection_declared_checkpoint_worker.lua
     method: run
     modules: [security]
@@ -62,17 +68,23 @@ entries:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types
 
+  - name: projection_transition_database
+    kind: registry.entry
+    meta: {db_id: "app:db"}
+
   - name: declared_checkpoint_test
     kind: function.lua
     meta: {type: test, suite: core_declared_checkpoint}
     source: file://projection_declared_checkpoint_test.lua
     method: run
-    modules: [sql, uuid, json, time]
+    modules: [sql, uuid, json, time, funcs, security]
     imports:
+      apply: kickside.core.projections:apply
       claim: kickside.core.jobs.persist:claim
       clock: kickside.core.jobs:clock
       fixture: kickside.core.threads:contract_fixture
       invoke: kickside.core.projections:invoke
+      provision: kickside.core.threads:provision
       projections: kickside.core.projections.persist:writer
       test: wippy.test:test
 

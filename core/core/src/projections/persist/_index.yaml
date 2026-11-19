@@ -60,9 +60,11 @@ entries:
     meta:
       comment: Projection registration and cursor slot creation in one transaction.
     source: file://register.lua
-    modules: [sql, json, uuid]
+    modules: [sql, json, uuid, registry]
     imports:
       text_trim: kickside.contract:text_trim
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
       clock: kickside.core.jobs:clock
       types: kickside.core.projections:types
       core_types: kickside.core:types
