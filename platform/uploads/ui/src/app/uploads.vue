@@ -15,7 +15,7 @@ import { formatDateTime } from '@widgets/app/datetime'
 import UploadPreviewDrawer from './UploadPreviewDrawer.vue'
 import type { Upload, UploadsMeta } from './uploads.types.ts'
 import {
-  canPreview, formatError, formatSize, isFailed, isWorking, normStatus,
+  canPreview, formatError, formatSize, formatUploadRequestError, isFailed, isWorking, normStatus,
   statusLabel, statusSeverity, typeIcon, typeLabel, uploadLabel,
 } from './uploads.format.ts'
 import { useUploadArtifacts } from './useUploadArtifacts.ts'
@@ -40,12 +40,13 @@ const uploads = ref<Upload[]>([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
+const uploadFailures = ref<string[]>([])
 const dragOver = ref(false)
 const uploadingCount = ref(0)
 const query = ref('')
 const statusFilter = ref('all')
 const page = ref(1)
-const deleting = ref(false)
+const deleteErrors = ref<Record<string, string>>({})
 let listRead: Promise<void> | null = null
 let listRefreshQueued = false
 let disposed = false
@@ -94,28 +95,31 @@ watch(() => routeProps.value.route, async (route) => {
   // Ignore an older host echo until the latest click's route returns.
   if (pendingRoute !== null && id !== pendingRoute) return
   pendingRoute = null
+  if (id === preview.value?.uuid) return
   const read = ++previewRead
   previewError.value = ''
   previewLoading.value = false
-  if (id === preview.value?.uuid) return
   hidePreview()
   if (!id) return
   previewLoading.value = true
+  let failure: unknown
   try {
-    const { data } = await api.get(`/api/v1/uploads/${encodeURIComponent(id)}`)
+    const response = await api.get(`/api/v1/uploads/${encodeURIComponent(id)}`)
     if (read !== previewRead) return
-    if (!data.success || !data.upload) throw new Error(data.error || 'Failed to load upload')
-    const upload = data.upload as Upload
-    showPreview({ ...upload, filename: upload.filename || String(upload.meta?.filename || '') })
+    if (response.data.success && response.data.upload) {
+      const upload = response.data.upload as Upload
+      showPreview({ ...upload, filename: upload.filename || String(upload.meta?.filename || '') })
+      return
+    }
+    failure = { response }
   } catch (cause) {
-    if (read !== previewRead) return
-    const status = (cause as { response?: { status?: number } })?.response?.status
-    previewError.value = status === 403 || status === 404
-      ? 'File not found or you do not have permission to view it.'
-      : cause instanceof Error ? cause.message : 'Failed to load upload.'
+    failure = cause
   } finally {
     if (read === previewRead) previewLoading.value = false
   }
+  if (read !== previewRead) return
+  const listed = uploads.value.find(upload => upload.uuid === id)
+  previewError.value = formatUploadRequestError(listed && uploadLabel(listed), failure, 'Failed to load upload')
 }, { immediate: true })
 
 const componentId = ref('')
@@ -220,18 +224,22 @@ async function uploadOne(file: File) {
   // File the upload into the workspace (root) as a `file` component via the pipeline's
   // universal stage -- the same path the workspace surface uses. Empty target = root.
   form.append('metadata', JSON.stringify({ target_parent_id: '', filename: file.name }))
+  let failure: unknown
   try {
-    const { data } = await api.post('/api/v1/uploads', form, { headers: { 'Content-Type': 'multipart/form-data' } })
-    if (!data.success) error.value = data.error || `failed to upload "${file.name}"`
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : `failed to upload "${file.name}"`
+    const response = await api.post('/api/v1/uploads', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    if (response.data.success) return
+    failure = { response }
+  } catch (cause) {
+    failure = cause
   }
+  uploadFailures.value.push(formatUploadRequestError(file.name, failure, 'Upload failed'))
 }
 
 async function uploadFiles(files: FileList | File[]) {
   const list = Array.from(files)
   if (!list.length) return
   error.value = ''
+  if (uploadingCount.value === 0) uploadFailures.value = []
   uploadingCount.value += list.length
   try {
     for (const f of list) await uploadOne(f)
@@ -273,37 +281,45 @@ async function askRemove(u: Upload) {
 }
 
 async function doRemove(u: Upload) {
-  deleting.value = true
-  error.value = ''
+  delete deleteErrors.value[u.uuid]
+  let failure: unknown
   try {
-    const { data } = await api.delete(`/api/v1/uploads/${u.uuid}`)
-    if (data.success) {
+    const response = await api.delete(`/api/v1/uploads/${u.uuid}`)
+    if (response.data.success) {
       if (preview.value?.uuid === u.uuid) closePreview()
       // The page may now be short a row; clamp if we deleted the last item on it.
       if (uploads.value.length === 1 && page.value > 1) page.value -= 1
       await fetchUploads()
-    } else error.value = data.error || 'failed to delete upload'
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'failed to delete upload'
-  } finally {
-    deleting.value = false
+      return
+    }
+    failure = { response }
+  } catch (cause) {
+    failure = cause
   }
+  deleteErrors.value[u.uuid] = formatUploadRequestError(uploadLabel(u), failure, 'Failed to delete upload')
 }
 
 async function retryUpload(u: Upload) {
   if (retrying.value) return
+  const read = previewRead
   retrying.value = true
-  error.value = ''
+  previewError.value = ''
+  let failure: unknown
   try {
-    const { data } = await api.post(`/api/v1/uploads/${u.uuid}/retry`)
-    if (data.success) {
-      if (preview.value?.uuid === u.uuid) closePreview()
+    const response = await api.post(`/api/v1/uploads/${u.uuid}/retry`)
+    if (response.data.success) {
+      if (read === previewRead) closePreview()
       await fetchUploads()
-    } else error.value = data.error || 'failed to retry upload'
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : 'failed to retry upload'
+      return
+    }
+    failure = { response }
+  } catch (cause) {
+    failure = cause
   } finally {
     retrying.value = false
+  }
+  if (read === previewRead) {
+    previewError.value = formatUploadRequestError(uploadLabel(u), failure, 'Failed to retry upload')
   }
 }
 
@@ -400,7 +416,7 @@ onBeforeUnmount(() => {
 
     <div v-if="error" class="kx-err" role="alert">{{ error }}</div>
     <div v-if="previewLoading" class="kx-loading" role="status">Loading file…</div>
-    <div v-if="previewError" class="kx-err" role="alert" data-testid="uploads-link-error">
+    <div v-if="previewError && !preview" class="kx-err" role="alert" data-testid="uploads-link-error">
       {{ previewError }}
       <Button label="Close preview" text severity="secondary" @click="closePreview" />
     </div>
@@ -423,6 +439,12 @@ onBeforeUnmount(() => {
           <Icon :icon="uploadingCount > 0 ? 'tabler:loader-2' : 'tabler:cloud-upload'" :class="['kx-drop-ico', uploadingCount > 0 && 'spin']" aria-hidden="true" />
           <p class="kx-drop-title">{{ uploadingCount > 0 ? 'Uploading…' : 'Drop files or click to browse' }}</p>
           <p class="kx-drop-sub">Documents convert to markdown; images and text are stored for agents.</p>
+        </div>
+
+        <div v-if="uploadFailures.length" class="kx-err kx-upload-errors" role="alert">
+          <ul>
+            <li v-for="(failure, index) in uploadFailures" :key="index">{{ failure }}</li>
+          </ul>
         </div>
 
         <div v-if="loading && !uploads.length" class="kx-loading"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Loading…</div>
@@ -460,6 +482,7 @@ onBeforeUnmount(() => {
                 <div class="kx-name" :title="uploadLabel(u)">{{ uploadLabel(u) }}</div>
                 <div class="kx-sub"><span class="kx-type">{{ typeLabel(u) }}</span> · {{ formatSize(u.size) }}</div>
                 <div v-if="isFailed(u) && u.error" class="kx-err-reason" :title="formatError(u.error)">{{ formatError(u.error) }}</div>
+                <div v-if="deleteErrors[u.uuid]" class="kx-err-reason" role="alert">{{ deleteErrors[u.uuid] }}</div>
               </div>
               <Tag :severity="statusSeverity(u.status)" class="kx-badge kx-tag-sm">
                 <Icon v-if="!TERMINAL.has(u.status)" icon="tabler:loader-2" class="spin" aria-hidden="true" />
@@ -545,6 +568,7 @@ onBeforeUnmount(() => {
       :view-artifact="viewArtifact"
       :goto-parts-page="gotoPartsPage"
       :retrying="retrying"
+      :request-error="previewError"
       :retry-upload="retryUpload"
     />
 

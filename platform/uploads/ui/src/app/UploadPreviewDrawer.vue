@@ -38,6 +38,7 @@ interface Props {
   viewArtifact: (artifact: UploadArtifact) => void
   gotoPartsPage: (page: number) => void
   retrying: boolean
+  requestError: string
   retryUpload: (upload: Upload) => Promise<void>
 }
 
@@ -134,7 +135,7 @@ const emit = defineEmits<{ (event: 'update:partsExpanded', value: boolean): void
         data-testid="uploads-preview-error"
       >
         <Icon :icon="notice.tone === 'error' ? 'tabler:alert-triangle' : 'tabler:info-circle'" aria-hidden="true" />
-        <span>{{ notice.text }}</span>
+        <span>{{ requestError || notice.text }}</span>
         <Button
           v-if="notice.tone === 'error'"
           type="button"
