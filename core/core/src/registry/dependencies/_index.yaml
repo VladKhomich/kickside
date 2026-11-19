@@ -31,7 +31,7 @@ entries:
     version: '>=0.1.88'
     kind: ns.dependency
     meta:
-      comment: Durable leased-job engine with caller-owned thread cleanup and acknowledgment transactions.
+      comment: Durable leased-job engine with transaction-scoped projection checkpoints and thread cleanup.
     component: kickside/jobs
 
   - name: dep.wippy.migration
