@@ -173,9 +173,23 @@ function M.get_projection_cursor(args: any): (any?, error?)
             return nil, (errors.new({ message = key .. " must be a string", kind = errors.INVALID }) :: error)
         end
     end
-    local db, _, gate_err = gate_thread_read(args.thread_id :: string)
+    local pending_types = args.pending_event_types
+    if pending_types ~= nil then
+        if type(pending_types) ~= "table" or #pending_types < 1 or #pending_types > 16 then
+            return nil, errors.new({ message = "pending_event_types requires 1 to 16 event types", kind = errors.INVALID })
+        end
+        for _, event_type in ipairs(pending_types) do
+            if type(event_type) ~= "string" or trim(event_type) == "" or #event_type > 256 then
+                return nil, errors.new({ message = "invalid pending event type", kind = errors.INVALID })
+            end
+        end
+    end
+    local db, thread, gate_err = gate_thread_read(args.thread_id :: string)
     if gate_err then return nil, gate_err end
     local pair, find_err = proj_reader.find_projection_cursor(db :: sql.DB, args.thread_id :: string, args)
+    if pair and not find_err and pending_types then
+        pair.pending_events, find_err = proj_reader.pending_events(db :: sql.DB, thread :: table, pair.cursor, pending_types)
+    end
     find_err = release(db :: sql.DB, find_err)
     if find_err then return nil, find_err end
     return pair, nil
