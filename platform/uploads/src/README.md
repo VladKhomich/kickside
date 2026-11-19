@@ -259,3 +259,10 @@ the previous job is terminal or absent; pending or running work cannot restart.
 This also supports earlier records without processing intents or job pointers.
 A permanent failure to prepare a failure callback is recorded separately as
 `callback_error` on the failure event; it does not undo the failed upload.
+
+New attempts record terminal state, callback jobs, and the outcome event in
+one transaction. Earlier workers could commit terminal storage separately.
+Recovery can restore a provably unpublished outcome event from that storage.
+If an earlier worker could have called an external integration, the recovered
+event records the unverified delivery as `callback_error`. Already-published
+outcomes keep their event and projection.

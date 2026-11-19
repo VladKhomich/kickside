@@ -127,11 +127,11 @@ local function settle(job: any, upload: any, outcome: table, source: string?): (
         if published and source then return abort(nil) end
     end
     if not published then
-        local callback_err = checkpoint.receipt_err
-        if not callback_err then
-            local _
-            _, callback_err = pipeline_lib.invoke_upload_token(upload, success, error_text, tx, dbtype, checkpoint.delivered)
-        end
+        -- Earlier workers wrote terminal storage before scheduling callbacks and
+        -- publishing the event. A terminal row cannot prove delivery history.
+        local legacy = checkpoint.storage_state ~= "uploaded"
+        local _, callback_err, unverified_callback =
+            pipeline_lib.invoke_upload_token(upload, success, error_text, tx, dbtype, legacy)
         if callback_err then
             if not permanent(callback_err) then return abort(callback_err) end
             if success then
@@ -145,6 +145,9 @@ local function settle(job: any, upload: any, outcome: table, source: string?): (
         local event = success and completed_event(version, upload, upload.trace_context)
             or failed_event(version, upload, tostring(error_text), upload.trace_context)
         if callback_err then event.body.callback_error = tostring(callback_err) end
+        if unverified_callback and not callback_err then
+            event.body.callback_error = "Callback delivery could not be verified for this stored processing attempt."
+        end
         local body_json, encode_err = json.encode(event.body)
         if encode_err then return abort(encode_err) end
         event.body, event.body_json = nil, body_json

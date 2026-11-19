@@ -337,12 +337,9 @@ function upload_record_repo.lock_settlement_tx(tx, upload: any, job_id: string?,
     end
     local statement, params, build_err = query:placeholder_format(sql.builder.dollar):to_sql()
     if build_err then return nil, build_err end
-    local rows, err = tx:query(statement .. " RETURNING storage_state, callback_deliveries", params)
+    local rows, err = tx:query(statement .. " RETURNING storage_state", params)
     if err or #rows == 0 then return nil, err end
-    local row = rows[1]
-    row.delivered, row.receipt_err = persisted_json.decode_table(row.callback_deliveries,
-        "kickside_uploads.callback_deliveries", true)
-    return row, nil
+    return rows[1], nil
 end
 
 function upload_record_repo.publish_storage_tx(tx, uuid: string, storage_state: string): any?
@@ -350,28 +347,6 @@ function upload_record_repo.publish_storage_tx(tx, uuid: string, storage_state: 
         :set("storage_state", storage_state):set("updated_at", now_rfc3339())
         :where("uuid = ?", uuid):run_with(tx):exec()
     return err
-end
-
--- Record delivery against the same terminal upload checkpoint read by the callback.
-function upload_record_repo.record_callback_delivery(upload: any, digest: string): any?
-    local db, db_err = resources.get_db()
-    if db_err then return db_err end
-    local dbtype, type_err = db:type()
-    if type_err then db:release(); return type_err end
-    local delivery = tostring(dbtype) == sql.type.POSTGRES
-        and sql.builder.expr("(COALESCE(callback_deliveries, '{}')::jsonb || jsonb_build_object(CAST(? AS text), true))::text", digest)
-        or sql.builder.expr("json_set(COALESCE(callback_deliveries, '{}'), ?, json('true'))", "$." .. digest)
-    local query = sql.builder.update("kickside_uploads"):set("callback_deliveries", delivery)
-        :where("uuid = ? AND storage_state = ?", upload.uuid, upload.storage_state)
-    if upload.processing_job_id == nil then
-        query = query:where("processing_job_id IS NULL")
-    else
-        query = query:where("processing_job_id = ?", upload.processing_job_id)
-    end
-    local _, write_err = query:run_with(db):exec()
-    db:release()
-    if write_err then return typed(errors.UNAVAILABLE, "Failed to record upload callback delivery: " .. tostring(write_err)) end
-    return nil
 end
 
 -- Return a failed upload to the uploaded state so its processing runs again.
@@ -391,7 +366,6 @@ function upload_record_repo.mark_failed_for_retry(uuid, processing_max_execution
     local result, exec_err = sql.builder.update("kickside_uploads")
         :set("storage_state", "uploaded")
         :set("processing_intent_state", "pending")
-        :set("callback_deliveries", sql.as.null())
         :set("processing_max_execution_ms", processing_max_execution_ms)
         :set("updated_at", now_rfc3339())
         :where("uuid = ?", uuid)

@@ -4,6 +4,7 @@ local upload_tokens = require("upload_tokens")
 local upload_types = require("types")
 local logger = require("logger")
 local execution_identity = require("execution_identity")
+local trace_context = require("trace_context")
 local jobs = require("jobs")
 local hash = require("hash")
 local security = require("security")
@@ -301,17 +302,8 @@ local function callback_digest(token: string, success: any): string
     return hash.sha256(token .. ":" .. callback_status(success))
 end
 
-function pipeline_lib.record_callback_delivery(upload: any, token: string, success: boolean): any?
-    if upload.storage_state ~= (success and "completed" or "failed") then return nil end
-    for _, declared_token in ipairs(callback_tokens(upload.metadata)) do
-        if declared_token == token then
-            return upload_record_repo.record_callback_delivery(upload, callback_digest(token, success))
-        end
-    end
-    return nil
-end
-
-local function enqueue_upload_token(upload, token: string, digest: string, success, error_msg, tx, dbtype): CallbackError?
+local function enqueue_upload_token(upload, token: string, success, error_msg, tx, dbtype,
+        check_only: boolean?): (CallbackError?, boolean?)
     local payload, err = upload_tokens.unpack(token)
     if err then
         log:warn("upload token unpack failed", { upload_id = upload.uuid, error = err })
@@ -350,6 +342,10 @@ local function enqueue_upload_token(upload, token: string, digest: string, succe
         return errors.new({ message = "upload callback authorizer is required", kind = errors.INVALID,
             retryable = false, details = { error_kind = "declaration" } })
     end
+    if check_only then
+        local _, trace_err = trace_context.normalize(payload.trace_context)
+        return trace_err, trace_err == nil
+    end
 
     local job_payload = {
         upload_id = upload.uuid,
@@ -360,7 +356,7 @@ local function enqueue_upload_token(upload, token: string, digest: string, succe
     local params = {
         namespace = "thread", scope = component_id,
         owner_locator = { kind = "user", id = owner_actor_id :: string },
-        key = CALLBACK_JOB_TYPE .. ":" .. tostring(upload.uuid or "") .. ":" .. digest,
+        key = CALLBACK_JOB_TYPE .. ":" .. tostring(upload.uuid or "") .. ":" .. callback_digest(token, success),
         thread_id = component_id,
         job_type = CALLBACK_JOB_TYPE,
         queue_tier = "live",
@@ -389,21 +385,19 @@ local function callback_error(current: CallbackError?, failure: CallbackError): 
     return current
 end
 
--- Schedule upload completion token callbacks as durable Core jobs.
-function pipeline_lib.invoke_upload_token(upload, success, error_msg, tx: any?, dbtype: string?, delivered: table?)
+-- Schedule durable callback jobs, or validate historical declarations without scheduling.
+function pipeline_lib.invoke_upload_token(upload, success, error_msg, tx: any?, dbtype: string?, check_only: boolean?)
     local first_err = nil
+    local has_callback = false
     for _, token in ipairs(callback_tokens(upload and upload.metadata)) do
-        local digest = callback_digest(token, success)
-        if not delivered or delivered[digest] ~= true then
-            local err = enqueue_upload_token(upload, token, digest, success, error_msg, tx, dbtype)
-            if err then
-                first_err = callback_error(first_err, err)
-                log:warn("upload token callback scheduling failed", { upload_id = upload.uuid, error = tostring(err) })
-            end
+        local err, configured = enqueue_upload_token(upload, token, success, error_msg, tx, dbtype, check_only)
+        has_callback = has_callback or configured == true
+        if err then
+            first_err = callback_error(first_err, err)
+            log:warn("upload token callback scheduling failed", { upload_id = upload.uuid, error = tostring(err) })
         end
     end
-    if first_err then return false, first_err end
-    return true, nil
+    return first_err == nil, first_err, has_callback
 end
 
 -- Process a single upload using funcs library. Execution authority lives in

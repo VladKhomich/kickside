@@ -1,5 +1,4 @@
 local execution_identity = require("execution_identity")
-local pipeline_lib = require("pipeline_lib")
 local upload_query_repo = require("upload_query_repo")
 local upload_tokens = require("upload_tokens")
 
@@ -91,9 +90,6 @@ local function run(input: any): (any, any?)
     if call_err then
         return nil, call_err
     end
-    local record_err = pipeline_lib.record_callback_delivery(upload, token, success)
-    if record_err then return nil, record_err end
-
     return { success = true, upload_id = upload.uuid, function_id = func_id }, nil
 end
 

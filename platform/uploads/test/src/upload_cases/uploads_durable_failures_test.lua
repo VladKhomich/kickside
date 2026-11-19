@@ -1006,12 +1006,13 @@ local function define_tests()
                         {id, uploads_events.TYPE.FAILED})), 0)
                 end
                 local callback_rows = callbacks()
-                test.eq(#callback_rows, checkpoint.delivered and 0 or 1, "resume schedules only undelivered callbacks")
-                if not checkpoint.delivered then deliver_callback(callback_rows[1].id) end
+                test.eq(#callback_rows, 0, "historical settlement must not enqueue a callback without delivery evidence")
                 local delivered = deliveries()
-                test.eq(#delivered, 1)
-                test.eq(delivered[1].status, expected_status)
+                test.eq(#delivered, checkpoint.delivered and 1 or 0)
+                if checkpoint.delivered then test.eq(delivered[1].status, expected_status) end
                 published[1].body = assert(json.decode(published[1].body))
+                test.eq(published[1].body.callback_error,
+                    "Callback delivery could not be verified for this stored processing attempt.")
                 local _, apply_err = upload_read_model.apply_events(queued.thread_id, published)
                 test.is_nil(apply_err)
                 test.eq(assert(upload_read_model.get_for_actor(owner, id)).status, expected_status)

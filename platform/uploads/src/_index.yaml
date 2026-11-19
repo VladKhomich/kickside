@@ -105,7 +105,7 @@ entries:
         path: .meta.target_db
       - entry: kickside.uploads.migrations:05_scope_archive_deduplication
         path: .meta.target_db
-      - entry: kickside.uploads.migrations:06_callback_deliveries
+      - entry: kickside.uploads.migrations:06_index_terminal_checkpoints
         path: .meta.target_db
 
   - name: storage_id
@@ -371,6 +371,7 @@ entries:
       upload_tokens: kickside.uploads.persist:upload_tokens
       types: kickside.uploads:types
       execution_identity: kickside.execution:execution_identity
+      trace_context: kickside.execution:trace
       jobs: kickside.core.jobs:jobs
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo

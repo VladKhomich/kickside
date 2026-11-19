@@ -438,7 +438,7 @@ return test.run_cases(function()
                 if job.job_type == "kickside.uploads.service:process_dead" then outcomes_count = outcomes_count + 1 end
             end
             test.eq(outcomes_count, 2, "recovery creates no outcome jobs")
-            test.eq(#jobs - outcomes_count, 1, "recovery enqueues one callback")
+            test.eq(#jobs - outcomes_count, 0, "historical recovery does not replay an unverified callback")
 
             local projected = checkpoints[1].upload_id
             exec("UPDATE kickside_upload_read_model SET status='completed' WHERE upload_id=$1", { projected })
