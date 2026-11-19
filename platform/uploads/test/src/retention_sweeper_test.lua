@@ -311,42 +311,64 @@ return test.run_cases(function()
                 (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata,
                     processing_intent_state,processing_job_id)
                 SELECT ]] .. ident .. ",$2,'text/plain',1,'app:uploads'," .. ident
-                .. ",'text','completed','{}','acknowledged'," .. ident .. " FROM seq", { prefix, owner })
+                .. ",'text','completed','{}',CASE WHEN n>4400 THEN 'acknowledged' END,CASE WHEN n>4400 THEN "
+                .. ident .. " END FROM seq", { prefix, owner })
             exec(ids .. [[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
-                SELECT ]] .. ident .. ",$2,'completed' FROM seq", { prefix, component_id })
+                SELECT ]] .. ident .. ",$2,'completed' FROM seq WHERE n>1250", { prefix, component_id })
+            exec(ids .. [[INSERT INTO kickside_uploads
+                (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata)
+                SELECT ]] .. ident .. ",$2,'text/plain',1,'app:uploads'," .. ident
+                .. ",'text','uploaded','{}' FROM seq WHERE n<=1830", { "20000000-0000-4000-8000-", owner })
             local last_job, last_upload = uuid.v4(), prefix .. "000000010001"
             checkpoint(component_id, owner, last_upload, last_job, "{}")
+            if postgres then
+                exec("ANALYZE kickside_uploads", {})
+                exec("ANALYZE kickside_upload_read_model", {})
+            end
 
             local batch = 500
             local cursor = prefix .. "000000000000"
             local found, examined = nil, 0
+            local function query_page(handle: any, statement: string, params: { any }): (any, error?)
+                local plan = assert(handle:query((postgres and "EXPLAIN (ANALYZE, BUFFERS) " or "EXPLAIN QUERY PLAN ")
+                    .. statement, params))
+                local seek, candidate_index = false, false
+                for _, row in ipairs(plan) do
+                    local detail = tostring(postgres and row["QUERY PLAN"] or row.detail)
+                    candidate_index = candidate_index or detail:find("idx_upload_checkpoint_candidates", 1, true) ~= nil
+                    if postgres then
+                        local rows, loops = detail:match("actual time=[^ ]+ rows=(%d+) loops=(%d+)")
+                        if rows and loops then
+                            test.is_true(assert(tonumber(rows)) * assert(tonumber(loops)) <= batch, detail)
+                        end
+                        local removed = detail:match("Rows Removed by [%a ]+: (%d+)")
+                        if removed then test.is_true(assert(tonumber(removed)) <= batch, detail) end
+                        seek = seek or detail:find("Index Cond:", 1, true) ~= nil
+                    else
+                        seek = seek or (detail:find("SEARCH", 1, true) ~= nil and detail:find("uuid>?", 1, true) ~= nil)
+                        test.is_false(detail:find("USE TEMP B-TREE FOR ORDER BY", 1, true) ~= nil, detail)
+                    end
+                end
+                test.is_true(seek, "candidate discovery advances by an indexed seek")
+                test.is_true(candidate_index, "the page reads the partial checkpoint index")
+                local rows, err = handle:query(statement, params)
+                if rows then examined = examined + #rows end
+                return rows, err
+            end
             local probe = {
                 type = function() return db:type() end,
-                query = function(_, statement, params)
-                    local plan = assert(db:query((postgres and "EXPLAIN (ANALYZE, BUFFERS) " or "EXPLAIN QUERY PLAN ")
-                        .. statement, params))
-                    local seek, candidate_index = false, false
-                    for _, row in ipairs(plan) do
-                        local detail = tostring(postgres and row["QUERY PLAN"] or row.detail)
-                        candidate_index = candidate_index or detail:find("idx_upload_checkpoint_candidates", 1, true) ~= nil
-                        if postgres then
-                            local rows, loops = detail:match("actual time=[^ ]+ rows=(%d+) loops=(%d+)")
-                            if rows and loops then
-                                test.is_true(assert(tonumber(rows)) * assert(tonumber(loops)) <= batch, detail)
-                            end
-                            local removed = detail:match("Rows Removed by [%a ]+: (%d+)")
-                            if removed then test.is_true(assert(tonumber(removed)) <= batch, detail) end
-                            seek = seek or detail:find("Index Cond:", 1, true) ~= nil
-                        else
-                            seek = seek or (detail:find("SEARCH", 1, true) ~= nil and detail:find("uuid>?", 1, true) ~= nil)
-                            test.is_false(detail:find("USE TEMP B-TREE FOR ORDER BY", 1, true) ~= nil, detail)
-                        end
-                    end
-                    test.is_true(seek, "candidate discovery advances by an indexed seek")
-                    test.is_true(candidate_index, "the page reads the partial checkpoint index")
-                    local rows, err = db:query(statement, params)
-                    if rows then examined = examined + #rows end
-                    return rows, err
+                query = function(_: any, statement: string, params: { any }): (any, error?)
+                    return query_page(db, statement, params)
+                end,
+                begin = function(): (any, error?)
+                    local tx = assert(db:begin())
+                    return {
+                        execute = function(_: any, statement: string): (any, error?) return tx:execute(statement) end,
+                        query = function(_: any, statement: string, params: { any }): (any, error?)
+                            return query_page(tx, statement, params)
+                        end,
+                        rollback = function(): (any, error?) return tx:rollback() end,
+                    }, nil
                 end,
             }
             if postgres then
