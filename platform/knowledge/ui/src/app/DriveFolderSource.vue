@@ -5,6 +5,8 @@ import Button from 'primevue/button'
 import { api } from '@wippy-fe/proxy'
 import { errMsg } from '@kickside/ui-kit/errMsg'
 import WcMount from '@widgets/app/WcMount.vue'
+import DriveFolderSyncs from './DriveFolderSyncs.vue'
+import { DATA_SYNC_TYPE, DRIVE_FOLDER_SOURCE, KNOWLEDGE_UPLOAD_SINK } from './driveSync'
 
 const props = defineProps<{ kbId: string }>()
 
@@ -122,7 +124,7 @@ async function linkFolder() {
     const { data } = await api.post<{ success: boolean; id?: string; error?: string }>('/api/v1/automations/selected', {
       ...install,
       principal: { kind: 'user', id: actorId.value },
-      type: 'kickside.sync:sync',
+      type: DATA_SYNC_TYPE,
       parent_id: props.kbId,
       input: {
         title: `Google Drive · ${folder.name}`,
@@ -130,12 +132,12 @@ async function linkFolder() {
         reconcile: true,
         trigger: {
           v: 2,
-          source: 'kickside.google.source:drive_folder',
+          source: DRIVE_FOLDER_SOURCE,
           backfill: 'all',
           schedule: { type: 'interval', expression: '15m' },
           config: { connection_id: connectionId.value, folder_id: folder.id },
         },
-        sink_port: 'kickside.knowledge.sink:kb_upload',
+        sink_port: KNOWLEDGE_UPLOAD_SINK,
         sink_config: { kb_id: props.kbId },
         transform: { kind: 'none' },
       },
@@ -156,6 +158,7 @@ async function linkFolder() {
 <template>
   <section v-if="actorId" class="kx-form kx-drive-source" aria-label="Google Drive source">
     <h3 class="kx-field-lbl">Google Drive source</h3>
+    <DriveFolderSyncs :kb-id="kbId" :linked-folder="linkedFolder" />
     <p v-if="linkedFolder" role="status">
       {{ linkedFolder }} is linked and will sync every 15 minutes. Manage the sync in Automations.
     </p>

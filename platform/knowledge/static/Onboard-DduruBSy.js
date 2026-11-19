@@ -1,7 +1,8 @@
 import { defineComponent as I, ref as m, computed as z, onUnmounted as K, openBlock as a, createElementBlock as u, createVNode as C, unref as l, createElementVNode as s, toDisplayString as f, createCommentVNode as A, Fragment as E, withModifiers as P, normalizeClass as S, renderList as Q, createBlock as x, reactive as W } from "vue";
 import { Icon as p } from "@iconify/vue";
 import { api as B } from "@wippy-fe/proxy";
-import { b as Y, s as j } from "./constants-7oupJIJB.js";
+import { a as Y } from "./constants-BEKvlp0G.js";
+import { s as j } from "./componentRealtime-m98w4dre.js";
 const G = { class: "kn-ob" }, H = {
   key: 0,
   class: "kn-ob-err"
@@ -11,7 +12,7 @@ const G = { class: "kn-ob" }, H = {
 }, X = { class: "kn-ob-done-ico" }, Z = { class: "kn-ob-done-text" }, ee = { class: "kn-ob-done-title" }, te = { class: "kn-ob-done-sub" }, ne = {
   key: 0,
   class: "kn-files"
-}, se = { class: "kn-file-ico" }, oe = { class: "kn-file-name" }, ae = { class: "kn-file-meta" }, re = ["onClick"], le = { class: "kn-ob-foot" }, ie = ["disabled"], ue = 4, be = /* @__PURE__ */ I({
+}, se = { class: "kn-file-ico" }, oe = { class: "kn-file-name" }, ae = { class: "kn-file-meta" }, re = ["onClick"], le = { class: "kn-ob-foot" }, ie = ["disabled"], ue = 4, me = /* @__PURE__ */ I({
   __name: "Onboard",
   setup(de) {
     const w = Y(), D = {
@@ -215,6 +216,6 @@ const G = { class: "kn-ob" }, H = {
   }
 });
 export {
-  be as default
+  me as default
 };
-//# sourceMappingURL=Onboard-BzlFGOl6.js.map
+//# sourceMappingURL=Onboard-DduruBSy.js.map

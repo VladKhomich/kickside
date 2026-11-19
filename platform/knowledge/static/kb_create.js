@@ -1,10 +1,10 @@
 import { W as t, P as o, u as n } from "./wc-runtime-Bmxpx-Ro.js";
 import { a as i } from "./lazy-ZWC1tvFC.js";
-import { s } from "./styles-Vnw5TNlG.js";
+import { s } from "./styles-CtbZvY-c.js";
 import "@iconify/vue";
 import { define as r } from "@wippy-fe/proxy";
 const a = i(
-  () => import("./KbCreate-DCP90AnW.js"),
+  () => import("./KbCreate-B-9BB9e8.js"),
   { loading: "Loading the new knowledge base dialog…", failed: "Could not load the new knowledge base dialog. Reload the page to try again." },
   n
 ), p = {
