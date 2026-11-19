@@ -115,7 +115,9 @@ local function pull_keys(r: Map): (Map?, any)
         if type(key) ~= "string" or key == "" then return nil, invalid("source key listing keys[" .. tostring(index) .. "] names no item_key") end
         keys[#keys + 1] = key :: string
     end
-    return { items = {}, keys = keys, next_cursor = p.next_cursor, has_more = p.has_more }, nil
+    local retry = tonumber(p.retry_after_ms)
+    return { items = {}, keys = keys, next_cursor = p.next_cursor, has_more = p.has_more,
+        retry_after_ms = retry and retry > 0 and retry < math.huge and math.floor(retry) or nil }, nil
 end
 
 local function pull(r: Map): (Map?, any)
