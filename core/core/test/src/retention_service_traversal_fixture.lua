@@ -18,9 +18,10 @@ M.MILLISECOND, M.RFC3339, M.utc, M.parse = time.MILLISECOND, time.RFC3339, time.
 
 function M.now(): any return M.at or time.now() end
 
-function M.after(delay: string): any
+function M.timer(delay: string): any
     M.delay = tonumber(delay:match("^(%d+)ms$"))
-    return {case_receive = function(self: any): table return {channel = self} end}
+    local response = {case_receive = function(self: any): table return {channel = self} end}
+    return {response = function(): table return response end, stop = function() end}
 end
 
 function M.get(id: string): (any, error?)

@@ -30,7 +30,7 @@ function M.inject(args: any): any
     local thread_id = trim(args.thread_id)
     local text = type(args.text) == "string" and args.text or ""
     if thread_id == "" then return { accepted = false, status = "error", error = "thread_id is required" } end
-    if trim(text) == "" then return { accepted = false, status = "error", error = "text is required" } end
+    if not text:find("%S") then return { accepted = false, status = "error", error = "text is required" } end
     local author = trim(args.author) ~= "" and trim(args.author) or "System"
     local actor = security.actor()
     local scope = security.scope()

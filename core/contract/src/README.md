@@ -10,6 +10,17 @@ KickSide base contracts.
 - **resource_registry** - Resource listing and counting with pagination
 - **scope_resolver** - Subject-to-scope-params seam returning serializable scope parameters
 
+## Text helpers
+
+`kickside.contract:text_trim` exports `trim(value)`. It removes Lua ASCII whitespace
+at the edges of a string and preserves the interior bytes. Non-string values return
+an empty string.
+
+`kickside.contract:unfence` exports `unfence(text)` for model responses. It trims the
+surrounding whitespace and strips a matching pair of triple-backtick fences with
+an optional alphanumeric language tag. Consumers declare a direct Contract
+dependency starting with the release that exports the helper they import.
+
 ## HTTP error classification
 
 `kickside.contract:http_errors` exports `classify(err)` returning an integer HTTP
