@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local sql = require("sql")
 local row_size = require("row_size")
 local uuid = require("uuid")
@@ -12,11 +13,6 @@ local policy = require("channel_retention_policy")
 
 -- Session mappings, admissions and accepted turns share this owner store.
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function now(): string
     return time.now():utc():format_rfc3339()

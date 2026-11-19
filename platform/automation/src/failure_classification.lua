@@ -75,10 +75,7 @@ KIND_DEFAULT_RETRIABLE[KIND_INVALID] = false
 KIND_DEFAULT_RETRIABLE[KIND_NOT_FOUND] = false
 KIND_DEFAULT_RETRIABLE[KIND_PERMISSION_DENIED] = false
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function field(value: any, key: string): any
     if type(value) ~= "table" then return nil end

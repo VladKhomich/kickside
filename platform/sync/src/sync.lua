@@ -31,10 +31,7 @@ local M = {}
 
 type Map = { [string]: any }
 
-local function trim(v: any): string
-    if type(v) ~= "string" then return "" end
-    return ((v :: string):gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function copy(value: any): Map
     local out: Map = {}

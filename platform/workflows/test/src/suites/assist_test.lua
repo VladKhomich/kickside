@@ -76,6 +76,22 @@ local function define_tests()
             test.is_nil(assist.validate_transform(result.transform, SOURCE_SCHEMA, TARGET_SCHEMA))
         end)
 
+        test.it("validates a fenced mapping with a mebibyte of whitespace", function()
+            local artifact = '{ name: output.full_name,' .. string.rep(" ", 1024 * 1024) .. 'age: output.age }'
+            local result = assist.assist_edge({
+                edge = { source_id = "a", target_id = "b" },
+                upstream_schema = SOURCE_SCHEMA,
+                downstream_schema = TARGET_SCHEMA,
+            }, {
+                generate = function(): (any, any?)
+                    return { transform = "```expr\n" .. artifact .. "\n```" }, nil
+                end,
+            })
+
+            test.is_true(result.success, tostring(result.error))
+            test.is_true(result.transform == artifact)
+        end)
+
         test.it("validates one-based array subscripts in authored transforms", function()
             local source_schema: Map = {
                 type = "object",

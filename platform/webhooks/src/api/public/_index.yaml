@@ -15,6 +15,7 @@ entries:
     method: handler
     modules: [http, json]
     imports:
+      text_trim: kickside.contract:text_trim
       webhook_ingress: kickside.webhooks.ingress:ingress
       webhook_consts: kickside.webhooks:consts
     security:

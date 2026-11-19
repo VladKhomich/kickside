@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local deletion_progress = require("deletion_progress")
 -- Component lifecycle for workflows. A workflow is a component of class `workflow`
 -- (its component id IS the workflow id); the definition plane lives in the module's
@@ -50,7 +51,7 @@ end
 local function idempotency_key(value: any): (string?, error?)
     if value == nil then return nil, nil end
     if type(value) ~= "string" then return nil, errors.new({ kind = errors.INVALID, message = "idempotency_key must be a string" }) end
-    local key = (value :: string):gsub("^%s+", ""):gsub("%s+$", "")
+    local key = trim(value)
     if key == "" then return nil, errors.new({ kind = errors.INVALID, message = "idempotency_key must not be blank" }) end
     if #key > 255 then return nil, errors.new({ kind = errors.INVALID, message = "idempotency_key must be at most 255 characters" }) end
     return key, nil

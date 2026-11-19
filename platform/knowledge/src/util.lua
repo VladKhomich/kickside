@@ -2,12 +2,7 @@
 
 local util = {}
 
-function util.trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return value:match("^%s*(.-)%s*$") or ""
-end
+util.trim = require("text_trim").trim
 
 function util.same_value(a: any, b: any): boolean
     if type(a) ~= type(b) then return false end

@@ -57,4 +57,5 @@ entries:
     kind: library.lua
     source: file://agentic_query_fixture.lua
     imports:
+      text_trim: kickside.contract:text_trim
       flow: kickside.knowledge.retrieval:answer_flow_fixture

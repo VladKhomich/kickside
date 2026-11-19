@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local http = require("http")
 local registry = require("registry")
 local logger = require("logger")
@@ -15,11 +16,6 @@ local MAX_TITLE_BYTES = 120
 local MAX_ICON_BYTES = 96
 local FALLBACK_ICON = "tabler:plug-connected"
 local PUBLIC_UNAVAILABLE = "provider catalogue unavailable"
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function printable(value: string, max_bytes: number): boolean
     return value ~= "" and #value <= max_bytes and not value:find("[%z\1-\31\127]")

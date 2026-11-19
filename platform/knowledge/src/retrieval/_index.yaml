@@ -26,6 +26,7 @@ entries:
     source: file://agentic_query.lua
     method: run
     imports:
+      text_trim: kickside.contract:text_trim
       flow: userspace.dataflow.flow:flow
 
   # Answering layer: retrieve + produce an answer via the selected query driver.

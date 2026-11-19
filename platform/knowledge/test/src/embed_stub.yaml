@@ -15,6 +15,7 @@ entries:
     modules:
       - ctx
     imports:
+      text_trim: kickside.contract:text_trim
       thread_ingest: kickside.knowledge.injection:thread_ingest
 
   - name: embed_reference
@@ -26,6 +27,7 @@ entries:
     modules:
       - ctx
     imports:
+      text_trim: kickside.contract:text_trim
       thread_ingest: kickside.knowledge.injection:thread_ingest
 
   - name: ledger

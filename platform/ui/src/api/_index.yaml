@@ -34,6 +34,7 @@ entries:
     method: handler
     modules: [http, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       contributions: kickside.ui:contributions
 
   - name: list_contributions.endpoint

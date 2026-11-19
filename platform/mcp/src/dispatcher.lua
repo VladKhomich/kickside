@@ -6,6 +6,7 @@
 -- Layer 2 = core execution resolves its live principal and restrictions).
 -- Also serves resources/* (session + scope snapshots) and prompts/* (registry).
 
+local trim = require("text_trim").trim
 local json = require("json")
 local registry = require("registry")
 local security = require("security")
@@ -61,7 +62,7 @@ local function extract_bearer(auth_header: any): string?
     if type(auth_header) ~= "string" then return nil end
     local h = auth_header :: string
     if h:lower():sub(1, 7) ~= "bearer " then return nil end
-    local raw = h:sub(8):gsub("^%s+", ""):gsub("%s+$", "")
+    local raw = trim(h:sub(8))
     if raw == "" then return nil end
     return raw
 end

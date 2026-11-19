@@ -16,12 +16,7 @@ function M.is_str(value: any): boolean
     return type(value) == "string" and (value :: string) ~= ""
 end
 
-function M.trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+M.trim = require("text_trim").trim
 
 function M.normalize_int_arg(value: any, name: string, min_value: integer?, max_value: integer?): (integer?, error?)
     if value == nil or value == "" then

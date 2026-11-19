@@ -29,6 +29,7 @@ entries:
     source: file://definitions_api.lua
     modules: [http, json, security]
     imports:
+      text_trim: kickside.contract:text_trim
       http_errors: kickside.contract:http_errors
       workflow_repo: kickside.workflows.repo:repo
       workflow: kickside.workflows:workflow
@@ -117,6 +118,7 @@ entries:
     method: export_handler
     modules: [http, json, security]
     imports:
+      text_trim: kickside.contract:text_trim
       http_errors: kickside.contract:http_errors
       workflow_repo: kickside.workflows.repo:repo
       workflow: kickside.workflows:workflow
@@ -141,6 +143,7 @@ entries:
     method: import_handler
     modules: [http, json, security]
     imports:
+      text_trim: kickside.contract:text_trim
       http_errors: kickside.contract:http_errors
       workflow_repo: kickside.workflows.repo:repo
       workflow: kickside.workflows:workflow

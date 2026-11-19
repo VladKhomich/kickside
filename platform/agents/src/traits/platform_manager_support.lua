@@ -1,4 +1,5 @@
 -- Shared validation, contract access, and registry row helpers for Platform actions.
+local trim = require("text_trim").trim
 local contract = require("contract")
 local funcs = require("funcs")
 local security = require("security")
@@ -14,11 +15,6 @@ local CONNECTION_REGISTRY_NS = "kickside.connection.registry"
 local TRAIT_TYPE = "agent.trait"
 
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function lower(value: any): string
     return string.lower(trim(value))
@@ -175,7 +171,6 @@ local function component_summary(source: any, selected: { [string]: boolean }): 
         status = meta.status or "",
     }, source, selected)
 end
-
 
 M.AGENTS_CONTRACT = AGENTS_CONTRACT
 M.TOOLS_CONTRACT = TOOLS_CONTRACT

@@ -46,6 +46,7 @@ entries:
         - kickside.users.security:login_db_access
         - kickside.users.security:login_env_read
     imports:
+      text_trim: kickside.contract:text_trim
       user_groups_repo: kickside.users.persist:user_groups_repo
 
   - name: scope_resolver_func
@@ -62,6 +63,7 @@ entries:
       - security
     method: resolve
     imports:
+      text_trim: kickside.contract:text_trim
       execution_identity: kickside.execution:execution_identity
       component: kickside.component:component
 
@@ -86,6 +88,7 @@ entries:
         - kickside.users.security:session_group_policy_read
         - kickside.users.security:resolve_scope_groups
     imports:
+      text_trim: kickside.contract:text_trim
       consts: kickside.users:consts
       user_groups_repo: kickside.users.persist:user_groups_repo
       user_authority: kickside.users:user_authority
@@ -106,6 +109,7 @@ entries:
         - kickside.users.security:session_group_policy_read
         - kickside.users.security:resolve_scope_groups
     imports:
+      text_trim: kickside.contract:text_trim
       credential_eligibility: kickside.users.persist:credential_eligibility
       bot_accounts_repo: kickside.users.persist:bot_accounts_repo
       consts: kickside.users:consts

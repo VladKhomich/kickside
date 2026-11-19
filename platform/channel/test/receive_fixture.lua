@@ -86,7 +86,7 @@ local function seed_responder(opts)
         agent_id = "agent-1",
         traits = { "trait-1" },
         trait_contexts = { ["trait-1"] = { level = "brief" } },
-        context = "channel context",
+        context = opts.context or "channel context",
         response_policy = opts.response_policy or {},
         session_policy = opts.session_policy or {},
         system_prompt = opts.system_prompt,

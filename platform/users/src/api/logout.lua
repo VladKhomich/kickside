@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local http = require("http")
 local json = require("json")
 local security = require("security")
@@ -20,8 +21,9 @@ local function bearer_token(req)
         return nil
     end
     -- "Bearer <token>", case-insensitive scheme, trailing whitespace trimmed.
-    local token = header:match("^[Bb][Ee][Aa][Rr][Ee][Rr]%s+(.-)%s*$")
-    if not token or token == "" then
+    local _, scheme_end = header:find("^[Bb][Ee][Aa][Rr][Ee][Rr]%s")
+    local token = scheme_end and trim(header:sub(scheme_end + 1)) or ""
+    if token == "" then
         return nil
     end
     return token

@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local proc_supervisor = require("proc_supervisor")
 local logger = require("logger"):named("kickside.channel.hub")
 local channel = require("channel")
@@ -33,11 +34,6 @@ local function construct(dependencies: any): any
     local BRIDGE_PROC = "kickside.channel.service:bridge"
 
     type Map = { [string]: any }
-
-    local function trim(value: any): string
-        if type(value) ~= "string" then return "" end
-        return (value:gsub("^%s*(.-)%s*$", "%1"))
-    end
 
     -- Spawn the bridge under the Route's live resolved identity. The bridge's ambient frame
     -- becomes that identity: it ensures the thread, appends the inbound, runs the
@@ -110,7 +106,6 @@ local function construct(dependencies: any): any
         local turn_supervisor = turn_supervisor_module.new(
             function(ref: any): () handle_data({ kind = "turn", turn_ref = ref }) end,
             function(key: string, message_id: string): () seen.forget(key .. ":" .. message_id) end, _args.supervisor)
-
 
         local function track_turn(bridge: any, ref: any): ()
             local id = turn_supervisor.track(ref)

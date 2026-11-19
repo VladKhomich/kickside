@@ -23,7 +23,7 @@ entries:
     component: kickside/component
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.9'
     kind: ns.dependency
     component: kickside/contract
 
@@ -177,6 +177,7 @@ entries:
     source: file://persist/state.lua
     modules: [contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       types: kickside.skills:types
 
   # The version-history projection worker: the runner invokes it with each new
@@ -189,6 +190,7 @@ entries:
     source: file://persist/projection.lua
     method: run
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component
       types: kickside.skills:types
 
@@ -360,6 +362,7 @@ entries:
     method: get
     modules: [base64]
     imports:
+      text_trim: kickside.contract:text_trim
       deletion_progress: kickside.component:deletion_progress
       component: kickside.component:component
       envelope: kickside.component:envelope
@@ -376,6 +379,7 @@ entries:
     method: list
     modules: [base64]
     imports:
+      text_trim: kickside.contract:text_trim
       deletion_progress: kickside.component:deletion_progress
       component: kickside.component:component
       envelope: kickside.component:envelope
@@ -392,6 +396,7 @@ entries:
     method: list_files
     modules: [base64]
     imports:
+      text_trim: kickside.contract:text_trim
       deletion_progress: kickside.component:deletion_progress
       component: kickside.component:component
       envelope: kickside.component:envelope
@@ -408,6 +413,7 @@ entries:
     method: read_file
     modules: [base64]
     imports:
+      text_trim: kickside.contract:text_trim
       deletion_progress: kickside.component:deletion_progress
       component: kickside.component:component
       envelope: kickside.component:envelope
@@ -424,6 +430,7 @@ entries:
     method: list_versions
     modules: [base64]
     imports:
+      text_trim: kickside.contract:text_trim
       deletion_progress: kickside.component:deletion_progress
       component: kickside.component:component
       envelope: kickside.component:envelope

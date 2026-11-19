@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local test = require("test")
 local registry = require("registry")
 local security = require("security")
@@ -31,11 +32,6 @@ type ContractBinding = {
 }
 type PolicyEntry = { policy: { resources: any }? }
 type SecuredFunction = { security: { policies: { string }? }? }
-
-local function trim(value): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function module_migrations(): { RegistryEntry }
     local all, err = registry.find({})

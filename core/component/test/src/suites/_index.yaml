@@ -13,6 +13,7 @@ entries:
     method: run
     modules: [registry]
     imports:
+      text_trim: kickside.contract:text_trim
       test: wippy.test:test
       component_types: kickside.component:types
 

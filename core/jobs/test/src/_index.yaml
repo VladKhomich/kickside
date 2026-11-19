@@ -560,6 +560,7 @@ entries:
     modules:
       - registry
     imports:
+      text_trim: kickside.contract:text_trim
       test: wippy.test:test
       config: kickside.core.jobs:config
 
@@ -3575,6 +3576,7 @@ entries:
     source: file://child_native_source.lua
     modules: [logger, time]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: app:child_native_execution_policy
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       job_types: kickside.core.jobs:types
@@ -3834,6 +3836,7 @@ entries:
     source: file://dispatch_cause_native_source.lua
     modules: [sql, logger, time]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: app:dispatch_cause_native_execution_policy
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types

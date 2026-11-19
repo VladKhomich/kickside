@@ -23,10 +23,7 @@ M._json = nil
 M._security = nil
 M._agent_invoke = nil
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function bounded(value: any, max_length: integer): string
     local text = trim(value)

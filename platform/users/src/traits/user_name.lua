@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local security = require("security")
 local consts = require("consts")
 
@@ -10,7 +11,7 @@ local function sanitize(value: any): string
     name = name:gsub("%c", " ")
     -- Quotes would let the value close its own delimiter.
     name = name:gsub('"', "'")
-    name = name:gsub("^%s*(.-)%s*$", "%1")
+    name = trim(name)
     if #name > MAX_NAME then
         name = name:sub(1, MAX_NAME)
     end

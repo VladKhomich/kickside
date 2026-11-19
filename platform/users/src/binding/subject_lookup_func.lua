@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local user_groups_repo = require("user_groups_repo")
 local consts = require("consts")
 local bot_accounts = require("bot_accounts_repo")
@@ -12,11 +13,6 @@ local M = {}
 
 local function repository()
     return (M :: any)._repo or user_groups_repo
-end
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 local function failure(subject_id: string, message: string, kind: string, error_kind: string, retriable: boolean): any

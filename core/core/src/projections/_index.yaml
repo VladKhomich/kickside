@@ -115,6 +115,7 @@ entries:
     method: get
     modules: [sql, json]
     imports:
+      text_trim: kickside.contract:text_trim
       core_db: kickside.core:db
       component: kickside.core.threads:component
       core_types: kickside.core:types

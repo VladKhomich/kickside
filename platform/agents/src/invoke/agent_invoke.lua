@@ -44,10 +44,7 @@ type RunErr = {
     code: string?,
 }
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function positive_int(value: any, default_value: integer, min_value: integer, max_value: integer): integer
     local n = tonumber(value) or default_value

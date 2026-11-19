@@ -6,6 +6,7 @@
 -- — the gaps that let a supervisor spawn a nonexistent worker factory and a test
 -- fixture bind a harness-only storage id ride along into a mounted boot.
 
+local trim = require("text_trim").trim
 local test = require("test")
 local registry = require("registry")
 local core_db = require("core_db")
@@ -14,13 +15,6 @@ local retention_policy = require("retention_policy")
 
 -- The module's namespace prefix; every entry under it is in-scope for this check.
 local CORE_PREFIX = "kickside.core"
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- Entry kind, supporting both the top-level and data-nested shapes the loader
 -- may produce.

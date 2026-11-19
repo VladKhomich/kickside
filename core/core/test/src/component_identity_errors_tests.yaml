@@ -18,6 +18,7 @@ entries:
   - sql
   - security
   imports:
+    text_trim: kickside.contract:text_trim
     component_identity: app:component_identity_errors_source
     execution_identity: app:component_identity_errors_execution
     threads_env: kickside.core.threads:env

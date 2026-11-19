@@ -21,6 +21,7 @@ entries:
       - process
       - time
     imports:
+      text_trim: kickside.contract:text_trim
       types: kickside.core.projections:types
       execution_identity: kickside.execution:execution_identity
       trace_context: kickside.execution:trace
@@ -38,6 +39,7 @@ entries:
     modules:
       - sql
     imports:
+      text_trim: kickside.contract:text_trim
       types: kickside.core.projections:types
 
   - name: register
@@ -47,6 +49,7 @@ entries:
     source: file://register.lua
     modules: [sql, json, uuid]
     imports:
+      text_trim: kickside.contract:text_trim
       clock: kickside.core.jobs:clock
       types: kickside.core.projections:types
       core_types: kickside.core:types
@@ -67,6 +70,7 @@ entries:
     modules:
       - sql
     imports:
+      text_trim: kickside.contract:text_trim
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
       job_reclaim: kickside.core.jobs.persist:reclaim

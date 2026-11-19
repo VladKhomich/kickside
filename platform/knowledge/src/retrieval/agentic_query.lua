@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local flow = require("flow")
 
 -- Agentic query driver: answer a question by running a tool-calling agent over
@@ -33,7 +34,7 @@ local SEED_HEADER = "Passages already retrieved for this question (a starting po
 -- the stored identity unchanged apart from surrounding whitespace.
 local function resolve_agent_ref(value: any): string
     if type(value) ~= "string" then return DEFAULT_AGENT end
-    local normalized = (value :: string):gsub("^%s+", ""):gsub("%s+$", "")
+    local normalized = trim(value)
     if normalized == "" then return DEFAULT_AGENT end
     return normalized
 end

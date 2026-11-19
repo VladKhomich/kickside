@@ -7,6 +7,7 @@
 -- calls the emit_update function so hub delivery runs under the threads service
 -- identity.
 
+local trim = require("text_trim").trim
 local json = require("json")
 local time = require("time")
 local sql = require("sql")
@@ -116,13 +117,6 @@ type EmitResult = {
     delivered: integer,
     failed: integer,
 }
-
-local function trim(value: string?): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value :: string):match("^%s*(.-)%s*$") or ""
-end
 
 -- Decode a JSON string into a ThreadAttrs table; pass-through if already a
 -- table; {} on anything else. Used for the loosely-typed thread_attrs input.

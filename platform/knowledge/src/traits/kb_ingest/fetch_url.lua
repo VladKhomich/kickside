@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local util = require("util")
 local ctx = require("ctx")
 local html = require("html")
@@ -73,7 +74,7 @@ end
 local function extract_title(body)
     local title = body:match("<title[^>]*>(.-)</title>")
     if title then
-        title = title:gsub("%s+", " "):match("^%s*(.-)%s*$")
+        title = trim((title:gsub("%s+", " ")))
         if title ~= "" then return title end
     end
     return nil

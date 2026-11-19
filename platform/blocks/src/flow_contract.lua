@@ -41,10 +41,7 @@ M.API_VERSION = API_VERSION
 M.ARTIFACT_KIND = ARTIFACT_KIND
 M.DECLARATION_TYPE = DECLARATION_TYPE
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value :: string):gsub("^%s+", ""):gsub("%s+$", "")
-end
+local trim = require("text_trim").trim
 
 local function is_positive_integer(value: any): boolean
     return type(value) == "number" and value > 0 and math.floor(value :: number) == value

@@ -4,15 +4,11 @@
 -- kb10 embed_func seam: forward the request into kickside.knowledge.injection:thread_ingest,
 -- carrying external_id through so the source-provided identity reaches the content event.
 
+local trim = require("text_trim").trim
 local ctx = require("ctx")
 local thread_ingest = require("thread_ingest")
 
 type Map = { [string]: any }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function shallow_copy(input: any): Map
     local out: Map = {}

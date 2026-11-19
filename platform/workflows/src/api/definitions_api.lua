@@ -2,6 +2,7 @@
 -- source through the definitions contract implementation; import writes a fresh
 -- editable draft through the ordinary definition CQRS path and never publishes it.
 
+local trim = require("text_trim").trim
 local http = require("http")
 local http_errors = require("http_errors")
 local json = require("json")
@@ -52,7 +53,7 @@ function M.validate_flow(value: any): (Map?, Map?)
 end
 
 local function normalized(value: any): string
-    return str(value):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+    return trim(str(value)):lower()
 end
 
 local function imported_title(base: string, rows: any): string
