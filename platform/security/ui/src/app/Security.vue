@@ -16,7 +16,7 @@ import { useSecurityApi } from './useSecurityApi.ts'
 // palette into the scope, reorder, remove. Saving writes the DB row; the projection
 // service materializes it as a security.scope registry entry.
 const store = useSecurityApi()
-const { scopes, policies, loading, saving, error } = store
+const { scopes, assignablePolicies, installedPolicies, loading, saving, error } = store
 
 const railSearch = ref('')
 const paletteSearch = ref('')
@@ -52,19 +52,10 @@ const readOnlyScope = computed(() => (selectedScope.value && selectedScope.value
 const isOverlay = computed(() => !!draft.value?.target)
 const basePolicies = computed(() => isOverlay.value ? readOnlyScope.value?.policies ?? [] : [])
 
-const catalogById = computed(() => {
-  const byId = new Map<string, Policy>()
-  for (const scope of scopes.value) {
-    for (const policy of [...scope.policies, ...(scope.overlay_policies ?? [])]) {
-      if (policy.available !== false) byId.set(policy.id, policy)
-    }
-  }
-  for (const policy of policies.value) byId.set(policy.id, policy)
-  return byId
-})
+const installedById = computed(() => new Map(installedPolicies.value.map(policy => [policy.id, policy])))
 
 const selectedPolicies = computed(() => (draft.value?.policyIds ?? [])
-  .map(id => catalogById.value.get(id) ?? { id, available: false }))
+  .map(id => installedById.value.get(id) ?? { id, available: false }))
 
 const palettePolicies = computed<Policy[]>(() => {
   if (!draft.value) return []
@@ -72,7 +63,7 @@ const palettePolicies = computed<Policy[]>(() => {
   // policies (base can't be re-added).
   const chosen = new Set([...draft.value.policyIds, ...basePolicies.value.map(p => p.id)])
   const q = paletteSearch.value.trim().toLowerCase()
-  return policies.value.filter(p => !chosen.has(p.id)
+  return assignablePolicies.value.filter(p => !chosen.has(p.id)
     && (!q || (p.title || '').toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || (p.comment || '').toLowerCase().includes(q)))
 })
 
@@ -120,7 +111,7 @@ function openOverlay(s: Scope) {
 
 function addPolicy(id: string, index?: number) {
   if (!draft.value || draft.value.policyIds.includes(id) || basePolicies.value.some(p => p.id === id)) return
-  if (policies.value.some(p => p.id === id)) draft.value.policyIds.splice(index ?? draft.value.policyIds.length, 0, id)
+  if (assignablePolicies.value.some(p => p.id === id)) draft.value.policyIds.splice(index ?? draft.value.policyIds.length, 0, id)
 }
 function removePolicy(id: string) {
   if (draft.value) draft.value.policyIds = draft.value.policyIds.filter(policyId => policyId !== id)

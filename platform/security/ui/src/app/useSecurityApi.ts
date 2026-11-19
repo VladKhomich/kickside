@@ -2,10 +2,6 @@ import { ref } from 'vue'
 import { api } from '@wippy-fe/proxy'
 import type { Policy, Scope } from '../types.ts'
 
-// Data store for the security surface. Owns the scope catalog and the
-// assignable-permission catalog, the load lifecycle, and custom-scope mutations. Every
-// mutation reloads the catalog so the rail and builder stay consistent.
-
 export function messageOf(e: unknown, fallback: string): string {
   const data = (e as any)?.response?.data ?? (e as any)?.data
   if (typeof data?.error === 'string' && data.error) return data.error
@@ -15,7 +11,8 @@ export function messageOf(e: unknown, fallback: string): string {
 
 export function useSecurityApi() {
   const scopes = ref<Scope[]>([])
-  const policies = ref<Policy[]>([])
+  const assignablePolicies = ref<Policy[]>([])
+  const installedPolicies = ref<Policy[]>([])
   const loading = ref(true)
   const saving = ref(false)
   const error = ref('')
@@ -27,13 +24,15 @@ export function useSecurityApi() {
     loading.value = true
     error.value = ''
     try {
-      const [scopeRes, policyRes] = await Promise.all([
+      const [scopeRes, assignableRes, installedRes] = await Promise.all([
         api.get('/api/v1/security/scopes?include_unavailable=true'),
         api.get('/api/v1/security/policies?assignable=true'),
+        api.get('/api/v1/security/policies?include_private=true'),
       ])
       if (seq !== loadSeq) return
       scopes.value = (scopeRes.data?.scopes ?? []) as Scope[]
-      policies.value = (policyRes.data?.policies ?? []) as Policy[]
+      assignablePolicies.value = (assignableRes.data?.policies ?? []) as Policy[]
+      installedPolicies.value = (installedRes.data?.policies ?? []) as Policy[]
     }
     catch (e) {
       if (seq === loadSeq) error.value = messageOf(e, 'failed to load security')
@@ -79,5 +78,5 @@ export function useSecurityApi() {
     }
   }
 
-  return { scopes, policies, loading, saving, error, load, saveScope, deleteScope }
+  return { scopes, assignablePolicies, installedPolicies, loading, saving, error, load, saveScope, deleteScope }
 }
