@@ -62,10 +62,7 @@ function M.setup(_database_id: string): any
             {id = "app.other.migrations:pending", applied = false}}, nil
     end}
 end
-function M.listen(_topic: string, opts: {message: boolean}?): (any, error?)
-    hit(opts and opts.message and "failure_listener" or "listen")
-    return channel.new(), nil
-end
+function M.listen(_topic: string): (any, error?) hit("listen"); return channel.new(), nil end
 function M.registry.lookup(_name: string, _scope: any): string? return nil end
 function M.registry.register(name: string, _pid: any, scope: any): (boolean?, error?)
     if scope ~= M.registry.EVENTUAL then return response("register", true) end
