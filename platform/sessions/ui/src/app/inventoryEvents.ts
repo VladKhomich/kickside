@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import type { ArtifactSummary, Session } from '../types.ts'
 import { artifactId } from './artifactPresentation.ts'
 

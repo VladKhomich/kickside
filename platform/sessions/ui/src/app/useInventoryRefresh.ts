@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { onBeforeUnmount, ref } from 'vue'
 
 export function useInventoryRefresh(fetchInventory: () => Promise<void>, applyUpdates: () => Promise<void>) {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { describe, expect, it } from 'vitest'
 import type { ArtifactSummary, Session } from '../types.ts'
 import {
