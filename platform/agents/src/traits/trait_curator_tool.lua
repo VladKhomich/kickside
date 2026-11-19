@@ -110,7 +110,15 @@ local function apply(new_active: { string }, new_contexts: any, message: string)
     }
 end
 
--- list_traits pages the activatable capabilities in id order.
+local function matches_terms(searchable: string, terms: { string }): boolean
+    if #terms < 2 then return false end
+    for _, term in ipairs(terms) do
+        if not searchable:find(term, 1, true) then return false end
+    end
+    return true
+end
+
+-- Select matches before paging so a cursor never switches from literal to term matching.
 local function list_traits(args: any, namespaces: any, query: string): (any, error?)
     local limit, cursor, page_err = keyset.args(args)
     if page_err then return nil, page_err end
@@ -121,28 +129,38 @@ local function list_traits(args: any, namespaces: any, query: string): (any, err
     local base = base_set()
     local active = active_set()
     local trait_ids = configured_traits()
-    local rows: { any } = {}
+    local terms: { string } = {}
+    for term in query:gmatch("%S+") do terms[#terms + 1] = term end
+    local literal_matches: { any } = {}
+    local term_matches: { any } = {}
     for _, entry in ipairs((entries or {}) :: { any }) do
         local meta = (entry :: any).meta or {}
         local id = (entry :: any).id or ""
-        local searchable = string.lower(id .. " " .. tostring(meta.title or "") .. " " ..
-            trait_description(meta) .. " " .. table.concat(id_set.parse(meta.tags), " "))
         if meta.public and not meta.private and id ~= "" and master_ns.allowed(namespaces, id)
-            and trait_id_allowed(id, trait_ids) and (query == "" or searchable:find(query, 1, true)) then
-            local state = "available"
-            if id_set.has(base, id) then state = "base"
-            elseif id_set.has(active, id) then state = "active" end
-            local row = {
-                id = id,
-                title = meta.title or id,
-                tags = id_set.parse(meta.tags),
-                state = state,
-                context_configurable = meta.web_component ~= nil,
-            }
-            if include_description then row.description = trait_description(meta) end
-            rows[#rows + 1] = row
+            and trait_id_allowed(id, trait_ids) then
+            local tags = id_set.parse(meta.tags)
+            local description = trait_description(meta)
+            local searchable = string.lower(id .. " " .. tostring(meta.title or "") .. " " ..
+                description .. " " .. table.concat(tags, " "))
+            local literal = query == "" or searchable:find(query, 1, true) ~= nil
+            if literal or matches_terms(searchable, terms) then
+                local state = "available"
+                if id_set.has(base, id) then state = "base"
+                elseif id_set.has(active, id) then state = "active" end
+                local row = {
+                    id = id,
+                    title = meta.title or id,
+                    tags = tags,
+                    state = state,
+                    context_configurable = meta.web_component ~= nil,
+                }
+                if include_description then row.description = description end
+                local matches = literal and literal_matches or term_matches
+                matches[#matches + 1] = row
+            end
         end
     end
+    local rows = #literal_matches > 0 and literal_matches or term_matches
     local page, next_cursor = keyset.page(rows, keyset.field("id"), limit :: integer, cursor)
     return { success = true, scope = scope_label(namespaces, trait_ids), capabilities = page, count = #page, next_cursor = next_cursor }, nil
 end

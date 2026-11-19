@@ -47,6 +47,10 @@ entries:
     meta: { type: agent.trait, title: Public trait probe, comment: Test-only public capability fixture., icon: tabler:test-pipe, public: true, tags: DiscoveryStringTag }
     prompt: Test-only public trait.
 
+  - name: reordered_trait_probe
+    kind: registry.entry
+    meta: { type: agent.trait, title: Trait probe public, public: true }
+
   - name: internal_trait_probe
     kind: registry.entry
     meta: { type: agent.trait, title: Internal trait probe }
