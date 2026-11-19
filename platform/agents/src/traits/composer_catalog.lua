@@ -6,10 +6,7 @@ type Map = { [string]: any }
 
 local TRAIT_TYPE = "agent.trait"
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return ((value :: string):gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function description_of(meta: Map): string
     local desc = trim(meta.llm_description)

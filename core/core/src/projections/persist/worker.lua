@@ -1,3 +1,5 @@
+local trim = require("text_trim").trim
+
 -- The generic projection-worker boundary. A projection names its worker by a
 -- worker_ref URI (func://<id> or proc://<id>); this module parses and validates
 -- that ref against the registry, fetches the event batch a prefetch worker
@@ -49,13 +51,6 @@ type Executor = sql.DB | sql.Transaction
 local PROC_BLOCKED = {
     ["kickside.core.jobs.service:worker"] = "job worker is a daemon and cannot be used as a projection worker",
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- The registry entry kind, supporting both top-level and data-nested shapes.
 local function entry_kind(entry: any): string?

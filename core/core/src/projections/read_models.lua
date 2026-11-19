@@ -1,6 +1,7 @@
 -- Read-only boundary for committed materialized views. It exposes projection
 -- bodies only: no event log, cursor, lag, catch-up, replay, or worker controls.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local json = require("json")
 
@@ -9,11 +10,6 @@ local component = require("component")
 local core_types = require("core_types")
 
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function failure(message: string, kind: any): error
     return (errors.new({ message = message, kind = kind }) :: error)

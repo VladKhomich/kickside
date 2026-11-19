@@ -7,3 +7,5 @@ entries:
     meta:
       comment: Canonical event-body source_ref provenance envelope builder.
     source: file://source_ref.lua
+    imports:
+      text_trim: kickside.contract:text_trim

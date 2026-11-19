@@ -31,6 +31,8 @@ entries:
   - name: handler
     kind: function.lua
     source: file://login_jet.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     method: handler
     modules:
       - http

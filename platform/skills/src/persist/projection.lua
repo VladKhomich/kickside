@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local component = require("component")
 local types = require("types")
 
@@ -9,11 +10,6 @@ local types = require("types")
 -- from it without replaying events, so the history survives event retention.
 -- body.meta carries the engine's worker config and must be preserved untouched.
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function as_table(value: any): any
     if type(value) == "table" then return value end

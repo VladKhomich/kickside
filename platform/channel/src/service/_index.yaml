@@ -56,6 +56,7 @@ entries:
     source: file://bridge_support.lua
     modules: [logger, time, channel, security, contract]
     imports:
+      text_trim: kickside.contract:text_trim
       llm: wippy.llm:llm
       prompt: wippy.llm:prompt
       component: kickside.component:component
@@ -124,6 +125,7 @@ entries:
     source: file://thread_bridge.lua
     modules: [contract, security, hash]
     imports:
+      text_trim: kickside.contract:text_trim
       channel_consts: kickside.channel:consts
 
   - name: dedup
@@ -168,6 +170,7 @@ entries:
       - kickside.channel:thread_reply_publish
       - kickside.channel:thread_responder_session_publish
     imports:
+      text_trim: kickside.contract:text_trim
       proc_supervisor: kickside.core.jobs:proc_supervisor
       responder_health: kickside.channel.responder:health
       channel_consts: kickside.channel:consts

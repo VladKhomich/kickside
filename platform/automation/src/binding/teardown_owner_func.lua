@@ -1,11 +1,7 @@
+local trim = require("text_trim").trim
 local automations_lib = require("automations_lib")
 
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- The automation that declared ownership of a resource cannot outlive it: it goes
 -- down through the shared delete dispatch, and its failure is reported so a

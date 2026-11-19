@@ -30,9 +30,7 @@ local function copy_tree(v: any): any
 end
 M.copy_tree = copy_tree
 
-local function trim(s: string): string
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function ident_char(ch: string): boolean
     return ch:match("[%w_]") ~= nil

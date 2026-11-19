@@ -45,10 +45,7 @@ local RUNTIME_READER = "kickside.contract:runtime_reader"
 -- The automation binding installed responders register under; the routing lookup
 -- scopes to it so it never scans other automation types.
 local RESPONDER_IMPL = "kickside.channel.responder:channel_responder"
-function M.trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+M.trim = require("text_trim").trim
 
 -- normalize copies the transport fields off a raw inbound and validates them.
 -- opts.require_external_user additionally requires a non-empty external_user_id

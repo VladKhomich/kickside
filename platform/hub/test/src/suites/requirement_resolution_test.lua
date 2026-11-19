@@ -72,7 +72,7 @@ local function define_tests()
                 evidence = request.artifact
             end))
             test.is_nil(err)
-            test.eq(result.parameters[1].value, "app:api")
+            test.eq(assert(result.parameters)[1].value, "app:api")
             test.eq(model, "class:fast")
             test.eq(evidence.component, "acme/tools")
             test.eq(evidence.version, "1.2.3")

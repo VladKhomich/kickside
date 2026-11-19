@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 -- jobs-owned entity shapes and invariant vocabulary. These are
 -- component-private to the jobs slice. Shared engine entities (Thread, Event,
 -- Projection) and access masks live in kickside.core:types and are referenced
@@ -150,16 +151,16 @@ M.WORKER_RUNTIME = {
 -- validation remains with dispatch; callers retain the original stored URI.
 function M.worker_reference(raw: any): (table?, error?)
     if type(raw) ~= "string" then return nil, nil end
-    local reference = raw:gsub("^%s*(.-)%s*$", "%1")
+    local reference = trim(raw)
     if reference == "" then return nil, nil end
     local runtime: string? = nil
     local target = reference
     if reference:sub(1, #M.WORKER_SCHEME.FUNC) == M.WORKER_SCHEME.FUNC then
         runtime = M.WORKER_RUNTIME.FUNC
-        target = reference:sub(#M.WORKER_SCHEME.FUNC + 1):gsub("^%s*(.-)%s*$", "%1")
+        target = trim(reference:sub(#M.WORKER_SCHEME.FUNC + 1))
     elseif reference:sub(1, #M.WORKER_SCHEME.PROC) == M.WORKER_SCHEME.PROC then
         runtime = M.WORKER_RUNTIME.PROC
-        target = reference:sub(#M.WORKER_SCHEME.PROC + 1):gsub("^%s*(.-)%s*$", "%1")
+        target = trim(reference:sub(#M.WORKER_SCHEME.PROC + 1))
     end
     if target == "" then
         return nil, errors.new({message = "job worker_ref target is required", kind = errors.INVALID})

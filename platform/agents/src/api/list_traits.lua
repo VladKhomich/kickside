@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local http = require("http")
 local security = require("security")
 local registry = require("registry")
@@ -92,7 +93,7 @@ local function handler()
     if type(ids_param) == "string" and ids_param ~= "" then
         want_ids = {}
         for id in string.gmatch(ids_param, "([^,]+)") do
-            local trimmed = id:match("^%s*(.-)%s*$")
+            local trimmed = trim(id)
             if trimmed ~= "" then want_ids[trimmed] = true end
         end
     end

@@ -75,6 +75,7 @@ entries:
     source: file://src_link/persist/repo.lua
     modules: [sql, uuid, time, json, crypto, hash]
     imports:
+      text_trim: kickside.contract:text_trim
       session_acquire: app:session_acquire
       conversation_gc: app:conversation_gc
       channel_retention_policy: app:retention_policy_stub
@@ -135,6 +136,7 @@ entries:
     source: file://src_link/binding/cleanup_conversation_func.lua
     method: complete_unlink
     imports:
+      text_trim: kickside.contract:text_trim
       channel_persist: app:persist
       channel_consts: app:channel_consts
       session_service: app:session_service_stub
@@ -261,16 +263,21 @@ entries:
     kind: library.lua
     source: file://trace_context_stub.lua
     imports:
+      text_trim: kickside.contract:text_trim
       trace: app:trace_context
 
   - name: trace_context
     kind: library.lua
     source: file://execution_src_link/trace.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     modules: [uuid]
 
   - name: agent_ref
     kind: library.lua
     source: file://agent_ref_stub.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: component_fixture
     kind: library.lua
@@ -289,6 +296,7 @@ entries:
     source: file://execution_src_link/execution_identity.lua
     modules: [funcs]
     imports:
+      text_trim: kickside.contract:text_trim
       security: app:execution_security
       contract: app:execution_contract
       identity_codec: app:identity_codec
@@ -369,6 +377,7 @@ entries:
     source: file://src_link/service/hub.lua
     modules: [logger, channel, process, json, time, uuid]
     imports:
+      text_trim: kickside.contract:text_trim
       proc_supervisor: app:proc_supervisor
       responder_health: app:responder_health
       channel_consts: app:channel_consts
@@ -451,6 +460,7 @@ entries:
     source: file://src_link/service/thread_bridge.lua
     modules: [security, hash]
     imports:
+      text_trim: kickside.contract:text_trim
       contract: app:threads_capture_stub
       channel_consts: app:channel_consts
 
@@ -459,6 +469,7 @@ entries:
     source: file://src_link/receive.lua
     modules: [process, logger, uuid, security]
     imports:
+      text_trim: kickside.contract:text_trim
       channel_responder: app:responder
       contract: app:contract_stub
       component: app:component_fixture
@@ -501,6 +512,7 @@ entries:
     source: file://src_link/responder/responder.lua
     modules: [funcs, security, contract]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: app:responder_owner_gc
       ctx: app:responder_delete_fixture
       automations_lib: app:automations_lib_stub
@@ -545,6 +557,7 @@ entries:
     source: file://src_link/binding/cleanup_conversation_func.lua
     method: cleanup_conversation
     imports:
+      text_trim: kickside.contract:text_trim
       channel_persist: app:persist
       channel_consts: app:channel_consts
       session_service: app:session_service_stub
@@ -573,6 +586,7 @@ entries:
     source: file://src_link/service/bridge_support.lua
     modules: [logger, time, channel, security, contract]
     imports:
+      text_trim: kickside.contract:text_trim
       llm: app:llm_stub
       prompt: app:prompt_stub
       component: app:component_fixture

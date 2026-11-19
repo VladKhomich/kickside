@@ -2,6 +2,7 @@
 -- caused_by_event_id / correlation_key vocabulary, its row codec and the
 -- opaque correlation token. Pure: no storage, no KickSide dependency.
 
+local trim = require("text_trim").trim
 local uuid = require("uuid")
 
 local M = {}
@@ -13,11 +14,6 @@ local function invalid(message: string, code: string): error
         retryable = false,
         details = { code = code },
     }) :: error)
-end
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 local function optional(value: any): string?

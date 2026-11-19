@@ -4,6 +4,7 @@
 -- handle and returns rows as-is; access control and HTTP shaping are the
 -- endpoint's job, not this module's. Errors are returned as values.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local types = require("types")
 
@@ -20,13 +21,6 @@ type CursorRef = {
     status: string,
     generation: integer,
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- Resolve the dialect's row-lock clause for a builder :suffix (empty on sqlite).
 local function lock_clause(db_or_tx: Executor): (string?, error?)

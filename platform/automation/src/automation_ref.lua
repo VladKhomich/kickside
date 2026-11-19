@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 -- Canonical exact identity of one immutable Automation binding revision.
 
 local M = {}
@@ -17,7 +18,7 @@ function M.validate(value: any): (AutomationRef?, string?)
     end
     if ref.kind ~= "automation" then return nil, "automation_ref.kind must be automation" end
     if type(ref.id) ~= "string" or ref.id == "" then return nil, "automation_ref.id is required" end
-    local trimmed = ref.id:gsub("^%s+", ""):gsub("%s+$", "")
+    local trimmed = trim(ref.id)
     if trimmed == "" then return nil, "automation_ref.id is required" end
     if trimmed ~= ref.id then return nil, "automation_ref.id must not have surrounding whitespace" end
     if type(ref.revision) ~= "number" or ref.revision < 1 or ref.revision ~= math.floor(ref.revision) then
