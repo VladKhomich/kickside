@@ -172,11 +172,14 @@ return {run = test.run_cases(function()
         end)
 
         test.it("wraps and finishes receipt cleanup and owner hooks under sustained higher IDs", function()
+            fixture.isolate_review_threads = true
+            fixture.receipt_sink = "review-retention"
             seed.exec("INSERT INTO kickside_thread(id,thread_class) VALUES ($1,'review_retention')", {first})
             seed.add_bulk_events(first, 2 * cap + 1, 60)
             add_empty_threads("f0000000-0000-4000-8000-", 1, 2 * page_size)
-            local suffix = seed.query("SELECT COUNT(*) AS n FROM kickside_thread WHERE id>$1", {first})
-            local pass_limit = math.ceil(assert(tonumber(suffix[1].n)) / page_size) + 2
+            -- The first pass reaches the cap, two pages finish the original
+            -- rotation, and the next pass returns to the original thread.
+            local pass_limit = 4
             local last_candidates = 0
             fixture.before_candidate = function(): error?
                 if fixture.candidates > last_candidates + 1 then
