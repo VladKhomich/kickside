@@ -11,7 +11,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from release_registry_fixture import FAKE_WIPPY
+if __package__:
+    from .release_registry_fixture import FAKE_WIPPY
+else:
+    from release_registry_fixture import FAKE_WIPPY
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
