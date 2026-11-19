@@ -2509,10 +2509,37 @@ entries:
     meta: {type: test, suite: core_retention_process_native}
     source: file://retention_process_native_test.lua
     method: run
+    modules: [process, channel, time]
     imports:
       test: wippy.test:test
       source: app:retention_process_native_source
       fixture: app:retention_process_native_fixture
+
+  - name: retention_shutdown_fixture
+    kind: library.lua
+    source: file://retention_shutdown_fixture.lua
+    modules: [process, channel, sql]
+    imports:
+      notifier: kickside.core.retention:notifier
+
+  - name: retention_shutdown_process
+    kind: process.lua
+    source: file://retention_process_native_source.lua
+    method: main
+    modules: [channel, time, events, sql]
+    imports:
+      process: app:retention_shutdown_process_adapter
+      runner: app:retention_shutdown_fixture
+      proc_supervisor: kickside.core.jobs:proc_supervisor
+      core_db: kickside.core:db
+      notifier: kickside.core.retention:notifier
+      lease_release: kickside.core.jobs:lease_release
+
+  - name: retention_shutdown_process_adapter
+    kind: library.lua
+    source: file://retention_shutdown_process_adapter.lua
+    imports:
+      fixture: app:retention_shutdown_fixture
 
   - name: retention_process_response_test
     kind: function.lua
