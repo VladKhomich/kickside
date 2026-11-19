@@ -152,6 +152,36 @@ return {run = test.run_cases(function()
             end)
         end)
 
+        for _, transition in ipairs({"rewind", "worker replacement"}) do
+            test.it("clears the former continuation on " .. transition, function()
+                with_execution(function(job, current)
+                    assert(apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, write_effect(current.thread_id, 1)))
+                    local persisted_head = persisted(job, current)
+                    local db = assert(sql.get(DATABASE))
+                    local event_id = tostring(assert(db:query("SELECT id FROM kickside_event WHERE thread_id=$1 AND seq=2",
+                        {current.thread_id}))[1].id)
+                    db:release()
+                    local partial = {last_seq = 1, continuation = {event_id = event_id, item = 1, step = 1}}
+                    assert(apply.checkpoint(DATABASE, job, persisted_head, 2, partial, write_effect(current.thread_id, 2)))
+                    local before = persisted(job, current)
+                    test.eq(assert(apply.continuation(before)).event_id, event_id)
+                    local rewind = transition == "rewind"
+                    db = assert(sql.get(DATABASE))
+                    local registered = assert(projections.register_projection(db, current.thread_id, {
+                        kind = "checkpoint-fixture", system_identity = true,
+                        worker_ref = rewind and "func://app:test_count_worker" or "func://app:test_failing_worker",
+                        reset = rewind, start_seq = 0, ensure = not rewind,
+                    }))
+                    db:release()
+                    local after = persisted(job, current)
+                    test.eq(registered.cursor_id, current.id)
+                    test.eq(tonumber(after.last_seq), rewind and 0 or 1)
+                    test.eq(tonumber(after.generation), tonumber(before.generation) + 1)
+                    test.is_nil(apply.continuation(after))
+                end)
+            end)
+        end
+
         test.it("rolls back the owner mutation when the trusted writer fails", function()
             with_execution(function(job, current)
                 local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function(tx)
