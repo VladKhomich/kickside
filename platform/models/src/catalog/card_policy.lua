@@ -6,8 +6,7 @@ local mapper = require("model_mapper")
 
 local M = {}
 
--- Card options carry per-request behavior; retry there is normalized exactly
--- like the profile's, so garbage never persists on either surface.
+-- Normalize per-request retry options before saving a model card.
 local function normalize_card_options(options: any): any
     if type(options) ~= "table" then return {} end
     if (options :: any).retry ~= nil then
