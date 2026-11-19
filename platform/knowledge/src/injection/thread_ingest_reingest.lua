@@ -86,6 +86,8 @@ function M.append(exec: any, kb_id: string, event: any, key: string): (any?, any
     local delivery = base.shallow_copy(event)
     delivery.id = id
     delivery.external = nil
+    -- Rebuilding the retained document does not replace its source version.
+    delivery.subject = nil
     local append_err
     for _ = 1, 3 do
         local guard, guard_err = prepare(exec, kb_id, event)

@@ -175,6 +175,14 @@ local function content_sha(content: any): string?
     return nil
 end
 
+local function content_subject(external_id: string): (string?, error?)
+    local digest = content_sha(external_id)
+    if not digest then
+        return nil, errors.new({kind = errors.INTERNAL, message = "Could not identify the Knowledge document"})
+    end
+    return "knowledge.content:" .. digest, nil
+end
+
 local function source_input(params: any, metadata: any): { [string]: any }
     local raw: any = {}
     if type(params.source_ref) == "table" then raw = params.source_ref
@@ -358,6 +366,7 @@ M.call_threads = call_threads
 M.validate_kb_access = validate_kb_access
 M.current_actor_id = current_actor_id
 M.content_sha = content_sha
+M.content_subject = content_subject
 M.source_input = source_input
 M.context_digest = context_digest
 M.natural_external_id_for = natural_external_id_for

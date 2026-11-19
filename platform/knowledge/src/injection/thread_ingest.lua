@@ -380,6 +380,8 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
 
     local external_id = external_id_for(params, metadata)
     local external_version = external_version_for(params, metadata, content)
+    local subject, subject_err = base.content_subject(external_id)
+    if subject_err then return nil, subject_err end
     metadata.external_source = EXTERNAL_SOURCE
     metadata.external_id = external_id
     metadata.external_version = external_version
@@ -423,6 +425,7 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
     local event = {
         type = M.EVENT_CONTENT_UPSERTED,
         role = "system",
+        subject = subject,
         body = body,
         external = {
             external_source = EXTERNAL_SOURCE,
@@ -432,10 +435,8 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
         trace_context = event_trace,
     }
     local function append(): (any?, any?)
-        if expect_head ~= nil then
-            return call_threads(exec, "append_event", {thread_id = kb_id, event = event, expect = {head = expect_head}})
-        end
-        return emit_event(exec, kb_id, event)
+        local expect = expect_head ~= nil and {head = expect_head} or nil
+        return call_threads(exec, "append_event", {thread_id = kb_id, event = event, expect = expect})
     end
     local appended, append_err
     if reingest_key then
@@ -478,7 +479,7 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
     }, nil
 end
 
-function M.delete_content(kb_id, params, expect_head)
+function M.delete_content(kb_id, params, expect_version: integer?)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end
     params = type(params) == "table" and params or {}
@@ -499,6 +500,8 @@ function M.delete_content(kb_id, params, expect_head)
     if not external_id or external_id == "" then
         return nil, "external_id, upload_id, source_url, or reference source_ref is required for delete"
     end
+    local subject, subject_err = base.content_subject(external_id)
+    if subject_err then return nil, subject_err end
     metadata.external_source = EXTERNAL_SOURCE
     metadata.external_id = external_id
     local event_trace, trace_err = trace_for("kb.delete", kb_id, external_id, params.trace_context)
@@ -534,6 +537,7 @@ function M.delete_content(kb_id, params, expect_head)
     local event = {
         type = M.EVENT_CONTENT_DELETED,
         role = "system",
+        subject = subject,
         body = {
             kb_id = kb_id,
             metadata = metadata,
@@ -547,14 +551,8 @@ function M.delete_content(kb_id, params, expect_head)
         },
         trace_context = event_trace,
     }
-    local appended, append_err
-    if expect_head ~= nil then
-        appended, append_err = call_threads(exec, "append_event", {
-            thread_id = kb_id, event = event, expect = {head = expect_head},
-        })
-    else
-        appended, append_err = emit_event(exec, kb_id, event)
-    end
+    local expect = expect_version and {subject = subject, version = expect_version} or nil
+    local appended, append_err = call_threads(exec, "append_event", {thread_id = kb_id, event = event, expect = expect})
     if append_err then return nil, append_err end
 
     local cursor = projection_cursor(projection)
