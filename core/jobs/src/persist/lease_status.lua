@@ -2,6 +2,7 @@
 local sql = require("sql")
 local clock = require("clock")
 local job_types = require("job_types")
+local time = require("time")
 local lease_status = {}
 type Executor = sql.DB | sql.Transaction
 local function response_error(field: string): error
@@ -16,7 +17,8 @@ end
 -- cancel took leaves this attempt's run row running, and a reclaim closes it
 -- as lease_lost; both read as lost. run_id is the claimed attempt's run row; without it
 -- only the lease row is consulted.
-local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?, run_id: string?): (boolean, error?, string?)
+local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?, run_id: string?,
+        lock: boolean?): (boolean, error?, string?)
     local id = tostring(job.id or "")
     local lease_token = tostring(job.lease_token or "")
     local execution_seq = tonumber(job.execution_seq)
@@ -24,16 +26,30 @@ local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?
         return false, (errors.new({ message = "job id, lease token, and execution sequence required", kind = errors.INVALID }) :: error)
     end
     local now = clock.now(dbtype or sql.type.SQLITE)
-    local rows, err = sql.builder.select("id", "lease_until")
-        :from("kickside_job")
-        :where(sql.builder.eq({ id = id, status = job_types.JOB_STATE.RUNNING,
-            lease_token = lease_token, execution_seq = execution_seq }))
-        :where("lease_until IS NOT NULL AND lease_until > ?", now)
-        :where("(last_error IS NULL OR substr(last_error, 1, ?) <> ?)",
-            #job_types.TERMINATION_PENDING_PREFIX, job_types.TERMINATION_PENDING_PREFIX)
-        :limit(1)
-        :run_with(db_or_tx)
-        :query()
+    local rows, err
+    if dbtype == sql.type.POSTGRES and lock ~= nil then
+        -- Fetch the requested Jobs row first. Filtering by expiry in the same
+        -- scan can make PostgreSQL walk unrelated running leases.
+        local prefix = [[WITH candidate AS MATERIALIZED (
+            SELECT id,lease_until,status,lease_token,execution_seq,last_error FROM kickside_job WHERE id=$1]]
+            .. (lock and " FOR UPDATE" or "") .. ") "
+        rows, err = db_or_tx:query(prefix .. [[SELECT id,lease_until FROM candidate
+            WHERE status=$2 AND lease_token=$3 AND execution_seq=$4 AND lease_until IS NOT NULL AND lease_until > $5
+            AND (last_error IS NULL OR substr(last_error, 1, $6) <> $7)]],
+            {id, job_types.JOB_STATE.RUNNING, lease_token, execution_seq, now,
+                #job_types.TERMINATION_PENDING_PREFIX, job_types.TERMINATION_PENDING_PREFIX})
+    else
+        rows, err = sql.builder.select("id", "lease_until")
+            :from("kickside_job")
+            :where(sql.builder.eq({ id = id, status = job_types.JOB_STATE.RUNNING,
+                lease_token = lease_token, execution_seq = execution_seq }))
+            :where("lease_until IS NOT NULL AND lease_until > ?", now)
+            :where("(last_error IS NULL OR substr(last_error, 1, ?) <> ?)",
+                #job_types.TERMINATION_PENDING_PREFIX, job_types.TERMINATION_PENDING_PREFIX)
+            :limit(1)
+            :run_with(db_or_tx)
+            :query()
+    end
     if err then
         return false, errors.wrap(err, "job active check failed")
     end
@@ -42,7 +58,14 @@ local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?
         if type(rows[1]) ~= "table" or (rows[1] :: any).lease_until == nil then
             return false, response_error("active.lease_until")
         end
-        return true, nil, tostring((rows[1] :: any).lease_until)
+        local lease_until = tostring((rows[1] :: any).lease_until)
+        if dbtype == sql.type.POSTGRES and lock then
+            -- The locked lookup may have waited past the sampled deadline.
+            local deadline, parse_err = clock.parse(lease_until)
+            if parse_err or not deadline then return false, response_error("active.lease_until") end
+            if not deadline:after(time.now()) then return false, nil end
+        end
+        return true, nil, lease_until
     end
     if type(run_id) ~= "string" or run_id == "" then
         return false, nil
@@ -72,5 +95,10 @@ local function job_still_running(db_or_tx: Executor, job: table, dbtype: string?
     return false, nil, nil
 end
 lease_status.job_still_running = job_still_running
+
+function lease_status.active_tx(tx: sql.Transaction, job: table, dbtype: string, lock: boolean): (boolean, error?)
+    local active, err = job_still_running(tx, job, dbtype, nil, lock)
+    return active, err
+end
 
 return lease_status

@@ -2123,6 +2123,7 @@ entries:
   - name: lease_status_native_source
     kind: library.lua
     source: file://lease_status_native_source.lua
+    modules: [time]
     imports:
       sql: app:lease_status_native_fixture
       clock: kickside.core.jobs:clock
