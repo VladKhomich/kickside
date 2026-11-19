@@ -62,8 +62,9 @@ end
 -- (nil, err) with the native dependency error. Raises are never caught here:
 -- an unexpected raise propagates instead of widening or silently
 -- narrowing access.
-local function actor_snapshot(): ({ actor_id: string?, meta: any }?, error?)
-    local actor, actor_err = security_module().actor()
+local function actor_snapshot(actor: any?): ({ actor_id: string?, meta: any }?, error?)
+    local actor_err: error?
+    if actor == nil then actor, actor_err = security_module().actor() end
     if actor_err then
         return nil, snapshot_failure(actor_err)
     end
@@ -106,11 +107,11 @@ local function own_subject(actor_id: string): Subject
 end
 
 -- Resolve the typed grant subjects for actor_id: its own pair, plus its login
--- groups when it is a user and the current actor. Returns (subjects, err): a
+-- groups when it is a user and matches the ambient or resolved actor. Returns (subjects, err): a
 -- snapshot fault keeps the unprivileged subjects and carries the typed error,
 -- so callers that check it deny explicitly while callers that only read the
 -- subjects never see widened access.
-function M.resolve(actor_id: any): ({ Subject }, error?)
+function M.resolve(actor_id: any, resolved_actor: any?): ({ Subject }, error?)
     if type(actor_id) ~= "string" or actor_id == "" then
         return {}, nil
     end
@@ -120,7 +121,7 @@ function M.resolve(actor_id: any): ({ Subject }, error?)
         return subjects, nil
     end
 
-    local actor, snapshot_err = actor_snapshot()
+    local actor, snapshot_err = actor_snapshot(resolved_actor)
     if snapshot_err then
         return subjects, snapshot_err
     end
@@ -251,12 +252,12 @@ end
 -- The filter is produced upstream by whatever minted the actor (e.g. an MCP credential
 -- runs as its owner with meta.access_filter.prefixes set to its whitelisted subtrees).
 -- This module only reads and applies it; the producer owns the policy that built it.
-function M.access_filter(user_id: any): ({ string }?, error?)
+function M.access_filter(user_id: any, resolved_actor: any?): ({ string }?, error?)
     if type(user_id) ~= "string" or user_id == "" then
         return nil, nil
     end
 
-    local actor, snapshot_err = actor_snapshot()
+    local actor, snapshot_err = actor_snapshot(resolved_actor)
     if snapshot_err then
         return {}, snapshot_err
     end

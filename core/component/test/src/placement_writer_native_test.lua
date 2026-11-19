@@ -13,7 +13,7 @@ local function invoke(stage: string)
 end
 return {run = test.run_cases(function()
     test.describe("native Component placement writer failures", function()
-        for _, stage in ipairs({"actor", "permission", "encode", "key", "component", "access", "audit", "owner", "metadata", "placement", "descendant"}) do
+        for _, stage in ipairs({"actor", "permission", "encode", "key", "reap", "component", "access", "audit", "owner", "metadata", "placement", "descendant"}) do
             for _, kind in ipairs(kinds) do
                 for _, policy in ipairs({{}, {retryable = false}, {retryable = true}}) do
                     test.it(stage .. "/" .. kind .. "/" .. tostring(policy.retryable), function()
@@ -24,13 +24,22 @@ return {run = test.run_cases(function()
                         if not err then error(errors.new({kind = errors.INTERNAL, retryable = false, message = "placement writer guard requires failure"})) end
                         test.eq(err:kind(), source:kind()); test.eq(err:retryable(), source:retryable())
                         test.eq(err:details().code, "placement_writer_dependency"); test.eq(err:details().nested.marker, "kept")
-                        if stage == "actor" or stage == "permission" or stage == "encode" or stage == "key" then test.eq(fixture.inserts, 0) end
+                        if stage == "actor" or stage == "permission" or stage == "encode" or stage == "key"
+                            or stage == "reap" then test.eq(fixture.inserts, 0) end
                         if stage == "placement" then test.eq(fixture.updates, 1) end
                         if stage == "descendant" then test.eq(fixture.updates, 2) end
                     end)
                 end
             end
         end
+        test.it("a pending primary-thread reap refuses all component writes", function()
+            fixture.reset("pending_reap", nil)
+            local result, err = invoke("pending_reap")
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.CONFLICT))
+            test.is_true(err:retryable())
+            test.eq(fixture.inserts, 0)
+        end)
         for _, reply in ipairs({{}, {count = 0}, {count = 2}}) do
             test.it("invalid audit proof/" .. tostring(reply.count), function()
                 fixture.reset("audit-proof", nil); fixture.audit_reply = reply.count
