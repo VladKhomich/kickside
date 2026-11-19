@@ -127,6 +127,14 @@ local function create_component(tx: Executor, db: Executor, command: component_t
     local exists, exists_err = placement.key_exists(tx, component_id)
     if exists_err then return nil, exists_err end
     if exists then return nil, already_exists() end
+    if payload.component_id ~= nil then
+        local pending, reap_err = placement.pending_thread_reap(tx, component_id)
+        if reap_err then return nil, reap_err end
+        if pending then
+            return nil, errors.new({kind = errors.CONFLICT, retryable = true,
+                message = "component's previous primary thread is pending cleanup"})
+        end
+    end
     local rule, rule_err = placement_rules.for_impl(payload.impl_id :: string)
     if rule_err then return nil, rule_err end
 

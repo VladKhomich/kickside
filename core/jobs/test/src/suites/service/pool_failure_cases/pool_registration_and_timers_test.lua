@@ -6,6 +6,8 @@ local process = require("process")
 local channel = require("channel")
 local worker_pool = require("worker_pool")
 local lifecycle = require("lifecycle")
+local reclaim = require("reclaim")
+local clock = require("clock")
 local job_fixture = require("job_fixture")
 local uuid = require("uuid")
 
@@ -39,7 +41,7 @@ local function empty_pool_db(dbtype: string)
     }
 end
 
-local function run_deadline_case(kind: string): (integer, integer, { string })
+local function run_deadline_case(kind: string, reclaim_failure: boolean?): (integer, integer, { string })
     local event_ch = { case_receive = function(self) return self end }
     local registry_ch = { case_receive = function(self) return self end }
     local idle_ch = { case_receive = function(self) return self end }
@@ -47,6 +49,7 @@ local function run_deadline_case(kind: string): (integer, integer, { string })
     local timer_ch = { case_receive = function(self) return self end }
     local epoch = assert(time.parse(time.RFC3339, "1970-01-01T00:00:00Z"))
     local deadline_ms = 250
+    local retry_ms = job_fixture.pool_policy().slot_retry_after_ms
     local now_ms = 0
     local selections = 0
     local timer_durations: { string } = {}
@@ -82,6 +85,9 @@ local function run_deadline_case(kind: string): (integer, integer, { string })
         reclaim = {
             reclaim_expired = function()
                 reclaim_calls = reclaim_calls + 1
+                if reclaim_failure and reclaim_calls == 2 then
+                    return 0, errors.new({kind = errors.UNAVAILABLE, message = "injected reclaim failure"})
+                end
                 if kind == "lease" and now_ms >= deadline_ms then reclaimed_job = true; return 1, nil end
                 return 0, nil
             end,
@@ -149,6 +155,14 @@ local function run_deadline_case(kind: string): (integer, integer, { string })
             elseif selections == 2 then
                 test.eq(cases[#cases], timer_ch)
                 now_ms = deadline_ms
+                return { channel = timer_ch }
+            elseif reclaim_failure and selections == 3 then
+                test.eq(timer_durations[#timer_durations], tostring(retry_ms) .. "ms")
+                return { channel = wake_ch, value = { kind = "wake" } }
+            elseif reclaim_failure and selections == 4 then
+                test.eq(cases[#cases], timer_ch, "the wake must keep the pending reclaim dispatch")
+                test.eq(reclaim_calls, 2, "the wake must respect the existing reclaim backoff")
+                now_ms = deadline_ms + retry_ms
                 return { channel = timer_ch }
             end
             return { channel = event_ch, value = { kind = process.event.CANCEL } }
@@ -416,6 +430,110 @@ local function define_tests()
             test.eq(timers[1], "250ms")
             test.eq(timers[#timers], "45000ms")
         end)
+
+        test.it("keeps the failed reclaim's backoff when an ordinary wake sees the expired lease", function()
+            local assigned, reclaim_calls, timers = run_deadline_case("lease", true)
+            test.eq(assigned, 1)
+            test.eq(reclaim_calls, 3)
+            test.eq(#timers, 3)
+        end)
+
+        for _, signal in ipairs({"wake", "idle"}) do
+            test.it("reclaims an abandoned lease when " .. signal .. " wins selection at expiry", function()
+                local queue_id = "app:private_queue_pool_registration_and_timers_test"
+                local db, dbtype, queue_err = job_fixture.private_queue(queue_id)
+                if not db or not dbtype then error(queue_err or "test queue unavailable") end
+                local worker_id = "lease-recovery-worker"
+                assert(db:execute("INSERT INTO kickside_job_worker(id,registry_version) VALUES($1,'v1')", {worker_id}))
+                local job_id = assert(lifecycle.enqueue_job(db, dbtype, {
+                    owner_locator = {kind = "test", id = "lease-recovery"},
+                    thread_id = uuid.v7(), job_type = "test.lease-recovery", parked = true,
+                }))
+                -- Commit an execution without a surviving owner, as after a runtime kill.
+                local abandoned = assert(job_fixture.lease_own(db, dbtype, job_id))
+                local started = time.now()
+                local lease_window = 60 * time.SECOND
+                assert(db:execute("UPDATE kickside_job SET lease_until=$1 WHERE id=$2",
+                    {clock.format(started:add(lease_window), dbtype), job_id}))
+
+                local event_ch = {case_receive = function(self) return self end}
+                local registry_ch = {case_receive = function(self) return self end}
+                local idle_ch = {case_receive = function(self) return self end}
+                local wake_ch = {case_receive = function(self) return self end}
+                local timer_ch = {case_receive = function(self) return self end}
+                local idle_report = {channel = idle_ch,
+                    value = {kind = "idle", worker_id = worker_id, version = "v1", epoch = 0}}
+                local elapsed, selections, reclaim_calls = 0, 0, 0
+                local recovered: table? = nil
+                local pool = worker_pool.new({
+                    retention_schedule = job_fixture.no_retention_schedule,
+                    sql_get = function() return sql.get(queue_id) end,
+                    policy = function() return job_fixture.pool_policy({worker_count_sqlite = 1,
+                        worker_count_postgres = 1, worker_awaited_slots = 0}), nil end,
+                    reclaim = {
+                        reclaim_expired = function(...)
+                            reclaim_calls = reclaim_calls + 1
+                            return reclaim.reclaim_expired(...)
+                        end,
+                        reclaim_terminated = reclaim.reclaim_terminated,
+                        close_lost_runs = reclaim.close_lost_runs,
+                    },
+                    process = {
+                        registry = job_fixture.process_registry("lease-recovery-pool"),
+                        event = process.event, pid = function() return "lease-recovery-pool" end,
+                        events = function() return event_ch end, set_options = function() end,
+                        listen = function(topic)
+                            return topic == "kickside.core.jobs:worker_idle" and idle_ch or wake_ch
+                        end,
+                        unlisten = function() end,
+                        spawn_linked_monitored = function() return worker_id end,
+                        send = function(_, topic, message)
+                            test.eq(topic, "kickside.core.jobs:worker_assign")
+                            recovered = message.job
+                            return true, nil
+                        end,
+                        cancel = function() end,
+                    },
+                    time = {
+                        now = function() return started:add(elapsed) end,
+                        after = function() return timer_ch end,
+                    },
+                    channel = {select = function(cases)
+                        if cases.default then return {default = true} end
+                        if #cases == 3 then
+                            return {channel = event_ch, value = {kind = process.event.EXIT, from = worker_id}}
+                        end
+                        selections = selections + 1
+                        if selections == 1 and signal == "wake" then return idle_report end
+                        if elapsed == 0 then
+                            test.eq(cases[#cases], timer_ch, "the abandoned lease armed the pool timer at boot")
+                            test.eq(reclaim_calls, 1, "boot found the lease still current")
+                            elapsed = lease_window
+                            -- Advance the persisted lease past the real reclaim clock while the
+                            -- virtual timer becomes ready. Select the competing notice first.
+                            assert(db:execute("UPDATE kickside_job SET lease_until=$1 WHERE id=$2",
+                                {clock.format(started:add(-time.SECOND), dbtype), job_id}))
+                            return signal == "idle" and idle_report or {channel = wake_ch, value = {kind = "wake"}}
+                        end
+                        return {channel = event_ch, value = {kind = process.event.CANCEL}}
+                    end},
+                    registry = {current_version = function() return {id = function() return "v1" end}, nil end},
+                    events = {subscribe = function() return {
+                        channel = function() return registry_ch end, close = function() end,
+                    } end},
+                })
+                local _, pool_err = pool.main()
+                db:release()
+                test.is_nil(pool_err)
+                test.eq(reclaim_calls, 2, "the ready lease must survive ordinary dispatch")
+                test.not_nil(recovered)
+                if recovered then
+                    test.eq(recovered.id, job_id)
+                    test.eq(recovered.execution_seq, abandoned.execution_seq + 1)
+                    test.is_true(recovered.lease_token ~= abandoned.lease_token)
+                end
+            end)
+        end
 
         test.it("rearms a stale lease timer to the renewed committed expiry", function()
             local assigned, reclaim_calls, timers = run_deadline_case("renewed")

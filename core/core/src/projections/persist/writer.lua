@@ -6,6 +6,8 @@ local sql_boundary = require("sql_boundary")
 local error_envelope = require("error_envelope")
 local committed_error = require("committed_error")
 local clock = require("clock")
+local event_access = require("event_access")
+local reader = require("reader")
 local register = require("register")
 local job_reclaim = require("job_reclaim")
 local job_lifecycle_cancel = require("job_lifecycle_cancel")
@@ -76,11 +78,15 @@ local function release_pin(tx: sql.Transaction, thread_id: string, cursor_id: st
     return release_err
 end
 
-function M.pause(db: sql.DB, thread_id: string, params: table): (table?, error?)
+function M.pause(db: sql.DB, thread_id: string, params: table, enforce_access: boolean?): (table?, error?)
     local result, err = in_tx(db, function(tx: sql.Transaction, dialect: string): (table?, error?)
         local locked, lock_err = lock_thread(tx, dialect, thread_id)
         if lock_err then return nil, lock_err end
         if not locked then return nil, failure("thread not found", errors.NOT_FOUND) end
+        if enforce_access then
+            local access_err = event_access.check(tx, thread_id, {write = true})
+            if access_err then return nil, access_err end
+        end
         local c, find_err = cursor(tx, dialect, thread_id, params)
         if find_err then return nil, find_err end
         if (c :: table).status == "paused" then
@@ -110,11 +116,15 @@ local function control_wake(tx: sql.Transaction, dialect: string, c: table): err
     return wake_err
 end
 
-function M.resume(db: sql.DB, thread_id: string, params: table): (table?, error?)
+function M.resume(db: sql.DB, thread_id: string, params: table, enforce_access: boolean?): (table?, error?)
     local result, err = in_tx(db, function(tx: sql.Transaction, dialect: string): (table?, error?)
         local locked, lock_err = lock_thread(tx, dialect, thread_id)
         if lock_err then return nil, lock_err end
         if not locked then return nil, failure("thread not found", errors.NOT_FOUND) end
+        if enforce_access then
+            local access_err = event_access.check(tx, thread_id, {write = true})
+            if access_err then return nil, access_err end
+        end
         local c, find_err = cursor(tx, dialect, thread_id, params)
         if find_err then return nil, find_err end
         if (c :: table).status == "invalid" then
@@ -140,6 +150,23 @@ function M.resume(db: sql.DB, thread_id: string, params: table): (table?, error?
         return jobs_wake.nudge_workers(db, raw_type)
     end, cursor_err, "projection worker notification failed")
     if notify_err then return nil, committed_error.new(notify_err) end
+    return result, nil
+end
+
+function M.wake_catch_up(db: sql.DB, thread_id: string, selected: table, authorize: table): (table?, error?)
+    local result, err = in_tx(db, function(tx: sql.Transaction, dialect: string): (table?, error?)
+        local lock = dialect == sql.type.POSTGRES and " FOR UPDATE" or ""
+        local rows, read_err = tx:query("SELECT id FROM kickside_projection_cursor WHERE id=$1" .. lock, {selected.id})
+        if read_err then return nil, read_err end
+        if type(rows) ~= "table" then return nil, transaction_response("cursor lock") end
+        local current, progress_err = reader.catch_up_progress(tx, thread_id, selected, authorize)
+        if progress_err then return nil, progress_err end
+        if current.status ~= "active" then return nil, failure("projection cursor is not active", errors.CONFLICT) end
+        return jobs_wake.wake_job(tx, current.job_id, {control = true, ensure_due = true}, dialect)
+    end)
+    if err or not result or not result.woken then return result, err end
+    local _, nudge_err = jobs_wake.nudge_workers(db)
+    if nudge_err then return nil, committed_error.new(nudge_err) end
     return result, nil
 end
 

@@ -5,17 +5,17 @@ modules:
     - name: kickside/automation
       version: 0.0.0
     - name: kickside/component
-      version: 0.3.20
+      version: 0.3.24
     - name: kickside/connection
       version: 0.0.0
     - name: kickside/contract
-      version: 0.3.8
+      version: 0.3.11
     - name: kickside/core
       version: 0.3.19
     - name: kickside/execution
-      version: 0.2.7
+      version: 0.2.10
     - name: kickside/jobs
-      version: 0.1.76
+      version: 0.1.95
     - name: kickside/realtime-dispatch
       version: 0.0.0
     - name: kickside/security

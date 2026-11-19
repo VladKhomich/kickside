@@ -29,11 +29,12 @@ entries:
     kind: function.lua
     source: file://kb_answer_test.lua
     method: member_ask
-    modules: [funcs, security]
+    modules: [contract, funcs, security]
     imports:
       test: wippy.test:test
       kb_answer: kickside.knowledge.retrieval:kb_answer
       analysis_model: kickside.knowledge.retrieval:analysis_model
+      models_repo: kickside.models.persist:repo
 
   - name: member_ask_call
     kind: security.policy

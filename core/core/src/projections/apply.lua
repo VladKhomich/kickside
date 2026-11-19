@@ -125,15 +125,18 @@ local function append_writes(output: table, source_id: string, body: table): (ta
 end
 
 local function next_body(before: table, output: table): (table?, error?)
-    local result: table = before
+    local result: table = {}
     if output.body ~= nil then
         if type(output.body) ~= "table" then return nil, invalid("projection worker body must be an object") end
         result = output.body
-    elseif output.patch ~= nil then
-        if type(output.patch) ~= "table" then return nil, invalid("projection worker patch must be an object") end
-        for key, value in pairs(output.patch) do result[key] = value end
+    else
+        for key, value in pairs(before) do result[key] = value end
+        if output.patch ~= nil then
+            if type(output.patch) ~= "table" then return nil, invalid("projection worker patch must be an object") end
+            for key, value in pairs(output.patch) do result[key] = value end
+        end
     end
-    for _, key in ipairs({ "meta", "worker_config", "events", "drop_notify" }) do
+    for _, key in ipairs({"meta", "worker_config", "events", "drop_notify"}) do
         if result[key] == nil then result[key] = before[key] end
     end
     return result, nil
@@ -430,6 +433,10 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
     if type(raw_type) ~= "string" or raw_type == "" then return nil, release(db, response_error("database.type")) end
     local dbtype = raw_type :: string
     local message = tostring(failure)
+    local details = failure:details()
+    if details and details.code == "thread_event_read_denied" then
+        message = details.code .. ": " .. message
+    end
     local tx, begin_err = db:begin()
     if begin_err then return nil, release(db, errors.wrap(begin_err, "projection failure begin failed")) end
     if type(tx) ~= "table" and type(tx) ~= "userdata" then return nil, release(db, response_error("transaction")) end

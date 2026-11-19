@@ -14,6 +14,7 @@ local lifecycle = require("component_lifecycle_log")
 local lifecycle_consts = require("lifecycle_consts")
 local common = require("contract_common")
 local subjects = require("subjects")
+local event_access = require("event_access")
 
 local reader = {}
 
@@ -117,11 +118,9 @@ local function authorize_thread(thread: table, required_mask: integer, lifecycle
     return thread, nil
 end
 
--- gate_read resolves a thread's component_id and checks the actor's READ access
--- through the component contract. Returns the thread row on success, a NOT_FOUND
--- when the thread or its access is missing, or a PERMISSION_DENIED otherwise.
-local function gate_read(db_or_tx: Executor, thread_id: string, required_mask: integer,
-    lifecycle_registration: boolean?): (table?, error?, boolean)
+-- Resolve the thread and check its Component access. The third result records
+-- whether the thread row exists.
+local function gate_read(db_or_tx: Executor, thread_id: string, required_mask: integer): (table?, error?, boolean)
     local thread, load_err = load_thread_row(db_or_tx, thread_id)
     if load_err then
         return nil, load_err, false
@@ -129,11 +128,26 @@ local function gate_read(db_or_tx: Executor, thread_id: string, required_mask: i
     if not thread then
         return nil, (errors.new({ message = "thread not found", kind = errors.NOT_FOUND }) :: error), false
     end
-    local authorized, access_err = authorize_thread(thread, required_mask, lifecycle_registration)
+    local authorized, access_err = authorize_thread(thread, required_mask)
     return authorized, access_err, true
 end
 
 reader.gate_read = gate_read
+
+function reader.gate_projection_registration(db: Executor, thread_id: string, admin: boolean?): (table?, error?)
+    local thread, load_err = load_thread_row(db, thread_id)
+    if load_err then return nil, load_err end
+    if thread and trim(thread.component_id) == "" then
+        local _, lifecycle_err = authorize_thread(thread, masks.ACCESS.ADMIN, true)
+        if lifecycle_err then return nil, lifecycle_err end
+        return {lifecycle = true}, nil
+    end
+
+    local request = {write = true, admin = admin}
+    local err = event_access.check(db, thread_id, request)
+    if err then return nil, err end
+    return request, nil
+end
 
 -- prune_boundary returns a thread's class and highest pruned sequence without an
 -- access check; the contract authorizes the caller against the class. A missing
@@ -322,7 +336,27 @@ local function int_of(value: any): integer
     return math.floor(tonumber(value) or 0) :: integer
 end
 
--- list_events returns one page of a thread's events after a READ access check,
+local function event_rows(db: Executor, thread_id: string, page: any, limit: integer, sort: string?, field: string): (table[]?, error?)
+    local request = {}
+    local query, err = event_access.authorized_query(db, thread_id, page,
+        sql.builder.select("t.max_pruned_seq", "t.event_count"), request, limit)
+    if err then return nil, err end
+    if sort then query = query:order_by(sort) end
+    local rows, query_err = event_access.execute(db, thread_id, query, request)
+    local read_err = rows_error(rows, query_err, "failed to read thread events", field)
+    if read_err then return nil, read_err end
+    local access_err = event_access.verify(request, rows[1])
+    if access_err then return nil, access_err end
+    return rows, nil
+end
+
+local function event_payload(row: table): table
+    event_access.clear_binding(row)
+    row.max_pruned_seq, row.event_count = nil, nil
+    return attach_trace_context(row)
+end
+
+-- list_events returns one page after the component kind's event access check,
 -- applying the seq window, type filter, and ordering. window is a loose options
 -- table (the fields below, each optional) coerced internally: before/from_seq/to_seq
 -- are mutually compatible — a range wins, then from, then to, then before, else
@@ -331,8 +365,7 @@ end
 -- The page carries the thread's prune boundary. A from_seq at or below a
 -- positive max_pruned_seq names pruned events: the page is empty and reports
 -- source_gap with the earliest available sequence, max_pruned_seq + 1. The
--- boundary is read after the events, so an event prune that races the read
--- surfaces as a gap and never as a silently shortened page. next_seq is the
+-- boundary and events share a snapshot so pruning cannot silently shorten a page. next_seq is the
 -- position after the last returned event for a from_seq read, and the position
 -- after the thread head otherwise.
 function reader.list_events(db_or_tx: Executor, thread_id: string, window: table?): (EventPage?, error?)
@@ -340,11 +373,6 @@ function reader.list_events(db_or_tx: Executor, thread_id: string, window: table
     if id == "" then
         return nil, (errors.new({ message = "thread_id is required", kind = errors.INVALID }) :: error)
     end
-    local _, gate_err = gate_read(db_or_tx, id, (masks.ACCESS.READ :: integer))
-    if gate_err then
-        return nil, gate_err
-    end
-
     local opts = type(window) == "table" and window or {}
     local before = tonumber(opts.before)
     local from_seq = tonumber(opts.from_seq)
@@ -353,41 +381,25 @@ function reader.list_events(db_or_tx: Executor, thread_id: string, window: table
     local ascending = opts.ascending == true
     local event_type = trim(opts.event_type)
 
-    local rows: { table } = {}
-    if not (from_seq and to_seq and math.floor(to_seq) < math.floor(from_seq)) then
-        local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
-            :from("kickside_event")
-            :where(sql.builder.eq({ thread_id = id }))
-        if event_type ~= "" then
-            query = query:where(sql.builder.eq({ type = event_type }))
-        end
-        if from_seq and to_seq then
-            query = query:where("seq >= ?", math.floor(from_seq)):where("seq <= ?", math.floor(to_seq))
-        elseif from_seq then
-            query = query:where("seq >= ?", math.floor(from_seq))
-        elseif to_seq then
-            query = query:where("seq <= ?", math.floor(to_seq))
-        elseif before then
-            query = query:where("seq < ?", math.floor(before))
-        end
-        query = query:order_by(ascending and "seq ASC" or "seq DESC"):limit(limit)
-        local found, err = query:run_with(db_or_tx):query()
-        local read_err = rows_error(found, err, "failed to list events", "events.rows")
-        if read_err then return nil, read_err end
-        rows = found :: { table }
+    local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
+        :from("kickside_event")
+        :where(sql.builder.eq({thread_id = id}))
+    if event_type ~= "" then
+        query = query:where(sql.builder.eq({type = event_type}))
     end
-
-    local bound_rows, bound_err = sql.builder.select("max_pruned_seq", "event_count")
-        :from("kickside_thread")
-        :where(sql.builder.eq({ id = id }))
-        :run_with(db_or_tx):query()
-    local read_err = rows_error(bound_rows, bound_err, "failed to read the prune boundary", "prune.rows")
-    if read_err then return nil, read_err end
-    local bound = (bound_rows :: { table })[1]
-    if not bound then
-        return nil, (errors.new({ message = "thread not found", kind = errors.NOT_FOUND }) :: error)
+    if from_seq then query = query:where("seq >= ?", math.floor(from_seq)) end
+    if to_seq then
+        query = query:where("seq <= ?", math.floor(to_seq))
+    elseif not from_seq and before then
+        query = query:where("seq < ?", math.floor(before))
     end
+    local direction = ascending and " ASC" or " DESC"
+    query = query:order_by("seq" .. direction)
+    local found, read_err = event_rows(db_or_tx, id, query, limit, "payload.seq" .. direction, "events.rows")
+    if read_err or not found then return nil, read_err end
+    local bound = found[1]
     local max_pruned = int_of(bound.max_pruned_seq)
+    local event_count = int_of(bound.event_count)
 
     if from_seq then
         local from = math.floor(from_seq) :: integer
@@ -401,14 +413,15 @@ function reader.list_events(db_or_tx: Executor, thread_id: string, window: table
         end
     end
 
+    local rows: { table } = {}
+    for _, row in ipairs(found) do
+        if row.id ~= nil then rows[#rows + 1] = event_payload(row) end
+    end
     local next_seq: integer
     if from_seq and ascending then
         next_seq = #rows > 0 and int_of(rows[#rows].seq) + 1 or math.floor(from_seq) :: integer
     else
-        next_seq = int_of(bound.event_count) + 1
-    end
-    for _, row in ipairs(rows) do
-        attach_trace_context(row)
+        next_seq = event_count + 1
     end
     return { events = rows, max_pruned_seq = max_pruned, next_seq = next_seq }, nil
 end
@@ -431,42 +444,29 @@ function reader.find_event_by_external(
     if id == "" or kind == "" or source == "" or external_key == "" then
         return nil, (errors.new({ message = "thread_id, event_type, external_source, and external_id are required", kind = errors.INVALID }) :: error)
     end
-    local _, gate_err = gate_read(db_or_tx, id, (masks.ACCESS.READ :: integer))
-    if gate_err then return nil, gate_err end
-
-    local rows, query_err
+    local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
+        :from("kickside_event")
+        :where("thread_id = ?", id)
     if latest then
         -- Resolve the sequence through the scoped external-identity index before
-        -- fetching the payload. Ordering the outer rows by sequence makes the
-        -- planner consider walking unrelated events in a busy thread.
-        rows, query_err = db_or_tx:query("SELECT " .. table.concat(EVENT_COLUMNS, ", ") .. [[
-            FROM kickside_event
-            WHERE thread_id = $1 AND seq = (
-                SELECT max(seq) FROM kickside_event
-                WHERE thread_id = $1 AND type = $2 AND external_source = $3 AND external_id = $4
-                GROUP BY thread_id, type, external_source, external_id
-            )]], { id, kind, source, external_key })
+        -- fetching the payload. Ordering by sequence can walk unrelated events.
+        query = query:where([[seq = (
+            SELECT max(seq) FROM kickside_event
+            WHERE thread_id = ? AND type = ? AND external_source = ? AND external_id = ?
+            GROUP BY thread_id, type, external_source, external_id
+        )]], id, kind, source, external_key)
     else
-        local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
-            :from("kickside_event")
-            :where(sql.builder.eq({
-                thread_id = id,
-                type = kind,
-                external_source = source,
-                external_id = external_key,
-            }))
+        query = query:where(sql.builder.eq({type = kind, external_source = source, external_id = external_key}))
         if external_version ~= nil then
-            query = query:where(sql.builder.eq({ external_version = external_version }))
+            query = query:where(sql.builder.eq({external_version = external_version}))
         else
             query = query:where(sql.builder.expr("external_version IS NULL"))
         end
-        rows, query_err = query:limit(1):run_with(db_or_tx):query()
     end
-    local read_err = rows_error(rows, query_err, "failed to find external event", "external.rows")
-    if read_err then return nil, read_err end
+    local rows, read_err = event_rows(db_or_tx, id, query, 1, nil, "external.rows")
+    if read_err or not rows then return nil, read_err end
     local event = rows[1]
-    if event then attach_trace_context(event :: table) end
-    return event, nil
+    return event.id and event_payload(event) or nil, nil
 end
 
 -- list_children returns the threads parented to thread_id via an active parent

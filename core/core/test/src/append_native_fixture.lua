@@ -31,6 +31,7 @@ end
 local builder = {}
 function builder:columns(...) return self end
 function builder:values(...) return self end
+function builder:suffix(...) return self end
 function builder:run_with(...) return self end
 function builder:exec(...) return M.insert(...) end
 function M.insert_builder(...) return builder end

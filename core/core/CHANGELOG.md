@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.34](https://github.com/kicksideai/kickside/compare/core-v0.3.33...core-v0.3.34) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** let retention stop under sustained wake load ([#675](https://github.com/kicksideai/kickside/issues/675)) ([b741a77](https://github.com/kicksideai/kickside/commit/b741a77e6437edd940c7f1c81dc568a1bb65b9c4))
+
+## [0.3.33](https://github.com/kicksideai/kickside/compare/core-v0.3.32...core-v0.3.33) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** enforce binding-declared event read access ([#305](https://github.com/kicksideai/kickside/issues/305)) ([8a53ce5](https://github.com/kicksideai/kickside/commit/8a53ce5030a515ea98552ce34e30417bd18f7a9a))
+
 ## [0.3.32](https://github.com/kicksideai/kickside/compare/core-v0.3.31...core-v0.3.32) (2026-11-19)
 
 
