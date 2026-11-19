@@ -1,7 +1,7 @@
 {
   "core/component": "0.3.25",
   "core/contract": "0.3.12",
-  "core/core": "0.3.34",
+  "core/core": "0.3.35",
   "core/execution": "0.2.10",
   "core/jobs": "0.1.96",
   "platform/agents": "0.2.22",
@@ -30,7 +30,7 @@
   "platform/transform": "0.1.55",
   "platform/ui": "0.2.14",
   "platform/ui-kit": "1.7.3",
-  "platform/uploads": "0.3.29",
+  "platform/uploads": "0.3.30",
   "platform/users": "0.2.25",
   "platform/webhooks": "0.1.47",
   "platform/widgets": "0.1.65",
