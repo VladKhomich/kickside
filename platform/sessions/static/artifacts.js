@@ -13,7 +13,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: s(
-        () => import("./artifacts-mount-CyUpesAb.js").then((t) => t.mountConfig),
+        () => import("./artifacts-mount-DRis2PBA.js").then((t) => t.mountConfig),
         "Could not load the artifact gallery. Reload the page to try again.",
         r
       )

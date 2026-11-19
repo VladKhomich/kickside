@@ -167,15 +167,15 @@ describe('Sessions live updates', () => {
 })
 
 describe('Artifacts live updates', () => {
-  it('reads only the changed session catalog and keeps the global load-more cursor', async () => {
+  it('reads only the new artifact and keeps the global load-more cursor', async () => {
     const first = artifact('first', 'Existing artifact', '18')
     const newest = artifact('newest', 'New artifact', '19')
     const older = artifact('older', 'Older artifact', '17')
     const page = Array.from({ length: 47 }, (_, i) => artifact(`page-${i}`, `Artifact ${i}`, '18'))
     api.artifacts
       .mockResolvedValueOnce({ artifacts: [...page, first], hasMore: true, nextCursor: 'v1:first' })
-      .mockResolvedValueOnce({ artifacts: [newest, first], hasMore: false, nextCursor: '' })
       .mockResolvedValueOnce({ artifacts: [older], hasMore: false, nextCursor: '' })
+    api.artifact.mockResolvedValue(newest)
     const wrapper = mount(ArtifactsGallery, options)
     await flushPromises()
     const preview = wrapper.get('w-artifact[id="first"]').element
@@ -187,10 +187,8 @@ describe('Artifacts live updates', () => {
     }
     await applyUpdates()
 
-    expect(api.artifacts.mock.calls).toEqual([
-      [{ limit: 48, cursor: '' }],
-      [{ sessionId: 'session-a', limit: 48, cursor: '' }],
-    ])
+    expect(api.artifacts.mock.calls).toEqual([[{ limit: 48, cursor: '' }]])
+    expect(api.artifact.mock.calls).toEqual([[newest.uuid]])
     expect(wrapper.findAll('.kx-artifact-card')).toHaveLength(49)
     expect(wrapper.get('.kx-artifact-card strong').text()).toBe('New artifact')
     expect(wrapper.get('w-artifact[id="first"]').element).toBe(preview)

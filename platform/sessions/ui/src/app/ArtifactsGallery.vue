@@ -28,7 +28,7 @@ const opening = ref('')
 const unsubscribe: (() => void)[] = []
 let nextPage: Promise<void> | undefined
 type ArtifactUpdate = NonNullable<ReturnType<typeof readArtifactUpdate>>
-const changes = new Map<string, ArtifactUpdate & { readDetail: boolean }>()
+const changes = new Map<string, ArtifactUpdate>()
 const sessionDeletes = new Set<string>()
 
 const filtered = computed(() => {
@@ -75,30 +75,14 @@ async function refreshGallery() {
   await loadPage(true)
 }
 
-function queueArtifact(change: ArtifactUpdate, readDetail = false) {
+function queueArtifact(change: ArtifactUpdate) {
   const previous = changes.get(change.artifactId)
   changes.set(change.artifactId, {
     artifactId: change.artifactId,
     sessionId: change.sessionId || previous?.sessionId,
     deleted: change.deleted || previous?.deleted === true,
-    readDetail: readDetail || previous?.readDetail === true,
   })
   queueUpdates()
-}
-
-async function readChangedArtifacts(sessionId: string, ids: Set<string>) {
-  const matches = new Map<string, ArtifactSummary>()
-  let cursor = ''
-  do {
-    const page = await api.artifacts({ sessionId, limit: PAGE_SIZE, cursor })
-    for (const row of page.artifacts) {
-      const id = artifactId(row)
-      if (row.session_id === sessionId && ids.has(id)) matches.set(id, row)
-    }
-    if (!page.hasMore || page.nextCursor === cursor || matches.size === ids.size) break
-    cursor = page.nextCursor
-  } while (cursor)
-  return matches
 }
 
 async function applyArtifactChanges() {
@@ -107,49 +91,27 @@ async function applyArtifactChanges() {
   changes.clear()
   const tail = artifacts.value.at(-1)
   const rows = new Map(artifacts.value.map(row => [artifactId(row), row]))
-  const bySession = new Map<string, Set<string>>()
-  const edits: Promise<void>[] = []
 
-  function accept(id: string, row: ArtifactSummary | undefined) {
-    if (!row || changes.get(id)?.deleted) rows.delete(id)
-    else if (rows.has(id) || !hasMore.value || !tail || compareArtifactsNewest(row, tail) <= 0) rows.set(id, row)
-  }
-
-  async function readEdit(id: string, sessionId?: string) {
-    try {
-      const row = await api.artifact(id)
-      accept(id, { ...row, session_id: row.session_id || sessionId })
-    } catch (cause) {
-      const status = (cause as { response?: { status?: number } } | null)?.response?.status
-      if (status === 404 || status === 403) accept(id, undefined)
-      else actionError.value = (cause as Error).message
-    }
-  }
-
-  for (const change of batch) {
+  await Promise.all(batch.map(async (change) => {
     const id = change.artifactId
     const sessionId = change.sessionId || rows.get(id)?.session_id
     if (change.deleted || (sessionId && sessionDeletes.has(sessionId))) {
       rows.delete(id)
-    } else if (change.readDetail) {
-      edits.push(readEdit(id, sessionId))
-    } else if (sessionId) {
-      const ids = bySession.get(sessionId) ?? new Set<string>()
-      ids.add(id)
-      bySession.set(sessionId, ids)
+      return
     }
-  }
 
-  const additions = [...bySession].map(async ([sessionId, ids]) => {
     try {
-      // The catalog includes preview text and the session link used by the card.
-      const matches = await readChangedArtifacts(sessionId, ids)
-      for (const id of ids) accept(id, matches.get(id))
+      const row = await api.artifact(id)
+      if (changes.get(id)?.deleted) rows.delete(id)
+      else if (rows.has(id) || !hasMore.value || !tail || compareArtifactsNewest(row, tail) <= 0) {
+        rows.set(id, { ...row, session_id: row.session_id || sessionId })
+      }
     } catch (cause) {
-      actionError.value = (cause as Error).message
+      const status = (cause as { response?: { status?: number } } | null)?.response?.status
+      if (status === 404 || status === 403) rows.delete(id)
+      else actionError.value = (cause as Error).message
     }
-  })
-  await Promise.all([...edits, ...additions])
+  }))
 
   artifacts.value = [...rows.values()]
     .filter(row => !row.session_id || !sessionDeletes.has(row.session_id))
@@ -188,7 +150,7 @@ async function openArtifact(artifact: ArtifactSummary) {
 onMounted(() => {
   unsubscribe.push(on('artifact:*', (message) => {
     const change = readArtifactUpdate(message)
-    if (change) queueArtifact(change, true)
+    if (change) queueArtifact(change)
   }))
   unsubscribe.push(on('session:*', (message) => {
     const change = readSessionUpdate(message)
