@@ -53,12 +53,39 @@ GitHub and Hub credentials before releasing. Use the module's checked-in
 Makefile for its exact targets; never call package-manager or Vite build
 commands directly in a Wippy repository. For the application, `make -C app
 release-check` builds the untracked main page, verifies its complete asset
-manifest and font references, and performs a dry-run pack. Application release
-publication uses `release-publish` from the exact Release Please tag and repeats
-the build and asset checks before uploading. The Release workflow runs this
-path with the encrypted `WIPPY_HUB_TOKEN` Actions secret. Publish dependencies first so Hub
-can resolve the module's graph. A release cannot be edited after publication;
-publish a new version for changes.
+manifest and font references, and performs a dry-run pack.
+
+For the KickSide repository, Release Please creates GitHub tags and release
+records. The hosted workflow builds and publishes ordinary releases to the Hub.
+
+To publish a qualified release using the exact archives recorded by the SQLite and PostgreSQL gates,
+retain the full evidence directory from the internal release gate. Run
+`sha256sum "$RELEASE_EVIDENCE/artifacts.json"` and add one Git trailer of the
+form `Hub-Artifact-Manifest-SHA256: <digest>` to the release PR's squash commit
+message. Use all 64 lowercase hexadecimal characters. For a CLI merge, supply
+the message body with `gh pr merge --squash --match-head-commit ... --body-file ...`.
+The release workflow reads the trailer from the exact tagged commit and skips
+hosted Hub publication for the whole cohort.
+
+From a clean checkout at that tag, verify the staged archives with the original
+evidence directory. Authenticate to the Hub with `wippy auth login` before running
+the publish command.
+
+```bash
+python3 scripts/publish-release-modules.py --repository . --evidence "$RELEASE_EVIDENCE" --verify-only
+python3 scripts/publish-release-modules.py --repository . --evidence "$RELEASE_EVIDENCE"
+```
+
+The publisher checks the tagged commit's parent and source tree against the
+verified release, verifies the manifest digest, and checks every archive against
+both engines' evidence before publishing. Both engines must have exercised an
+application archive. A companion marked `packed-only` has archive verification
+but no runtime coverage from that gate. The publisher uploads the archives in
+dependency order and publishes the application last when included. If publication
+stops partway through, rerun with the same tag and evidence. Matching Hub releases
+are reused and a digest conflict stops publication. Publish a new version to
+change a released archive.
+
 
 ## Install and update through KickSide Hub
 

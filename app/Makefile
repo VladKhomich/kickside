@@ -59,6 +59,7 @@ release-check: release-build
 release-publish: release-build
 	@test "$(VERSION)" = "$$(cat version.txt)" || { echo "Use the Release Please application version" >&2; exit 1; }
 	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse 'kickside-v$(VERSION)^{commit}')" || { echo "Publish from the exact application release tag" >&2; exit 1; }
+	@python3 ../scripts/resolve-release-commit.py --repository .. --require-hosted
 	$(WIPPY) publish --config . --version "$(VERSION)" --registry "$(HUB_REGISTRY)" --embed app:app_fs
 
 .PHONY: composition-lockrefresh composition-lint

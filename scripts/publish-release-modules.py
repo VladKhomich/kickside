@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
-"""Build and publish companion modules from the exact Release Please tags."""
+"""Publish the exact native archives verified against a Release Please PR."""
 import argparse
 from graphlib import CycleError, TopologicalSorter
 import hashlib
 from heapq import heapify, heappop, heappush
 import json
 import os
+import re
+import shutil
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
-from release_artifacts import companion_modules, declared_dependencies, installed_artifacts, prepared_artifact
+from release_artifacts import approved_manifest, companion_modules, declared_dependencies, installed_artifacts, prepared_artifact
 
 
 def git(repository, *args):
@@ -19,7 +22,11 @@ def git(repository, *args):
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    hasher = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            hasher.update(block)
+    return hasher.hexdigest()
 
 
 def publication_order(repository, modules, wippy):
@@ -58,10 +65,133 @@ def publication_order(repository, modules, wippy):
     return ordered
 
 
+def verified_release(repository, evidence, *, verify_only):
+    release = json.loads((evidence / 'release.json').read_text())
+    base, candidate, tree = (release[field] for field in ('base', 'head', 'source_tree'))
+    if release['repository'] != 'kickside' or not all(
+            re.fullmatch('[0-9a-f]{40}', value) for value in (base, candidate, tree)):
+        raise ValueError('Expected a Kickside release proof with exact commit and tree IDs')
+    if git(repository, 'status', '--porcelain', '--untracked-files=all'):
+        raise ValueError('Release must have a clean checkout')
+    head = git(repository, 'rev-parse', 'HEAD')
+    if git(repository, 'show', '-s', '--format=%P', head) != base:
+        raise ValueError('Tagged release parent differs from the verified Release Please base')
+    if git(repository, 'rev-parse', 'HEAD^{tree}') != tree:
+        raise ValueError('Tagged release tree differs from the verified Release Please head')
+
+    before = json.loads(git(repository, 'show', base + ':.release-please-manifest.json'))
+    versions = json.loads((repository / '.release-please-manifest.json').read_text())
+    paths = sorted(path for path, version in versions.items() if before.get(path) != version)
+    if before.keys() - versions.keys() or release['changed_public_paths'] != paths:
+        raise ValueError('Tagged release manifest changes differ from verification')
+    modules = companion_modules(repository, paths)
+    if 'app' in paths:
+        app = json.loads((repository / '.github/modules.json').read_text())['modules']['app']
+        modules.append(dict(app, path='app', version=versions['app'],
+                            name=app['organization'] + '/' + app['module']))
+    packages = json.loads((repository / 'release-please-config.json').read_text())['packages']
+    manifest = (evidence / 'artifacts.json').read_bytes()
+    approved = approved_manifest(repository, head)
+    if approved is None and not verify_only:
+        raise ValueError('Qualified publication requires a Hub-Artifact-Manifest-SHA256 trailer')
+    if approved is not None and approved != hashlib.sha256(manifest).hexdigest():
+        raise ValueError('Evidence manifest differs from the tagged Hub-Artifact-Manifest-SHA256')
+    proofs = json.loads(manifest)
+    engines = [json.loads((evidence / engine / 'artifacts.json').read_text())
+               for engine in ('sqlite', 'postgres')]
+    names = {module['name'] for module in modules}
+    if set(proofs) != names or any(set(rows) != names for rows in engines):
+        raise ValueError('Expected both smoke engines to report every changed package')
+    for module in modules:
+        path, name, version = (module[field] for field in ('path', 'name', 'version'))
+        if module['visibility'] != 'public':
+            raise ValueError('Expected a public release package: ' + path)
+        tag = packages[path]['component'] + '-v' + version
+        if git(repository, 'rev-parse', '--verify', 'refs/tags/' + tag + '^{commit}') != head:
+            raise ValueError('Publish from the exact release tag: ' + tag)
+        proof = proofs[name]
+        filename = name.replace('/', '_') + '-' + version + '.wapp'
+        if (proof['path'], proof['version'], proof['artifact']) != (path, version, filename) or not re.fullmatch(
+                '[0-9a-f]{64}', proof['sha256']):
+            raise ValueError('Invalid verified archive identity: ' + name)
+        for rows in engines:
+            row = rows[name]
+            allowed = ('exercised',) if path == 'app' else ('exercised', 'packed-only')
+            if row['state'] not in allowed or any(row[key] != value for key, value in proof.items()):
+                raise ValueError('Smoke evidence differs from the verified archive: ' + name)
+    return modules, proofs
+
+
+def published_archive_matches(module, wippy, expected):
+    name, version = module['name'], module['version']
+    filename = module['module'] + '-' + version + '.wapp'
+    try:
+        with installed_artifacts([module], wippy) as vendor:
+            published = vendor / module['organization'] / filename
+            if not published.is_file() or digest(published) != expected:
+                raise ValueError('Published artifact differs from the verified release: ' + name + '@' + version)
+            return True
+    except subprocess.CalledProcessError as error:
+        missing = 'failed to download module: ' + name + '@' + version + ': module not found'
+        if missing not in (error.stdout or '') + (error.stderr or ''):
+            raise
+        return False
+
+
+def publish_archive(repository, module, wippy, artifact, expected):
+    name, version = module['name'], module['version']
+    args = [wippy, 'publish', '--config', str(repository / module['path']), '--version', version,
+            '--module-type', module['type'], '--wapp', str(artifact),
+            '--create', '--module-visibility', module['visibility']]
+    try:
+        subprocess.run(args, cwd=repository, check=True)
+    except subprocess.CalledProcessError:
+        if published_archive_matches(module, wippy, expected):
+            return
+        raise
+    if not published_archive_matches(module, wippy, expected):
+        raise ValueError('Published artifact is unavailable: ' + name + '@' + version)
+    print('Verified ' + name + '@' + version, flush=True)
+
+
+def publish_verified(repository, evidence, wippy, *, verify_only=False):
+    modules, proofs = verified_release(repository, evidence, verify_only=verify_only)
+    companion = [module for module in modules if module['path'] != 'app']
+    app = [module for module in modules if module['path'] == 'app']
+    ordered = publication_order(repository, companion, wippy) + app
+    # Stage the full cohort before the first Hub operation. Wippy publishes the
+    # same verified bytes even if the caller edits its evidence during the run.
+    with tempfile.TemporaryDirectory(prefix='kickside-publish-verified-') as directory:
+        staged = {}
+        for module in ordered:
+            name = module['name']
+            proof = proofs[name]
+            artifact = Path(directory) / proof['artifact']
+            shutil.copyfile(evidence / proof['artifact'], artifact)
+            if digest(artifact) != proof['sha256']:
+                raise ValueError('Archive bytes differ from the verified release: ' + name)
+            staged[name] = artifact
+            print(f'Checked {name}@{module["version"]} sha256:{proof["sha256"]}', flush=True)
+        if verify_only:
+            return
+        missing = []
+        for module in ordered:
+            name = module['name']
+            if published_archive_matches(module, wippy, proofs[name]['sha256']):
+                print(f'Already published with matching digest: {name}@{module["version"]}', flush=True)
+            else:
+                missing.append(module)
+        for module in missing:
+            name = module['name']
+            publish_archive(repository, module, wippy, staged[name], proofs[name]['sha256'])
+
+
 def publish(repository, paths, wippy):
     modules = companion_modules(repository, paths)
     packages = json.loads((repository / 'release-please-config.json').read_text())['packages']
     head = git(repository, 'rev-parse', 'HEAD')
+    if approved_manifest(repository, head):
+        raise ValueError('This release requires qualified publication with --evidence')
     if modules and git(repository, 'status', '--porcelain', '--untracked-files=all'):
         raise ValueError('Release must have a clean checkout before building')
     # Validate the entire cohort before starting a build or publication.
@@ -74,37 +204,28 @@ def publish(repository, paths, wippy):
         print('Preparing ' + name + '@' + version, flush=True)
         if 'build' in module['targets']:
             subprocess.run(['make', '-C', str(repository / module['path']), 'build'], check=True)
-        args = [wippy, 'publish', '--config', str(repository / module['path']), '--version', version,
-                '--module-type', module['type']]
-        filename = module['module'] + '-' + version + '.wapp'
         with prepared_artifact(repository, module, wippy) as artifact:
             expected = digest(artifact)
-            try:
-                with installed_artifacts([module], wippy) as vendor:
-                    published = vendor / module['organization'] / filename
-                    if not published.is_file() or digest(published) != expected:
-                        raise ValueError('Published artifact differs from the prepared release: ' + name + '@' + version)
-                    print('Already published with matching digest: ' + name + '@' + version, flush=True)
-                    continue
-            except subprocess.CalledProcessError as error:
-                missing = 'failed to download module: ' + name + '@' + version + ': module not found'
-                if missing not in (error.stdout or '') + (error.stderr or ''):
-                    raise
-            subprocess.run([*args, '--wapp', str(artifact), '--create', '--module-visibility', module['visibility']],
-                           cwd=repository, check=True)
-            with installed_artifacts([module], wippy) as vendor:
-                if digest(vendor / module['organization'] / filename) != expected:
-                    raise ValueError('Published artifact digest differs: ' + name + '@' + version)
-        print('Verified ' + name + '@' + version, flush=True)
+            if published_archive_matches(module, wippy, expected):
+                print(f'Already published with matching digest: {name}@{version}', flush=True)
+            else:
+                publish_archive(repository, module, wippy, artifact, expected)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', type=Path, required=True)
+    parser.add_argument('--evidence', type=Path)
     parser.add_argument('--wippy', default='wippy')
+    parser.add_argument('--verify-only', action='store_true')
     args = parser.parse_args()
     try:
-        publish(args.repository.resolve(), json.loads(os.environ['RELEASE_PATHS_JSON']), args.wippy)
+        if args.evidence:
+            publish_verified(args.repository.resolve(), args.evidence.resolve(), args.wippy, verify_only=args.verify_only)
+        elif args.verify_only:
+            parser.error('--verify-only requires --evidence')
+        else:
+            publish(args.repository.resolve(), json.loads(os.environ['RELEASE_PATHS_JSON']), args.wippy)
     except subprocess.CalledProcessError as error:
         print(error.stdout or '', file=sys.stderr)
         print(error.stderr or '', file=sys.stderr)
