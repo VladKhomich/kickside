@@ -3,7 +3,7 @@
 local run_status = require("run_status")
 
 return require("migration").define(function()
-    migration("28 per-type Jobs retention order", function()
+    migration("30 per-type Jobs retention order", function()
         for _, dialect in ipairs({ "postgres", "sqlite" }) do
             database(dialect, function()
                 up(function(db)

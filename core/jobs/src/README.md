@@ -71,9 +71,11 @@ microsecond timestamp comparisons, including the worker freshness boundary.
 
 `retention.jobs` and `retention.job_runs` set the default windows.
 `retention.by_type` can override both windows for up to 64 job types.
-The worker prunes each type's expired runs before its jobs and keeps any job
-that still owns run history. Each sweep bounds the rows and types it examines
-and resumes through the existing retention timer.
+For each type, the worker prunes a bounded page of expired runs before
+checking jobs. It keeps jobs that still own run history. When a run page
+fills the sweep budget, the next sweep starts at the following type.
+Each sweep bounds the rows and types it examines and resumes through the
+existing retention timer.
 
 ## Dependency interface
 

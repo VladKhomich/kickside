@@ -331,7 +331,6 @@ local function prune_by_type(db: any, dbtype: string, policy: any, cursor: table
             if err then return nil, nil, nil, err end
             runs = runs + (count :: integer)
             runs_budget = runs_budget - (selected or 0)
-            if runs_budget == 0 then return jobs, runs, {job_type = job_type}, nil end
         end
 
         local cutoff = before(dbtype, math.max(window.jobs_ms, window.job_runs_ms))
@@ -339,6 +338,11 @@ local function prune_by_type(db: any, dbtype: string, policy: any, cursor: table
             false, jobs_budget, true, after, job_type)
         if err then return nil, nil, nil, err end
         jobs = jobs + (count :: integer)
+        if runs_budget == 0 then
+            -- A full run page cannot claim the next turn. Start with the
+            -- following type, or wrap so a full page in the last type drains.
+            return jobs, runs, {job_type = types[index + 1] or ""}, nil
+        end
         if next_cursor then
             next_cursor.job_type = job_type
             return jobs, runs, next_cursor, nil

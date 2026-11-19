@@ -91,6 +91,39 @@ end
 
 local function define_tests()
     test.describe("retention windows per job type", function()
+        test.it("keeps empty history on the appropriate bounded fast path", function()
+            local function check(overrides, expected_discoveries, expected_selections)
+                with_policy(function(policy)
+                    policy.retention_by_type = overrides
+                end, function(db, _)
+                    local discoveries, selections = 0, 0
+                    local probe = {
+                        type = function() return db:type() end,
+                        begin = function() return db:begin() end,
+                        execute = function(_, statement, params) return db:execute(statement, params) end,
+                        query = function(_, statement, params)
+                            if string.find(statement, "WITH RECURSIVE types", 1, true) == 1 then
+                                discoveries = discoveries + 1
+                            elseif string.find(statement, "SELECT id,", 1, true) == 1
+                                and (string.find(statement, "FROM kickside_job ", 1, true)
+                                    or string.find(statement, "FROM kickside_job_run ", 1, true)) then
+                                selections = selections + 1
+                            end
+                            return db:query(statement, params)
+                        end,
+                    }
+                    local stats = required(retention.sweep(probe, tostring(db:type())))
+                    test.eq(discoveries, expected_discoveries)
+                    test.eq(selections, expected_selections)
+                    test.eq(stats.jobs, 0)
+                    test.eq(stats.job_runs, 0)
+                    test.is_nil(stats.job_cursor)
+                end)
+            end
+            check({}, 0, 2)
+            check({["test.absent"] = {jobs_ms = DAY_MS, job_runs_ms = DAY_MS}}, 1, 0)
+        end)
+
         test.it("bounds type discovery even when most types have no expired rows", function()
             with_policy(function(policy)
                 policy.retention_batch = 10
@@ -130,6 +163,27 @@ local function define_tests()
                 test.eq(remaining(db, "kickside_job", expired), 0)
                 test.eq(remaining(db, "kickside_job", run_only), 1)
                 test.eq(remaining(db, "kickside_job_run", run_only), 0)
+            end)
+        end)
+
+        test.it("reaches another type while the first keeps a full run backlog", function()
+            with_policy(function(policy)
+                policy.retention_batch = 10
+                policy.retention_jobs_ms, policy.retention_job_runs_ms = 30 * DAY_MS, 30 * DAY_MS
+                policy.retention_by_type = {["a.hot"] = {jobs_ms = DAY_MS, job_runs_ms = DAY_MS}}
+            end, function(db, policy)
+                local later = seed(db, "z.expired", 1, days_ago(45), true)
+                local cursor = nil
+                for pass = 1, 4 do
+                    seed(db, "a.hot", policy.retention_batch, days_ago(45), true)
+                    local stats = required(retention.sweep(db, tostring(db:type()), cursor))
+                    test.is_true(stats.job_runs <= policy.retention_batch)
+                    test.is_true(stats.jobs <= policy.retention_batch)
+                    if pass == 1 then test.eq(stats.jobs, policy.retention_batch, "full run page still gives jobs a turn") end
+                    cursor = stats.job_cursor
+                end
+                test.eq(remaining(db, "kickside_job_run", later), 0, "later type run progresses")
+                test.eq(remaining(db, "kickside_job", later), 0, "later type job progresses")
             end)
         end)
 
