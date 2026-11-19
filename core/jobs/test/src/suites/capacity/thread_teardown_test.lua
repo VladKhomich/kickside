@@ -144,11 +144,11 @@ local function define_tests()
             local observed: any = {
                 query = function(_, statement: string, args: { any })
                     local rows = assert(db:query(statement, args))
-                    local found = false
+                    local candidate
                     for _, row in ipairs(rows) do
-                        if row.thread_id == thread_id then found = true end
+                        if row.thread_id == thread_id then candidate = row end
                     end
-                    test.is_true(found)
+                    test.is_true(candidate and (candidate.eligible == true or candidate.eligible == 1))
 
                     -- Another sweep and a successful replacement commit before the old
                     -- candidate takes its lock.
@@ -164,7 +164,7 @@ local function define_tests()
                         owner_locator = { kind = "thread", id = thread_id }, job_type = "test.cleanup",
                         immutable_payload = {},
                     })).id
-                    return { { thread_id = thread_id } }, nil
+                    return { candidate }, nil
                 end,
                 begin = function() return db:begin() end,
             }
@@ -637,6 +637,11 @@ local function define_tests()
                 assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
 
                 local tx = assert(db:begin())
+                -- Place this owner first in the scan; earlier suites may
+                -- have created completed fences without any leftovers.
+                local completed_at = "1900-01-01T00:00:00Z"
+                assert(tx:execute("UPDATE kickside_job_thread_cleanup SET completed_at=$1 WHERE thread_id=$2",
+                    { completed_at, thread_id }))
                 for _ = 1, limit do
                     local id = uuid.v7()
                     assert(tx:execute([[INSERT INTO kickside_job
@@ -653,11 +658,13 @@ local function define_tests()
                     { run_id, job_id, thread_id, owner_id }))
                 assert(tx:commit())
 
-                local processed = 0
+                local processed, cursor = 0, nil
                 for _ = 1, 3 do
-                    local count = assert(thread_teardown.reclaim_completed(db, dbtype, limit))
+                    local count, scan_err, next_cursor = thread_teardown.reclaim_completed(db, dbtype, limit, cursor)
+                    test.is_nil(scan_err)
                     test.is_true(count <= limit)
                     processed = processed + count
+                    cursor = next_cursor
                 end
                 test.eq(processed, limit + 2)
                 test.eq(assert(thread_teardown.reclaim_completed(db, dbtype, limit)), 0)
