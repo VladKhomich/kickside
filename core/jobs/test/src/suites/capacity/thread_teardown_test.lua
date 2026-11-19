@@ -34,6 +34,78 @@ end
 
 local function define_tests()
     test.describe("jobs-owned thread cleanup", function()
+        local function independent_link(thread_id, owner_id, key)
+            return {
+                namespace = "thread", scope = thread_id, key = key, thread_id = thread_id,
+                owner_locator = { kind = "user", id = owner_id }, job_type = "test.cleanup_callback",
+                immutable_payload = { callback = key },
+            }
+        end
+
+        test.it("preserves independent callback admission without linking to a finished cleanup", function()
+            local db = open_db()
+            local thread_id, user_id = uuid.v7(), uuid.v7()
+            local dbtype = tostring(db:type())
+            local tx = assert(db:begin())
+            local early = assert(jobs.enqueue_tx(tx, dbtype, independent_link(thread_id, user_id, "early")))
+            assert(tx:commit())
+            test.eq(assert(jobs.get_job(early.id)).thread_id, thread_id)
+            local before = assert(db:query("SELECT 1 FROM kickside_job_thread_cleanup WHERE thread_id=$1", {thread_id}))
+            test.eq(#before, 0)
+
+            test.is_true(assert(jobs.cleanup_thread_page(thread_id, 0)).done)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            local late_request = independent_link(thread_id, user_id, "late")
+            local late = assert(jobs.enqueue(late_request))
+            local replay = assert(jobs.enqueue(late_request))
+            test.eq(replay.id, late.id)
+            test.is_true(replay.existing)
+            local linked_tx = assert(db:begin())
+            local late_tx = assert(jobs.enqueue_tx(linked_tx, dbtype, independent_link(thread_id, user_id, "late-tx")))
+            assert(linked_tx:commit())
+
+            for _, id in ipairs({early.id, late.id, late_tx.id}) do
+                local row = assert(jobs.get_job(id))
+                test.eq(row.owner_kind, "user")
+                test.eq(row.owner_id, user_id)
+                test.is_nil(row.thread_id)
+                test.eq(row.status, "pending")
+            end
+            db:release()
+        end)
+
+        test.it("retries concurrent linked work and cleanup without waiting on the other transaction", function()
+            local db = open_db()
+            local dbtype = tostring(db:type())
+            if dbtype ~= sql.type.POSTGRES then db:release(); return end
+            local thread_id, user_id = uuid.v7(), uuid.v7()
+            local early = independent_link(thread_id, user_id, "early-busy")
+            local late = independent_link(thread_id, user_id, "late-busy")
+            local enqueue_tx = assert(db:begin())
+            local queued = assert(jobs.enqueue_tx(enqueue_tx, dbtype, early))
+            local page, cleanup_err = jobs.cleanup_thread_page(thread_id, 0)
+            test.is_nil(page)
+            test.is_true(cleanup_err:retryable())
+            test.eq(cleanup_err:details().code, "job_thread_link_busy")
+            test.is_true(cleanup_err:details().cleanup_pending)
+            assert(enqueue_tx:commit())
+            test.eq(assert(jobs.get_job(queued.id)).thread_id, thread_id)
+
+            local cleanup_tx = assert(db:begin())
+            test.is_true(assert(thread_teardown.page_tx(cleanup_tx, dbtype, thread_id, 0)).done)
+            local admission, enqueue_err = jobs.enqueue(late)
+            test.is_nil(admission)
+            test.is_true(enqueue_err:retryable())
+            test.eq(enqueue_err:details().code, "job_thread_link_busy")
+            assert(cleanup_tx:commit())
+
+            local retried = assert(jobs.enqueue(late))
+            test.is_nil(assert(jobs.get_job(queued.id)).thread_id)
+            test.is_nil(assert(jobs.get_job(retried.id)).thread_id)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            db:release()
+        end)
+
         test.it("acquires the durable cleanup fence in one round trip and preserves its state", function()
             local db = open_db()
             local tx, begin_err = db:begin()
