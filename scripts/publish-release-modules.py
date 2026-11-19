@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 """Build and publish companion modules from the exact Release Please tags."""
 import argparse
+from graphlib import CycleError, TopologicalSorter
 import hashlib
+from heapq import heapify, heappop, heappush
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 
-from release_artifacts import companion_modules, installed_artifacts, prepared_artifact
+from release_artifacts import companion_modules, declared_dependencies, installed_artifacts, prepared_artifact
 
 
 def git(repository, *args):
@@ -18,6 +20,42 @@ def git(repository, *args):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def publication_order(repository, modules, wippy):
+    if len(modules) < 2:
+        return modules
+    # Keep the previous source/build and path ordering for independent modules.
+    modules = sorted(modules, key=lambda item: ('build' in item['targets'], item['path']))
+    positions = {module['name']: index for index, module in enumerate(modules)}
+    build_dependencies = {}
+    graph = TopologicalSorter()
+    for module in modules:
+        dependencies = declared_dependencies(wippy, source=repository / module['path'], module=module)
+        if 'build' in module['targets']:
+            inputs = subprocess.check_output(
+                ['make', '-s', '--no-print-directory', 'release-build-inputs', 'MOD=' + module['module']],
+                cwd=repository, text=True)
+            for path in inputs.splitlines():
+                if path not in build_dependencies:
+                    build_dependencies[path] = declared_dependencies(wippy, source=repository / path)
+                dependencies.update(build_dependencies[path])
+        graph.add(module['name'], *(dependencies & positions.keys()))
+    try:
+        graph.prepare()
+    except CycleError as error:
+        raise ValueError('Companion publication dependency cycle: ' + ' -> '.join(error.args[1])) from error
+
+    ready = [positions[name] for name in graph.get_ready()]
+    heapify(ready)
+    ordered = []
+    while ready:
+        module = modules[heappop(ready)]
+        ordered.append(module)
+        graph.done(module['name'])
+        for name in graph.get_ready():
+            heappush(ready, positions[name])
+    return ordered
 
 
 def publish(repository, paths, wippy):
@@ -31,10 +69,7 @@ def publish(repository, paths, wippy):
         tag = packages[module['path']]['component'] + '-v' + module['version']
         if git(repository, 'rev-parse', tag + '^{commit}') != head:
             raise ValueError('Publish from the exact release tag: ' + tag)
-    # Source artifacts (including UI Kit) must exist before frontend builds
-    # materialize their published dependencies through the maintained Make targets.
-    modules.sort(key=lambda item: ('build' in item['targets'], item['path']))
-    for module in modules:
+    for module in publication_order(repository, modules, wippy):
         name, version = module['name'], module['version']
         print('Preparing ' + name + '@' + version, flush=True)
         if 'build' in module['targets']:
