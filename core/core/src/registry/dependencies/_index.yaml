@@ -2,9 +2,8 @@ version: "1.0"
 namespace: kickside.core
 entries:
   - name: dep.kickside.component
-    # The application lock must pin Component at 0.1.33 or newer: the boot
-    # provisioner reads autoinit.declared_kinds(), which older releases lack.
-    version: '*'
+    # Boot convergence seeks owners through the index from Component migration 16.
+    version: '>=0.3.23'
     kind: ns.dependency
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.
