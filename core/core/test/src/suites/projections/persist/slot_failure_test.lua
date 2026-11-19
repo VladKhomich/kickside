@@ -92,6 +92,11 @@ local function define_tests()
             local summary, err = provision.converge(actor, scope)
             test.is_nil(err)
             test.eq(#summary.skipped, 0)
+            test.not_nil(summary.continuation, "restoration yields after a bounded slot page")
+            while summary.continuation do
+                summary = assert(provision.converge(actor, scope, summary.continuation))
+                test.eq(#summary.skipped, 0)
+            end
             db = assert(sql.get("app:db"))
             for i, registered in ipairs(cursors) do
                 local row = read(db, [[SELECT c.last_seq,c.generation,c.status,j.wake_enabled,j.scheduled_at
@@ -118,6 +123,74 @@ local function define_tests()
                 test.is_nil(select(2, writer.remove_projection(db, thread_id, {projection_id = registered.projection_id})))
             end
             db:release()
+        end)
+
+        test.it("seeks disabled PostgreSQL slots past a newer range of enabled jobs", function()
+            local db = assert(sql.get("app:db"))
+            if db:type() ~= sql.type.POSTGRES then
+                db:release()
+                return
+            end
+            local function seed(prefix: string, first: integer, last: integer, enabled: boolean)
+                local _, err = db:execute([[INSERT INTO kickside_job
+                    (id,job_type,job_identity,owner_kind,owner_id,slot,wake_enabled)
+                    SELECT ($1 || lpad(n::text,12,'0'))::uuid,'kickside.core.projections:advance',
+                        'plan:' || $1 || n, 'thread', n::text, TRUE, $2
+                    FROM generate_series($3::integer,$4::integer) AS n]], {prefix, enabled, first, last})
+                test.is_nil(err)
+            end
+            local low = "eeeeeeee-eeee-4eee-8eee-"
+            local high = "ffffffff-ffff-4fff-8fff-"
+            seed(low, 1, 5000, false)
+            seed(high, 1, 2500, true)
+            seed(high, 2501, 2501, false)
+            seed(high, 2502, 5001, true)
+            local thread_id = thread_with_events(db, 0)
+            local projection_id = uuid.v7()
+            assert(db:execute([[INSERT INTO kickside_projection(id,thread_id,kind)
+                VALUES($1,$2,'slot-plan')]], {projection_id,thread_id}))
+            -- The slot join must also have a representative cursor population.
+            -- Paused cursors let the test measure selection without waking jobs.
+            assert(db:execute([[INSERT INTO kickside_projection_cursor(id,projection_id,thread_id,cursor_key,status,job_id)
+                SELECT id,$1,$2,id::text,'paused',id FROM kickside_job WHERE job_identity LIKE 'plan:eeeeeeee-%']],
+                {projection_id,thread_id}))
+            assert(db:execute("ANALYZE kickside_job"))
+            assert(db:execute("ANALYZE kickside_projection_cursor"))
+            local plans = {}
+            local traced: any = {
+                type = function(self) return db:type() end,
+                begin = function(self) return db:begin() end,
+                execute = function(self, statement, args) return db:execute(statement, args) end,
+                query = function(self, statement, args)
+                    if statement:find("FROM kickside_job", 1, true) and statement:find("ORDER BY", 1, true) then
+                        local plan, err = db:query("EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF) " .. statement, args)
+                        if err then return nil, err end
+                        local lines = {}
+                        for _, row in ipairs(plan) do lines[#lines + 1] = row["QUERY PLAN"] end
+                        plans[#plans + 1] = table.concat(lines, "\n")
+                    end
+                    return db:query(statement, args)
+                end,
+            }
+            local _, first_err, page = writer.converge(traced, {})
+            local last_err: error? = nil
+            if page then
+                last_err = select(2, writer.converge(traced, {}, {after = low .. "000000004990", upper = page.upper}))
+            end
+            assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {thread_id}))
+            assert(db:execute("DELETE FROM kickside_job WHERE job_identity LIKE 'plan:eeeeeeee-%' OR job_identity LIKE 'plan:ffffffff-%'"))
+            assert(db:execute("ANALYZE kickside_job"))
+            assert(db:execute("ANALYZE kickside_projection_cursor"))
+            db:release()
+            test.is_nil(first_err)
+            test.is_nil(last_err)
+            test.not_nil(page)
+            test.eq(page.upper, high .. "000000002501")
+            test.eq(#plans, 3)
+            for _, plan in ipairs(plans) do
+                test.contains(plan, "idx_job_disabled_slot_type", plan)
+                test.is_nil(plan:find("Rows Removed by Filter:", 1, true), plan)
+            end
         end)
 
         test.it("convergence preserves a pause or restored wake that wins after candidate selection", function()

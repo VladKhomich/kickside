@@ -37,11 +37,11 @@ end
 
 -- gate_thread_write opens the db and confirms the actor has WRITE on the thread
 -- before a projection mutation. Returns the db handle (caller releases) on success.
-local function gate_thread_access(thread_id: string, mask: integer): (sql.DB?, table?, error?, boolean?)
+local function gate_thread_access(thread_id: string, mask: integer, lifecycle_registration: boolean?): (sql.DB?, table?, error?, boolean?)
     local db, db_err = open_db()
     if db_err then return nil, nil, db_err end
     local _db = db :: sql.DB
-    local thread, gate_err = reader.gate_read(_db, thread_id, mask)
+    local thread, gate_err = reader.gate_read(_db, thread_id, mask, lifecycle_registration)
     if gate_err then
         local err, released = release(_db, gate_err)
         return nil, nil, err, released and errors.is(gate_err, errors.NOT_FOUND)
@@ -59,8 +59,8 @@ local function gate_thread_read(thread_id: string): (sql.DB?, table?, error?, bo
 end
 
 -- register_projection defines a projection on a thread (reversible via
--- remove_projection). It gates WRITE on the thread, then delegates the row work to
--- the projections writer. Returns { thread_id, projection_id, projection, rollback }.
+-- remove_projection). Component-backed threads require WRITE. Component lifecycle
+-- threads require lifecycle ADMIN or a maintenance actor and use system identity.
 function M.register_projection(args: any): (any?, error?)
     args = type(args) == "table" and args or {}
     if not is_str(args.thread_id) then
@@ -72,15 +72,21 @@ function M.register_projection(args: any): (any?, error?)
         return nil, parse_err
     end
 
-    local db, gate_err = gate_thread_write(args.thread_id :: string)
+    local db, thread, gate_err = gate_thread_access(args.thread_id :: string, masks.ACCESS.WRITE, true)
     if gate_err then return nil, gate_err end
     local _db = db :: sql.DB
+    local lifecycle_thread = (thread :: table).component_id == ""
 
-    local identity, identity_load_err = declared_identity(args.thread_id :: string)
+    local identity, identity_load_err
+    if lifecycle_thread then
+        identity = {system = true}
+    else
+        identity, identity_load_err = declared_identity(args.thread_id :: string)
+    end
     if identity_load_err or not identity then
         return nil, (release(_db, identity_load_err))
     end
-    if identity.system == true and not common.is_maintenance_actor() then
+    if identity.system == true and not lifecycle_thread and not common.is_maintenance_actor() then
         local err = errors.new({ message = "system projection identity requires a framework actor",
             kind = errors.PERMISSION_DENIED })
         return nil, (release(_db, err))

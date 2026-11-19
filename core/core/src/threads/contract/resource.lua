@@ -40,8 +40,10 @@ local function abandon_component(component_id: string, cause: error?): error?
 end
 
 local function complete_declaration(db: sql.DB, component_id: string, args: table,
-    identity: { [string]: any }, maintenance: boolean): error?
-    local primary = thread_crud.complete(db, component_id, {impl_id = args.impl_id}, actor_id(), identity, maintenance)
+    identity: { [string]: any }, maintenance: boolean, convergence: boolean?): error?
+    local indexes = convergence and args.projection_indexes or nil
+    local primary = thread_crud.complete(db, component_id, {impl_id = args.impl_id}, actor_id(), identity,
+        maintenance, indexes)
     local failed = sql_boundary.release(db, primary, "release thread declaration connection")
     if failed and not primary then return committed_error.new(failed) end
     return failed
@@ -129,12 +131,14 @@ end
 -- It is M.create without the component registration. Idempotent: if the component
 -- already has its thread it converges its declaration; otherwise it writes the
 -- thread row under the component id and applies the declared projections/retention.
+local ensure_thread: (any, any?, boolean?) -> (any?, error?)
+
 -- converge_thread makes a component's real thread state match its kind's
 -- declaration: absent thread → full create (declaration applied by the writer);
 -- present thread → register missing projections, cursors and
 -- Jobs slots without changing surviving cursor progress or generations. Called
 -- by explicit ensure on first touch and by provision.converge at boot/install.
-function M.converge_thread(args: any): (any?, error?)
+local function converge_thread(args: any, convergence: boolean?): (any?, error?)
     args = type(args) == "table" and args or {}
     local component_id = trim(args.component_id) ~= "" and trim(args.component_id) or trim(args.thread_id)
     if component_id == "" then
@@ -147,7 +151,7 @@ function M.converge_thread(args: any): (any?, error?)
     local found, find_err = M.find({ thread_id = component_id })
     if find_err then return nil, find_err end
     if not found then
-        return M.ensure_thread(args)
+        return ensure_thread(args, nil, convergence)
     end
 
     local declared_class = trim(args.thread_class)
@@ -167,12 +171,16 @@ function M.converge_thread(args: any): (any?, error?)
     if identity_load_err or not identity then
         return nil, sql_boundary.release(_db, identity_load_err, "release thread declaration identity connection")
     end
-    local decl_err = complete_declaration(_db, component_id, args, identity, is_maintenance_actor())
+    local decl_err = complete_declaration(_db, component_id, args, identity, is_maintenance_actor(), convergence)
     if decl_err then return nil, decl_err end
     return { thread = found, thread_id = component_id, created = false, rollback = nil }, nil
 end
 
-local function ensure_thread(args: any, output_target: any?): (any?, error?)
+function M.converge_thread(args: any): (any?, error?)
+    return converge_thread(args, true)
+end
+
+ensure_thread = function(args: any, output_target: any?, convergence: boolean?): (any?, error?)
     args = type(args) == "table" and args or {}
     local component_id = trim(args.component_id) ~= "" and trim(args.component_id) or trim(args.thread_id)
     if component_id == "" then
@@ -199,7 +207,7 @@ local function ensure_thread(args: any, output_target: any?): (any?, error?)
         -- Explicit ensure is a first-touch convergence boundary. Emit passes an
         -- output target and uses the existing thread without re-registration.
         if output_target == nil and is_str(args.impl_id) then
-            return M.converge_thread(args)
+            return converge_thread(args, convergence)
         end
         return { thread = found, thread_id = component_id, created = false, rollback = nil }, nil
     end
@@ -314,7 +322,7 @@ local function ensure_thread(args: any, output_target: any?): (any?, error?)
             if find_err then return nil, find_err end
             if found then
                 if output_target == nil and is_str(args.impl_id) then
-                    return M.converge_thread(args)
+                    return converge_thread(args, convergence)
                 end
                 return { thread = found, thread_id = ensured_component_id, created = false, rollback = nil }, nil
             end
