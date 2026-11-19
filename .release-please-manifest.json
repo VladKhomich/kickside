@@ -1,7 +1,7 @@
 {
   "core/component": "0.3.24",
   "core/contract": "0.3.11",
-  "core/core": "0.3.27",
+  "core/core": "0.3.28",
   "core/execution": "0.2.10",
   "core/jobs": "0.1.88",
   "platform/agents": "0.2.21",
@@ -15,14 +15,14 @@
   "platform/inbox": "0.1.79",
   "platform/knowledge": "0.1.92",
   "platform/mcp": "0.2.14",
-  "platform/models": "0.1.85",
+  "platform/models": "0.1.86",
   "platform/oauth": "0.1.45",
   "platform/realtime": "0.1.32",
   "core/realtime-dispatch": "0.1.1",
   "platform/renderers": "0.1.40",
   "platform/security": "0.2.30",
   "platform/self-reflection": "0.1.25",
-  "platform/sessions": "0.1.43",
+  "platform/sessions": "0.1.44",
   "platform/settings": "0.3.12",
   "platform/skills": "0.1.51",
   "platform/sync": "0.1.100",
@@ -33,7 +33,7 @@
   "platform/uploads": "0.3.26",
   "platform/users": "0.2.25",
   "platform/webhooks": "0.1.47",
-  "platform/widgets": "0.1.64",
+  "platform/widgets": "0.1.65",
   "platform/workflows": "0.2.19",
-  "app": "0.2.45"
+  "app": "0.2.46"
 }

@@ -144,6 +144,30 @@ return { run = test.run_cases(function()
             assert(db:execute("DELETE FROM kickside_job_worker WHERE id=$1", { job.worker }))
         end)
 
+        test.it("cancels a slot that finishes its assignment during a planned drain", function()
+            local topic = "jobs.shutdown." .. uuid.v7()
+            local notices = process.listen(topic)
+            local pid = tostring(assert(process.spawn_monitored("app:pool_shutdown_probe", "app:processes",
+                tostring(process.pid()), topic, "late_idle")))
+            pool_pid = pid
+            local ready = channel.select({ notices:case_receive(), time.after("3s"):case_receive() })
+            test.eq(ready.channel, notices)
+            local slots = ready.value
+            assert(process.monitor(slots.assigned))
+            assert(process.cancel(pid))
+            wait_step(notices, "idle slot cancelled")
+            assert(process.send(pid, cfg.IDLE_TOPIC, { worker_id = slots.assigned, kind = "idle", epoch = 1 }))
+            local slot_exit = wait_exit(events, slots.assigned, time.after("2s"))
+            test.not_nil(slot_exit, "the newly idle slot is cancelled while the pool is draining")
+            test.eq(slot_exit.result.value, "cancelled")
+            assert(process.send(slots.idle, topic .. ".release_idle", true))
+            local pool_exit = wait_exit(events, pid, time.after("2s"))
+            test.not_nil(pool_exit)
+            pool_pid = nil
+            test.is_nil(pool_exit.result.error)
+            process.unlisten(notices)
+        end)
+
         local function prepare_rollback(): (string, string, string, any)
             local topic = "jobs.shutdown." .. uuid.v7()
             local notices = process.listen(topic)
