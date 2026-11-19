@@ -93,6 +93,28 @@ local function define_tests()
             assert(ok, tostring(failure))
         end)
 
+        test.it("preserves each positive retry number on create and update", function()
+            local profile = assert(repo.create_profile({
+                id = "provider-retry-positive", name = "Saved profile", provider_id = provider,
+                retry = {attempts = 2.5, backoff_ms = 0.5},
+            }))
+            local ok, failure = pcall(function()
+                local created = profile.config.retry or {}
+                test.eq(created.backoff_ms, 0.5)
+                test.eq(created.attempts, 2.5)
+                local updated = assert(repo.update_profile(profile.id, {retry = {backoff_ms = 0.5}}))
+                test.eq((updated.config.retry or {}).backoff_ms, 0.5)
+                local edited = assert(repo.update_profile(profile.id, {name = "Renamed profile"}))
+                test.is_nil(edited.config.retry.attempts)
+                test.eq(edited.config.retry.backoff_ms, 0.5)
+                local saved = assert(repo.get_profile(profile.id)).config.retry
+                test.is_nil(saved.attempts)
+                test.eq(saved.backoff_ms, 0.5)
+            end)
+            assert(repo.delete_profile(profile.id))
+            assert(ok, tostring(failure))
+        end)
+
         test.it("upgrades legacy profile numbers and preserves positive values", function()
             local db = assert(sql.get("app:db"))
             local preserved_text = "label" .. string.char(0) .. "suffix"
@@ -157,10 +179,14 @@ local function define_tests()
                     local retry_profile = assert(repo.get_profile(fixture.id .. "-retry"))
                     test.eq(retry_profile.config.retry.attempts, fixture.stored)
                     test.eq(retry_profile.config.retry.backoff_ms, 250)
+                    local retry_edited = assert(repo.update_profile(retry_profile.id, {name = "Renamed profile"})).config.retry or {}
+                    test.eq(retry_edited.backoff_ms, 250)
+                    test.eq(retry_edited.attempts, fixture.stored)
                     local edited = assert(repo.update_profile(fixture.id, {name = "Renamed profile", enabled = false}))
                     test.eq(edited.name, "Renamed profile")
                     test.is_false(edited.enabled)
                     test.eq(edited.config.timeout, fixture.stored)
+                    test.eq(edited.config.retry.backoff_ms, fixture.stored)
                 end
             end)
             client._ctx, client._http_client = original_context, original_http

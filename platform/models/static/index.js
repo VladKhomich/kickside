@@ -17,7 +17,7 @@ class n extends o {
   static get vueConfig() {
     return {
       lazyConfig: i(
-        () => import("./lazy-mount-zxjFmWqB.js").then((t) => t.mountConfig),
+        () => import("./lazy-mount-gTzzEkqE.js").then((t) => t.mountConfig),
         "Could not load Models. Reload the page to try again.",
         s
       )
@@ -46,7 +46,7 @@ function g(e) {
     static get vueConfig() {
       return {
         lazyConfig: i(
-          () => import("./provider-editor-mount-120nQD3x.js").then((t) => t.editorMountConfig(e)),
+          () => import("./provider-editor-mount-BD4v2b3e.js").then((t) => t.editorMountConfig(e)),
           "Could not load the provider editor. Reload the page to try again.",
           s
         )

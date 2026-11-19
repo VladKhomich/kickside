@@ -1991,7 +1991,7 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
                 modelValue: i.retry_attempts,
                 "onUpdate:modelValue": d[3] || (d[3] = (r) => i.retry_attempts = r),
                 type: "number",
-                min: 1,
+                step: "any",
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
             ]),
@@ -2003,7 +2003,7 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
                 modelValue: i.retry_backoff_ms,
                 "onUpdate:modelValue": d[4] || (d[4] = (r) => i.retry_backoff_ms = r),
                 type: "number",
-                min: 1,
+                step: "any",
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
             ]),
@@ -2082,4 +2082,4 @@ export {
   an as j,
   nt as s
 };
-//# sourceMappingURL=ProviderProfileEditor.vue_vue_type_script_setup_true_lang-9LvpTN9a.js.map
+//# sourceMappingURL=ProviderProfileEditor.vue_vue_type_script_setup_true_lang-ZRGEU-eL.js.map

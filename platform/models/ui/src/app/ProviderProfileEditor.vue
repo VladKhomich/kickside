@@ -167,10 +167,10 @@ function submit() {
           />
         </FormField>
         <FormField label="Retry attempts">
-          <TextInput v-model="form.retry_attempts" type="number" :min="1" :disabled="props.saving" />
+          <TextInput v-model="form.retry_attempts" type="number" step="any" :disabled="props.saving" />
         </FormField>
         <FormField label="Retry backoff (ms)">
-          <TextInput v-model="form.retry_backoff_ms" type="number" :min="1" :disabled="props.saving" />
+          <TextInput v-model="form.retry_backoff_ms" type="number" step="any" :disabled="props.saving" />
         </FormField>
       </div>
     </section>

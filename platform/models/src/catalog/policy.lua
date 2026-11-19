@@ -444,14 +444,15 @@ local function clean_profile_input(input: any, existing: any?): (any?, any?)
     config = apply_provider_normalization(provider_id, config, secret_config)
     local number_err = validate_optional_number(config.timeout, "timeout")
     if number_err then return nil, number_err end
-    if type(config.retry) == "table" then
-        number_err = validate_optional_number(config.retry.attempts, "retry.attempts")
-            or validate_optional_number(config.retry.backoff_ms, "retry.backoff_ms")
+    local retry = config.retry
+    config.retry = nil
+    if type(retry) == "table" then
+        number_err = validate_optional_number(retry.attempts, "retry.attempts")
+            or validate_optional_number(retry.backoff_ms, "retry.backoff_ms")
         if number_err then return nil, number_err end
-    end
-    config.retry = normalize_retry_config(config.retry)
-    if config.retry and config.retry.backoff_ms == 0 then
-        config.retry.backoff_ms = nil
+        if retry.attempts ~= nil or retry.backoff_ms ~= nil then
+            config.retry = {attempts = retry.attempts, backoff_ms = retry.backoff_ms}
+        end
     end
     local verr = validate_profile_config(provider_id, config, secret_config)
     if verr then return nil, verr end

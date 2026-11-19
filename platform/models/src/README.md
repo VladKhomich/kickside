@@ -91,7 +91,9 @@ empty string to clear it.
 
 Retry is provider-level transport policy. `retry.attempts` is the number of
 transient failures to retry after the initial request, and `retry.backoff_ms`
-is the base exponential backoff delay. Both fields accept positive numbers.
+is the base exponential backoff delay. Both fields are optional. Profile saves
+preserve finite positive numbers as supplied. The transport applies its existing
+rounding and limits when sending requests and sends once if attempts is unset.
 Send an empty `retry` object to clear the policy.
 
 Invalid profile numbers return HTTP 400 with `kind: "Invalid"` and the field
