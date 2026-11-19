@@ -354,11 +354,11 @@ entries:
     namespace: kickside.uploads
     key: process_max_execution_ms
     value_type: int
-    default: 7200000
+    default: 600000
     title: Processing time limit (ms)
     category: Limits
     order: 20
-    description: Maximum milliseconds a single upload processing attempt (conversion + OCR) may run in total before the job worker terminates it and retries.
+    description: Maximum total milliseconds for one processing attempt. With no explicit override, progress-reporting pipelines use a two-hour ceiling and other pipelines use this default.
     scope: global
     editable: true
     visible: true

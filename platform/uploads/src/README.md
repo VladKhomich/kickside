@@ -287,13 +287,13 @@ requires a converter API change. Uploads adds no separate count call to a read.
 
 ### Processing limits
 
-The default hard ceiling `process_max_execution_ms` is 7200000 ms (two hours).
+The default hard ceiling `process_max_execution_ms` is 600000 ms (ten minutes).
 `process_heartbeat_timeout_ms` defaults to 600000 ms (ten minutes). A processor
 entry declares `meta.reports_progress: true` when it calls `jobs.heartbeat` through
 the supplied `cancel_ref` between useful batches. A pipeline stage can declare
 `reports_progress` directly; an explicit stage value overrides the processor.
-Only pipelines whose every stage declares progress support receive the job-wide
-progress deadline. Opaque and custom processors retain the hard-ceiling policy.
+Pipelines whose every stage declares progress support receive the job-wide
+progress deadline and a default hard ceiling of 7200000 ms (two hours).
 
 An existing explicit hard-ceiling override keeps its effective behavior. Setting
 an explicit progress timeout opts that installation into progress deadlines for

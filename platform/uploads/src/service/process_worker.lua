@@ -21,7 +21,8 @@ local JOB_TYPE = "kickside.uploads.service:process_job_proc"
 local SETTINGS_CONTRACT = "kickside.settings:settings"
 local SETTINGS_NS = "kickside.uploads"
 local SETTING_MAX_EXECUTION_MS = "process_max_execution_ms"
-local DEFAULT_MAX_EXECUTION_MS = 7200000
+local DEFAULT_MAX_EXECUTION_MS = 600000
+local DEFAULT_PROGRESS_MAX_EXECUTION_MS = 7200000
 local SETTING_HEARTBEAT_TIMEOUT_MS = "process_heartbeat_timeout_ms"
 local DEFAULT_HEARTBEAT_TIMEOUT_MS = 600000
 
@@ -32,14 +33,13 @@ end
 
 -- Settings provenance preserves an existing ceiling override's total-time policy.
 -- An explicit progress override opts that installation into progress deadlines.
-local function processing_limits(): table
+local function processing_limits(type_id: string?): (table?, any?)
     local limits = {max_execution_ms = DEFAULT_MAX_EXECUTION_MS,
         heartbeat_timeout_ms = DEFAULT_HEARTBEAT_TIMEOUT_MS}
     local def = contract.get(SETTINGS_CONTRACT)
     local inst = def and def:open()
     local response = inst and inst:get_namespace({namespace = SETTINGS_NS})
-    if not response or not response.success then return limits end
-    local values = response.values or {}
+    local values = response and response.success and response.values or {}
     for _, key in ipairs({SETTING_MAX_EXECUTION_MS, SETTING_HEARTBEAT_TIMEOUT_MS}) do
         local n = tonumber(values[key])
         if n and n >= 1 and n < math.huge and n == math.floor(n) then
@@ -48,15 +48,21 @@ local function processing_limits(): table
         end
     end
     local overridden = {}
-    for _, key in ipairs(response.overridden or {}) do overridden[key] = true end
-    if overridden[SETTING_MAX_EXECUTION_MS] and not overridden[SETTING_HEARTBEAT_TIMEOUT_MS] then
+    for _, key in ipairs(response and response.success and response.overridden or {}) do overridden[key] = true end
+    local reports_progress, progress_err = false, nil
+    if type_id then reports_progress, progress_err = upload_type.reports_progress(type_id) end
+    if progress_err then return nil, progress_err end
+    if not reports_progress or (overridden[SETTING_MAX_EXECUTION_MS] and not overridden[SETTING_HEARTBEAT_TIMEOUT_MS]) then
         limits.heartbeat_timeout_ms = nil
+    elseif not overridden[SETTING_MAX_EXECUTION_MS] then
+        limits.max_execution_ms = DEFAULT_PROGRESS_MAX_EXECUTION_MS
     end
-    return limits
+    return limits, nil
 end
 
-local function max_execution_ms(): integer
-    return processing_limits().max_execution_ms
+local function max_execution_ms(type_id: string?): (integer?, any?)
+    local limits, err = processing_limits(type_id)
+    return limits and limits.max_execution_ms, err
 end
 
 local function upload_identity(upload: any, deferred: boolean?): (any?, any?, any?)
@@ -113,11 +119,10 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
             errors.UNAVAILABLE, "infrastructure", true)
     end
 
-    local limits = processing_limits()
+    local limits, limits_err = processing_limits(upload.type_id)
+    if limits_err then return nil, limits_err end
     local ceiling = tonumber(upload.processing_max_execution_ms) or limits.max_execution_ms
-    local reports_progress, progress_err = upload_type.reports_progress(upload.type_id)
-    if progress_err then return nil, progress_err end
-    local progress_timeout = reports_progress and limits.heartbeat_timeout_ms or nil
+    local progress_timeout = limits.heartbeat_timeout_ms
     if upload.processing_max_execution_ms ~= nil and ceiling ~= limits.max_execution_ms then
         progress_timeout = nil
     end
@@ -163,7 +168,7 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
         return nil, err
     end
     if persist then
-        local stored, persist_err = persist(tx, dbtype)
+        local stored, persist_err = persist(tx, dbtype, ceiling)
         if persist_err or not stored then return abort(persist_err) end
         upload = stored
         if upload.deduped then
@@ -173,7 +178,8 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
             return { upload = upload, duplicate = true, job_id = upload.processing_job_id }, nil
         end
         params.trace_context = upload.trace_context
-        params.immutable_payload.max_execution_ms = upload.processing_max_execution_ms
+        params.immutable_payload.max_execution_ms = tonumber(upload.processing_max_execution_ms) or ceiling
+        if params.immutable_payload.max_execution_ms ~= ceiling then params.progress_timeout_ms = nil end
         event.trace_context = upload.trace_context
     end
     local enqueued, enqueue_err = jobs.enqueue_tx(tx, dbtype, params)
