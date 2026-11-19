@@ -26,3 +26,20 @@ entries:
         custom_variables: true
       tailwind_config: true
       iconify_icons: true
+
+  - name: managed_coordinator
+    kind: registry.entry
+    meta:
+      type: view.component
+      title: KickSide Managed Coordinator
+      tag_name: kickside-managed-coordinator
+      base_path: app
+      entry_point: managed-coordinator.js
+      auto_register: true
+      announced: true
+      secure: false
+    props:
+      type: object
+      properties:
+        component:
+          type: string
