@@ -62,7 +62,9 @@ local function lookup_source_projection(exec: any, kb_id: string, impl_id: strin
     local body, body_err = decode_object(projection.body)
     if body_err then return nil, body_err end
     local meta = type(body.meta) == "table" and body.meta or {}
+    local config = type(body.worker_config) == "table" and body.worker_config or {}
     return {
+        target_kb_ids = type(config.target_kb_ids) == "table" and config.target_kb_ids or nil,
         thread_id = kb_id,
         projection_id = projection_id,
         cursor_id = trim(cursor.id),

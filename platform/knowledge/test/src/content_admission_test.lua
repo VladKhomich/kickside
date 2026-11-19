@@ -86,22 +86,27 @@ local function upload(user: string, original_only: boolean?): string
     return id
 end
 
+local function content_request(user: string, method: string, path: string, body: string): any
+    local token = assert(session.mint(assert(groups.get_user_with_groups(user)))).token
+    local gateway, gateway_err = system.supervisor.state("app:gateway")
+    test.is_nil(gateway_err, tostring(gateway_err))
+    local port = assert(gateway.details:match(":(%d+)$"))
+    local response, err = http_client.request(method, "http://127.0.0.1:" .. port .. path, {
+        headers = {Authorization = "Bearer " .. token, ["Content-Type"] = "application/json"}, body = body,
+    })
+    test.is_nil(err, tostring(err))
+    return response
+end
+
 local function admit(user: string, id: string, caller: string, refused: boolean?): any
     local args = { kb_id = id, content = CONTENT, content_type = "text/plain", title = "Reference", external_id = "admission:" .. caller, external_version = "v1" }
     if caller == "content" or caller == "existing_upload" then
-        local token = assert(session.mint(assert(groups.get_user_with_groups(user)))).token
-        local gateway, gateway_err = system.supervisor.state("app:gateway")
-        test.is_nil(gateway_err, tostring(gateway_err))
-        local port = assert(gateway.details:match(":(%d+)$"))
         local path = "/ingest"
         if caller == "existing_upload" then
             path = "/ingest-upload"
             args = { upload_id = upload(user) }
         end
-        local response, err = http_client.request("POST", "http://127.0.0.1:" .. port .. "/api/knowledge/" .. id .. path, {
-            headers = { Authorization = "Bearer " .. token, ["Content-Type"] = "application/json" }, body = assert(json.encode(args)),
-        })
-        test.is_nil(err, tostring(err))
+        local response = content_request(user, "POST", "/api/knowledge/" .. id .. path, assert(json.encode(args)))
         test.eq(response.status_code, refused and caller == "content" and 500 or 200, response.body)
         local body = assert(json.decode(response.body))
         return caller == "existing_upload" and body.results[1] or body
@@ -157,6 +162,15 @@ local function define_tests()
                 execute("DELETE FROM app_users WHERE user_id = $1", { id })
             end
             users = {}
+        end)
+        test.it("rejects a null selected document UUID before appending a delete", function()
+            local user = owner()
+            local id = target(user, "document")
+            local response = content_request(user, "DELETE", "/api/knowledge/" .. id .. "/content",
+                '{"external_id":"source-document","metadata":{"node_id":null}}')
+            test.eq(response.status_code, 400, response.body)
+            test.contains(response.body, "invalid selected document node ID")
+            test.eq(#rows("SELECT id FROM kickside_event WHERE thread_id = $1 AND type = 'kickside.knowledge.events:content.deleted'", {id}), 0)
         end)
         for _, caller in ipairs({ "content", "upload", "archive", "callback", "existing_upload", "reference", "ingest_trait", "trait" }) do
             test.it("returns the binding's refusal for " .. caller, function()
