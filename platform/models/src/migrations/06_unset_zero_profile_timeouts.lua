@@ -1,19 +1,31 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local json = require("json")
 local logger = require("logger")
-local time = require("time")
+local models_types = require("models_types")
 
 local log = logger:named("kickside.models.migrations")
 
-local function uses_default(value: any): boolean
-    if value == false or tonumber(value) == 0 then return true end
-    if type(value) ~= "string" then return false end
-    local duration = time.parse_duration(value)
-    return duration ~= nil and duration:nanoseconds() == 0
+local function unset_invalid_number(config: any, key: string): boolean
+    if config[key] == nil or models_types.is_positive_number(config[key]) then return false end
+    config[key] = nil
+    return true
+end
+
+local function unset_invalid_profile_numbers(config: any): boolean
+    local changed = unset_invalid_number(config, "timeout")
+    if type(config.retry) == "table" then
+        local attempts_changed = unset_invalid_number(config.retry, "attempts")
+        local backoff_changed = unset_invalid_number(config.retry, "backoff_ms")
+        if attempts_changed or backoff_changed then
+            if next(config.retry) == nil then config.retry = nil end
+            changed = true
+        end
+    end
+    return changed
 end
 
 return require("migration").define(function()
-    migration("unset zero provider profile timeouts", function()
+    migration("unset invalid provider profile numbers", function()
         for _, engine in ipairs({"sqlite", "postgres"}) do
             database(engine, function()
                 up(function(db, cursor)
@@ -27,8 +39,7 @@ return require("migration").define(function()
                         local config, decode_err = json.decode(row.config_json)
                         if decode_err or type(config) ~= "table" then
                             log:warn("skipping unreadable provider profile configuration", {profile_id = row.id})
-                        elseif uses_default(config.timeout) then
-                            config.timeout = nil
+                        elseif unset_invalid_profile_numbers(config) then
                             local encoded, encode_err = json.encode(config)
                             if encode_err then error(encode_err) end
                             local _, write_err = db:execute(

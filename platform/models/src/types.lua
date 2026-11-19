@@ -47,4 +47,8 @@ function M.positive_limit(value: any): number?
     return nil
 end
 
+function M.is_positive_number(value: any): boolean
+    return type(value) == "number" and value > 0 and value < math.huge
+end
+
 return M

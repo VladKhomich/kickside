@@ -316,7 +316,7 @@ local function define_tests()
                 provider_id = "wippy.llm.openai_compat:provider",
                 base_url = "http://localhost:11434/v1",
                 timeout = 12,
-                retry = { attempts = "2", backoff_ms = "250", ignored = true },
+                retry = { attempts = 2, backoff_ms = 250, ignored = true },
                 api_version = "test-version",
                 api_key = "profile-secret",
             })
@@ -361,7 +361,7 @@ local function define_tests()
             test.is_nil(public.options.api_key)
             test.is_nil(public.context)
 
-            local updated, uerr = models_repo.update_profile("local-test", { retry = { attempts = 0 } })
+            local updated, uerr = models_repo.update_profile("local-test", { retry = {} })
             test.is_nil(uerr)
             test.not_nil(updated)
             test.is_nil(updated.config.retry)

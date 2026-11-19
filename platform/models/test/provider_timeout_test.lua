@@ -10,10 +10,11 @@ local plain_generate = require("plain_generate")
 local provider = "kickside.models:openai_compat_plain.provider"
 local migration_id = "kickside.models.migrations:06_unset_zero_profile_timeouts"
 
-local function assert_invalid_timeout(profile, err)
+local function assert_invalid_number(profile, err, field)
     test.is_nil(profile)
+    test.not_nil(err)
     test.eq(err:kind(), errors.INVALID)
-    test.eq(err:details().field, "timeout")
+    test.eq(err:details().field, field)
     test.is_false(err:retryable())
 end
 
@@ -31,43 +32,82 @@ end
 
 local function define_tests()
     test.describe("provider profile timeout", function()
-        test.it("requires the LLM transport version that provides the timeout parser", function()
+        test.it("keeps the LLM dependency independent of profile number validation", function()
             local dependency = assert(registry.get("kickside.models:dep.wippy.llm"))
-            test.eq(dependency.data.version, ">=0.5.14")
+            test.eq(dependency.data.version, "*")
         end)
 
         test.it("rejects invalid timeouts on create and update", function()
             local id = "provider-timeout-validation"
             local profile
             local ok, failure = pcall(function()
-                for _, timeout in ipairs({0, "0", -1, "0s", "invalid", false}) do
+                for _, timeout in ipairs({0, false, -1, "0", "0s", "2s", "30 seconds", "30", 0/0, math.huge}) do
                     local created, err = repo.create_profile({
                         id = id, name = id, provider_id = provider, config = {timeout = timeout},
                     })
                     profile = created
-                    assert_invalid_timeout(created, err)
+                    assert_invalid_number(created, err, "timeout")
                 end
                 profile = assert(repo.create_profile({id = id, name = id, provider_id = provider, timeout = 0.25}))
                 test.eq(profile.config.timeout, 0.25)
-                assert_invalid_timeout(repo.update_profile(profile.id, {timeout = 0}))
+                for _, timeout in ipairs({0, false, -1, "2s", "30 seconds", "30", 0/0, math.huge}) do
+                    local updated, err = repo.update_profile(profile.id, {timeout = timeout})
+                    assert_invalid_number(updated, err, "timeout")
+                end
                 test.eq(assert(repo.get_profile(profile.id)).config.timeout, 0.25)
-                test.eq(assert(repo.update_profile(profile.id, {timeout = "2s"})).config.timeout, "2s")
                 test.is_nil(assert(repo.update_profile(profile.id, {timeout = ""})).config.timeout)
             end)
             if profile then assert(repo.delete_profile(profile.id)) end
             assert(ok, tostring(failure))
         end)
 
-        test.it("upgrades saved default sentinels and preserves positive timeouts", function()
+        test.it("rejects invalid retry numbers and allows a retry policy to be cleared", function()
+            local id = "provider-retry-validation"
+            local profile
+            local ok, failure = pcall(function()
+                for _, field in ipairs({"attempts", "backoff_ms"}) do
+                    for _, value in ipairs({0, false, -1, "30 seconds", "30", 0/0, math.huge}) do
+                        local retry = {attempts = 2, backoff_ms = 250, [field] = value}
+                        local created, err = repo.create_profile({
+                            id = id, name = id, provider_id = provider, retry = retry,
+                        })
+                        profile = created
+                        assert_invalid_number(created, err, "retry." .. field)
+                    end
+                end
+                profile = assert(repo.create_profile({
+                    id = id, name = id, provider_id = provider, retry = {attempts = 2, backoff_ms = 250},
+                }))
+                for _, field in ipairs({"attempts", "backoff_ms"}) do
+                    for _, value in ipairs({0, false, -1, "30 seconds", "30", 0/0, math.huge}) do
+                        local updated, err = repo.update_profile(id, {retry = {attempts = 2, [field] = value}})
+                        assert_invalid_number(updated, err, "retry." .. field)
+                    end
+                end
+                local retry = assert(repo.get_profile(id)).config.retry
+                test.eq(retry.attempts, 2)
+                test.eq(retry.backoff_ms, 250)
+                test.is_nil(assert(repo.update_profile(id, {retry = {}})).config.retry)
+            end)
+            if profile then assert(repo.delete_profile(profile.id)) end
+            assert(ok, tostring(failure))
+        end)
+
+        test.it("upgrades legacy profile numbers and preserves positive values", function()
             local db = assert(sql.get("app:db"))
             local preserved_text = "label" .. string.char(0) .. "suffix"
             local fixtures = {
-                {id = "provider-timeout-zero", timeout = 0, expected = "600000ms"},
-                {id = "provider-timeout-string-zero", timeout = "0", expected = "600000ms"},
-                {id = "provider-timeout-duration-zero", timeout = "0s", expected = "600000ms"},
-                {id = "provider-timeout-default-false", timeout = false, expected = "600000ms"},
-                {id = "provider-timeout-positive", timeout = 1, stored = 1, expected = "1000ms"},
-                {id = "provider-timeout-unset", expected = "600000ms"},
+                {id = "zero", value = 0},
+                {id = "string-zero", value = "0"},
+                {id = "duration-zero", value = "0s"},
+                {id = "false", value = false},
+                {id = "negative", value = -1},
+                {id = "text", value = "30 seconds"},
+                {id = "duration", value = "30s"},
+                {id = "numeric-text", value = "30"},
+                {id = "nan-text", value = "NaN"},
+                {id = "positive", value = 1, stored = 1, expected = "1000ms"},
+                {id = "unset"},
             }
             local client = plain_generate._client
             local original_context, original_http = client._ctx, client._http_client
@@ -76,8 +116,15 @@ local function define_tests()
                     execute(db, [[INSERT INTO kickside_model_provider_profiles
                         (id, name, provider_id, config_json, created_at, updated_at)
                         VALUES ($1, 'Saved profile', $2, $3, 1, 2)]],
-                        {fixture.id, provider, json.encode({timeout = fixture.timeout,
+                        {fixture.id, provider, json.encode({timeout = fixture.value,
+                            retry = {attempts = 2, backoff_ms = fixture.value},
                             base_url = "https://example.test/v1", custom = {timeout = 0, label = preserved_text}})})
+                    execute(db, [[INSERT INTO kickside_model_provider_profiles
+                        (id, name, provider_id, config_json, created_at, updated_at)
+                        VALUES ($1, 'Saved profile', $2, $3, 1, 2)]],
+                        {fixture.id .. "-retry", provider, json.encode({
+                            retry = {attempts = fixture.value, backoff_ms = 250},
+                        })})
                 end
                 migrate_timeouts(db)
                 local _, reload_err = repo.reload()
@@ -101,16 +148,22 @@ local function define_tests()
                     used_timeout = nil
                     local result, err = plain_generate.handler(request)
                     assert(result, tostring(err))
-                    test.eq(used_timeout, fixture.expected)
+                    test.eq(used_timeout, fixture.expected or "600000ms")
                     test.eq(profile.config.timeout, fixture.stored)
+                    test.eq(profile.config.retry.attempts, 2)
+                    test.eq(profile.config.retry.backoff_ms, fixture.stored)
+                    local retry_profile = assert(repo.get_profile(fixture.id .. "-retry"))
+                    test.eq(retry_profile.config.retry.attempts, fixture.stored)
+                    test.eq(retry_profile.config.retry.backoff_ms, 250)
+                    local edited = assert(repo.update_profile(fixture.id, {enabled = false}))
+                    test.is_false(edited.enabled)
+                    test.eq(edited.config.timeout, fixture.stored)
                 end
-                local previously_false = assert(repo.update_profile("provider-timeout-default-false", {enabled = false}))
-                test.is_false(previously_false.enabled)
-                test.is_nil(previously_false.config.timeout)
             end)
             client._ctx, client._http_client = original_context, original_http
             for _, fixture in ipairs(fixtures) do
-                execute(db, "DELETE FROM kickside_model_provider_profiles WHERE id = $1", {fixture.id})
+                execute(db, "DELETE FROM kickside_model_provider_profiles WHERE id IN ($1,$2)",
+                    {fixture.id, fixture.id .. "-retry"})
             end
             db:release()
             local _, reload_err = repo.reload()

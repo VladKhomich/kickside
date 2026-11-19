@@ -85,19 +85,19 @@ OpenAI-compatible profiles, `test_model` is non-secret profile config used only
 by the connection-test probe; API keys remain in encrypted profile secrets or
 `*_env` references. Card and profile filtering preserve the exact `headers` name and existing credential substrings (`secret`, `token`, `api_key`/`api-key`/`apikey`, `authorization`, `password`, `credential`), except token-quantity names containing the plural word `tokens` or singular `token` immediately followed by `budget`, `limit`, `count`, `usage`, `cost`, `rate`, `length`, `window`, `quota` or `size` after word normalization and no other credential substring; profile `*_env` references remain public and declared provider-secret keys retain their exact spelling for config/secret separation.
 
-Profile `timeout` accepts positive seconds or a positive duration string such as
-`"2s"`. An unset timeout uses the provider default. On update, omit the field to
-keep the saved value or send an empty string to clear it. Invalid timeouts return
-HTTP 400 with `kind: "Invalid"` and `details.field: "timeout"`. Models
-uses the shared timeout parser from `wippy/llm` 0.5.14 or later.
+Profile `timeout` is a positive number of seconds. An unset timeout uses the
+provider default. On update, omit the field to keep the saved value or send an
+empty string to clear it.
 
-On upgrade, saved zero timeouts and `false` become unset so the profile
-uses the provider default. The migration leaves unreadable configurations
-intact and logs a warning with their profile IDs.
+Retry is provider-level transport policy. `retry.attempts` is the number of
+transient failures to retry after the initial request, and `retry.backoff_ms`
+is the base exponential backoff delay. Both fields accept positive numbers.
+Send an empty `retry` object to clear the policy.
 
-Retry is provider-level transport policy: `retry.attempts` is the number of
-transient failures to retry after the initial request, and optional
-`retry.backoff_ms` is the base exponential backoff delay.
+Invalid profile numbers return HTTP 400 with `kind: "Invalid"` and the field
+name in `details.field`. On upgrade, the migration unsets stored timeout
+and retry values that are outside this contract, preserves other settings,
+and logs a warning for each unreadable configuration with its profile ID.
 
 ## Platform setup
 

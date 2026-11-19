@@ -194,7 +194,7 @@ entries:
         default_env: OPENAI_COMPAT_TIMEOUT
         default_value: 600
         description: Positive request timeout in seconds. Omit to use the provider default.
-        type: integer
+        type: number
       retry:
         description: Provider-level retry policy for transient transport/provider failures.
         type: object

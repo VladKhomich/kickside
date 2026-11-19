@@ -7,7 +7,6 @@ local json = require("json")
 local registry = require("registry")
 local models_types = require("models_types")
 local models_secrets = require("models_secrets")
-local llm_transport = require("llm_transport")
 
 local M = {}
 
@@ -315,8 +314,17 @@ local function copy_config(input: any, existing_config: any?): any
     for k, v in pairs(config) do
         if v == "" or v == nil then config[k] = nil end
     end
-    config.retry = normalize_retry_config(config.retry)
     return config
+end
+
+local function validate_optional_number(value: any, field: string): any?
+    if value == nil or models_types.is_positive_number(value) then return nil end
+    return errors.new({
+        kind = errors.INVALID,
+        message = field .. " must be a positive number",
+        retryable = false,
+        details = {field = field},
+    })
 end
 
 local function copy_secret_config(input: any, existing_secret: any?): any
@@ -434,13 +442,16 @@ local function clean_profile_input(input: any, existing: any?): (any?, any?)
     local config = copy_config(input, existing and existing.config or {})
     local secret_config = copy_secret_config(input, existing and existing.secret_config or {})
     config = apply_provider_normalization(provider_id, config, secret_config)
-    if config.timeout ~= nil and llm_transport.timeout_seconds(config.timeout) == nil then
-        return nil, errors.new({
-            kind = errors.INVALID,
-            message = "Timeout must be positive seconds or a positive duration",
-            retryable = false,
-            details = {field = "timeout"},
-        })
+    local number_err = validate_optional_number(config.timeout, "timeout")
+    if number_err then return nil, number_err end
+    if type(config.retry) == "table" then
+        number_err = validate_optional_number(config.retry.attempts, "retry.attempts")
+            or validate_optional_number(config.retry.backoff_ms, "retry.backoff_ms")
+        if number_err then return nil, number_err end
+    end
+    config.retry = normalize_retry_config(config.retry)
+    if config.retry and config.retry.backoff_ms == 0 then
+        config.retry.backoff_ms = nil
     end
     local verr = validate_profile_config(provider_id, config, secret_config)
     if verr then return nil, verr end
