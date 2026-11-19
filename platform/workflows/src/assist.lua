@@ -2,6 +2,8 @@
 -- structured-output path for one expr-lang transform, then executes it against a
 -- real or schema-derived sample before returning it to the UI.
 
+local trim = require("text_trim").trim
+local unfence = require("unfence").unfence
 local json = require("json")
 local expr = require("expr")
 local prompt = require("prompt")
@@ -99,18 +101,6 @@ local JSON_SCHEMA_TYPES: { [string]: boolean } = {
     boolean = true,
     ["null"] = true,
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return ((value :: string):gsub("^%s+", ""):gsub("%s+$", ""))
-end
-
-local function unfence(text: string): string
-    local t = trim(text)
-    local body = t:match("^```[%w]*%s*(.-)%s*```$")
-    if body then return trim(body) end
-    return t
-end
 
 local function decode_schema(schema: any): any
     if type(schema) == "string" then
@@ -262,7 +252,6 @@ local function unavailable_error(): Map
         message = ASSIST_UNAVAILABLE_MESSAGE,
     }
 end
-
 
 local I: any = {
     json = json, expr = expr, prompt = prompt, llm = llm, time = time,

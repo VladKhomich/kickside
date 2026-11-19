@@ -208,7 +208,7 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.9'
     kind: ns.dependency
     component: kickside/contract
 
@@ -362,6 +362,7 @@ entries:
     method: receive
     modules: [contract, logger, uuid, security]
     imports:
+      text_trim: kickside.contract:text_trim
       channel_responder: kickside.channel.responder:runtime
       component: kickside.component:component
       agent_ref: kickside.agents:agent_ref
@@ -410,6 +411,7 @@ entries:
     method: cleanup_conversation
     modules: [logger]
     imports:
+      text_trim: kickside.contract:text_trim
       channel_persist: kickside.channel.persist:repo
       channel_consts: kickside.channel:consts
       session_service: wippy.session:service
@@ -423,6 +425,7 @@ entries:
     source: file://binding/cleanup_conversation_func.lua
     method: complete_unlink
     imports:
+      text_trim: kickside.contract:text_trim
       channel_consts: kickside.channel:consts
       channel_persist: kickside.channel.persist:repo
       session_service: wippy.session:service

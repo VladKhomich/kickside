@@ -1,5 +1,6 @@
 local test = require("test")
 local upload_type = require("upload_type")
+local upload_mime = require("upload_mime")
 
 local function define_tests()
     test.describe("declared upload routing", function()
@@ -38,6 +39,22 @@ local function define_tests()
             local entry, err = upload_type.find_by_mime_or_ext("text/vnd.graphviz", "dot")
             test.is_nil(err)
             test.eq(entry.id, "kickside.uploads:types.text")
+        end)
+        test.it("keeps concrete JSON as text with a table extension or stored table kind", function()
+            test.eq(assert(upload_mime.describe("application/json", "data.tsv")).kind, "text")
+            local artifact = {kind = "table", mime_type = "application/json", label = "data.json"}
+            test.eq(assert(upload_mime.describe("text/plain", "data.txt", artifact)).kind, "text")
+        end)
+        test.it("uses the original's MIME for an original-linked artifact and the artifact's MIME for derived bytes", function()
+            local artifact = {kind = "table", mime_type = "text/tab-separated-values", label = "derived.tsv"}
+            local derived = assert(upload_mime.describe("application/json", "data.json", artifact))
+            test.eq(derived.mime_type, "text/tab-separated-values")
+            test.eq(derived.kind, "table")
+
+            artifact.locator = {type = "upload.original"}
+            local original = assert(upload_mime.describe("application/json", "data.json", artifact))
+            test.eq(original.mime_type, "application/json")
+            test.eq(original.kind, "text")
         end)
     end)
 end

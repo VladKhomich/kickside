@@ -8,6 +8,7 @@
 -- commands. Errors are structured (code + message + node/edge id) so publish can
 -- report them and refuse.
 
+local trim = require("text_trim").trim
 local conditions = require("conditions")
 local retry = require("retry")
 local blocks_lib = require("blocks")
@@ -61,7 +62,7 @@ local function err(list: { Err }, code: string, message: string, node_id: string
 end
 
 local function expr_error(source: string): string?
-    local s = source:gsub("^%s+", ""):gsub("%s+$", "")
+    local s = trim(source)
     if s == "" then return nil end
     local stack: { string } = {}
     local quote: string? = nil

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.91](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.90...knowledge-v0.1.91) (2026-11-19)
+
+
+### Features
+
+* **core:** expose bounded pending source work from projection cursors ([#589](https://github.com/kicksideai/kickside/issues/589)) ([de1698a](https://github.com/kicksideai/kickside/commit/de1698a2d01e6d4b044bfd73930c540c3e42c177))
+
+## [0.1.90](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.89...knowledge-v0.1.90) (2026-11-19)
+
+
+### Bug Fixes
+
+* **uploads:** keep TSV and text source uploads readable ([#554](https://github.com/kicksideai/kickside/issues/554)) ([3f265fa](https://github.com/kicksideai/kickside/commit/3f265fa80cd738eac07a037cbaebd7860549d9c1))
+
+## [0.1.89](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.88...knowledge-v0.1.89) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** answer AskKB with query results when no answer model is set ([8bcc8e8](https://github.com/kicksideai/kickside/commit/8bcc8e8d8ab6ba23a7f606398ec6120ddce0773b))
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
 ## [0.1.88](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.87...knowledge-v0.1.88) (2026-11-19)
 
 

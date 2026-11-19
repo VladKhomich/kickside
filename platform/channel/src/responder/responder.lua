@@ -55,10 +55,7 @@ local DEFAULT_ASSESSOR_MODEL = "class:fast"
 local DEFAULT_SESSION_IDLE_SECONDS = consts.DEFAULT_SESSION_IDLE_SECONDS
 local DEFAULT_RUNTIME_IDLE_SECONDS = consts.DEFAULT_RUNTIME_IDLE_SECONDS
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function component_id(args: any): (string?, string?)
     local from_args = type(args) == "table" and (args :: Map).component_id or nil

@@ -3,6 +3,7 @@
 -- lifecycle event append, parent child.lifecycle projection wiring and a
 -- thread-backed component's primary thread row commit with the component mutation.
 
+local trim = require("text_trim").trim
 local uuid = require("uuid")
 local autoinit = require("autoinit")
 local lifecycle_log = require("component_lifecycle_log")
@@ -16,11 +17,6 @@ local component_meta = require("component_meta")
 local execution_identity = require("execution_identity")
 
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function fail(message: string, kind: string?): error
     return (errors.new({ message = message, kind = kind or errors.INTERNAL }) :: error)
@@ -49,7 +45,7 @@ local function merged_worker_config(p: table, parent_id: string, parent_impl_id:
     return cfg
 end
 
-local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, attach_parent: boolean): error?
+local function attach_lifecycle_projections(args: table, lifecycle_thread_id: string, attach_parent: boolean, own_declarations: table?): error?
     local parent_id = trim(args.parent_id)
     local parent_impl_id = trim(args.parent_impl_id)
     local child_id = trim(args.component_id)
@@ -61,7 +57,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
     end
 
     local function attach(impl_id: string, on: string): error?
-        for _, p in ipairs(autoinit.projections_for_impl(impl_id)) do
+        for _, p in ipairs(own_declarations or autoinit.projections_for_impl(impl_id)) do
             if p.on == on then
                 local own = on == autoinit.PROJECTION_ON.LIFECYCLE
                 local key = p.projection_key
@@ -83,7 +79,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
                     system_identity = true,
                     ensure = own,
                 }
-                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params)
+                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params, "lifecycle")
                 if reg_err then return reg_err end
             end
         end
@@ -196,6 +192,17 @@ end
 
 function M.deleted(args: any): (any?, error?)
     return handle(lifecycle_log.KIND.DELETED, args)
+end
+
+-- Restore own lifecycle projections under the same system identity as an event.
+function M.converge_own(tx: sql.Transaction, dbtype: string, component_id: string,
+    impl_id: string, declaration: table): (string?, error?)
+    local thread_id, ensure_err = lifecycle_log.ensure_tx(tx, component_id, impl_id)
+    if ensure_err or not thread_id then return nil, ensure_err end
+    local attach_err = attach_lifecycle_projections({tx = tx, dbtype = dbtype,
+        component_id = component_id, impl_id = impl_id}, thread_id, false, {declaration})
+    if attach_err then return nil, attach_err end
+    return thread_id, nil
 end
 
 -- The component transaction stores the lifecycle event and job demand. Wake

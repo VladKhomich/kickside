@@ -2,6 +2,11 @@
 version: '1.0'
 namespace: app
 entries:
+  - name: test_gateway
+    kind: library.lua
+    source: file://test_gateway.lua
+    modules: [channel, events, system, time]
+
   - name: content_admission_test
     kind: function.lua
     meta: { type: test, suite: knowledge_admission }
@@ -9,9 +14,10 @@ entries:
     method: run
     security:
       actor: { id: "knowledge-tests" }
-    modules: [sql, uuid, json, funcs, security, contract, http_client, system]
-    imports:
+    modules: &admission_modules [sql, uuid, json, funcs, security, contract, http_client]
+    imports: &admission_imports
       test: wippy.test:test
+      test_gateway: app:test_gateway
       session: kickside.users:session
       groups: kickside.users.persist:user_groups_repo
       component: kickside.component:component
@@ -21,6 +27,15 @@ entries:
       uploads: kickside.uploads:uploads
       upload_records: kickside.uploads.persist:upload_record_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
+  - name: published_upload_admission_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_admission }
+    source: file://content_admission_test.lua
+    method: run_published
+    security:
+      actor: { id: "knowledge-tests" }
+    modules: *admission_modules
+    imports: *admission_imports
   - name: admission_get_content
     kind: function.lua
     source: file://admission_provider.lua

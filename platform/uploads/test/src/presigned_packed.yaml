@@ -5,12 +5,18 @@ entries:
   - name: presigned_packed_lifecycle
     kind: library.lua
     source: file://fixtures/uploads_presigned.lua
+    imports:
+      upload_mime: kickside.uploads:uploads_mime
   - name: presigned_packed_test
     kind: function.lua
     meta: {type: test, suite: packed_storage}
     source: file://presigned_packed_test.lua
     method: run
-    modules: [uuid, time]
+    modules: [uuid, time, http]
     imports:
       test: wippy.test:test
       lifecycle: app:presigned_packed_lifecycle
+      presign_api: kickside.uploads.api:presigned_handler
+      upload_mime: kickside.uploads:uploads_mime
+      records: kickside.uploads.persist:upload_record_repo
+      uploads: kickside.uploads.persist:upload_query_repo

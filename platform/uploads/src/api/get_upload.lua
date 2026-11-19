@@ -87,13 +87,12 @@ local function get_handler()
     -- can still use the authorized file API and its delivery URLs.
     local base = upload_response.view_base()
     local public = upload_response.format_get_upload(upload, base)
-    local url, delivery_err = upload_response.delivery_url(upload.storage_id, upload.storage_path, public.raw_url)
+    local delivery_err, message = upload_response.attach_delivery(upload, public)
     if delivery_err then
         res:set_status(http_errors.classify(delivery_err))
-        res:write_json({success = false, error = "Failed to obtain upload delivery URL"})
+        res:write_json({success = false, error = message})
         return
     end
-    public.raw_url = url
 
     -- Return success with upload
     res:set_status(http.STATUS.OK)

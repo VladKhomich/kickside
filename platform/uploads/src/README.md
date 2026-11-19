@@ -135,6 +135,19 @@ Knowledge ingestion uses this flow: `kickside.knowledge.api:upload_token` mints
 a token for `kickside.knowledge.injection:on_upload_complete`, and the
 Knowledge URL fetch tool attaches one before it stores fetched content.
 
+## Deletion
+
+Deleting a single upload publishes its deletion on the owner's Uploads thread.
+Deleting an Uploads component or principal drains the stored owner's upload rows,
+artifacts, bytes, and read model without provisioning a thread. Type-specific
+delete stages that only cascade to another upload of the same owner can declare
+`delete_scope: single_upload`. The owner sweep visits those uploads directly.
+A universal `upload.delete_stage` can declare an `owner_func` for owner teardown.
+That function runs under the lifecycle caller and receives only `upload_id` and
+`owner_id` from the stored upload row. Its ordinary `func` still runs as the
+recorded uploader on single-file deletion. Stages without a maintenance entry
+retain their existing uploader authority.
+
 ## Packed storage and delivery
 
 Available starting with Uploads 0.3.2. The default storage adapter accepts
@@ -195,7 +208,24 @@ dependency has no `trusted_reader` entry and drops `att.metadata`.
 The `upload.type` entries in [types/_index.yaml](types/_index.yaml),
 [documents/_index.yaml](documents/_index.yaml), and
 [archive/_index.yaml](archive/_index.yaml) declare supported extensions and pipelines.
+Use `extension_mime_types` to associate a lowercase extension with its default
+MIME type when the client omits the content type or sends a generic one. Use
+`extensions` for extensions that select a pipeline without assigning a MIME type.
 The generic MIME catch-all applies after a declared extension match.
+
+The content provider, upload list and detail, and artifact listing expose an effective
+`content_description` with `kind`, `mime_type`, `text_available`, and
+`inline`. The original and any artifact linked to its bytes share the upload's
+concrete MIME. A derived artifact describes its own bytes. The extension map and
+artifact metadata identify content with a missing or generic MIME. A CSV or TSV
+with a stored `text/plain` MIME has effective kind `table`. Inline support also
+includes types declared by registered renderers. Extracted-only and trusted text
+reads stream a bounded prefix and report the full byte length.
+
+An explicit `get_content({max_size = ...})` limit applies to both the default
+and raw reads. The response includes the returned byte count in `size`, the full
+stored byte count in `total_size`, and whether it was `truncated`. Trusted image
+reads reject images larger than the requested limit after a bounded storage read.
 
 | Types | Declared output |
 | --- | --- |

@@ -12,6 +12,7 @@ entries:
     source: file://repo.lua
     modules: [sql, uuid, time, json, crypto, hash]
     imports:
+      text_trim: kickside.contract:text_trim
       session_acquire: kickside.channel.persist:session_acquire
       conversation_gc: kickside.channel.persist:conversation_gc
       channel_conversation: kickside.channel.persist:conversation

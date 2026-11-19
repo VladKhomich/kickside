@@ -90,6 +90,17 @@ return {run = test.run_cases(function()
             test.eq(fixture.calls.migrations, 3)
             for _, step in ipairs({"actor", "scope", "provision", "converge"}) do test.eq(fixture.calls[step], 1) end
         end)
+        test.it("boot resumes a bounded convergence pass without reprovisioning", function()
+            fixture.reset("", nil)
+            local pages: any = {}
+            fixture.pages = pages
+            local out = boot.main(nil)
+            test.is_true(out.ok)
+            test.eq(out.count, 1)
+            test.eq(fixture.calls.provision, 1)
+            test.eq(fixture.calls.converge, 2)
+            test.eq(pages[2].after, 256)
+        end)
         test.it("pending migration defers convergence and keeps boot resident", function()
             fixture.reset("", nil, nil, true); local out = boot.main(nil); test.is_true(out.ok); test.is_nil(out.count)
             for _, step in ipairs({"events", "listen", "register", "migrations", "options"}) do test.eq(fixture.calls[step], 1) end

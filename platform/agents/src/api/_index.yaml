@@ -183,6 +183,7 @@ entries:
     source: file://list_traits.lua
     modules: [http, security, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       query_params: kickside.agents.api:query_params
       capability_context: kickside.agents.traits:capability_context
       list_tools: kickside.agents.api:list_tools
@@ -218,6 +219,7 @@ entries:
     source: file://list_tools.lua
     modules: [http, security, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       query_params: kickside.agents.api:query_params
       tool_schema: kickside.agents.registry:tool_schema
       tool_visibility: kickside.agents.registry:tool_visibility
@@ -239,6 +241,7 @@ entries:
     source: file://list_tools.lua
     modules: [http, security, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       query_params: kickside.agents.api:query_params
       tool_schema: kickside.agents.registry:tool_schema
       tool_visibility: kickside.agents.registry:tool_visibility

@@ -4,10 +4,12 @@
 -- handle and returns rows as-is; access control and HTTP shaping are the
 -- endpoint's job, not this module's. Errors are returned as values.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local types = require("types")
 
 local reader = {}
+local PENDING_SEQUENCE_WINDOW = 512
 
 -- A pooled connection or open transaction.
 type Executor = sql.DB | sql.Transaction
@@ -20,13 +22,6 @@ type CursorRef = {
     status: string,
     generation: integer,
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- Resolve the dialect's row-lock clause for a builder :suffix (empty on sqlite).
 local function lock_clause(db_or_tx: Executor): (string?, error?)
@@ -175,6 +170,36 @@ function reader.find_projection_cursor(db_or_tx: Executor, thread_id: string, pa
             debounce_max_ms = row.debounce_max_ms, job_id = row.job_id,
             created_at = row.created_at, updated_at = row.updated_at },
     }, nil
+end
+
+-- Count only a fixed sequence window. The thread/sequence index keeps this
+-- bounded even when unrelated event types dominate a long pending backlog.
+function reader.pending_events(db_or_tx: Executor, thread: table, cursor: table, event_types: { string }): (table?, error?)
+    local last_seq = tonumber(cursor.last_seq)
+    local head = tonumber(thread.event_count)
+    if not last_seq or not head then
+        return nil, errors.new({ message = "projection position is unavailable", kind = errors.INTERNAL })
+    end
+    local after = math.max(last_seq, tonumber(thread.max_pruned_seq) or 0)
+    if head <= after then return { count = 0, truncated = false }, nil end
+
+    local upper = math.min(head, after + PENDING_SEQUENCE_WINDOW)
+    local values: { any } = { thread.id, after, upper }
+    local markers: { string } = {}
+    for i, event_type in ipairs(event_types) do
+        values[#values + 1] = event_type
+        markers[i] = "$" .. tostring(#values)
+    end
+    local rows, err = db_or_tx:query([[SELECT COUNT(*) AS count FROM (
+        SELECT type FROM kickside_event WHERE thread_id=$1 AND seq>$2 AND seq<=$3
+        ORDER BY seq LIMIT ]] .. tostring(PENDING_SEQUENCE_WINDOW) .. [[
+    ) pending WHERE type IN (]] .. table.concat(markers, ",") .. ")", values)
+    if err then return nil, errors.wrap(err, "failed to count pending projection events") end
+    local count = rows and rows[1] and tonumber(rows[1].count)
+    if not count then
+        return nil, errors.new({ message = "pending projection event count is unavailable", kind = errors.INTERNAL })
+    end
+    return { count = count, truncated = upper < head }, nil
 end
 
 function reader.select_projection_cursor(db_or_tx: Executor, thread_id: string, params: table): (table?, error?)

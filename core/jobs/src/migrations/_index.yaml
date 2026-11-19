@@ -165,3 +165,30 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 29_demand_rearm
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Persists successful slot rearms that ordinary demand may advance.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-18T00:00:29Z"
+    source: file://29_demand_rearm.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
+  - name: 30_retention_by_type
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Indexes the per-type expiration order for bounded Jobs retention overrides.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-19T00:00:30Z"
+    source: file://30_retention_by_type.lua
+    imports:
+      migration: wippy.migration:migration
+      run_status: kickside.core.jobs:run_status
+    method: migrate

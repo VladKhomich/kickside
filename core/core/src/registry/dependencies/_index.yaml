@@ -2,9 +2,8 @@ version: "1.0"
 namespace: kickside.core
 entries:
   - name: dep.kickside.component
-    # The application lock must pin Component at 0.1.33 or newer: the boot
-    # provisioner reads autoinit.declared_kinds(), which older releases lack.
-    version: '*'
+    # Boot convergence seeks owners through the index from Component migration 16.
+    version: '>=0.3.23'
     kind: ns.dependency
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.
@@ -21,17 +20,17 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.9'
     kind: ns.dependency
     meta:
       comment: Implements the shared component and deletable contracts.
     component: kickside/contract
 
   - name: dep.kickside.jobs
-    version: '>=0.1.61'
+    version: '>=0.1.87'
     kind: ns.dependency
     meta:
-      comment: Durable leased-job engine; projection completion requires ordered wake and completing-job locks from 0.1.61.
+      comment: Durable leased-job engine, including transaction-scoped lease checks for projection checkpoints.
     component: kickside/jobs
 
   - name: dep.wippy.migration

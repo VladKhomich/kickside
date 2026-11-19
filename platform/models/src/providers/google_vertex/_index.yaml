@@ -10,6 +10,7 @@ entries:
     source: file://token_engine.lua
     modules: [base64, crypto, env, hash, http_client, json, logger, store, time]
     imports:
+      text_trim: kickside.contract:text_trim
       models_repo: kickside.models.persist:repo
       catalog_policy: kickside.models.catalog:policy
       models_types: kickside.models:models_types

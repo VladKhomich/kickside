@@ -43,7 +43,13 @@ const LANG_BY_EXT: Record<string, string> = {
 
 const mime = computed(() => (props.value?.contentType || '').toLowerCase().split(';')[0].trim())
 const ext = computed(() => (props.value?.filename || '').split('.').pop()?.toLowerCase() || '')
-const isTable = computed(() => mime.value === 'text/csv' || mime.value === 'text/tab-separated-values' || ext.value === 'csv' || ext.value === 'tsv')
+const delimiter = computed(() => {
+  if (mime.value === 'text/csv') return ','
+  if (mime.value === 'text/tab-separated-values') return '\t'
+  if (mime.value && mime.value !== 'text/plain' && mime.value !== 'application/octet-stream') return null
+  if (ext.value === 'tsv') return '\t'
+  return ext.value === 'csv' ? ',' : null
+})
 
 function langHint(): string {
   return LANG_BY_MIME[mime.value] || LANG_BY_EXT[ext.value] || ''
@@ -64,7 +70,7 @@ const highlighted = computed(() => {
 // Gutter line numbers, sized to the line count (capped so a huge file does not
 // build a giant string).
 const lineNumbers = computed(() => {
-  if (isTable.value || !text.value) return ''
+  if (delimiter.value || !text.value) return ''
   const n = Math.min(text.value.split('\n').length, 50000)
   let s = ''
   for (let i = 1; i <= n; i++) s += i + '\n'
@@ -74,8 +80,8 @@ const lineNumbers = computed(() => {
 // Minimal RFC-4180-ish parser: handles quoted fields, escaped quotes, and the
 // delimiter implied by the content-type (tab for TSV, comma otherwise).
 const rows = computed<string[][]>(() => {
-  if (!isTable.value || !text.value) return []
-  const delim = mime.value === 'text/tab-separated-values' || ext.value === 'tsv' ? '\t' : ','
+  const delim = delimiter.value
+  if (!delim || !text.value) return []
   const out: string[][] = []
   let row: string[] = [], field = '', q = false
   const s = text.value.replace(/\r\n/g, '\n')
@@ -117,7 +123,7 @@ watch(() => [props.value?.source, props.value?.sourceUrl, props.value?.contentTy
   <div class="codev">
     <div v-if="loading" class="rv-state"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /><span>Loading…</span></div>
     <div v-else-if="error" class="rv-state err"><Icon icon="tabler:alert-circle" aria-hidden="true" /><span>{{ error }}</span></div>
-    <div v-else-if="isTable && rows.length" class="codev-table-wrap">
+    <div v-else-if="rows.length" class="codev-table-wrap">
       <table class="codev-table">
         <thead><tr><th v-for="(c, i) in rows[0]" :key="i">{{ c }}</th></tr></thead>
         <tbody>

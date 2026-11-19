@@ -43,8 +43,8 @@ entries:
     component: kickside/core
 
   - name: dep.kickside.jobs
-    version: '*'
+    version: '>=0.1.85'
     kind: ns.dependency
     meta:
-      comment: Automation health reads the jobs runtime policy's overdue grace.
+      comment: Event rounds use demand-advanceable completion deadlines in Jobs.
     component: kickside/jobs

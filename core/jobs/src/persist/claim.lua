@@ -150,7 +150,7 @@ function claim.lease_row(tx: sql.Transaction, dbtype: string, id: string, token:
     local rows, err = tx:query("UPDATE kickside_job SET status=$1, attempts=attempts+1, execution_seq="
         .. greatest .. "(execution_seq, COALESCE((SELECT MAX(r.execution_seq) FROM kickside_job_run r"
         .. " WHERE r.job_id=kickside_job.id), 0)) + 1, lease_token=$2, lease_until=$3, heartbeat_at=$4,"
-        .. " wake_demand_at=NULL, lease_policy=$5, last_error=CASE WHEN last_error=$6 THEN NULL ELSE last_error END WHERE id=$7 AND status=$8"
+        .. " wake_demand_at=NULL, rearm_on_demand=NULL, lease_policy=$5, last_error=CASE WHEN last_error=$6 THEN NULL ELSE last_error END WHERE id=$7 AND status=$8"
         .. " AND " .. available_concurrency_key("$1") .. " RETURNING attempts, execution_seq",
         { job_types.JOB_STATE.RUNNING, token, lease_until, now, captured, job_types.TERMINATION_SETTLED, id, job_types.JOB_STATE.PENDING })
     rows, err = boundary.bounded_rows(rows, err, "claim lease failed", "lease", 0, 1, response_error)
@@ -222,6 +222,7 @@ function claim.claim_job(db: sql.DB, dbtype: string): (table?, error?)
         return { status = job_types.JOB_STATE.RUNNING,
             attempts = attempts + 1, execution_seq = sequence + 1,
             lease_token = lease_token, lease_until = lease_until, heartbeat_at = now, lease_policy = captured, wake_demand_at = row_bytes.NULL,
+            rearm_on_demand = row_bytes.NULL,
                 last_error = row.last_error == job_types.TERMINATION_SETTLED and row_bytes.NULL or row.last_error }
     end, (policy :: any).max_row_bytes, "claim_job")
     if size_err then return nil, boundary.rollback(tx, size_err, "claim rollback failed") end
@@ -740,6 +741,7 @@ function claim.claim_batch(db: sql.DB, dbtype: string, requested: integer?, pref
             return { status = job_types.JOB_STATE.RUNNING,
                 attempts = attempts + 1, execution_seq = sequence + 1,
                 lease_token = token, lease_until = lease_until, heartbeat_at = now, lease_policy = captured, wake_demand_at = row_bytes.NULL,
+                rearm_on_demand = row_bytes.NULL,
                 last_error = row.last_error == job_types.TERMINATION_SETTLED and row_bytes.NULL or row.last_error }
         end, (policy :: any).max_row_bytes, "claim_job", retained[tostring(job.id)])
         local leased: table? = nil
@@ -771,7 +773,8 @@ function claim.claim_batch(db: sql.DB, dbtype: string, requested: integer?, pref
                     return nil, boundary.rollback(tx, errors.new({message = "worker is not available for another claim",
                         kind = errors.CONFLICT, details = {reason = job_types.CLAIM_REFUSAL.WORKER_MARKER_OCCUPIED}}), "claim rollback failed")
                 end
-                local started_run, run_err = lifecycle.start_job_run(tx, dbtype, job, owner_id, leased.attempts)
+                -- This job comes from lock_candidates and remains locked through the insert.
+                local started_run, run_err = lifecycle.start_job_run(tx, dbtype, job, owner_id, leased.attempts, true)
                 if run_err then
                     if errors.is(run_err, errors.INTERNAL) then return nil, boundary.rollback(tx, run_err, "claim rollback failed") end
                     refusal = run_err

@@ -40,6 +40,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.migrations:14_inherited_retention
         path: .meta.target_db
+      - entry: kickside.core.migrations:15_projection_continuation
+        path: .meta.target_db
       - entry: kickside.core:db_config
         path: .meta.db_id
 
@@ -124,6 +126,7 @@ entries:
     source: file://write_receipt.lua
     modules: [sql, json]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       core_db: kickside.core:db
       retention_policy: kickside.core:policy_config

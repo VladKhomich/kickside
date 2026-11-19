@@ -18,8 +18,9 @@ local function stub(over: any?)
                     crm_files = { crm_id = "c1", record_id = "person:1", provider = "hubspot", ref = "42" } } }, nil
         end },
         parts = {
-            read_primary_content = function(_id)
-                return { content = "# Brief\nпривет", mime_type = "text/markdown", metadata = { pages = 3 },
+            read_primary_content = function(_id, limit)
+                local content = "# Brief\nпривет"
+                return { content = content:sub(1, limit), total_size = #content, mime_type = "text/markdown", metadata = { pages = 3 },
                     artifact = { artifact_id = "a-primary" } }, nil
             end,
             list_artifacts = function(_id)
@@ -31,7 +32,10 @@ local function stub(over: any?)
                 if upload_id ~= "up-1" or artifact_id ~= "a-img" then return not_found() end
                 return { artifact_id = "a-img", upload_id = "up-1", mime_type = "image/png" }, nil
             end,
-            read_artifact_content = function(_u, _a) return "PNGBYTES", nil end,
+            read_artifact_content = function(_u, _a, limit)
+                local bytes = "PNGBYTES"
+                return limit and bytes:sub(1, limit) or bytes, nil, {size = #bytes}
+            end,
         },
     }
     for key, value in pairs(over or {}) do base[key] = value end
@@ -135,6 +139,22 @@ local function define_tests()
             test.is_true(errors.is(foreign, errors.NOT_FOUND))
             local _, big = reader.image_bytes("up-1", "a-img", 4)
             test.is_true(errors.is(big, errors.INVALID))
+        end)
+
+        test.it("rejects an oversized image using a bounded read and the full stored size", function()
+            stub({ content = {
+                get_artifact = function()
+                    return {artifact_id = "a-img", upload_id = "up-1", mime_type = "image/png"}, nil
+                end,
+                read_artifact_content = function(_upload, _artifact, limit)
+                    test.eq(limit, 4)
+                    return "PNGB", nil, {size = 8}
+                end,
+            } })
+            local image, err = reader.image_bytes("up-1", "a-img", 4)
+            test.is_nil(image)
+            test.is_true(errors.is(err, errors.INVALID))
+            test.eq(err:details().code, "too_large")
         end)
 
         test.it("refuses a non-image artifact", function()

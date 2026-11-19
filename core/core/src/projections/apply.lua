@@ -13,8 +13,16 @@ local retention_notifier = require("retention_notifier")
 local retention_pin = require("retention_pin")
 local execution_identity = require("execution_identity")
 local error_envelope = require("error_envelope")
+local committed_error = require("committed_error")
+local core_db = require("core_db")
+local jobs_config = require("jobs_config")
+local lease_status = require("lease_status")
+local job_types = require("job_types")
 
 local M = {}
+
+type CheckpointWriter = (sql.Transaction, string) -> (boolean?, error?)
+type Checkpoint = { write: CheckpointWriter?, first_seq: number? }
 
 local function invalid(message: string): error
     return (errors.new({ message = message, kind = errors.INVALID, retryable = false }) :: error)
@@ -140,7 +148,80 @@ local function completion(tx: sql.Transaction, job: table, opts: table): (table?
     return done, nil
 end
 
-local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table, writes: table[]): (table?, error?)
+local function check_lease(tx: sql.Transaction, job: table, dbtype: string, lock: boolean): error?
+    local active, err = lease_status.active_tx(tx, job, dbtype, lock)
+    if err then return err end
+    if not active then return job_types.lease_lost_error("projection checkpoint lease lost") end
+    return nil
+end
+
+-- The stored encoding is an array of bounded scalars. The complete event
+-- sequence remains independent, including for retention and cursor waiters.
+local function step_index(value: any): boolean
+    return type(value) == "number" and value >= 1 and value <= 2147483647 and value == math.floor(value)
+end
+
+function M.continuation(cursor: table): (table?, error?)
+    local raw = cursor.continuation or ""
+    if raw == "" then return nil, nil end
+    if type(raw) ~= "string" or #raw > 96 then return nil, response_error("cursor.continuation") end
+    local decoded, err = json.decode(raw)
+    if err or type(decoded) ~= "table" or #decoded ~= 4 or type(decoded[1]) ~= "string"
+        or #decoded[1] ~= 36 or type(decoded[2]) ~= "number" or decoded[2] <= 0
+        or math.tointeger(decoded[2]) == nil or not step_index(decoded[3]) or not step_index(decoded[4]) then
+        return nil, response_error("cursor.continuation")
+    end
+    return {event_id = decoded[1], seq = decoded[2], item = decoded[3], step = decoded[4]}, nil
+end
+
+local function checkpoint_event(tx: sql.Transaction, thread_id: string, prior: number, pinned: table?): (table?, error?)
+    local rows, err
+    if pinned then
+        rows, err = tx:query("SELECT id,seq FROM kickside_event WHERE thread_id=$1 AND seq=$2", {thread_id, pinned.seq})
+    else
+        rows, err = tx:query([[SELECT id,seq FROM kickside_event WHERE thread_id=$1 AND seq>$2 ORDER BY seq LIMIT 1]],
+            {thread_id, prior})
+    end
+    if err then return nil, errors.wrap(err, "projection checkpoint input read failed") end
+    if type(rows) ~= "table" then return nil, response_error("checkpoint.event_rows") end
+    local event = rows[1]
+    if not event or (pinned and tostring(event.id) ~= pinned.event_id) then
+        return nil, errors.new({kind = errors.NOT_FOUND, retryable = false, message = "projection checkpoint input is missing"})
+    end
+    if type(event.id) ~= "string" or not tonumber(event.seq) then return nil, response_error("checkpoint.event") end
+    return event, nil
+end
+
+local function next_continuation(event: table, prior: table?, next_step: any): (string?, error?)
+    if type(next_step) ~= "table" or type(next_step.event_id) ~= "string" or #next_step.event_id ~= 36
+        or not step_index(next_step.item) or not step_index(next_step.step) then
+        return nil, invalid("projection continuation requires a bounded event, item, and step")
+    end
+    if next_step.event_id ~= event.id then
+        return nil, errors.new({kind = errors.CONFLICT, retryable = true, message = "projection checkpoint input changed"})
+    end
+    if prior then
+        if not ((next_step.item == prior.item and next_step.step == prior.step + 1)
+                or (next_step.item == prior.item + 1 and next_step.step == 1)) then
+            return nil, invalid("projection continuation must commit the next item step")
+        end
+    elseif next_step.item ~= 1 or next_step.step ~= 1 then
+        return nil, invalid("projection continuation must start at the first item step")
+    end
+    return json.encode({event.id, tonumber(event.seq), next_step.item, next_step.step})
+end
+
+local function notify_progress(snapshot: table, last: number, progressed: boolean): error?
+    local _, err = cursor_waiters.notify_cursor(snapshot.id, last, "active")
+    if err then return err end
+    if progressed then
+        _, err = retention_notifier.notify({ kind = "projection_eligibility_changed", thread_id = snapshot.thread_id })
+    end
+    return err
+end
+
+local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table,
+        writes: table[], checkpoint: Checkpoint?): (table?, error?)
     local raw_type, type_err = db:type()
     if type_err then return nil, errors.wrap(type_err, "projection dialect unavailable") end
     if type(raw_type) ~= "string" or raw_type == "" then return nil, response_error("database.type") end
@@ -160,18 +241,28 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local source_thread = locked_threads[tostring(snapshot.thread_id)]
     local current_head = tonumber(source_thread and source_thread.event_count)
     if current_head == nil then return abort(response_error("thread.head")) end
+    if checkpoint and source_thread.deleting_at ~= nil then
+        return abort(job_types.lease_lost_error("projection source thread is deleting"))
+    end
     local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local rows, cursor_err = tx:query([[SELECT generation,last_seq,status,job_id FROM kickside_projection_cursor
+    local rows, cursor_err = tx:query([[SELECT generation,last_seq,status,job_id,thread_id,projection_id,continuation FROM kickside_projection_cursor
         WHERE id=$1]] .. suffix, { snapshot.id })
     if cursor_err then return abort(errors.wrap(cursor_err, "projection fence read failed")) end
     if type(rows) ~= "table" then return abort(response_error("cursor.rows")) end
     local cursor = rows[1]
     if not cursor then return abort(errors.new({message = "projection cursor removed", kind = errors.NOT_FOUND, retryable = false})) end
-    if tostring(cursor.job_id or "") ~= tostring(job.id) then
+    if tostring(cursor.job_id or "") ~= tostring(job.id)
+        or (checkpoint and (cursor.thread_id ~= snapshot.thread_id or cursor.projection_id ~= snapshot.projection_id)) then
         return abort(errors.new({message = "projection slot changed", kind = errors.CONFLICT, retryable = false}))
     end
     if cursor.status ~= "active" or tonumber(cursor.generation) ~= tonumber(snapshot.generation)
-        or tonumber(cursor.last_seq) ~= tonumber(snapshot.last_seq) then
+        or tonumber(cursor.last_seq) ~= tonumber(snapshot.last_seq)
+        or (checkpoint and (cursor.continuation or "") ~= (snapshot.continuation or "")) then
+        if checkpoint then
+            return abort(errors.new({kind = errors.CONFLICT, retryable = false,
+                message = "projection checkpoint lost its position",
+                details = {code = "projection_checkpoint_stale"}}))
+        end
         local options: table = { rearm = clock.now(dbtype) }
         if cursor.status ~= "active" then options = { record = { status = "parked" } } end
         local done, done_err = completion(tx, job, options)
@@ -185,6 +276,9 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
 
     local prior = tonumber(snapshot.last_seq)
     if prior == nil then return abort(response_error("cursor.last_seq")) end
+    if not checkpoint and (cursor.continuation or "") ~= "" then
+        return abort(invalid("a projection with an incomplete checkpoint requires its owning worker"))
+    end
     local last = prefetched_last
     if output.last_seq ~= nil then
         local reported = tonumber(output.last_seq)
@@ -193,21 +287,83 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         end
         last = reported
     end
-    local folded, fold_err = next_body(body, output)
-    if fold_err then return abort(fold_err) end
-    local encoded, encode_err = json.encode(folded)
-    if encode_err then return abort(errors.wrap(encode_err, "projection worker body is not JSON")) end
-    if type(encoded) ~= "string" then return abort(response_error("body_json")) end
+    local effect = checkpoint and checkpoint.write
+    local continuation = ""
+    local partial = effect and output.continuation ~= nil
+    if checkpoint then
+        -- An append wakes other slots. Leave its wake and Jobs row ordering
+        -- to wake_multi, then lock the completing slot before commit.
+        local lease_err = check_lease(tx, job, dbtype, #writes == 0)
+        if lease_err then return abort(lease_err) end
+    end
+    if effect then
+        if output.last_seq == nil or (partial and last ~= prior) or (not partial and last <= prior) then
+            return abort(invalid("projection checkpoint must consume the next complete event"))
+        end
+        if (tonumber(source_thread.max_pruned_seq) or 0) > prior then
+            return abort(errors.new({kind = errors.NOT_FOUND, retryable = false, message = "projection checkpoint input was pruned"}))
+        end
+        local pinned, pin_err = M.continuation(snapshot)
+        if pin_err then return abort(pin_err) end
+        local event, event_err = checkpoint_event(tx, snapshot.thread_id, prior, pinned)
+        if event_err then return abort(event_err) end
+        if not event then return abort(response_error("checkpoint.event")) end
+        local event_seq = tonumber(event.seq)
+        if event_seq <= prior or event_seq > current_head or event_seq > prefetched_last
+            or (not partial and last ~= event_seq) then
+            return abort(errors.new({kind = errors.CONFLICT, retryable = true, message = "projection checkpoint input changed"}))
+        end
+        if partial then
+            if output.body ~= nil or output.patch ~= nil or #writes ~= 0 then
+                return abort(invalid("projection continuation cannot publish completed event outputs"))
+            end
+            local next_value, position_err = next_continuation(event, pinned, output.continuation)
+            if position_err then return abort(position_err) end
+            if not next_value then return abort(response_error("cursor.continuation")) end
+            continuation = next_value
+        end
+        local ok, written, effect_err = pcall(effect, tx, dbtype)
+        if not ok then
+            local native = job_types.native_error(written)
+            return abort(native or response_error("checkpoint.writer"))
+        end
+        if effect_err then return abort(effect_err) end
+        if written ~= true then return abort(response_error("checkpoint.writer")) end
+    end
     local now = clock.now(dbtype)
-    local updated, update_err = tx:execute([[UPDATE kickside_projection SET body=$1,state='valid',last_event_seq=$2,
-        updated_at=$3 WHERE id=$4]], { encoded, last, now, snapshot.projection_id })
-    local fold_write_err = write_error(updated, update_err, "projection fold write failed", "projection.update")
-    if fold_write_err then return abort(fold_write_err) end
-    local headed, head_err = tx:execute([[UPDATE kickside_projection_cursor SET last_seq=$1,
-        last_error=$2,updated_at=$3 WHERE id=$4 AND generation=$5 AND last_seq=$6 AND status='active']],
-        { last, output.last_error, now, snapshot.id, snapshot.generation, snapshot.last_seq })
-    local head_write_err = write_error(headed, head_err, "projection cursor advance failed", "cursor.update")
-    if head_write_err then return abort(head_write_err) end
+    if not checkpoint or (effect and not partial) then
+        local updated, update_err
+        if not checkpoint or output.body ~= nil or output.patch ~= nil then
+            local folded, fold_err = next_body(body, output)
+            if fold_err then return abort(fold_err) end
+            local encoded, encode_err = json.encode(folded)
+            if encode_err then return abort(errors.wrap(encode_err, "projection worker body is not JSON")) end
+            if type(encoded) ~= "string" then return abort(response_error("body_json")) end
+            updated, update_err = tx:execute([[UPDATE kickside_projection SET body=$1,state='valid',last_event_seq=$2,
+                updated_at=$3 WHERE id=$4]], { encoded, last, now, snapshot.projection_id })
+        else
+            updated, update_err = tx:execute([[UPDATE kickside_projection SET state='valid',last_event_seq=$1,
+                updated_at=$2 WHERE id=$3]], { last, now, snapshot.projection_id })
+        end
+        local fold_write_err = write_error(updated, update_err, "projection fold write failed", "projection.update")
+        if fold_write_err then return abort(fold_write_err) end
+        if checkpoint and updated.rows_affected ~= 1 then return abort(response_error("checkpoint.position")) end
+    end
+    if not checkpoint or effect then
+        local statement = [[UPDATE kickside_projection_cursor SET last_seq=$1,
+            last_error=$2,updated_at=$3 WHERE id=$4 AND generation=$5 AND last_seq=$6 AND status='active']]
+        local values: {any} = {last, output.last_error, now, snapshot.id, snapshot.generation, snapshot.last_seq}
+        if checkpoint then
+            statement = [[UPDATE kickside_projection_cursor SET last_seq=$1, last_error=$2,updated_at=$3,
+                continuation=$4 WHERE id=$5 AND generation=$6 AND last_seq=$7 AND continuation=$8 AND status='active']]
+            values = {last, output.last_error, now, continuation, snapshot.id, snapshot.generation,
+                snapshot.last_seq, snapshot.continuation or ""}
+        end
+        local headed, head_err = tx:execute(statement, values)
+        local head_write_err = write_error(headed, head_err, "projection cursor advance failed", "cursor.update")
+        if head_write_err then return abort(head_write_err) end
+        if checkpoint and headed.rows_affected ~= 1 then return abort(response_error("checkpoint.position")) end
+    end
     if #writes > 0 then
         local wake_keys: string[] = {}
         local appended_threads: {[string]: boolean} = {}
@@ -231,21 +387,29 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
             if type(woken) ~= "table" then return abort(response_error("wake")) end
         end
     end
-    local options: table = {}
-    if last < current_head then options.rearm = now else options.demand_satisfied = true end
-    if last > prior then options.record = { status = "completed" } end
-    local done, done_err = completion(tx, job, options)
-    if done_err then return abort(done_err) end
+    local done
+    if effect then
+        -- Check again before publishing. Expiry can occur while writing, and
+        -- output appends acquire wake rows before taking Jobs row locks.
+        local lease_err = check_lease(tx, job, dbtype, true)
+        if lease_err then return abort(lease_err) end
+    else
+        local options: table = {}
+        if last < current_head then options.rearm = now else options.demand_satisfied = true end
+        if last > (checkpoint and checkpoint.first_seq or prior) then options.record = { status = "completed" } end
+        local done_err
+        done, done_err = completion(tx, job, options)
+        if done_err then return abort(done_err) end
+    end
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "projection apply commit failed") end
-    local _, notify_err = cursor_waiters.notify_cursor(snapshot.id, last, "active")
-    if notify_err then return nil, notify_err end
-    if last > prior or #(writes :: table[]) > 0 then
-        local _, retention_notify_err = retention_notifier.notify({ kind = "projection_eligibility_changed",
-            thread_id = snapshot.thread_id })
-        if retention_notify_err then return nil, retention_notify_err end
+    local result = { self_completed = not effect, completion = done, last_seq = last,
+        continuation = effect and continuation or nil }
+    if not checkpoint then
+        local notify_err = notify_progress(snapshot, last, last > prior or #writes > 0)
+        if notify_err then return nil, notify_err end
     end
-    return { self_completed = true, completion = done, last_seq = last }, nil
+    return result, nil
 end
 
 -- Record an attempt failure on its cursor, fenced on the snapshot's
@@ -256,7 +420,8 @@ end
 -- cursor active with its last_error and returns to Jobs, which retries the
 -- slot. Infrastructure publication also requires the current running lease.
 -- Returns the self-completion of a deterministic failure, else nil.
-function M.fail(db_id: string, job: table, snapshot: table, failure: error, deterministic: boolean): (table?, error?)
+function M.fail(db_id: string, job: table, snapshot: table, failure: error, deterministic: boolean,
+        checkpointed: boolean?): (table?, error?)
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection failure DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
@@ -273,16 +438,25 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
     end
     local locked, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, { tostring(snapshot.thread_id) })
     if lock_err then return abort(lock_err) end
+    if checkpointed then
+        local source = type(locked) == "table" and locked[tostring(snapshot.thread_id)] or nil
+        if not source or source.deleting_at ~= nil then
+            return abort(job_types.lease_lost_error("projection source thread is deleting"))
+        end
+        local lease_err = check_lease(tx, job, dbtype, true)
+        if lease_err then return abort(lease_err) end
+    end
     if deterministic then
         if type(locked) ~= "table" then return abort(response_error("locked_threads")) end
-        local rows, read_err = tx:query([[SELECT generation,last_seq,status,job_id FROM kickside_projection_cursor
+        local rows, read_err = tx:query([[SELECT generation,last_seq,status,job_id,continuation FROM kickside_projection_cursor
             WHERE id=$1]], { snapshot.id })
         if read_err then return abort(errors.wrap(read_err, "projection failure fence read failed")) end
         if type(rows) ~= "table" then return abort(response_error("cursor.rows")) end
         local current = rows[1]
         if current and current.status == "active" and tostring(current.job_id) == tostring(job.id)
             and tonumber(current.generation) == tonumber(snapshot.generation)
-            and tonumber(current.last_seq) == tonumber(snapshot.last_seq) then
+            and tonumber(current.last_seq) == tonumber(snapshot.last_seq)
+            and (not checkpointed or current.continuation == snapshot.continuation) then
             local held, pin_err = retention_pin.lower_tx(tx, { thread_id = snapshot.thread_id,
                 consumer_key = "projection:" .. tostring(snapshot.id),
                 command_id = tostring(snapshot.id) .. ":" .. tostring(snapshot.generation),
@@ -300,6 +474,10 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
         statement = statement .. [[ AND EXISTS (SELECT 1 FROM kickside_job
             WHERE id=$5 AND status='running' AND lease_token=$8)]]
         args[8] = tostring(job.lease_token or "")
+    end
+    if checkpointed then
+        statement = statement .. " AND continuation=$" .. tostring(#args + 1)
+        args[#args + 1] = snapshot.continuation
     end
     local fenced, fence_err = tx:execute(statement, args)
     local fence_write_err = write_error(fenced, fence_err, "projection failure record failed", "failure.fence")
@@ -327,7 +505,8 @@ end
 
 -- Resolve returned writes live before taking an apply connection. Actor-bound
 -- authorization re-enters Component and Threads, including SQLite's single pool.
-function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table): (table?, error?)
+local function advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table,
+        checkpoint: Checkpoint?): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
     if #writes > 0 and (snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
@@ -347,10 +526,58 @@ function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: 
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection apply DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
-    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes)
+    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checkpoint)
     local finish_err = release(db, apply_err)
+    if checkpoint and result then
+        local progressed = result.last_seq > tonumber(snapshot.last_seq)
+        local notify_err = (result.self_completed or progressed)
+            and notify_progress(snapshot, result.last_seq, progressed) or nil
+        if finish_err and notify_err then
+            finish_err = error_envelope.wrap_secondary(finish_err, notify_err, "projection checkpoint follow-up failed")
+        else
+            finish_err = finish_err or notify_err
+        end
+        if finish_err then return result, committed_error.new(finish_err) end
+    end
     if finish_err then return nil, finish_err end
     return result, nil
+end
+
+function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table): (table?, error?)
+    return advance(db_id, job, snapshot, prefetched_last, output)
+end
+
+local function shared_db(target_db: string): (string?, error?)
+    local db_id = core_db.id()
+    if target_db ~= db_id or jobs_config.db_id() ~= db_id then
+        return nil, invalid("projection checkpoint requires the same Core, Jobs, and target database resource")
+    end
+    return db_id, nil
+end
+
+function M.require_shared_database(target_db: string): (string?, error?)
+    return shared_db(target_db)
+end
+
+-- The deployed writer invokes this library in its own frame. Worker output
+-- carries data only. The transaction and callback are not process arguments.
+function M.checkpoint(target_db: string, job: table, snapshot: table, prefetched_last: number, output: table,
+        write: CheckpointWriter): (table?, error?)
+    local db_id, db_err = shared_db(target_db)
+    if not db_id then return nil, db_err end
+    if type(write) ~= "function" then return nil, invalid("projection checkpoint requires an owning writer") end
+    return advance(db_id, job, snapshot, prefetched_last, output, {write = write})
+end
+
+function M.finish_checkpointed(target_db: string, job: table, snapshot: table, first_seq: number): (table?, error?)
+    local db_id, db_err = shared_db(target_db)
+    if not db_id then return nil, db_err end
+    local position = tonumber(snapshot.last_seq)
+    if not position or type(first_seq) ~= "number" or first_seq < 0 or first_seq > position
+        or first_seq ~= math.floor(first_seq) then
+        return nil, invalid("projection checkpoint settlement requires the execution's first position")
+    end
+    return advance(db_id, job, snapshot, position, {last_seq = position}, {first_seq = first_seq})
 end
 
 return M

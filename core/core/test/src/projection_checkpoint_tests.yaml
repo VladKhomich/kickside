@@ -1,0 +1,41 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: projection_checkpoint_test
+    kind: function.lua
+    meta: {type: test, suite: core_projection_checkpoint}
+    source: file://projection_checkpoint_test.lua
+    method: run
+    modules: [sql, json, uuid, time, channel]
+    imports:
+      apply: kickside.core.projections:apply
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
+      job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
+      projections: kickside.core.projections.persist:writer
+      teardown: kickside.core.threads.persist:teardown_fence
+      test: wippy.test:test
+
+  - name: checkpoint_scheduler_worker
+    kind: process.lua
+    meta: {type: projection.worker, checkpointed_apply: true}
+    source: file://projection_checkpoint_scheduler_worker.lua
+    method: run
+    modules: [sql]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+      threads: kickside.core.threads.persist:writer
+
+  - name: checkpoint_scheduler_test
+    kind: function.lua
+    meta: {type: test, suite: core_checkpoint_scheduler, timeout: 60s}
+    source: file://projection_checkpoint_scheduler_test.lua
+    method: run
+    modules: [process, sql, time, uuid]
+    imports:
+      jobs: kickside.core.jobs:jobs
+      projections: kickside.core.projections.persist:writer
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer

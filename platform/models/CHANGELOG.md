@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.85](https://github.com/kicksideai/kickside/compare/models-v0.1.84...models-v0.1.85) (2026-11-19)
+
+
+### Bug Fixes
+
+* **models:** preserve native sampling capabilities on saved profiles ([#587](https://github.com/kicksideai/kickside/issues/587)) ([9d00e73](https://github.com/kicksideai/kickside/commit/9d00e73c36c310e69242c0f3c60c7cc93f0b10a8))
+
+## [0.1.84](https://github.com/kicksideai/kickside/compare/models-v0.1.83...models-v0.1.84) (2026-11-19)
+
+
+### Bug Fixes
+
+* **models:** require a positive provider timeout ([20f1981](https://github.com/kicksideai/kickside/commit/20f19816ebc40063cebb2f652157c3f13a72136c))
+* **models:** retain valid provider timeouts and immediate retries ([#571](https://github.com/kicksideai/kickside/issues/571)) ([20f1981](https://github.com/kicksideai/kickside/commit/20f19816ebc40063cebb2f652157c3f13a72136c))
+* **models:** retain working provider timeouts and immediate retries ([551884c](https://github.com/kicksideai/kickside/commit/551884ca859faceb034a985d2642f5049731a79b))
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.1.83](https://github.com/kicksideai/kickside/compare/models-v0.1.82...models-v0.1.83) (2026-11-19)
+
+
+### Bug Fixes
+
+* **models:** distinguish unreadable class assignments ([20b2960](https://github.com/kicksideai/kickside/commit/20b2960e592ee7682ac217ce6b52eba6e1591535))
+* **models:** distinguish unreadable class assignments ([bdcbc62](https://github.com/kicksideai/kickside/commit/bdcbc62d374c2623b303c0039caf9d44aa9b30ea))
+* **models:** type unassigned class resolution errors ([6b525ce](https://github.com/kicksideai/kickside/commit/6b525ceac41885d6e8ab9558510bfe971a26b71f))
+
 ## [0.1.82](https://github.com/kicksideai/kickside/compare/models-v0.1.81...models-v0.1.82) (2026-11-19)
 
 

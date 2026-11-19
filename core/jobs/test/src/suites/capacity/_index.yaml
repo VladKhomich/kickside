@@ -62,10 +62,12 @@ entries:
       thread_fence: kickside.core.jobs.persist:thread_fence
       thread_teardown: kickside.core.jobs.persist:thread_teardown
       job_fixture: app:job_fixture
+      claim: kickside.core.jobs.persist:claim
       lifecycle: kickside.core.jobs.persist:lifecycle
       slot_purge: kickside.core.jobs.persist:slot_purge
       claim_execution: kickside.core.jobs.persist:claim_execution
       retention: kickside.core.jobs.persist:retention
+      config: kickside.core.jobs:config
 
   - name: enqueue_notification_test
     kind: function.lua

@@ -1,4 +1,5 @@
 local http = require("http")
+local http_params = require("http_params")
 local json = require("json")
 local models_repo = require("models_repo")
 
@@ -23,6 +24,10 @@ local function handler()
 
     local profile, perr = models_repo.create_profile(data)
     if not profile then
+        if errors.is(perr, errors.INVALID) then
+            http_params.bad_request(res, perr:message(), perr)
+            return
+        end
         res:set_status(http.STATUS.BAD_REQUEST)
         res:write_json({ success = false, error = perr })
         return

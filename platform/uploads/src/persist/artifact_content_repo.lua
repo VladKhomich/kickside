@@ -528,14 +528,19 @@ function artifact_content_repo.get_artifact(upload_id, artifact_id)
     return artifact
 end
 
-local function read_stored_bytes(storage_id, storage_path, source)
+local function read_stored_bytes(storage_id, storage_path, source, limit)
     local storage, storage_err = resources.get_storage(storage_id)
     if storage_err or not storage then
         return nil, storage_err or "failed to get artifact storage"
     end
 
-    local content, read_err = storage:readfile(storage_path)
-    if not read_err and type(content) == "string" then return content end
+    local content, read_err, size
+    if limit then
+        content, read_err, size = artifact_content_repo.read_prefix(storage, storage_path, limit)
+    else
+        content, read_err = storage:readfile(storage_path)
+    end
+    if not read_err and type(content) == "string" then return content, nil, size or #content end
 
     local message = source == "blob" and "failed to read artifact blob" or "failed to read artifact bytes"
     local failure = read_err and errors.wrap(read_err, message) or typed(errors.INVALID, message)
@@ -545,7 +550,7 @@ local function read_stored_bytes(storage_id, storage_path, source)
         retryable = failure:retryable(), details = details})
 end
 
-function artifact_content_repo.read_blob(blob_id)
+function artifact_content_repo.read_blob(blob_id, limit)
     local blob, blob_err = artifact_content_repo.get_blob(blob_id)
     if blob_err then return nil, blob_err end
     if not blob then return nil, typed(errors.NOT_FOUND, "artifact blob not found") end
@@ -553,8 +558,9 @@ function artifact_content_repo.read_blob(blob_id)
         return nil, typed(errors.INVALID, "artifact blob storage location is invalid")
     end
 
-    local content, read_err = read_stored_bytes(blob.storage_id, blob.storage_path, "blob")
+    local content, read_err, size = read_stored_bytes(blob.storage_id, blob.storage_path, "blob", limit)
     if read_err then return nil, read_err end
+    if limit then blob.size = size end
     return content, nil, blob
 end
 
@@ -564,7 +570,7 @@ function artifact_content_repo.resolve_storage(artifact)
     end
     local locator = artifact.locator
     local storage_id, storage_path
-    if type(locator) == "table" and locator.type == "upload.original" then
+    if artifact_schema.references_original(artifact) then
         local upload, current_err = upload_query_repo.get(artifact.upload_id)
         if current_err then return nil, current_err end
         storage_id, storage_path = locator_storage(upload)
@@ -583,21 +589,53 @@ function artifact_content_repo.resolve_storage(artifact)
     }, nil
 end
 
-function artifact_content_repo.read_artifact_content(upload_id, artifact_id)
+-- Read at most limit bytes and return the full size reported by storage.
+-- Local files are streamed and cloud storage applies the limit to its range.
+function artifact_content_repo.read_prefix(storage, path, limit)
+    local file, open_err, size = storage:open(path, "r", limit)
+    if open_err then return nil, open_err end
+    if not file then return nil, typed(errors.INTERNAL, "upload storage did not return a read handle") end
+    local read_err
+    if not size then
+        local stat
+        stat, read_err = file:stat()
+        size = stat and stat.size
+    end
+    local remaining = math.min(limit, size or 0)
+    local chunks = {}
+    while not read_err and remaining > 0 do
+        local chunk
+        chunk, read_err = file:read(math.min(65536, remaining))
+        if not read_err then
+            if not chunk or #chunk == 0 then
+                read_err = typed(errors.INVALID, "artifact ends before its recorded size")
+            else
+                chunks[#chunks + 1] = chunk
+                remaining = remaining - #chunk
+            end
+        end
+    end
+    local _, close_err = file:close()
+    if read_err or close_err then return nil, read_err or close_err end
+    if not size then return nil, typed(errors.INVALID, "artifact size is unavailable") end
+    return table.concat(chunks), nil, size
+end
+
+function artifact_content_repo.read_artifact_content(upload_id, artifact_id, limit)
     local artifact, artifact_err = artifact_content_repo.get_artifact(upload_id, artifact_id)
     if artifact_err then return nil, artifact_err end
 
     if artifact.blob_id and artifact.blob_id ~= "" then
-        local content, content_err, blob = artifact_content_repo.read_blob(artifact.blob_id)
+        local content, content_err, blob = artifact_content_repo.read_blob(artifact.blob_id, limit)
         if content_err then return nil, content_err end
         return content, nil, blob, artifact
     end
 
     local location, location_err = artifact_content_repo.resolve_storage(artifact)
     if location_err then return nil, location_err end
-    local content, read_err = read_stored_bytes(location.storage_id, location.storage_path, "locator")
+    local content, read_err, size = read_stored_bytes(location.storage_id, location.storage_path, "locator", limit)
     if read_err then return nil, read_err end
-    location.size = #content
+    location.size = size
     return content, nil, location, artifact
 end
 

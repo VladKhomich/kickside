@@ -26,6 +26,7 @@ entries:
     modules:
       - security
     imports:
+      text_trim: kickside.contract:text_trim
       consts: kickside.users:consts
     method: handler
     

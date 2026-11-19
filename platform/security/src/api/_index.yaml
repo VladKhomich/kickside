@@ -120,6 +120,7 @@ entries:
       security_consts: kickside.security:security_consts
       scope_store: kickside.security.persist:scope_store
       security_types: kickside.security:security_types
+      policy_composition: kickside.security:policy_composition
 
   - name: list_scopes
     kind: function.lua

@@ -1,3 +1,5 @@
+local trim = require("text_trim").trim
+
 -- The generic projection-worker boundary. A projection names its worker by a
 -- worker_ref URI (func://<id> or proc://<id>); this module parses and validates
 -- that ref against the registry, fetches the event batch a prefetch worker
@@ -38,6 +40,7 @@ type Binding = {
     worker_ref: string,
     worker_runtime: string,
     target_id: string,
+    checkpointed_apply: boolean?,
 }
 
 -- A pooled connection or open transaction the event prefetch reads through.
@@ -49,13 +52,6 @@ type Executor = sql.DB | sql.Transaction
 local PROC_BLOCKED = {
     ["kickside.core.jobs.service:worker"] = "job worker is a daemon and cannot be used as a projection worker",
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- The registry entry kind, supporting both top-level and data-nested shapes.
 local function entry_kind(entry: any): string?
@@ -201,7 +197,12 @@ local function validate_declaration(binding: table, system_identity: boolean?): 
         return nil, (errors.new({ message = PROC_BLOCKED[target_id], kind = errors.INVALID }) :: error)
     end
 
-    return { worker_ref = scheme_for(expected) .. target_id, worker_runtime = expected, target_id = target_id }, nil
+    local checkpointed = meta.checkpointed_apply == true
+    if checkpointed and expected ~= types.WORKER_RUNTIME.PROC then
+        return nil, errors.new({kind = errors.INVALID, message = "checkpointed apply requires a supervised process worker"})
+    end
+    return { worker_ref = scheme_for(expected) .. target_id, worker_runtime = expected, target_id = target_id,
+        checkpointed_apply = checkpointed or nil }, nil
 end
 
 local admitted_version: string? = nil
@@ -228,7 +229,7 @@ function worker.validate(binding: table, system_identity: boolean?): (Binding?, 
         admitted_bindings[key] = admitted
     end
     return {worker_ref = admitted.worker_ref, worker_runtime = admitted.worker_runtime,
-        target_id = admitted.target_id}, nil
+        target_id = admitted.target_id, checkpointed_apply = admitted.checkpointed_apply}, nil
 end
 
 -- Optional notification worker is declared on the fold worker, never supplied

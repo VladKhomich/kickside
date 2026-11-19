@@ -290,6 +290,8 @@ entries:
     meta:
       comment: Canonical helpers for user-agent references (user_agent:<component_id>).
     source: file://agent_ref.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: checkpoint_policy
     kind: library.lua

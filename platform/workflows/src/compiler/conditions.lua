@@ -21,9 +21,7 @@ local function snake(s: string): string
     return out:lower()
 end
 
-local function trim(s: string): string
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 -- Split at paren depth zero, outside string literals. Every walk over a
 -- predicate goes through this: a split that ignores grouping hands its operands

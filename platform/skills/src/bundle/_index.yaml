@@ -12,6 +12,8 @@ entries:
     meta:
       comment: SKILL.md frontmatter parser (bounded subset — key/value, nested metadata, lists, allowed-tools).
     source: file://frontmatter.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: normalize
     kind: library.lua

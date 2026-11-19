@@ -83,12 +83,47 @@ return test.run_cases(function()
             test.is_true(finished.deleted)
             test.eq(count("kickside_components", "component_id", seed.component_id), 0, "component row")
             test.eq(count("kickside_uploads", "uuid", seed.id), 0, "upload row")
+            test.eq(count("kickside_event", "external_id", seed.id), 0, "foreground deletion events")
             test.eq(count("kickside_upload_read_model", "upload_id", seed.id), 0, "materialized row")
             test.eq(count("kickside_upload_artifacts", "artifact_id", seed.artifact_id), 0, "artifact row")
             test.eq(count("kickside_upload_chunks", "chunk_id", seed.chunk_id), 0, "chunk row")
             test.eq(count("kickside_upload_artifact_blobs", "blob_id", seed.blob_id), 0, "blob row")
             test.is_nil((seed.storage:readfile(seed.id .. ".txt")))
             test.is_nil((seed.storage:readfile(seed.blob_id .. ".txt")))
+        end)
+
+        test.it("drains a retained archive and its member after the owner becomes inactive", function()
+            local seed = seed_owner_upload()
+            local archive_id, member_id = uuid.v4(), uuid.v4()
+            local files = {
+                {id = archive_id, mime = "application/zip", kind = "kickside.uploads.archive:types.archive",
+                    metadata = { child_upload_ids = { member_id } }},
+                {id = member_id, mime = "text/plain", kind = "text", metadata = { parent_upload_id = archive_id }},
+            }
+            for _, file in ipairs(files) do
+                local _, storage_err = seed.storage:writefile(file.id, "retained")
+                test.is_nil(storage_err, tostring(storage_err))
+                local record, create_err = records.create(file.id, seed.owner, 8, file.mime,
+                    "app:uploads", file.id, file.kind, file.metadata, "completed")
+                test.is_nil(create_err, tostring(create_err))
+                test.not_nil(record)
+            end
+            local db = assert(sql.get("app:db"))
+            local _, disable_err = db:execute("UPDATE app_users SET status='inactive' WHERE user_id=$1", { seed.owner })
+            db:release()
+            test.is_nil(disable_err, tostring(disable_err))
+
+            local deleted, delete_err = component.system_delete(seed.component_id)
+            test.is_false(deleted)
+            test.is_true(delete_err:details().cleanup_pending)
+            local finished, finish_err = deletion_worker.run(seed.component_id)
+            test.is_nil(finish_err, tostring(finish_err))
+            test.is_true(finished.deleted)
+            test.eq(count("kickside_uploads", "actor_id", seed.owner), 0, "owner uploads")
+            for _, file in ipairs(files) do
+                test.is_nil((seed.storage:readfile(file.id)))
+                test.eq(count("kickside_event", "external_id", file.id), 0, "foreground deletion events")
+            end
         end)
 
         test.it("counts an upload that another teardown removes first as deleted", function()

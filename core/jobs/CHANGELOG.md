@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.87](https://github.com/kicksideai/kickside/compare/jobs-v0.1.86...jobs-v0.1.87) (2026-11-19)
+
+
+### Features
+
+* **core:** checkpoint supervised projections under the Jobs lease ([#585](https://github.com/kicksideai/kickside/issues/585)) ([f6a586b](https://github.com/kicksideai/kickside/commit/f6a586b2bc5841078e076c4ef1fedd2e45d28af3))
+
+## [0.1.86](https://github.com/kicksideai/kickside/compare/jobs-v0.1.85...jobs-v0.1.86) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound thread cleanup and serialize run links ([#574](https://github.com/kicksideai/kickside/issues/574)) ([36390d3](https://github.com/kicksideai/kickside/commit/36390d30d730cbf98070cea7ac631c0ad953766e))
+
+## [0.1.85](https://github.com/kicksideai/kickside/compare/jobs-v0.1.84...jobs-v0.1.85) (2026-11-19)
+
+
+### Features
+
+* **jobs:** allow demand to advance optional rearm deadlines ([#561](https://github.com/kicksideai/kickside/issues/561)) ([5bdfdbf](https://github.com/kicksideai/kickside/commit/5bdfdbf630afbc77405b42702a0d32908d67f137))
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
 ## [0.1.84](https://github.com/kicksideai/kickside/compare/jobs-v0.1.83...jobs-v0.1.84) (2026-11-19)
 
 

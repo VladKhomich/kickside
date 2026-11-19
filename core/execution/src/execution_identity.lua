@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local production_security = require("security")
 local production_funcs = require("funcs")
 local production_contract = require("contract")
@@ -68,11 +69,6 @@ local failure = require("identity_failure")
 local function dependency_failure(err: any, context: string, kind: string, error_kind: string, retryable: boolean): error
     if type(err) == "userdata" then return err :: error end
     return failure(context .. ": " .. tostring(err), kind, error_kind, retryable)
-end
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 function M.scope_from_groups(groups: any, extra_policy_ids: any?): (any?, error?)
@@ -645,7 +641,6 @@ function M.run_as(identity: any, fn_id: string, args: any, opts: any?): (any?, e
     if bind_err or not builder then return nil, bind_err end
     return builder:call(fn_id, args)
 end
-
 
 require("identity_codec")(M, failure)
 

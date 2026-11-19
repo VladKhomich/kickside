@@ -4,6 +4,7 @@
 -- registry entries with that meta.type; the shell asks for the type — no new
 -- endpoint, library, or security grant per kind.
 
+local trim = require("text_trim").trim
 local http = require("http")
 local contributions = require("contributions")
 
@@ -18,7 +19,7 @@ local function handler()
     local types_param = req:query("types") or ""
     local types: { string } = {}
     for t in string.gmatch(types_param, "([^,]+)") do
-        local trimmed = (t:gsub("^%s+", ""):gsub("%s+$", ""))
+        local trimmed = trim(t)
         if trimmed ~= "" and #types < MAX_TYPES then
             types[#types + 1] = trimmed
         end

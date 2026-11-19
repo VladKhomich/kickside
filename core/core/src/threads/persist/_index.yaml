@@ -17,6 +17,7 @@ entries:
       - json
       - time
     imports:
+      text_trim: kickside.contract:text_trim
       threads_consts: kickside.core.threads:consts
       clock: kickside.core.jobs:clock
 
@@ -29,9 +30,13 @@ entries:
       - sql
       - json
     imports:
+      text_trim: kickside.contract:text_trim
       subjects: kickside.core.threads.persist:subjects
       threads_component: kickside.core.threads:component
       core_types: kickside.core:types
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      lifecycle_consts: kickside.core.lifecycle:consts
+      contract_common: kickside.core.threads:contract_common
 
   - name: append
     kind: library.lua

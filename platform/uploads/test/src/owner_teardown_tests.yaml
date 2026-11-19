@@ -16,9 +16,7 @@ entries:
     binding_errors: kickside.uploads.binding:binding_errors
     ctx: app:owner_teardown_context
     component: app:owner_teardown_component
-    upload_read_model: kickside.uploads.persist:upload_read_model
     upload_lib: kickside.uploads:uploads
-    upload_query_repo: kickside.uploads.persist:upload_query_repo
 - name: owner_teardown_test
   kind: function.lua
   source: file://owner_teardown_test.lua
@@ -32,7 +30,7 @@ entries:
     test: wippy.test:test
     records: kickside.uploads.persist:upload_record_repo
     query: kickside.uploads.persist:upload_query_repo
-    uploads: kickside.uploads:uploads
+    upload_type: kickside.uploads:upload_type
     pipeline: kickside.uploads:pipeline
     teardown: app:owner_teardown_source
     context: app:owner_teardown_context

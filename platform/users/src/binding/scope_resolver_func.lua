@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local funcs = require("funcs")
 local security = require("security")
 local execution_identity = require("execution_identity")
@@ -67,11 +68,6 @@ local function failure(message: string, kind: string, error_kind: string, retrya
         retryable = retryable,
         details = { error_kind = error_kind },
     }) :: error)
-end
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 -- Every identity primitive (KIND, DELEGATE_ACTION, actor_key,

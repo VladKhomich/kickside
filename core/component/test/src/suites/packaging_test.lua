@@ -6,18 +6,12 @@
 -- define would boot-fail with 'target db not found', invisible to the suites
 -- because the harness happens to define that id.
 
+local trim = require("text_trim").trim
 local test = require("test")
 local registry = require("registry")
 local component_types = require("component_types")
 
 local COMPONENT_PREFIX = "kickside.component"
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function entry_kind(entry: any): string
     if type(entry) ~= "table" then

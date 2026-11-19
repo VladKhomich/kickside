@@ -7,6 +7,7 @@ entries:
     title: Execution
     surface: kickside.execution
     intent: module_access
+    assignable: false
     includes:
     - kickside.execution.security:module_runtime
   groups: []

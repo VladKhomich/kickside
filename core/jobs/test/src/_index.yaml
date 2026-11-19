@@ -560,6 +560,7 @@ entries:
     modules:
       - registry
     imports:
+      text_trim: kickside.contract:text_trim
       test: wippy.test:test
       config: kickside.core.jobs:config
 
@@ -2122,6 +2123,7 @@ entries:
   - name: lease_status_native_source
     kind: library.lua
     source: file://lease_status_native_source.lua
+    modules: [time]
     imports:
       sql: app:lease_status_native_fixture
       clock: kickside.core.jobs:clock
@@ -3575,6 +3577,7 @@ entries:
     source: file://child_native_source.lua
     modules: [logger, time]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: app:child_native_execution_policy
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       job_types: kickside.core.jobs:types
@@ -3834,6 +3837,7 @@ entries:
     source: file://dispatch_cause_native_source.lua
     modules: [sql, logger, time]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: app:dispatch_cause_native_execution_policy
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
@@ -4238,6 +4242,24 @@ entries:
       config: kickside.core.jobs:config
 
   - name: private_queue_retention_pace
+    kind: db.sql.sqlite
+    foreign_keys: true
+    file: ":memory:"
+
+  - name: retention_by_type_test
+    kind: function.lua
+    meta: {type: test, suite: jobs_retention_by_type, timeout: 300s}
+    source: file://retention_by_type_test.lua
+    method: run
+    modules: [sql, uuid, time]
+    imports:
+      test: wippy.test:test
+      config: kickside.core.jobs:config
+      retention: kickside.core.jobs.persist:retention
+      retention_schedule: kickside.core.jobs.service:retention_schedule
+      job_fixture: app:job_fixture
+
+  - name: private_queue_retention_by_type
     kind: db.sql.sqlite
     foreign_keys: true
     file: ":memory:"

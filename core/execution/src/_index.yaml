@@ -1,12 +1,16 @@
 version: "1.0"
 namespace: kickside.execution
 
-# Leaf module owning the execution identity primitive (IDENTITY-1, amendment
-# IDENTITY-1a). It depends on no KickSide module; core, component, users and
-# every other consumer depend on it. The Users-owned scope resolver is reached
+# Execution identity primitive (IDENTITY-1, amendment IDENTITY-1a).
+# The Users-owned scope resolver is reached
 # at runtime through the kickside.contract:scope_resolver contract id.
 
 entries:
+  - name: dep.kickside.contract
+    kind: ns.dependency
+    component: kickside/contract
+    version: '>=0.3.9'
+
   - name: definition
     kind: ns.definition
     readme: file://README.md
@@ -24,6 +28,7 @@ entries:
       - funcs
       - contract
     imports:
+      text_trim: kickside.contract:text_trim
       identity_failure: kickside.execution:identity_failure
       identity_codec: kickside.execution:identity_codec
       identity_restrictions: kickside.execution:identity_restrictions
@@ -49,6 +54,8 @@ entries:
     meta:
       comment: Execution trace context — canonical trace_context vocabulary, row codec and correlation token.
     source: file://trace.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     modules:
       - uuid
 
