@@ -359,35 +359,56 @@ function M.page(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer
     return result, nil
 end
 
--- Remove the jobs and runs a thread still owns after its cleanup completed.
--- Thread teardown removes every owned row before it completes, so such rows
--- were left by a teardown that missed them; each owner's rows go in one bounded
--- transaction under its cleanup fence. Returns the number of rows removed.
-function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer): (integer?, error?)
-    local rows, read_err = db:query([[SELECT f.thread_id FROM kickside_job_thread_cleanup f
-        WHERE f.completed_at IS NOT NULL
-          AND (EXISTS (SELECT 1 FROM kickside_job j WHERE j.owner_kind='thread' AND j.owner_id=f.thread_id)
-            OR EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.owner_kind='thread' AND r.owner_id=f.thread_id))
-        ORDER BY f.thread_id LIMIT $1]], { limit })
-    if read_err then return nil, errors.wrap(read_err, "completed cleanup leftover read failed") end
-    if type(rows) ~= "table" then return nil, response_error("owners.rows") end
-    local total = 0
-    for _, row in ipairs(rows) do
-        local thread_id = tostring(row.thread_id)
-        local tx, begin_err = sql_boundary.begin(db, "completed cleanup leftover transaction failed", "transaction", response_error)
-        if begin_err then return nil, begin_err end
-        if not tx then return nil, response_error("transaction") end
-        local fence, lock_err = thread_fence.lock_existing(tx, dbtype, thread_id)
-        if lock_err then return nil, sql_boundary.rollback(tx, lock_err, "thread cleanup rollback failed") end
-        if fence and fence.completed_at ~= nil then
-            local result, run_err = run_page(tx, dbtype, thread_id, limit)
-            if run_err then return nil, sql_boundary.rollback(tx, run_err, "thread cleanup rollback failed") end
-            total = total + (result :: table).processed
-        end
-        local _, commit_err = tx:commit()
-        if commit_err then return nil, errors.wrap(commit_err, "completed cleanup leftover commit failed") end
+local function fence_cursor(row: table): table
+    return { completed_at = row.completed_at, thread_id = row.thread_id }
+end
+
+-- The ordered window bounds both the fence read and the leftover probes.
+-- The cursor follows the last fence examined even if none owns leftover work.
+function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer, after: table?): (integer?, error?, table?)
+    local source = thread_fence.TABLE
+    if dbtype == sql.type.SQLITE then source = source .. " INDEXED BY idx_job_cleanup_completed_order" end
+    local seek, limit_arg, params = "", "$1", { limit }
+    if after and after.thread_id then
+        seek, limit_arg = " AND (completed_at,thread_id) > ($1,$2)", "$3"
+        params = { after.completed_at, after.thread_id, limit }
     end
-    return total, nil
+    local rows, read_err = db:query([[SELECT f.thread_id,f.completed_at,
+        ((SELECT 1 FROM kickside_job j WHERE j.owner_kind='thread' AND j.owner_id=f.thread_id LIMIT 1) IS NOT NULL
+         OR (SELECT 1 FROM kickside_job_run r WHERE r.owner_kind='thread' AND r.owner_id=f.thread_id LIMIT 1) IS NOT NULL) AS eligible
+        FROM (SELECT thread_id,completed_at FROM ]] .. source .. [[ WHERE completed_at IS NOT NULL]] .. seek .. [[
+              ORDER BY completed_at,thread_id LIMIT ]] .. limit_arg .. ") f ORDER BY f.completed_at,f.thread_id", params)
+    local window, window_err = sql_boundary.bounded_rows(rows, read_err, "completed cleanup leftover read failed",
+        "owners.rows", 0, limit, response_error)
+    if window_err or not window then return nil, window_err end
+    local retry: table? = nil
+    local total = 0
+    for index, row in ipairs(window) do
+        if type(row) ~= "table" or type(row.thread_id) ~= "string" or type(row.completed_at) ~= "string" then
+            return nil, response_error("owners.key")
+        end
+        local thread_id = row.thread_id
+        if row.eligible == true or row.eligible == 1 then
+            local tx, begin_err = sql_boundary.begin(db, "completed cleanup leftover transaction failed", "transaction", response_error)
+            if begin_err then return nil, begin_err end
+            if not tx then return nil, response_error("transaction") end
+            local fence, lock_err = thread_fence.lock_existing(tx, dbtype, thread_id)
+            if lock_err then return nil, sql_boundary.rollback(tx, lock_err, "thread cleanup rollback failed") end
+            if fence and fence.completed_at ~= nil then
+                local result, run_err = run_page(tx, dbtype, thread_id, limit)
+                if run_err then return nil, sql_boundary.rollback(tx, run_err, "thread cleanup rollback failed") end
+                total = total + (result :: table).processed
+                -- Resume before the first owner whose cleanup still needs a page.
+                if not (result :: table).done and not retry then
+                    retry = index > 1 and fence_cursor(window[index - 1]) or after or {}
+                end
+            end
+            local _, commit_err = tx:commit()
+            if commit_err then return nil, errors.wrap(commit_err, "completed cleanup leftover commit failed") end
+        end
+    end
+    local last = window[#window]
+    return total, nil, retry or (last and #window == limit and fence_cursor(last) or nil)
 end
 
 -- The caller holds the fence from page_tx or the standalone acknowledgment.

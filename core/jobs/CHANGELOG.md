@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.93](https://github.com/kicksideai/kickside/compare/jobs-v0.1.92...jobs-v0.1.93) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound completed fence retention inspection ([#637](https://github.com/kicksideai/kickside/issues/637)) ([9819572](https://github.com/kicksideai/kickside/commit/9819572532af56cd5d4fb70ab6cbd11af9822635))
+
+## [0.1.92](https://github.com/kicksideai/kickside/compare/jobs-v0.1.91...jobs-v0.1.92) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** detach independent links during thread cleanup ([#628](https://github.com/kicksideai/kickside/issues/628)) ([b44ab06](https://github.com/kicksideai/kickside/commit/b44ab064611734492311c4cda63f29cf20668321))
+
 ## [0.1.91](https://github.com/kicksideai/kickside/compare/jobs-v0.1.90...jobs-v0.1.91) (2026-11-19)
 
 

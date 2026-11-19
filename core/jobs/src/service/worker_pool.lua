@@ -265,7 +265,9 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
     local retention_driver = pool_retention_schedule.new({
         policy = policy_read,
         now = pool_time.now,
-        sweep = function(cursor) return pool_jobs.retention_sweep(cursor) end,
+        sweep = function(cursor, completed_fence_cursor)
+            return pool_jobs.retention_sweep(cursor, completed_fence_cursor)
+        end,
         logger = logger,
         fallback_retry_ms = function() return dispatch_retry_delay_ms end,
     })

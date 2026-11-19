@@ -422,7 +422,7 @@ end
 
 -- One bounded pass over each Jobs-owned retained table. Full batch counts
 -- keep the worker pool retention deadline due until the backlog drains.
-function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
+function M.sweep(db: any, dbtype: string, cursor: table?, completed_fence_cursor: table | boolean | nil): (table?, error?)
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
     local batch = (policy :: any).retention_batch :: integer
@@ -469,8 +469,14 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
     if wake_err then return nil, wake_err end
     local cleanup_receipts, receipts_err = prune_thread_cleanup_receipts(db, receipt_cutoff, batch, dbtype)
     if receipts_err then return nil, receipts_err end
-    local leftovers, leftovers_err = thread_teardown.reclaim_completed(db, dbtype, (policy :: any).thread_cleanup_batch)
-    if leftovers_err then return nil, leftovers_err end
+    local leftovers: integer? = 0
+    local next_completed_fence_cursor: table? = nil
+    if completed_fence_cursor ~= false then
+        local leftovers_err: error?
+        leftovers, leftovers_err, next_completed_fence_cursor = thread_teardown.reclaim_completed(
+            db, dbtype, (policy :: any).thread_cleanup_batch, completed_fence_cursor :: table?)
+        if leftovers_err then return nil, leftovers_err end
+    end
     local cleanup_fences, fences_err = prune_completed_thread_fences(db, receipt_cutoff, batch, dbtype)
     if fences_err then return nil, fences_err end
     return {
@@ -479,6 +485,7 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
         thread_cleanup_receipts = cleanup_receipts :: integer,
         thread_cleanup_fences = cleanup_fences :: integer,
         thread_cleanup_leftovers = leftovers :: integer,
+        completed_fence_cursor = next_completed_fence_cursor,
     }, nil
 end
 
