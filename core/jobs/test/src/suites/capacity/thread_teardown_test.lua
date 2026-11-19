@@ -7,6 +7,7 @@ local lifecycle = require("lifecycle")
 local slot_purge = require("slot_purge")
 local claim_execution = require("claim_execution")
 local retention = require("retention")
+local config = require("config")
 local uuid = require("uuid")
 local jobs = require("jobs")
 local thread_fence = require("thread_fence")
@@ -559,6 +560,54 @@ local function define_tests()
                 db:release()
             end)
         end
+
+        test.it("detaches a surviving run when the remaining owned job reaches its TTL", function()
+            local db = open_db()
+            local dbtype = tostring(db:type())
+            local thread_id, job_id, run_id, owner_id = uuid.v7(), uuid.v7(), uuid.v7(), uuid.v7()
+            local limit = assert(config.policy()).thread_cleanup_batch
+            assert(jobs.cleanup_thread_page(thread_id, 0))
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+
+            local tx = assert(db:begin())
+            for _ = 1, limit do
+                local id = uuid.v7()
+                assert(tx:execute([[INSERT INTO kickside_job
+                    (id,job_type,job_identity,owner_kind,owner_id,status,finished_at)
+                    VALUES ($1,'test.thread_cleanup',$2,'thread',$3,'done',CURRENT_TIMESTAMP)]], {id, id, thread_id}))
+            end
+            assert(tx:execute([[INSERT INTO kickside_job
+                (id,thread_id,job_type,job_identity,owner_kind,owner_id,status,slot)
+                VALUES ($1,$2,'test.thread_cleanup',$3,'automation',$4,'pending',TRUE)]],
+                {job_id, thread_id, job_id, owner_id}))
+            assert(tx:execute([[INSERT INTO kickside_job_run
+                (id,job_id,thread_id,job_type,attempt_no,execution_seq,status,owner_kind,owner_id,finished_at)
+                VALUES ($1,$2,$3,'test.thread_cleanup',1,1,'completed','automation',$4,CURRENT_TIMESTAMP)]],
+                {run_id, job_id, thread_id, owner_id}))
+            assert(tx:commit())
+
+            local first = assert(retention.sweep(db, dbtype))
+            local remaining = owned_count(db, thread_id)
+            assert(db:execute([[UPDATE kickside_job SET finished_at=$1
+                WHERE owner_kind='thread' AND owner_id=$2]], {"2000-01-01T00:00:00Z", thread_id}))
+            local second = assert(retention.sweep(db, dbtype))
+            local final_count = owned_count(db, thread_id)
+            local retained = assert(db:query([[SELECT j.thread_id,r.thread_id AS run_thread_id,j.owner_id,j.status
+                FROM kickside_job j JOIN kickside_job_run r ON r.job_id=j.id WHERE j.id=$1]], {job_id}))[1]
+            assert(db:execute("DELETE FROM kickside_job WHERE id=$1", {job_id}))
+            forget_thread(db, thread_id)
+            db:release()
+
+            test.eq(first.thread_cleanup_leftovers, limit)
+            test.is_true(remaining > 0)
+            test.is_true(second.jobs + second.thread_cleanup_leftovers >= remaining)
+            test.eq(final_count, 0)
+            test.not_nil(retained)
+            test.is_nil(retained.thread_id)
+            test.is_nil(retained.run_thread_id)
+            test.eq(retained.owner_id, owner_id)
+            test.eq(retained.status, "pending")
+        end)
 
         test.it("preserves surviving-owner jobs and reports only discarded evidence", function()
             local thread_id, owner_id = uuid.v7(), uuid.v7()
