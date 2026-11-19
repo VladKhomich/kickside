@@ -300,6 +300,8 @@ function M.page_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_
         return nil, errors.new({ message = "standalone cleanup cannot start a replacement Core thread's page",
             kind = errors.CONFLICT, retryable = false })
     end
+    local link_err = thread_fence.lock_link(tx, dbtype, thread_id, true)
+    if link_err then return nil, link_err end
     if page_seq > 0 then
         -- Older Core writers and standalone callers can advance without
         -- acknowledging their previous page.

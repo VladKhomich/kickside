@@ -14,6 +14,9 @@ local autoinit = require("autoinit")
 local normalize = require("threads_normalize")
 
 local natural_key = require("natural_key")
+local jobs_cleanup = require("jobs_cleanup")
+local core_db = require("core_db")
+local jobs_config = require("jobs_config")
 
 local M = {}
 local trim = normalize.trim
@@ -149,6 +152,20 @@ function M.insert(tx: sql.Transaction, dbtype: string, thread_id: string, row: a
             details = {conflict = M.THREAD_CONFLICT, code = "thread_already_exists"}})
     end
     if count ~= 1 then return invalid_response("insert.rows_affected") end
+
+    if core_db.id() == jobs_config.db_id() then
+        local page_seq, replacement_err = jobs_cleanup.prepare_replacement_tx(tx, dbtype, thread_id)
+        if replacement_err then return replacement_err end
+        if page_seq == nil then return invalid_response("replacement.page_sequence") end
+        if page_seq > 0 then
+            local updated, update_err = tx:execute("UPDATE kickside_thread SET teardown_page_seq=$1 WHERE id=$2",
+                { page_seq, thread_id })
+            if update_err then return errors.wrap(update_err, "failed to set replacement thread cleanup sequence") end
+            if type(updated) ~= "table" or tonumber(updated.rows_affected) ~= 1 then
+                return invalid_response("replacement.rows_affected")
+            end
+        end
+    end
 
     if checked.natural_key then
         local key = checked.natural_key
