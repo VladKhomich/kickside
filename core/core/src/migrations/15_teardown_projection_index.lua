@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 return require("migration").define(function()
     migration("15 teardown projection index", function()
         for _, dialect in ipairs({ "postgres", "sqlite" }) do
