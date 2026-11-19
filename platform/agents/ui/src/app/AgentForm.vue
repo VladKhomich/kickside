@@ -63,6 +63,7 @@ const tab = ref('prompt')
 // declare, ordered by a sensible default first; the agent may target a class or a
 // specific model.
 const CLASS_ORDER = ['fast', 'nano', 'balanced', 'premium']
+const DEFAULT_RESPONSE_TOKENS = 8000
 const modelClasses = computed<string[]>(() => {
   const seen = new Set<string>()
   for (const m of props.models) for (const c of (m.class || [])) seen.add(c)
@@ -80,7 +81,7 @@ function defaultModel(): string {
 function blank(includeCreateDefaults = true): Form {
   return {
     title: '', description: '', icon: 'tabler:robot', prompt: '', public: false,
-    model: defaultModel(), temperature: null, max_tokens: 8000, thinking_effort: null,
+    model: defaultModel(), temperature: null, max_tokens: null, thinking_effort: null,
     traits: includeCreateDefaults ? [ARTIFACTS_TRAIT, FILE_MANAGER_TRAIT] : [], trait_contexts: {}, trait_agent_options: {}, tools: [], delegates: [], memory_target_id: '', memory_provider_id: '',
   }
 }
@@ -120,18 +121,30 @@ const selectedModels = computed(() => form.value.model.startsWith('class:')
 const tokenCeiling = computed(() => {
   const budgets = selectedModels.value.map(model => model.output_tokens)
     .filter((limit): limit is number => typeof limit === 'number' && Number.isFinite(limit) && limit > 0)
-  return budgets.length ? Math.min(...budgets) : 128000
+  return budgets.length ? Math.floor(Math.min(...budgets)) : undefined
+})
+const maxTokens = computed({
+  get: () => {
+    const ceiling = tokenCeiling.value
+    return form.value.max_tokens ?? (ceiling === undefined ? undefined : Math.min(DEFAULT_RESPONSE_TOKENS, ceiling))
+  },
+  set: (value: number | '') => { form.value.max_tokens = value },
 })
 const temperatureApplies = computed(() => !thinkingOn.value &&
   (selectedModels.value.length === 0 || selectedModels.value.some(model => !model.capabilities?.includes('reasoning'))))
 const temperatureBlockedReason = computed(() => thinkingOn.value
   ? 'Extended thinking sets its own temperature.'
   : 'The selected models reason instead of sampling, so temperature is not applied.')
-const tokensError = computed(() => !Number.isInteger(form.value.max_tokens) || form.value.max_tokens < 1 || form.value.max_tokens > tokenCeiling.value)
+const tokensError = computed(() => {
+  const value = maxTokens.value
+  const ceiling = tokenCeiling.value
+  return value !== undefined &&
+    (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || (ceiling !== undefined && value > ceiling))
+})
 const valid = computed(() => form.value.title.trim().length > 0 && !!form.value.model && !tokensError.value)
 
 const persistence = useAgentFormPersistence({
-  form, valid, tab, blank,
+  form, maxTokens, valid, tab, blank,
   agentId: () => props.agentId,
   parentId: () => props.parentId,
   models: () => props.models,
@@ -258,8 +271,8 @@ const navItems = computed(() => [
 
               <label class="kx-field">
                 <span class="kx-field-lbl">Max tokens <span class="kx-field-hint-inline">— response length cap</span></span>
-                <input v-model.number="form.max_tokens" type="number" min="1" :max="tokenCeiling" step="1" class="kx-input" :class="tokensError && 'kx-input-err'" />
-                <span v-if="tokensError" class="kx-field-err">Must be between 1 and {{ tokenCeiling }}.</span>
+                <input v-model.number="maxTokens" type="number" min="1" :max="tokenCeiling" step="1" :placeholder="tokenCeiling === undefined ? 'Model default' : undefined" class="kx-input" :class="tokensError && 'kx-input-err'" />
+                <span v-if="tokensError" class="kx-field-err">{{ tokenCeiling === undefined ? 'Must be a positive whole number.' : `Must be a whole number between 1 and ${tokenCeiling}.` }}</span>
               </label>
 
               <div class="kx-field">

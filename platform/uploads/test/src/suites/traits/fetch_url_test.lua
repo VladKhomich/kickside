@@ -1,5 +1,10 @@
 local test = require("test")
 local handler = require("handler")
+local artifacts = require("artifacts")
+local parts = require("parts")
+local records = require("records")
+local fs = require("fs")
+local uuid = require("uuid")
 
 local function fake_actor(id)
     local actor = {}
@@ -48,7 +53,8 @@ local function base_deps(overrides)
         },
         artifacts = {
             read_primary_content = function()
-                return nil, errors.new({ kind = errors.NOT_FOUND, message = "primary content artifact not found" })
+                return nil, errors.new({ kind = errors.NOT_FOUND, message = "primary content artifact not found",
+                    details = {code = "primary_artifact_missing"} })
             end,
             list_artifacts = function() return {} end,
         },
@@ -137,8 +143,9 @@ local function define_tests()
             test.eq(result.content_type, "text/markdown")
             test.eq(result.markdown, "# Extracted")
             test.eq(result.artifact_count, 1)
-            test.eq(#result.artifacts, 1)
-            test.eq(result.artifacts[1].artifact_id, "a1")
+            local artifacts = assert(result.artifacts)
+            test.eq(#artifacts, 1)
+            test.eq(artifacts[1].artifact_id, "a1")
             -- The loop iterated at least once (processing -> completed).
             test.is_true(calls.sleeps >= 1)
             test.is_true(calls.status_reads >= 2)
@@ -169,8 +176,9 @@ local function define_tests()
             test.eq(#result.markdown, #long_markdown)
             test.eq(result.markdown, long_markdown)
             test.eq(result.artifact_count, 45)
-            test.eq(#result.artifacts, 45)
-            test.eq(result.artifacts[45].artifact_id, "a45")
+            local artifacts = assert(result.artifacts)
+            test.eq(#artifacts, 45)
+            test.eq(artifacts[45].artifact_id, "a45")
         end)
 
         test.it("wait timeout reports stored-but-not-processed truthfully", function()
@@ -212,36 +220,96 @@ local function define_tests()
             test.eq(result.artifact_count, 1)
         end)
 
-        test.it("wait returns a tool error when the extracted text cannot be read", function()
-            base_deps(function(deps)
-                deps.http.get = function()
-                    return { status_code = 200, headers = { ["content-type"] = "application/pdf" }, body = "%PDF" }, nil
-                end
-                deps.read_model.get_for_actor = function() return { status = "completed", mime_type = "text/markdown" } end
-                deps.artifacts.read_primary_content = function()
-                    return nil, errors.new({ kind = errors.INTERNAL, message = "artifact blob is unavailable" })
-                end
-            end)
+        test.it("wait returns the typed cause of an unreadable primary artifact without private details", function()
+            for _, retryable in ipairs({true, false}) do
+                local diagnostic = "fetch-url-private-artifact"
+                local calls = base_deps(function(deps)
+                    deps.http.get = function()
+                        return {status_code = 200, headers = {["content-type"] = "application/pdf"}, body = "%PDF"}, nil
+                    end
+                    deps.read_model.get_for_actor = function() return {status = "completed", mime_type = "text/markdown"} end
+                    deps.artifacts.read_primary_content = function()
+                        return nil, errors.new({kind = errors.UNAVAILABLE, message = diagnostic, retryable = retryable,
+                            details = {code = diagnostic, storage_path = diagnostic}}), "primary-artifact"
+                    end
+                end)
 
-            local result, err = handler.handle({ url = "https://example.com/doc.pdf", wait = true })
-            test.is_nil(result)
-            test.is_true(errors.is(err, errors.INTERNAL))
-            test.contains(tostring(err), "artifact blob is unavailable")
+                local result, err = handler.handle({url = "https://example.com/doc.pdf", wait = true})
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.UNAVAILABLE), tostring(err))
+                test.eq(err:retryable(), retryable)
+                test.is_nil(tostring(err):find(diagnostic, 1, true), tostring(err))
+                test.eq(err:message(), "processed upload could not be read: primary artifact is unreadable")
+                local details = err:details()
+                test.eq(details.upload_id, "upload-1")
+                test.eq(details.artifact_id, "primary-artifact")
+                test.eq(details.code, "artifact_read_failed")
+                test.is_nil(details.cause)
+                test.is_nil(details.storage_path)
+                test.eq(calls.upload_file, 1)
+            end
         end)
 
-        test.it("wait returns a tool error when the derived artifacts cannot be listed", function()
+        test.it("wait distinguishes no primary artifact from a primary artifact with missing bytes", function()
+            local upload_id = uuid.v4()
+            assert(records.create(upload_id, "fetch-user", 4, "application/pdf", "app:uploads", upload_id,
+                "kickside.uploads:types.generic", {filename = "document.pdf"}, "completed"))
             base_deps(function(deps)
                 deps.http.get = function()
-                    return { status_code = 200, headers = { ["content-type"] = "application/pdf" }, body = "%PDF" }, nil
+                    return {status_code = 200, headers = {["content-type"] = "application/pdf"}, body = "%PDF"}, nil
                 end
-                deps.read_model.get_for_actor = function() return { status = "completed", mime_type = "text/markdown" } end
-                deps.artifacts.list_artifacts = function() return nil, "failed to list artifacts: database is unavailable" end
+                deps.uploads.upload_file = function() return {uuid = upload_id} end
+                deps.read_model.get_for_actor = function() return {status = "completed", mime_type = "application/pdf"} end
+                deps.artifacts = parts
             end)
+            local args = {url = "https://example.com/doc.pdf", wait = true}
+            local result, err = handler.handle(args)
+            test.is_nil(err, tostring(err))
+            test.eq(result.status, "completed")
+            test.is_nil(result.markdown)
 
-            local result, err = handler.handle({ url = "https://example.com/doc.pdf", wait = true })
+            local artifact = assert(artifacts.create_artifact({upload_id = upload_id, kind = "markdown", role = "primary",
+                mime_type = "text/markdown", content = "# " .. upload_id}))
+            local blob = assert(artifacts.get_blob(artifact.blob_id))
+            assert(assert(fs.get(blob.storage_id)):remove(blob.storage_path))
+
+            result, err = handler.handle(args)
             test.is_nil(result)
-            test.is_true(errors.is(err, errors.INTERNAL))
-            test.contains(tostring(err), "database is unavailable")
+            test.is_true(errors.is(err, errors.NOT_FOUND), tostring(err))
+            test.is_false(err:retryable() == true)
+            test.eq(err:message(), "processed upload could not be read: primary artifact is unreadable")
+            test.eq(err:details().upload_id, upload_id)
+            test.eq(err:details().artifact_id, artifact.artifact_id)
+        end)
+
+        test.it("wait preserves the artifact list failure without exposing its diagnostic", function()
+            local diagnostic = "fetch-url-private-artifact-list"
+            for _, fixture in ipairs({
+                {failure = errors.new({kind = errors.UNAVAILABLE, retryable = true, message = diagnostic,
+                    details = {code = diagnostic, storage_path = diagnostic}}), kind = errors.UNAVAILABLE, retryable = true},
+                {failure = diagnostic, kind = errors.INTERNAL},
+            }) do
+                local calls = base_deps(function(deps)
+                    deps.http.get = function()
+                        return {status_code = 200, headers = {["content-type"] = "application/pdf"}, body = "%PDF"}, nil
+                    end
+                    deps.read_model.get_for_actor = function() return {status = "completed", mime_type = "text/markdown"} end
+                    deps.artifacts.list_artifacts = function() return nil, fixture.failure end
+                end)
+
+                local result, err = handler.handle({url = "https://example.com/doc.pdf", wait = true})
+                test.is_nil(result)
+                test.eq(err:kind(), fixture.kind, tostring(err))
+                test.eq(err:retryable(), fixture.retryable)
+                test.eq(err:message(), "processed upload could not be read: artifact list is unavailable")
+                test.is_nil(tostring(err):find(diagnostic, 1, true), tostring(err))
+                local details = err:details()
+                test.eq(details.code, "artifact_list_failed")
+                test.eq(details.upload_id, "upload-1")
+                test.is_nil(details.cause)
+                test.is_nil(details.storage_path)
+                test.eq(calls.upload_file, 1)
+            end
         end)
 
         test.it("wait returns a tool error when processing fails", function()

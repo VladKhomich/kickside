@@ -7,6 +7,7 @@ local upload_types = require("types")
 local ctx = require("ctx")
 local metadata_sanitizer = require("metadata_sanitizer")
 local uploads_resources = require("uploads_resources")
+local log = require("logger"):named("kickside.uploads.binding.get_content")
 
 local MAX_EXTRACTED_BYTES = 24 * 1024
 
@@ -40,18 +41,35 @@ local function handle(args)
     local _, access_err = component.validate_access(component_id, component.ACCESS.READ)
     if access_err then return nil, binding_errors.from(access_err, errors.PERMISSION_DENIED, "access_denied") end
 
-    local artifact_content, artifact_err
+    local artifact_content, artifact_err, failed_artifact_id
     if args.format ~= "raw" or args.extracted_only == true then
-        artifact_content, artifact_err = artifact_parts_repo.read_primary_content(upload_id)
+        artifact_content, artifact_err, failed_artifact_id = artifact_parts_repo.read_primary_content(upload_id)
     end
     if args.extracted_only == true then
         if artifact_err or not artifact_content or type(artifact_content.content) ~= "string" then
+            local cause = artifact_err and binding_errors.from(artifact_err, errors.UNAVAILABLE, "artifact_read_failed")
+                or binding_errors.new(errors.INTERNAL, "no primary artifact", "primary_artifact_missing")
+            local details = cause:details() or {}
+            local diagnostic = binding_errors.artifact_diagnostic(cause, upload_id, failed_artifact_id)
+            log:warn("Failed to read extracted artifact", diagnostic)
+
+            local read_source = details.artifact_read_source
+            local public_message = read_source == "blob" and "failed to read artifact blob"
+                or read_source == "locator" and "failed to read artifact bytes"
+                or artifact_parts_repo.is_primary_artifact_missing(cause) and "primary content artifact not found"
+            local message = "extracted text is not available"
+            if public_message then message = message .. ": " .. public_message end
+            local cause_code = diagnostic.code
+            local code = not read_source and cause_code == "storage_unavailable" and cause_code or "artifact_read_failed"
             return {
                 success = false,
                 state = "unreadable",
                 filename = metadata_sanitizer.public(upload.metadata).filename or "attachment",
-                error = binding_errors.from(artifact_err or binding_errors.new(errors.INTERNAL, "no primary artifact", "primary_artifact_missing"),
-                    errors.UNAVAILABLE, "artifact_read_failed", "extracted text is not available"),
+                error = errors.new({kind = cause:kind(), message = message, retryable = cause:retryable(), details = {
+                    code = code,
+                    cause = {kind = cause:kind(), retryable = cause:retryable(), message = public_message or message,
+                        details = {code = cause_code, upload_id = upload_id, artifact_id = failed_artifact_id}},
+                }}),
             }
         end
         local limit = math.max(1, math.min(math.floor(tonumber(args.limit) or MAX_EXTRACTED_BYTES), MAX_EXTRACTED_BYTES))

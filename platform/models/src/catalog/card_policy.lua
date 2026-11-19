@@ -80,6 +80,7 @@ local function build_card(row: any, profile: any?): (any?, any?)
     }
     local context, output, dimensions = mapper.model_limits(metadata.discovered)
     local open_context = profile and not profile.error and policy.provider_context(profile) or nil
+    local enabled = tonumber(row.enabled) ~= 0
 
     return {
         id = row.name,
@@ -106,7 +107,8 @@ local function build_card(row: any, profile: any?): (any?, any?)
         dimensions = stored_limits.dimensions or dimensions,
         source = row.source or models_types.SOURCE_MANUAL,
         provider_profile_id = row.provider_profile_id,
-        enabled = tonumber(row.enabled) ~= 0 and not (profile and (profile.error or profile.enabled == false)),
+        enabled = enabled and not (profile and (profile.error or profile.enabled == false)),
+        class_load_failed = enabled and profile and profile.configured_enabled == true and profile.error ~= nil or nil,
         error = profile and profile.error or nil,
         metadata = metadata,
     }

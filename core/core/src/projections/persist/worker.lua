@@ -497,7 +497,11 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
             if actor then
                 builder = builder:with_actor(actor):with_scope(scope)
             end
-            local pid, spawn_err = builder:spawn_linked_monitored(target_id, host, worker_input)
+            local input = {}
+            for key, value in pairs(worker_input) do input[key] = value end
+            deadline = time.now():add(max_execution_ms * time.MILLISECOND)
+            input.execution_deadline_ns = deadline:unix_nano()
+            local pid, spawn_err = builder:spawn_linked_monitored(target_id, host, input)
             if spawn_err then
                 return nil, errors.wrap(spawn_err, "projection proc spawn failed (" .. worker_ref .. ")")
             end
@@ -506,7 +510,6 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
             end
             child_pid = tostring(pid)
             events_ch = process.events()
-            deadline = time.now():add(max_execution_ms * time.MILLISECOND)
             return child_pid, nil
         end,
         terminate = function(pid: string): ()

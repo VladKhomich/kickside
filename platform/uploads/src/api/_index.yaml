@@ -305,10 +305,12 @@ entries:
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
       upload_tokens: kickside.uploads.persist:upload_tokens
+      binding_errors: kickside.uploads.binding:binding_errors
     method: artifacts_handler
     modules:
       - http
       - security
+      - logger
     pool:
       size: 4
 
@@ -343,10 +345,12 @@ entries:
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
       upload_tokens: kickside.uploads.persist:upload_tokens
+      binding_errors: kickside.uploads.binding:binding_errors
     method: artifact_raw_handler
     modules:
       - http
       - security
+      - logger
     pool:
       size: 4
 

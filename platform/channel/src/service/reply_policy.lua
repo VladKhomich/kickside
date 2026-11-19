@@ -54,7 +54,7 @@ function M.assessor_options(start: any): Map
 end
 
 function M.should_send_reply(start: any, content: string): boolean
-    return trim(content) ~= ""
+    return type(content) == "string" and content:find("%S") ~= nil
 end
 
 function M.channel_turn_text(system_prompt: any, body: string): string

@@ -23,6 +23,9 @@ end
 
 local function supports_generation(model_id: string): boolean
     local id = model_id:lower()
+    -- These search models generate through Chat Completions only.
+    if id:find("gpt-4o-search-preview", 1, true) == 1
+        or id:find("gpt-4o-mini-search-preview", 1, true) == 1 then return false end
     for _, operation in ipairs({ "image", "tts", "transcribe", "transcription", "whisper", "audio", "realtime", "moderation", "instruct" }) do
         for segment in id:gmatch("[^%-]+") do
             if segment == operation then return false end
@@ -98,8 +101,9 @@ local function test_model(profile: any, opts: any): string
     return ""
 end
 
-local function auto_test_model(rows: any): string
+local function auto_test_model(rows: any, profile: any): string
     if type(rows) ~= "table" then return "" end
+    local first_party = profile.provider_id == common.PROVIDERS.OPENAI
     local fallback = ""
     for _, item in ipairs(rows) do
         local id = ""
@@ -108,11 +112,13 @@ local function auto_test_model(rows: any): string
         elseif type(item) == "string" then
             id = item
         end
-        if type(id) == "string" and id ~= "" then
-            if fallback == "" then fallback = id end
-            local lower = id:lower()
-            if not lower:find("embed", 1, true) and not lower:find("embedding", 1, true) then
-                return id
+        if id ~= "" then
+            if first_party then
+                local metadata = type(item) == "table" and item or {}
+                if common.table_has(M.capabilities(id, metadata, profile), "generate") then return id end
+            else
+                if fallback == "" then fallback = id end
+                if not id:lower():find("embed", 1, true) then return id end
             end
         end
     end
@@ -124,42 +130,48 @@ function M.test(profile: any, opts: any): (any?, string?, any?)
     if model == "" then
         local rows, err, diagnostics = M.fetch(profile)
         if err then return nil, err, diagnostics end
-        model = auto_test_model(rows)
-        if model ~= "" then
-            opts = { model = model }
-            return M.test(profile, opts)
+        model = auto_test_model(rows, profile)
+        if model == "" then
+            return {
+                success = true,
+                mode = "models",
+                count = #(rows or {}),
+                message = "Authenticated model-list request succeeded, but no model was available for generation probe",
+            }
         end
-        return {
-            success = true,
-            mode = "models",
-            count = #(rows or {}),
-            message = "Authenticated model-list request succeeded, but no model was available for generation probe",
-        }
     end
 
-    local base_url = common.configured_base_url(profile, "https://api.openai.com/v1")
-    local response, err = http_client.post(common.join_endpoint(base_url, "/chat/completions"), {
-        headers = auth_headers(profile),
-        timeout = common.timeout(profile, 30),
+    local first_party = profile.provider_id == common.PROVIDERS.OPENAI
+    local endpoint, mode, failure, body
+    if first_party then
+        -- The native OpenAI provider generates through Responses, including reasoning models.
+        endpoint, mode, failure = "/responses", "responses", "responses probe failed"
+        body = json.encode({ model = model, input = "ping", max_output_tokens = 16, store = false })
+    else
+        endpoint, mode, failure = "/chat/completions", "chat_completions", "chat completion probe failed"
         body = json.encode({
             model = model,
-            messages = {
-                { role = "user", content = "ping" },
-            },
+            messages = { { role = "user", content = "ping" } },
             max_tokens = 1,
             temperature = 0,
             stream = false,
-        }),
+        })
+    end
+    local base_url = common.configured_base_url(profile, "https://api.openai.com/v1")
+    local response, err = http_client.post(common.join_endpoint(base_url, endpoint), {
+        headers = auth_headers(profile),
+        timeout = common.timeout(profile, 30),
+        body = body,
     })
-    if err then return nil, common.transport_error(err, "chat completion probe failed") end
+    if err then return nil, common.transport_error(err, failure) end
     local status = tonumber(response and response.status_code)
     if not status or status < 200 or status >= 300 then
-        return nil, common.response_error(response, "chat completion probe failed")
+        return nil, common.response_error(response, failure)
     end
 
     return {
         success = true,
-        mode = "chat_completions",
+        mode = mode,
         model = model,
         message = "Generation probe succeeded for " .. model,
         status_code = status,

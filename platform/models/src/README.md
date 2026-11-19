@@ -81,7 +81,7 @@ Provider profiles hold driver-open context such as base URL, encrypted secrets,
 env references, provider-specific settings, timeout, and retry policy. Model
 cards hold call defaults such as `reasoning_model_request`,
 `thinking_effort`, or `temperature` in provider options. For
-OpenAI-compatible profiles, `test_model` is non-secret profile config used only
+OpenAI and OpenAI-compatible profiles, `test_model` is non-secret profile config used only
 by the connection-test probe; API keys remain in encrypted profile secrets or
 `*_env` references. Card and profile filtering preserve the exact `headers` name and existing credential substrings (`secret`, `token`, `api_key`/`api-key`/`apikey`, `authorization`, `password`, `credential`), except token-quantity names containing the plural word `tokens` or singular `token` immediately followed by `budget`, `limit`, `count`, `usage`, `cost`, `rate`, `length`, `window`, `quota` or `size` after word normalization and no other credential substring; profile `*_env` references remain public and declared provider-secret keys retain their exact spelling for config/secret separation.
 
@@ -143,3 +143,8 @@ surface: OpenAI/OpenAI-compatible `/models`, Anthropic `/v1/models`, Gemini
 Developer API `models.list`, and Bedrock `ListFoundationModels`. Google Vertex
 AI profiles can still be used by explicit model-card overlays, but the current
 publisher-model REST surface does not expose a list method.
+
+The connection test for first-party OpenAI probes generation through Responses.
+When the authenticated model list has no Responses-capable generation model,
+the test reports that the list succeeded and generation was skipped.
+OpenAI-compatible profiles probe through Chat Completions.

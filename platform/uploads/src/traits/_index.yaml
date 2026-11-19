@@ -232,11 +232,13 @@ entries:
       - security
       - contract
       - base64
+      - logger
     method: handle
     imports:
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       text_trim: kickside.uploads:text_trim
+      binding_errors: kickside.uploads.binding:binding_errors
 
   # kickside.uploads.traits:fetch_url
 
@@ -357,6 +359,7 @@ entries:
       - security
       - http_client
       - time
+      - logger
     method: handle
     imports:
       upload_lib: kickside.uploads:uploads
@@ -365,6 +368,7 @@ entries:
       upload_type: kickside.uploads:upload_type
       net_safety: kickside.uploads:net_safety
       upload_status: kickside.uploads:upload_status
+      binding_errors: kickside.uploads.binding:binding_errors
 
     security:
       policies:
