@@ -42,7 +42,7 @@ entries:
     component: kickside/contract
 
   - name: dep.kickside.core
-    version: '*'
+    version: '>=0.3.29'
     kind: ns.dependency
     meta:
       comment: Persists durable ingestion events and provisions engine projections on KB threads.
