@@ -241,7 +241,7 @@ return test.run_cases(function()
             end
         end)
 
-        test.it("settles permanent callback errors as failures and continues recovery and cleanup in the same pass", function()
+        test.it("preserves completed storage after callback expiry and reports invalid declarations", function()
             local component_id, owner = user_container()
             local expired, invalid, good = uuid.v4(), uuid.v4(), uuid.v4()
             local key = assert(secret_cipher.load_key(assert(env.get("kickside.uploads.env:encryption_key"))))
@@ -251,13 +251,11 @@ return test.run_cases(function()
                     issued_at = issued_at, trace_context = trace_context })), key))
                 return assert(json.encode({ __upload_token = token }))
             end
-            local fixtures = {
-                { expired, "00000000-0000-4000-8000-000000000001", "Token expired" },
-                { invalid, "00000000-0000-4000-8000-000000000002", "is not canonical" },
-            }
-            checkpoint(component_id, owner, expired, fixtures[1][2], metadata(expired, os.time() - 86401, nil))
-            checkpoint(component_id, owner, invalid, fixtures[2][2], metadata(invalid, os.time(), { unknown = "field" }))
-            checkpoint(component_id, owner, good, "00000000-0000-4000-8000-000000000003", "{}")
+            local expired_job = "00000000-0000-4000-8000-000000000001"
+            local invalid_job = "00000000-0000-4000-8000-000000000002"
+            checkpoint(component_id, owner, expired, expired_job, metadata(expired, os.time() - 86401, nil))
+            checkpoint(component_id, owner, invalid, invalid_job, metadata(invalid, os.time(), { unknown = "field" }))
+            checkpoint(component_id, owner, good, "00000000-0000-4000-8000-000000000003", metadata(good, os.time(), "older trace"))
             exec("UPDATE kickside_thread SET max_pruned_seq=5 WHERE id=$1", { component_id })
             local tombstone = model(component_id, 3)
             local blob_id = uuid.v4()
@@ -273,17 +271,27 @@ return test.run_cases(function()
             test.is_true(result.success, tostring(result.error))
             local again = assert(funcs.call("kickside.uploads:retention", {}))
             test.is_true(again.success, tostring(again.error))
-            for _, fixture in ipairs(fixtures) do
-                local failure = query([[SELECT body,external_version FROM kickside_event
-                    WHERE thread_id=$1 AND external_id=$2 AND type=$3]], { component_id, fixture[1], upload_types.EVENT.FAILED })
-                test.eq(#failure, 1)
-                test.eq(failure[1].external_version, fixture[2])
-                local body = type(failure[1].body) == "table" and failure[1].body or assert(json.decode(failure[1].body))
-                test.contains(body.error, fixture[3])
-                test.eq(assert(upload_query_repo.get(fixture[1])).storage_state, "failed")
-            end
-            test.eq(#query("SELECT id FROM kickside_event WHERE thread_id=$1 AND external_id=$2 AND type=$3",
-                { component_id, good, upload_types.EVENT.COMPLETED }), 1)
+            local expired_events = terminal_events(component_id, expired)
+            test.eq(#expired_events, 1)
+            test.eq(expired_events[1].external_version, expired_job)
+            test.eq(expired_events[1].type, upload_types.EVENT.COMPLETED)
+            local expired_body = type(expired_events[1].body) == "table" and expired_events[1].body
+                or assert(json.decode(expired_events[1].body))
+            test.contains(expired_body.callback_error, "could not be verified")
+            test.eq(assert(upload_query_repo.get(expired)).storage_state, "completed")
+            local invalid_events = terminal_events(component_id, invalid)
+            test.eq(#invalid_events, 1)
+            test.eq(invalid_events[1].external_version, invalid_job)
+            test.eq(invalid_events[1].type, upload_types.EVENT.FAILED)
+            local invalid_body = type(invalid_events[1].body) == "table" and invalid_events[1].body
+                or assert(json.decode(invalid_events[1].body))
+            test.contains(invalid_body.error, "is not canonical")
+            test.eq(assert(upload_query_repo.get(invalid)).storage_state, "failed")
+            local good_events = terminal_events(component_id, good)
+            test.eq(#good_events, 1)
+            test.eq(good_events[1].type, upload_types.EVENT.COMPLETED)
+            test.eq(#query("SELECT id FROM kickside_job WHERE thread_id=$1 AND job_type=$2",
+                { component_id, "kickside.uploads.service:callback_job" }), 0)
             test.eq(count(tombstone), 0)
             test.eq(#query("SELECT blob_id FROM kickside_upload_artifact_blobs WHERE blob_id=$1", { blob_id }), 0)
         end)

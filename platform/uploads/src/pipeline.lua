@@ -306,6 +306,8 @@ local function enqueue_upload_token(upload, token: string, success, error_msg, t
         check_only: boolean?): (CallbackError?, boolean?)
     local payload, err = upload_tokens.unpack(token)
     if err then
+        -- A token can expire after an earlier worker committed terminal storage.
+        if check_only and err == "Token expired" then return nil, true end
         log:warn("upload token unpack failed", { upload_id = upload.uuid, error = err })
         if type(err) == "userdata" then return err end
         return errors.new({ message = "upload token unpack failed: " .. tostring(err),
@@ -343,7 +345,8 @@ local function enqueue_upload_token(upload, token: string, success, error_msg, t
             retryable = false, details = { error_kind = "declaration" } })
     end
     if check_only then
-        local _, trace_err = trace_context.normalize(payload.trace_context)
+        local source_trace = type(payload.trace_context) == "table" and payload.trace_context or nil
+        local _, trace_err = trace_context.normalize(source_trace)
         return trace_err, trace_err == nil
     end
 
