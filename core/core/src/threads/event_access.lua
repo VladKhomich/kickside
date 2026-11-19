@@ -90,7 +90,7 @@ end
 
 function M.denied(): error
     return errors.new({kind = errors.PERMISSION_DENIED, retryable = false, message = "access denied",
-        details = {code = "thread_event_read_denied"}})
+        details = {code = "thread_event_read_denied", error_kind = "access"}})
 end
 
 function M.read_mask(restricted: boolean): integer
