@@ -13,7 +13,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: r(
-        () => import("./chat_empty_state-mount-Cz8BC94Q.js").then((t) => t.mountConfig),
+        () => import("./chat_empty_state-mount-Cczc56Ob.js").then((t) => t.mountConfig),
         "Could not load the chat start screen. Reload the page to try again.",
         s
       )

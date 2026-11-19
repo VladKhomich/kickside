@@ -3,7 +3,7 @@ import { defineComponent as J, ref as r, computed as x, watch as O, nextTick as 
 import { Icon as v } from "@iconify/vue";
 import { host as tt } from "@wippy-fe/proxy";
 import { i as et } from "./hostRoute-uRovXTvG.js";
-import { u as at } from "./useSessionsApi-BQAm970o.js";
+import { u as at } from "./useSessionsApi-BuC8McBv.js";
 const st = { class: "kx-chat-start-controls" }, nt = { class: "kx-chat-start-agent" }, ot = ["aria-expanded", "disabled"], rt = {
   key: 0,
   id: "chat-start-agents",
@@ -196,4 +196,4 @@ const st = { class: "kx-chat-start-controls" }, nt = { class: "kx-chat-start-age
 export {
   Lt as mountConfig
 };
-//# sourceMappingURL=chat_empty_state-mount-Cz8BC94Q.js.map
+//# sourceMappingURL=chat_empty_state-mount-Cczc56Ob.js.map

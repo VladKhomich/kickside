@@ -16,7 +16,7 @@ class e extends s {
   static get vueConfig() {
     return {
       lazyConfig: i(
-        () => import("./index-mount-BCEwwQTF.js").then((t) => t.mountConfig),
+        () => import("./index-mount-FOj0tI_7.js").then((t) => t.mountConfig),
         "Could not load the sessions list. Reload the page to try again.",
         o
       )

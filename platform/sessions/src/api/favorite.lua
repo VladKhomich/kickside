@@ -3,6 +3,8 @@ local security = require("security")
 local session_writer = require("session_writer")
 local session_repo = require("session_repo")
 local http_errors = require("http_errors")
+local upstream = require("upstream")
+local logger = require("logger"):named("kickside.sessions")
 
 local function new(dependencies: any?): any
     local deps = dependencies or {}
@@ -10,6 +12,7 @@ local function new(dependencies: any?): any
     local security = deps.security or security
     local session_writer = deps.session_writer or session_writer
     local session_repo = deps.session_repo or session_repo
+    local upstream = deps.upstream or upstream
 
 -- Toggle a session's favorite flag. There is no favorite column; the flag lives
 -- in the session's public_meta (the per-session client-facing metadata the list
@@ -84,6 +87,11 @@ local function handler()
         res:set_status((http_errors.classify(uerr)))
         res:write_json({ success = false, error = tostring(uerr) })
         return
+    end
+
+    local published, publish_err = upstream.notify_external(session_id, updates, actor:id())
+    if not published then
+        logger:warn("Failed to publish committed favorite", { session_id = session_id, error = tostring(publish_err) })
     end
 
     res:set_status(http.STATUS.OK)

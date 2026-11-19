@@ -6,6 +6,8 @@ import { host, on } from '@wippy-fe/proxy'
 import { useHostVisibilityRefresh } from '@wippy-fe/webcomponent-vue'
 import { useComponentEvents, useComponentProps } from '../constants.ts'
 import type { ProviderBadge, Session, SessionMessage } from '../types.ts'
+import { compareSessionsNewest, readSessionOpened, readSessionUpdate, readStoredSessionMessage } from './inventoryEvents.ts'
+import { useInventoryRefresh } from './useInventoryRefresh.ts'
 import { useSessionsApi } from './useSessionsApi.ts'
 import SessionRow from './SessionRow.vue'
 import MessagesDrawer from './MessagesDrawer.vue'
@@ -16,9 +18,8 @@ import MessagesDrawer from './MessagesDrawer.vue'
 // pages. Reads/writes go through the wippy/session API via the @wippy-fe/proxy
 // client; chats open through the proxy host bridge, optionally in the sidebar.
 
-// A user is capped at a few hundred sessions (the runtime per-user limit), so the
-// whole set is loaded at once -- no pagination, no "load more".
-const MAX = 300
+// The Sessions API returns at most 100 rows per request.
+const SESSION_LIMIT = 100
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const api = useSessionsApi()
@@ -31,16 +32,17 @@ const activeSessionId = computed(() => hostProps.value?.activeSessionId || '')
 const artifactsActive = computed(() => !!hostProps.value?.artifactsActive)
 
 const sessions = ref<Session[]>([])
-const total = ref(0)
 const agentMap = ref<Record<string, string>>({})
 const providerMap = ref<Record<string, ProviderBadge>>({})
-const loading = ref(true)
+const loaded = ref(false)
 const error = ref('')
 const actionError = ref('')
 const search = ref('')
 const favOnly = ref(false)
 const stops: Array<() => void> = []
-let refreshTimer: ReturnType<typeof setTimeout> | null = null
+type SessionUpdate = NonNullable<ReturnType<typeof readSessionUpdate>>
+const changes = new Map<string, { patch: SessionUpdate['patch']; read: boolean; deleted: boolean }>()
+const localDeletes = new Set<string>()
 
 function isFav(s: Session): boolean { return !!s.public_meta?.favorite }
 
@@ -65,7 +67,7 @@ const filtered = computed(() => {
     return (s.title || '').toLowerCase().includes(q) || agentLabel(s).toLowerCase().includes(q)
   })
   // Favorites pinned to the top; sort is stable so the rest keep their
-  // recency order from the API.
+  // recency order from the API and session updates.
   return [...rows].sort((a, b) => Number(isFav(b)) - Number(isFav(a)))
 })
 
@@ -98,30 +100,86 @@ function buildPageWindow(cur: number, total: number): (number | string)[] {
   return out
 }
 
-async function load() {
-  loading.value = true
+async function loadSessions() {
   error.value = ''
   try {
-    const [{ sessions: rows, total: count }, titles, badges] = await Promise.all([
-      api.list(MAX, 0),
+    const [{ sessions: rows }, titles, badges] = await Promise.all([
+      api.list(SESSION_LIMIT, 0),
       api.agentTitles(),
       api.providerBadges(),
     ])
-    sessions.value = rows
-    total.value = count
+    sessions.value = rows.filter(row => !localDeletes.has(row.session_id))
     agentMap.value = titles
     providerMap.value = badges
+    loaded.value = true
   } catch (e) {
     error.value = (e as Error).message
-  } finally {
-    loading.value = false
   }
 }
 
-function queueRefresh() {
-  if (refreshTimer) clearTimeout(refreshTimer)
-  refreshTimer = setTimeout(() => { void load() }, 150)
+function queueChange(id: string, patch: SessionUpdate['patch'] = {}, read = false, deleted = false) {
+  const previous = changes.get(id)
+  changes.set(id, {
+    patch: { ...previous?.patch, ...patch },
+    read: read || previous?.read === true,
+    deleted: deleted || previous?.deleted === true,
+  })
+  queueUpdates()
 }
+
+async function applySessionChanges() {
+  const batch = [...changes]
+  changes.clear()
+  const known = new Set(sessions.value.map(row => row.session_id))
+  const details = new Map<string, Session | null>()
+  await Promise.all(batch.map(async ([id, change]) => {
+    if (change.deleted || localDeletes.has(id) || (!change.read && known.has(id))) return
+    try {
+      details.set(id, await api.session(id))
+    } catch (cause) {
+      flashError(cause)
+    }
+  }))
+
+  const rows = new Map(sessions.value.map(row => [row.session_id, row]))
+  let removed = false
+  let orderChanged = false
+  for (const [id, change] of batch) {
+    const detail = details.get(id)
+    if (change.deleted || detail === null || localDeletes.has(id) || changes.get(id)?.deleted) {
+      removed = rows.delete(id) || removed
+    } else if (detail) {
+      rows.set(id, detail)
+      orderChanged = true
+    } else {
+      const current = rows.get(id)
+      if (current) {
+        if (Object.hasOwn(change.patch, 'last_message_date') && change.patch.last_message_date !== current.last_message_date) {
+          orderChanged = true
+        }
+        Object.assign(current, change.patch)
+      }
+    }
+  }
+
+  if (removed && known.size === SESSION_LIMIT && rows.size < SESSION_LIMIT) {
+    try {
+      const { sessions: tail } = await api.list(SESSION_LIMIT - rows.size, rows.size)
+      for (const row of tail) {
+        if (!rows.has(row.session_id)) rows.set(row.session_id, row)
+      }
+    } catch (cause) {
+      flashError(cause)
+    }
+  }
+  if (!removed && !orderChanged) return
+  sessions.value = [...rows.values()]
+    .filter(row => !localDeletes.has(row.session_id) && !changes.get(row.session_id)?.deleted)
+    .sort(compareSessionsNewest)
+    .slice(0, SESSION_LIMIT)
+}
+
+const { refreshing, refresh: load, queueUpdates } = useInventoryRefresh(loadSessions, applySessionChanges)
 
 function flashError(e: unknown) { actionError.value = (e as Error).message }
 
@@ -133,6 +191,8 @@ async function onFavorite(s: Session) {
   } catch (e) {
     s.public_meta = { ...(s.public_meta || {}), favorite: !next }
     flashError(e)
+  } finally {
+    queueChange(s.session_id, {}, true)
   }
 }
 
@@ -156,6 +216,7 @@ async function onRename(s: Session, title: string) {
   const prev = s.title
   s.title = title
   try { await api.rename(s.session_id, title) } catch (e) { s.title = prev; flashError(e) }
+  finally { queueChange(s.session_id, {}, true) }
 }
 
 // Delete flow. The host provides a themed confirm dialog (rendered in-shadow via
@@ -173,8 +234,8 @@ async function onDelete(s: Session) {
   if (!ok) return
   try {
     await api.remove(s.session_id)
-    sessions.value = sessions.value.filter(x => x.session_id !== s.session_id)
-    total.value = Math.max(0, total.value - 1)
+    localDeletes.add(s.session_id)
+    queueChange(s.session_id, {}, false, true)
   } catch (e) { flashError(e) }
 }
 
@@ -195,11 +256,26 @@ async function onPreview(s: Session) {
   finally { previewLoading.value = false }
 }
 
+onMounted(() => {
+  stops.push(on('session:*', (message) => {
+    const change = readSessionUpdate(message)
+    if (change && (change.deleted || change.refresh || Object.keys(change.patch).length)) {
+      queueChange(change.sessionId, change.patch, change.refresh === true, change.deleted)
+    }
+  }))
+  stops.push(on('session.opened', (message) => {
+    const id = readSessionOpened(message)
+    if (id && !sessions.value.some(row => row.session_id === id)) queueChange(id)
+  }))
+  stops.push(on('session:*:message:*', (message) => {
+    const id = readStoredSessionMessage(message)
+    if (id) queueChange(id, {}, true)
+  }))
+  stops.push(on('@reconnect', load))
+})
 useHostVisibilityRefresh(load)
-onMounted(() => stops.push(on('session:*', queueRefresh)))
 onBeforeUnmount(() => {
   stops.forEach(stop => stop())
-  if (refreshTimer) clearTimeout(refreshTimer)
 })
 </script>
 
@@ -252,7 +328,7 @@ onBeforeUnmount(() => {
           <Icon :icon="favOnly ? 'tabler:star-filled' : 'tabler:star'" aria-hidden="true" />
           <span>Favorites<template v-if="favCount"> · {{ favCount }}</template></span>
         </button>
-        <Button type="button" severity="secondary" outlined title="Refresh" aria-label="Refresh" :loading="loading" :disabled="loading" @click="load">
+        <Button type="button" severity="secondary" outlined title="Refresh" aria-label="Refresh" :loading="refreshing" :disabled="refreshing" @click="load">
           <template #icon="{ class: iconClass }"><Icon icon="tabler:refresh" :class="iconClass" aria-hidden="true" /></template>
         </Button>
       </div>
@@ -265,12 +341,17 @@ onBeforeUnmount(() => {
         <span>{{ actionError }}</span>
         <button class="kx-err-x" aria-label="Dismiss" @click="actionError = ''"><Icon icon="tabler:x" aria-hidden="true" /></button>
       </div>
+      <div v-if="loaded && error" class="kx-err" role="alert">
+        <Icon icon="tabler:alert-triangle" aria-hidden="true" />
+        <span>{{ error }}</span>
+        <button class="kx-err-x" aria-label="Dismiss" @click="error = ''"><Icon icon="tabler:x" aria-hidden="true" /></button>
+      </div>
 
-      <div v-if="loading" class="kx-loading">
+      <div v-if="!loaded && !error" class="kx-loading">
         <Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Loading…
       </div>
 
-      <div v-else-if="error" class="kx-empty">
+      <div v-else-if="!loaded && error" class="kx-empty">
         <div class="kx-empty-ico"><Icon icon="tabler:alert-triangle" aria-hidden="true" /></div>
         <div class="kx-empty-title">Couldn’t load sessions</div>
         <div class="kx-empty-sub">{{ error }}</div>

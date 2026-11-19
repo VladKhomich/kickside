@@ -2,12 +2,11 @@ import { s as ve, B as fe, b as ge, c as ie, f as ae, z as Ae, e as me, R as oe,
 import { openBlock as h, createElementBlock as g, mergeProps as p, createElementVNode as b, renderSlot as x, resolveComponent as N, Fragment as se, renderList as be, createCommentVNode as j, createVNode as D, resolveDirective as mt, createTextVNode as de, toDisplayString as M, normalizeClass as J, createBlock as ne, resolveDynamicComponent as Le, withCtx as U, Transition as vt, normalizeProps as gt, createSlots as yt, withDirectives as Pe, withModifiers as bt, defineComponent as It, ref as _, computed as Ot, onMounted as wt, onBeforeUnmount as St, unref as q, vShow as Ct } from "vue";
 import { Icon as he } from "@iconify/vue";
 import { on as xe, define as kt } from "@wippy-fe/proxy";
-import { s as Me } from "./index-BDDI-UVm.js";
+import { s as Me, a as Z } from "./artifactPresentation-EN-MoFvy.js";
 import { s as Lt } from "./index-By5ijQWt.js";
-import { a as Z } from "./artifactPresentation-Dgf5Fs_k.js";
 import { s as ze, a as xt, l as zt, e as $t, b as Ft, A as Vt } from "./hostRoute-uRovXTvG.js";
 import { u as Tt } from "./useHostRoute-Bxm2JrjL.js";
-import { u as At } from "./useSessionsApi-BQAm970o.js";
+import { u as At } from "./useSessionsApi-BuC8McBv.js";
 import { s as Pt } from "./styles-BfuGB-97.js";
 var Ee = {
   name: "BlankIcon",
@@ -3214,11 +3213,11 @@ class _e extends ft {
     return { rootComponent: pi, plugins: [ht] };
   }
 }
-async function ki() {
+async function Ci() {
   return _e;
 }
 kt(import.meta.url, _e);
 export {
-  ki as webComponent
+  Ci as webComponent
 };
 //# sourceMappingURL=artifact_panel.js.map
