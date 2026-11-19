@@ -101,6 +101,36 @@ local function define_tests()
             test.eq(receipt_rows(), before + 2, "a repeated reconciliation does not mint receipts")
         end)
 
+        test.it("delivers a new delete when the same source key is restored and removed again", function()
+            local key = "restored-file"
+            deliver_main("restore_main", { key })
+            reconcile_drive({})
+
+            local function sweep(): string
+                run(automation_id, "reconcile") -- enumerate
+                run(automation_id, "reconcile") -- delete
+                run(automation_id, "reconcile") -- finish this pass
+                test.eq(#receipts(key), 0)
+                local identity = round_write.keys({ automation_id = automation_id, source_port = RECORDS },
+                    { item_key = key }).identity_key
+                local writes = h.query("SELECT detail_json FROM round_fixture_log WHERE drive_key = 'sink'"
+                    .. " AND item_key = $1 ORDER BY id DESC LIMIT 1", { identity })
+                local deletion = json.decode(writes[1].detail_json)
+                test.eq(deletion.dest_ref.id, "rec:" .. identity)
+                return deletion.idempotency_key
+            end
+
+            local first = sweep()
+            set_drive(automation_id, "restore_main", "action_json = $1, cursor = NULL, next_run_at = $2", {
+                json.encode({ source_ref = RECORDS, config = { items = { { key = key, dedup_key = "restored-revision" } } },
+                    schedule = { type = "interval", expression = "30m" } }), PAST })
+            run(automation_id, "restore_main")
+            test.eq(#receipts(key), 1)
+            set_drive(automation_id, "reconcile", "reconcile_next_at = $1", { PAST })
+            local second = sweep()
+            test.is_true(first ~= second, "a destination must be able to apply both deletions")
+        end)
+
         test.it("keeps a destination delivered while its pass runs", function()
             deliver_main("late_main", { "lt-a" })
             reconcile_drive({ "lt-a" })
