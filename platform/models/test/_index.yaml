@@ -422,7 +422,7 @@ entries:
   - name: profile_driver_fixture
     kind: library.lua
     source: file://fixtures/profile_driver.lua
-    modules: [base64, registry]
+    modules: [base64, json, registry]
     imports:
       model_catalog: app:profile_catalog_fixture
       ctx: app:profile_context_fixture
