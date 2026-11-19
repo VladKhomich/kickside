@@ -39,16 +39,9 @@ local function model_limits(context_window: number?, output_reservation: number?
     return available - margin
 end
 
-local function output_reservation(spec: any, card: any): number?
-    local requested = positive_number(spec.max_tokens)
-    local card_limit = positive_number(card.output_tokens)
-    return requested or card_limit
-end
-
--- Apply limits only when the selected card declares a usable context window.
--- Existing checkpoint settings retain lower values when the selected model
--- declares a usable context window.
-function M.apply(spec: any): (any, any?)
+-- Fit a caller-provided response default to the selected model's output limit.
+-- Derive the checkpoint threshold when the model declares a context window.
+function M.apply(spec: any, default_max_tokens: number?): (any, any?)
     if type(spec) ~= "table" then return spec end
 
     local options = copy_map(spec.agent_options)
@@ -59,7 +52,11 @@ function M.apply(spec: any): (any, any?)
     end
     if resolve_err then return nil, resolve_err end
     local context_window = type(card) == "table" and positive_number(card.max_tokens) or nil
-    local reservation = type(card) == "table" and output_reservation(spec, card) or nil
+    local output_limit = type(card) == "table" and positive_number(card.output_tokens) or nil
+    if spec.max_tokens == nil and default_max_tokens then
+        spec.max_tokens = output_limit and math.min(default_max_tokens, output_limit) or default_max_tokens
+    end
+    local reservation = positive_number(spec.max_tokens) or output_limit
     local derived_threshold = model_limits(context_window, reservation)
     local configured_threshold = positive_number(checkpoint.token_threshold)
     if not configured_threshold then
