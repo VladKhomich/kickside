@@ -23,6 +23,22 @@ end
 
 local function define_startup_tests()
     test.describe("lifecycle boot startup upgrade", function()
+        test.it("dispatches startup entrypoints after the system thread and grant are ready", function()
+            local thread_id = consts.thread_id()
+            local db = assert(sql.get("app:db"))
+            local rows = assert(db:query([[
+                SELECT a.access_mask FROM kickside_thread t
+                JOIN kickside_component_access a ON a.component_id = t.id
+                WHERE t.id = $1 AND a.subject_id = $2 AND a.subject_type = 'group'
+            ]], {thread_id, "app:admin"}))
+            assert(db:release())
+            test.eq(#rows, 1)
+            test.eq(tonumber(rows[1].access_mask), 11)
+            local owner = assert(process.registry.lookup(consts.BOOT_NAME, process.registry.CONSISTENT))
+            local ready = assert(process.registry.lookup(consts.system_ready_name(consts.BOOT_NAME), process.registry.EVENTUAL))
+            test.eq(ready, owner)
+        end)
+
         test.it("applies an update delivered while the named boot is still converging", function()
             local original_version = assert(registry.current_version())
             local topic = "test.lifecycle.startup:" .. uuid.v7()

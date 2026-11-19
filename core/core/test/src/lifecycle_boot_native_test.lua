@@ -24,19 +24,20 @@ end
 local function counters(stage: string): ()
     test.eq(fixture.calls.options, 1)
     if stage == "options" then
-        for _, step in ipairs({"events", "listen", "register", "migrations", "actor", "scope", "provision", "converge"}) do
+        for _, step in ipairs({"events", "listen", "register", "migrations", "actor", "scope", "provision", "system_ready", "converge"}) do
             test.is_nil(fixture.calls[step], "an options refusal precedes " .. step)
         end
         return
     end
     test.eq(fixture.calls.actor, 1); test.eq(fixture.calls.scope, 1)
     test.eq(fixture.calls.provision or 0, stage ~= "scope" and 1 or 0)
+    test.eq(fixture.calls.system_ready or 0, (stage == "system_ready" or stage == "converge") and 1 or 0)
     test.eq(fixture.calls.converge or 0, stage == "converge" and 1 or 0)
     test.eq(fixture.calls.events, 1); test.eq(fixture.calls.listen, 1); test.eq(fixture.calls.register, 1); test.eq(fixture.calls.migrations, 1)
 end
 return {run = test.run_cases(function()
     test.describe("native lifecycle boot refusals", function()
-        for _, stage in ipairs({"scope", "provision", "converge", "options"}) do
+        for _, stage in ipairs({"scope", "provision", "system_ready", "converge", "options"}) do
             for _, kind in ipairs({errors.NOT_FOUND, errors.ALREADY_EXISTS, errors.INVALID, errors.PERMISSION_DENIED, errors.UNAVAILABLE,
                 errors.INTERNAL, errors.CANCELED, errors.CONFLICT, errors.TIMEOUT, errors.RATE_LIMITED, errors.UNKNOWN}) do
                 for _, opts in ipairs({{}, {retryable = false}, {retryable = true}}) do
@@ -80,15 +81,21 @@ return {run = test.run_cases(function()
                 end
             end)
         end
+        test.it("does not report ready or converge when readiness registration fails", function()
+            local failure = errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "readiness registration failed"})
+            fixture.reset("system_ready", failure)
+            fields(invoke(), failure)
+            counters("system_ready")
+        end)
         test.it("healthy boot retains one count and graceful closure", function()
             fixture.reset("", nil); local out = boot.main(nil); test.is_true(out.ok); test.eq(out.count, 1)
-            for _, step in ipairs({"events", "listen", "register", "migrations", "actor", "scope", "provision", "converge", "options"}) do test.eq(fixture.calls[step], 1) end
+            for _, step in ipairs({"events", "listen", "register", "migrations", "actor", "scope", "provision", "system_ready", "converge", "options"}) do test.eq(fixture.calls[step], 1) end
         end)
         test.it("unavailable ledger keeps convergence parked and the retry converges once the migration lands", function()
             fixture.reset("", nil); fixture.script_ledger({"unavailable", "pending", "applied"})
             local out = boot.main(nil); test.is_true(out.ok); test.eq(out.count, 1)
             test.eq(fixture.calls.migrations, 3)
-            for _, step in ipairs({"actor", "scope", "provision", "converge"}) do test.eq(fixture.calls[step], 1) end
+            for _, step in ipairs({"actor", "scope", "provision", "system_ready", "converge"}) do test.eq(fixture.calls[step], 1) end
         end)
         test.it("boot resumes a bounded convergence pass without reprovisioning", function()
             fixture.reset("", nil)
@@ -104,7 +111,7 @@ return {run = test.run_cases(function()
         test.it("pending migration defers convergence and keeps boot resident", function()
             fixture.reset("", nil, nil, true); local out = boot.main(nil); test.is_true(out.ok); test.is_nil(out.count)
             for _, step in ipairs({"events", "listen", "register", "migrations", "options"}) do test.eq(fixture.calls[step], 1) end
-            for _, step in ipairs({"actor", "scope", "provision", "converge"}) do test.is_nil(fixture.calls[step]) end
+            for _, step in ipairs({"actor", "scope", "provision", "system_ready", "converge"}) do test.is_nil(fixture.calls[step]) end
         end)
     end)
 end)}

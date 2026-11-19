@@ -49,7 +49,7 @@ local function report(err: error)
     logger:error("system lifecycle convergence failed", {reason = tostring(err), error_native = error_envelope.encode(err)})
 end
 
-local function converge_state(): (integer?, error?, table?)
+local function converge_state(boot_name: string): (integer?, error?, table?)
     local actor = security.new_actor(consts.SYSTEM_ACTOR, {
         system = true,
         groups = { "system", "lifecycle" },
@@ -68,6 +68,8 @@ local function converge_state(): (integer?, error?, table?)
     end
 
     if type(ids) ~= "table" then return nil, response_error("provision"), nil end
+    local ready, ready_err = process.registry.register(consts.system_ready_name(boot_name), nil, process.registry.EVENTUAL)
+    if ready_err or not ready then return nil, ready_err or response_error("system_ready"), nil end
     logger:info("system lifecycle provisioned", { count = #ids })
 
     local continuation, converge_err = converge_page(actor, scope)
@@ -109,7 +111,7 @@ local CONVERGED, PARKED = "converged", "parked"
 -- Converges when the ledger is current. A pending migration or an unavailable
 -- ledger parks convergence for the next retry; the unavailable ledger is
 -- logged once per parked stretch through `ledger_failed`.
-local function converge_when_ready(ledger_failed: boolean): (string, integer?, error?, boolean, table?)
+local function converge_when_ready(boot_name: string, ledger_failed: boolean): (string, integer?, error?, boolean, table?)
     local ready, ready_err = schema_ready()
     if ready_err then
         if ready_err:retryable() then
@@ -122,7 +124,7 @@ local function converge_when_ready(ledger_failed: boolean): (string, integer?, e
         return CONVERGED, nil, ready_err, false, nil
     end
     if not ready then return PARKED, nil, nil, false, nil end
-    local count, converge_err, pending = converge_state()
+    local count, converge_err, pending = converge_state(boot_name)
     if converge_err then report(converge_err) end
     return CONVERGED, count, converge_err, false, pending
 end
@@ -140,7 +142,8 @@ local function main(_args: any): any
     if listen_err or not applied then
         error(listen_err or response_error("listen"))
     end
-    local claimed, stopped, claim_err, stop_kind = proc_supervisor.claim_singleton(consts.BOOT_NAME, events, { process = process })
+    local boot_name = consts.BOOT_NAME
+    local claimed, stopped, claim_err, stop_kind = proc_supervisor.claim_singleton(boot_name, events, { process = process })
     if claim_err then error(claim_err) end
     if stopped then
         if stop_kind == process.event.OUTDATED then return process.upgrade() end
@@ -148,7 +151,7 @@ local function main(_args: any): any
     end
     if claimed ~= true then error(response_error("claim")) end
 
-    local state, count, converge_err, ledger_failed, pending = converge_when_ready(false)
+    local state, count, converge_err, ledger_failed, pending = converge_when_ready(boot_name, false)
     local parked = state == PARKED
     if parked then logger:info("system lifecycle convergence awaits migrations") end
 
@@ -186,7 +189,7 @@ local function main(_args: any): any
                 pending = nil
             end
         elseif selected.channel == applied or selected.channel == retry then
-            local next_state, next_count, next_err, next_ledger_failed, next_pending = converge_when_ready(ledger_failed)
+            local next_state, next_count, next_err, next_ledger_failed, next_pending = converge_when_ready(boot_name, ledger_failed)
             ledger_failed = next_ledger_failed
             if next_state == CONVERGED then
                 parked = false

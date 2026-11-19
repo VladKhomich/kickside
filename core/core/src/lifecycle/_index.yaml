@@ -18,6 +18,8 @@ entries:
     targets:
       - entry: kickside.core.lifecycle:boot.service
         path: .host
+      - entry: kickside.core.lifecycle:system_ready.service
+        path: .host
 
   - name: user_lifecycle_grant
     kind: ns.requirement
@@ -301,6 +303,30 @@ entries:
       restart:
         max_delay: 120s
         max_attempts: 10
+      security:
+        groups:
+          - wippy.security:process
+
+  - name: system_ready
+    kind: process.lua
+    meta:
+      comment: Waits for the resident provisioner to materialize system components and their declared grants.
+    source: file://system_ready.lua
+    method: run
+    modules: [process]
+    imports:
+      lifecycle_consts: kickside.core.lifecycle:consts
+
+  - name: system_ready.service
+    kind: process.service
+    meta:
+      comment: Startup barrier for installed system components.
+    process: kickside.core.lifecycle:system_ready
+    host: ""
+    lifecycle:
+      auto_start: true
+      startup: complete
+      requires: [kickside.core.lifecycle:boot.service]
       security:
         groups:
           - wippy.security:process

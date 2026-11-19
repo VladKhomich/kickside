@@ -30,6 +30,10 @@ M.EVENT = {
 M.BOOT_NAME = "kickside.core.lifecycle:boot_process"
 M.MIGRATIONS_APPLIED_TOPIC = "kickside.core.lifecycle.migrations_applied"
 
+function M.system_ready_name(boot_name: string): string
+    return boot_name .. ".ready"
+end
+
 -- Migration namespaces that own the tables boot convergence reads, followed
 -- through every convergence path: core (threads, projections, retention),
 -- component (components and their meta, read through the component query),

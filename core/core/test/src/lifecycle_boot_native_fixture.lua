@@ -1,6 +1,6 @@
 local process = require("process")
 local channel = require("channel")
-local M = {event = process.event, registry = {CONSISTENT = process.registry.CONSISTENT}}
+local M = {event = process.event, registry = {CONSISTENT = process.registry.CONSISTENT, EVENTUAL = process.registry.EVENTUAL}}
 function M.reset(stage: string, source: error?, override: any?, pending: boolean?): ()
     M.stage, M.source, M.override, M.pending = stage, source, override, pending == true
     M.calls, M.ledger, M.events_ch, M.pages = {}, nil, nil, nil
@@ -55,5 +55,7 @@ function M.setup(_database_id: string): any
     end}
 end
 function M.listen(_topic: string): (any, error?) hit("listen"); return channel.new(), nil end
-function M.registry.register(_name: string, _pid: any, _scope: any): (boolean?, error?) hit("register"); return true, nil end
+function M.registry.register(_name: string, _pid: any, scope: any): (boolean?, error?)
+    return response(scope == M.registry.EVENTUAL and "system_ready" or "register", true)
+end
 return M
