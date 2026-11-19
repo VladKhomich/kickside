@@ -39,6 +39,47 @@ local function define_startup_tests()
             test.eq(ready, owner)
         end)
 
+        test.it("cancels the startup gate while it waits for an unbound name", function()
+            local original = assert(registry.current_version())
+            local name = "test.lifecycle.wait." .. uuid.v7()
+            local reply = assert(process.listen(name))
+            local lifecycle = process.events()
+            local pid
+            local ok, failure = pcall(function()
+                local entry = assert(registry.get("kickside.core.lifecycle:system_ready"))
+                local source = entry.data.source:gsub("consts%.BOOT_NAME", string.format("%q", name))
+                local notify = string.format("        assert(process.send(%q, %q, true))\n", tostring(process.pid()), name)
+                local blocked, count = source:gsub("        local pid, err = process.registry.lookup", function(line)
+                    return notify .. line
+                end, 1)
+                test.eq(count, 1)
+                local data = {}
+                for key, value in pairs(entry.data) do data[key] = value end
+                data.source = blocked
+                local id = "app:waiting_boot_" .. uuid.v7():gsub("-", "_")
+                local changes = assert(registry.snapshot()):changes()
+                changes:create({id = id, kind = entry.kind, data = data})
+                test.is_nil(select(2, changes:apply()))
+                pid = assert(process.spawn_monitored(id, "app:processes"))
+                local deadline = time.after("5s")
+                test.eq(channel.select({reply:case_receive(), deadline:case_receive()}).channel, reply)
+                assert(process.cancel(pid))
+                while true do
+                    local selected = channel.select({lifecycle:case_receive(), deadline:case_receive()})
+                    test.eq(selected.channel, lifecycle, "the readiness waiter did not stop")
+                    local event = selected.value
+                    if event.kind == process.event.EXIT and tostring(event.from) == tostring(pid) then
+                        test.eq(event.result.error:kind(), errors.CANCELED)
+                        break
+                    end
+                end
+            end)
+            if pid and not ok then process.terminate(pid) end
+            process.unlisten(reply)
+            test.is_nil(select(2, registry.apply_version(original)))
+            if not ok then error(failure) end
+        end)
+
         test.it("applies an update delivered while the named boot is still converging", function()
             local original_version = assert(registry.current_version())
             local topic = "test.lifecycle.startup:" .. uuid.v7()
