@@ -156,14 +156,14 @@ entries:
   - name: teardown_page
     kind: library.lua
     meta:
-      comment: Bounded Core-owned thread cleanup page with Jobs receipt acknowledgment.
+      comment: Atomic Core and Jobs thread cleanup page.
     source: file://teardown_page.lua
-    modules: [sql, json]
+    modules: [json]
     imports:
       threads_writer: kickside.core.threads.persist:writer
       threads_drop_notify: kickside.core.threads.persist:drop_notify
-      jobs_wake: kickside.core.jobs.persist:wake
-      jobs: kickside.core.jobs:jobs
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
+      jobs_cleanup: kickside.core.jobs.persist:thread_teardown
       cursor_waiters: kickside.core.threads:cursor_waiters
       error_envelope: kickside.contract:error_envelope
 

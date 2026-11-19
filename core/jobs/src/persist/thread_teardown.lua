@@ -1,10 +1,10 @@
--- Jobs-owned bounded thread cleanup. Each page commits with a durable receipt
--- so Core can record A48 counts in its own transaction and acknowledge after.
+-- Jobs-owned bounded thread cleanup with durable page receipts.
 local sql = require("sql")
 local json = require("json")
 local clock = require("clock")
 local thread_fence = require("thread_fence")
 local cfg = require("config")
+local wake = require("wake")
 local sql_boundary = require("sql_boundary")
 
 local M = {}
@@ -89,7 +89,7 @@ local function mutate(tx: sql.Transaction, dbtype: string, slice: table, thread_
         -- parent lock so a parent delete never cascades to unbudgeted runs.
         scope = scope .. " AND (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id LIMIT 1) IS NULL"
     end
-    local rows, err = tx:query(mutation .. " WHERE " .. scope .. " AND " .. selected .. " RETURNING status", args)
+    local rows, err = tx:query(mutation .. " WHERE " .. scope .. " AND " .. selected .. " RETURNING status,id", args)
     local minimum = name == RUN and not slice.detach and #ids or 0
     return sql_boundary.bounded_rows(rows, err, "thread cleanup mutation failed for " .. name,
         "mutation.rows", minimum, #ids, response_error)
@@ -107,7 +107,7 @@ local function has_rows(tx: sql.Transaction, thread_id: string): (boolean?, erro
 end
 
 local function run_page(tx: sql.Transaction, dbtype: string, thread_id: string,
-        limit: integer): (table?, error?)
+        limit: integer, wake_keys: { string }?): (table?, error?)
     local result = { processed = 0, discarded = {}, unresolved = {} }
     local remaining = limit
     local pages: {{ string }} = {}
@@ -132,31 +132,53 @@ local function run_page(tx: sql.Transaction, dbtype: string, thread_id: string,
         pages[index] = ids
         remaining = remaining - #ids
     end
-    -- Batch claim and retention take the same parent order. Take every parent
-    -- lock before touching any run, including links owned by another thread.
-    if dbtype == sql.type.POSTGRES and #parent_ids > 0 then
-        local rows, err = tx:query("SELECT id FROM kickside_job WHERE id IN ("
-            .. placeholders(1, #parent_ids) .. ") ORDER BY id FOR UPDATE", parent_ids)
-        if err then return nil, errors.wrap(err, "thread cleanup parent lock failed") end
-        if type(rows) ~= "table" then return nil, response_error("parents.rows") end
-    end
-    for index, ids in ipairs(pages) do
-        if #ids > 0 then
-            local slice = SLICES[index] :: table
-            local rows, mutation_err = mutate(tx, dbtype, slice, thread_id, ids)
-            if mutation_err then return nil, mutation_err end
-            local changed = rows :: { any }
-            result.processed = result.processed + #changed
-            if not slice.detach and #changed > 0 then
-                result.discarded[slice.name] = #changed
-                for _, row in ipairs(changed) do
-                    if type(row.status) ~= "string" then return nil, response_error("cleanup.status") end
-                    if row.status == "running" or (slice.name == JOB and row.status == "pending") then
-                        result.unresolved[slice.name] = (result.unresolved[slice.name] or 0) + 1
+    local function mutate_locked(snapshots: { [string]: table }?): error?
+        for index, ids in ipairs(pages) do
+            if #ids > 0 then
+                local slice = SLICES[index] :: table
+                local rows, mutation_err = mutate(tx, dbtype, slice, thread_id, ids)
+                if mutation_err then return mutation_err end
+                local changed = rows :: { any }
+                result.processed = result.processed + #changed
+                if not slice.detach and #changed > 0 then
+                    result.discarded[slice.name] = #changed
+                    for _, row in ipairs(changed) do
+                        if type(row.status) ~= "string" then return response_error("cleanup.status") end
+                        if row.status == "running" or (slice.name == JOB and row.status == "pending") then
+                            result.unresolved[slice.name] = (result.unresolved[slice.name] or 0) + 1
+                        end
+                    end
+                end
+                if snapshots and slice.name == JOB then
+                    for _, row in ipairs(changed) do
+                        if slice.detach then
+                            local snapshot = snapshots[row.id]
+                            if snapshot then snapshot.thread_id = nil end
+                        else
+                            snapshots[row.id] = nil
+                        end
                     end
                 end
             end
         end
+        return nil
+    end
+
+    -- Lock all parents before touching any run, including another owner's
+    -- links. A drop's wake shares this order with the deletion.
+    if wake_keys and #wake_keys > 0 then
+        local _, wake_err = wake.wake_multi(tx, wake_keys, dbtype, nil,
+            { ids = parent_ids, apply = mutate_locked })
+        if wake_err then return nil, wake_err end
+    else
+        if dbtype == sql.type.POSTGRES and #parent_ids > 0 then
+            local rows, err = tx:query("SELECT id FROM kickside_job WHERE id IN ("
+                .. placeholders(1, #parent_ids) .. ") ORDER BY id FOR UPDATE", parent_ids)
+            if err then return nil, errors.wrap(err, "thread cleanup parent lock failed") end
+            if type(rows) ~= "table" then return nil, response_error("parents.rows") end
+        end
+        local mutation_err = mutate_locked(nil)
+        if mutation_err then return nil, mutation_err end
     end
     local lingering, linger_err = has_rows(tx, thread_id)
     if linger_err then return nil, linger_err end
@@ -170,92 +192,91 @@ local function sequence_error(expected: integer, actual: integer): error
         kind = errors.CONFLICT, retryable = true }) :: error)
 end
 
-function M.page(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer): (table?, error?)
+function M.page_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_seq: integer,
+        wake_keys: { string }?): (table?, error?)
     if type(thread_id) ~= "string" or thread_id == "" or type(page_seq) ~= "number"
         or page_seq < 0 or page_seq ~= math.floor(page_seq) then
         return nil, (errors.new({ message = "invalid thread cleanup page identity", kind = errors.INVALID }) :: error)
     end
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
-    local tx, begin_err = sql_boundary.begin(db, "thread cleanup transaction failed", "transaction", response_error)
-    if begin_err then return nil, begin_err end
-    if not tx then return nil, response_error("transaction") end
     local fence, lock_err = thread_fence.lock(tx, thread_id)
-    if lock_err then return nil, sql_boundary.rollback(tx, lock_err, "thread cleanup rollback failed") end
-    if type(fence) ~= "table" then return nil, sql_boundary.rollback(tx, response_error("fence"), "thread cleanup rollback failed") end
+    if lock_err then return nil, lock_err end
+    if type(fence) ~= "table" then return nil, response_error("fence") end
     local next_seq_value = tonumber(fence.next_page_seq)
     local next_seq = next_seq_value and math.tointeger(next_seq_value)
-    if next_seq == nil or next_seq < 0 then return nil, sql_boundary.rollback(tx, response_error("fence.next_page_seq"), "thread cleanup rollback failed") end
+    if next_seq == nil or next_seq < 0 then return nil, response_error("fence.next_page_seq") end
     if page_seq < next_seq then
         local rows, receipt_err = tx:query("SELECT thread_id,page_seq,processed,done,discarded_json,unresolved_json"
             .. " FROM " .. RECEIPT .. " WHERE thread_id=$1 AND page_seq=$2", { thread_id, page_seq })
-        if receipt_err then return nil, sql_boundary.rollback(tx,
-            errors.wrap(receipt_err, "thread cleanup retry receipt read failed"), "thread cleanup rollback failed") end
-        if type(rows) ~= "table" or not rows[1] then return nil, sql_boundary.rollback(tx,
-            response_error("receipt.rows"), "thread cleanup rollback failed") end
+        if receipt_err then return nil, errors.wrap(receipt_err, "thread cleanup retry receipt read failed") end
+        if type(rows) ~= "table" or not rows[1] then return nil, response_error("receipt.rows") end
         local value, value_err = read_receipt(rows[1])
-        if value_err then return nil, sql_boundary.rollback(tx, value_err, "thread cleanup rollback failed") end
-        local _, commit_err = tx:commit()
-        if commit_err then return nil, errors.wrap(commit_err, "thread cleanup receipt read commit failed") end
+        if value_err then return nil, value_err end
+        if wake_keys and #wake_keys > 0 then
+            local _, wake_err = wake.wake_multi(tx, wake_keys, dbtype)
+            if wake_err then return nil, wake_err end
+        end
         return value, nil
     end
     if page_seq ~= next_seq then
-        return nil, sql_boundary.rollback(tx, sequence_error(next_seq, page_seq), "thread cleanup rollback failed")
+        return nil, sequence_error(next_seq, page_seq)
     end
     if page_seq > 0 then
-        -- Core advances its durable page sequence in the same transaction that
-        -- applies the prior receipt. Recover the acknowledgment if Core stopped
-        -- between that commit and its post-commit acknowledgment call.
+        -- Older Core writers and standalone callers can advance without
+        -- acknowledging their previous page.
         local previous, previous_err = tx:query("SELECT acknowledged_at FROM " .. RECEIPT
             .. " WHERE thread_id=$1 AND page_seq=$2", { thread_id, page_seq - 1 })
-        if previous_err then return nil, sql_boundary.rollback(tx,
-            errors.wrap(previous_err, "prior thread cleanup receipt read failed"), "thread cleanup rollback failed") end
-        if type(previous) ~= "table" then return nil, sql_boundary.rollback(tx,
-            response_error("previous.rows"), "thread cleanup rollback failed") end
+        if previous_err then return nil, errors.wrap(previous_err, "prior thread cleanup receipt read failed") end
+        if type(previous) ~= "table" then return nil, response_error("previous.rows") end
         if previous[1] and previous[1].acknowledged_at == nil then
             local acknowledged, acknowledge_err = tx:execute("UPDATE " .. RECEIPT
                 .. " SET acknowledged_at=$1 WHERE thread_id=$2 AND page_seq=$3 AND acknowledged_at IS NULL",
                 { clock.now(dbtype), thread_id, page_seq - 1 })
-            if acknowledge_err then return nil, sql_boundary.rollback(tx,
-                errors.wrap(acknowledge_err, "prior thread cleanup acknowledgment failed"), "thread cleanup rollback failed") end
+            if acknowledge_err then return nil, errors.wrap(acknowledge_err, "prior thread cleanup acknowledgment failed") end
             local _, acknowledge_proof = affected(acknowledged, "prior thread cleanup acknowledgment", 1)
-            if acknowledge_proof then return nil, sql_boundary.rollback(tx, acknowledge_proof, "thread cleanup rollback failed") end
+            if acknowledge_proof then return nil, acknowledge_proof end
         end
     end
     local limit = (policy :: any).thread_cleanup_batch :: integer
-    local result, run_err = run_page(tx, dbtype, thread_id, limit)
-    if run_err then return nil, sql_boundary.rollback(tx, run_err, "thread cleanup rollback failed") end
+    local result, run_err = run_page(tx, dbtype, thread_id, limit, wake_keys)
+    if run_err then return nil, run_err end
     local discarded_json, discarded_err = json.encode((result :: table).discarded)
     local unresolved_json, unresolved_err = json.encode((result :: table).unresolved)
-    if discarded_err then return nil, sql_boundary.rollback(tx,
-        errors.wrap(discarded_err, "thread cleanup count encoding failed"), "thread cleanup rollback failed") end
-    if type(discarded_json) ~= "string" then return nil, sql_boundary.rollback(tx,
-        response_error("discarded.encoded"), "thread cleanup rollback failed") end
-    if unresolved_err then return nil, sql_boundary.rollback(tx,
-        errors.wrap(unresolved_err, "thread cleanup unresolved encoding failed"), "thread cleanup rollback failed") end
-    if type(unresolved_json) ~= "string" then return nil, sql_boundary.rollback(tx,
-        response_error("unresolved.encoded"), "thread cleanup rollback failed") end
+    if discarded_err then return nil, errors.wrap(discarded_err, "thread cleanup count encoding failed") end
+    if type(discarded_json) ~= "string" then return nil, response_error("discarded.encoded") end
+    if unresolved_err then return nil, errors.wrap(unresolved_err, "thread cleanup unresolved encoding failed") end
+    if type(unresolved_json) ~= "string" then return nil, response_error("unresolved.encoded") end
     local now = clock.now(dbtype)
     local insert, insert_err = tx:execute("INSERT INTO " .. RECEIPT
         .. "(thread_id,page_seq,processed,done,discarded_json,unresolved_json,created_at)"
         .. " VALUES($1,$2,$3,$4,$5,$6,$7)", { thread_id, page_seq, (result :: table).processed,
             (result :: table).done, discarded_json, unresolved_json, now })
-    if insert_err then return nil, sql_boundary.rollback(tx, errors.wrap(insert_err, "thread cleanup receipt insert failed"), "thread cleanup rollback failed") end
+    if insert_err then return nil, errors.wrap(insert_err, "thread cleanup receipt insert failed") end
     local _, insert_proof = affected(insert, "thread cleanup receipt insert", 1)
-    if insert_proof then return nil, sql_boundary.rollback(tx, insert_proof, "thread cleanup rollback failed") end
+    if insert_proof then return nil, insert_proof end
     local started = dbtype == sql.type.POSTGRES and true or 1
     local update, update_err = tx:execute("UPDATE kickside_job_thread_cleanup SET started=$1,"
         .. "next_page_seq=$2 WHERE thread_id=$3",
         { started, page_seq + 1, thread_id })
-    if update_err then return nil, sql_boundary.rollback(tx, errors.wrap(update_err, "thread cleanup state update failed"), "thread cleanup rollback failed") end
+    if update_err then return nil, errors.wrap(update_err, "thread cleanup state update failed") end
     local _, state_proof = affected(update, "thread cleanup state update", 1)
-    if state_proof then return nil, sql_boundary.rollback(tx, state_proof, "thread cleanup rollback failed") end
-    local _, commit_err = tx:commit()
-    if commit_err then return nil, errors.wrap(commit_err, "thread cleanup page commit failed") end
+    if state_proof then return nil, state_proof end
     local page_result = result :: table
     page_result.thread_id = thread_id
     page_result.page_seq = page_seq
     return page_result, nil
+end
+
+function M.page(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer): (table?, error?)
+    local tx, begin_err = sql_boundary.begin(db, "thread cleanup transaction failed", "transaction", response_error)
+    if begin_err then return nil, begin_err end
+    if not tx then return nil, response_error("transaction") end
+    local result, err = M.page_tx(tx, dbtype, thread_id, page_seq)
+    if err then return nil, sql_boundary.rollback(tx, err, "thread cleanup rollback failed") end
+    local _, commit_err = tx:commit()
+    if commit_err then return nil, errors.wrap(commit_err, "thread cleanup page commit failed") end
+    return result, nil
 end
 
 -- Remove the jobs and runs a thread still owns after its cleanup completed.
@@ -287,6 +308,38 @@ function M.reclaim_completed(db: sql.DB, dbtype: string, limit: integer): (integ
     return total, nil
 end
 
+-- The caller holds the fence from page_tx or the standalone acknowledgment.
+function M.ack_tx(tx: sql.Transaction, dbtype: string, thread_id: string, page_seq: integer,
+        thread_done: boolean): (boolean?, error?)
+    local rows, read_err = tx:query("SELECT acknowledged_at,done FROM " .. RECEIPT
+        .. " WHERE thread_id=$1 AND page_seq=$2", { thread_id, page_seq })
+    if read_err then return nil, errors.wrap(read_err, "thread cleanup acknowledgment receipt read failed") end
+    if type(rows) ~= "table" or not rows[1] then return nil, response_error("receipt.rows") end
+    if thread_done and not (rows[1].done == true or rows[1].done == 1) then
+        local unfinished = errors.new({ message = "unfinished thread cleanup page cannot complete its owner",
+            kind = errors.CONFLICT, retryable = true })
+        return nil, unfinished
+    end
+    if rows[1].acknowledged_at == nil then
+        local result, update_err = tx:execute("UPDATE " .. RECEIPT
+            .. " SET acknowledged_at=$1 WHERE thread_id=$2 AND page_seq=$3 AND acknowledged_at IS NULL",
+            { clock.now(dbtype), thread_id, page_seq })
+        if update_err then return nil, errors.wrap(update_err, "thread cleanup receipt acknowledgment failed") end
+        local _, proof_err = affected(result, "thread cleanup receipt acknowledgment", 1)
+        if proof_err then return nil, proof_err end
+    end
+    if thread_done then
+        local done = dbtype == sql.type.POSTGRES and true or 1
+        local result, update_err = tx:execute("UPDATE kickside_job_thread_cleanup"
+            .. " SET completed_at=$1 WHERE thread_id=$2"
+            .. " AND started=$3", { clock.now(dbtype), thread_id, done })
+        if update_err then return nil, errors.wrap(update_err, "thread cleanup completion stamp failed") end
+        local _, proof_err = affected(result, "thread cleanup completion stamp", 1)
+        if proof_err then return nil, proof_err end
+    end
+    return true, nil
+end
+
 function M.ack(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer,
         thread_done: boolean): (boolean?, error?)
     local tx, begin_err = sql_boundary.begin(db, "thread cleanup acknowledgment transaction failed", "transaction", response_error)
@@ -294,37 +347,11 @@ function M.ack(db: sql.DB, dbtype: string, thread_id: string, page_seq: integer,
     if not tx then return nil, response_error("transaction") end
     local _, fence_err = thread_fence.lock(tx, thread_id)
     if fence_err then return nil, sql_boundary.rollback(tx, fence_err, "thread cleanup rollback failed") end
-    local rows, read_err = tx:query("SELECT acknowledged_at,done FROM " .. RECEIPT
-        .. " WHERE thread_id=$1 AND page_seq=$2", { thread_id, page_seq })
-    if read_err then return nil, sql_boundary.rollback(tx,
-        errors.wrap(read_err, "thread cleanup acknowledgment receipt read failed"), "thread cleanup rollback failed") end
-    if type(rows) ~= "table" or not rows[1] then return nil, sql_boundary.rollback(tx,
-        response_error("receipt.rows"), "thread cleanup rollback failed") end
-    if thread_done and not (rows[1].done == true or rows[1].done == 1) then
-        local unfinished = errors.new({ message = "unfinished thread cleanup page cannot complete its owner",
-            kind = errors.CONFLICT, retryable = true })
-        return nil, sql_boundary.rollback(tx, unfinished, "thread cleanup rollback failed")
-    end
-    if rows[1].acknowledged_at == nil then
-        local result, update_err = tx:execute("UPDATE " .. RECEIPT
-            .. " SET acknowledged_at=$1 WHERE thread_id=$2 AND page_seq=$3 AND acknowledged_at IS NULL",
-            { clock.now(dbtype), thread_id, page_seq })
-        if update_err then return nil, sql_boundary.rollback(tx, errors.wrap(update_err, "thread cleanup receipt acknowledgment failed"), "thread cleanup rollback failed") end
-        local _, proof_err = affected(result, "thread cleanup receipt acknowledgment", 1)
-        if proof_err then return nil, sql_boundary.rollback(tx, proof_err, "thread cleanup rollback failed") end
-    end
-    if thread_done then
-        local done = dbtype == sql.type.POSTGRES and true or 1
-        local result, update_err = tx:execute("UPDATE kickside_job_thread_cleanup"
-            .. " SET completed_at=$1 WHERE thread_id=$2"
-            .. " AND started=$3", { clock.now(dbtype), thread_id, done })
-        if update_err then return nil, sql_boundary.rollback(tx, errors.wrap(update_err, "thread cleanup completion stamp failed"), "thread cleanup rollback failed") end
-        local _, proof_err = affected(result, "thread cleanup completion stamp", 1)
-        if proof_err then return nil, sql_boundary.rollback(tx, proof_err, "thread cleanup rollback failed") end
-    end
+    local result, err = M.ack_tx(tx, dbtype, thread_id, page_seq, thread_done)
+    if err then return nil, sql_boundary.rollback(tx, err, "thread cleanup rollback failed") end
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "thread cleanup acknowledgment commit failed") end
-    return true, nil
+    return result, nil
 end
 
 return M

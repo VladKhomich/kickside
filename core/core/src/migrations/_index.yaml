@@ -193,3 +193,15 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 15_teardown_projection_index
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-18T00:00:15Z"
+    source: file://15_teardown_projection_index.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

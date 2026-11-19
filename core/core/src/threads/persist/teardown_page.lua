@@ -1,26 +1,25 @@
--- Core deletes only Core-owned thread rows. Jobs commits its own bounded page
--- first; Core records that receipt's A48 counts and acknowledges after commit.
-local sql = require("sql")
+-- Core and Jobs commit each bounded teardown page together.
 local json = require("json")
 local writer = require("threads_writer")
 local drop_notify = require("threads_drop_notify")
-local jobs = require("jobs")
-local jobs_wake = require("jobs_wake")
+local jobs_cleanup = require("jobs_cleanup")
 local cursor_waiters = require("cursor_waiters")
 local error_envelope = require("error_envelope")
+local sql_boundary = require("sql_boundary")
 
 local M = {}
 local PAGE = 100
 
 local SPECS = {
-    { "kickside_event", "id", "thread_id=$1" },
-    { "kickside_thread_subject", "subject", "thread_id=$1" },
-    { "kickside_projection_cursor", "id", "thread_id=$1" },
-    { "kickside_retention_policy", "id", "thread_id=$1" },
-    { "kickside_retention_pin", "consumer_key", "thread_id=$1" },
-    { "kickside_retention_pin_tombstone", "consumer_key", "thread_id=$1" },
-    { "kickside_projection", "id", "thread_id=$1" },
-    { "kickside_thread_edge", "id", "from_thread_id=$1 OR to_thread_id=$1" },
+    { "kickside_event", "id", "thread_id", ",seq" },
+    { "kickside_thread_subject", "subject", "thread_id", ",subject" },
+    { "kickside_projection_cursor", "id", "thread_id", ",status" },
+    { "kickside_retention_policy", "id", "thread_id", "" },
+    { "kickside_retention_pin", "consumer_key", "thread_id", ",consumer_key" },
+    { "kickside_retention_pin_tombstone", "consumer_key", "thread_id", ",consumer_key" },
+    { "kickside_projection", "id", "thread_id", ",id" },
+    { "kickside_thread_edge", "id", "from_thread_id", "" },
+    { "kickside_thread_edge", "id", "to_thread_id", "" },
 }
 local UNRESOLVED_STATUS: { [string]: { [string]: boolean } } = {
     kickside_projection = { pending = true },
@@ -43,8 +42,11 @@ end
 local function page(tx: any, spec: { string }, id: string, limit: integer): ({ any }?, error?)
     local status = UNRESOLVED_STATUS[spec[1]] and
         ("," .. (STATUS_COLUMN[spec[1]] or "status") .. " AS status") or ""
+    -- Keep the scope leading the index order, even where its two bounds coincide.
+    local scope = spec[3]
     local rows, err = tx:query("SELECT " .. spec[2] .. " AS row_key" .. status
-        .. " FROM " .. spec[1] .. " WHERE (" .. spec[3] .. ") ORDER BY " .. spec[2] .. " LIMIT $2",
+        .. " FROM " .. spec[1] .. " WHERE " .. scope .. ">=$1 AND " .. scope .. "<=$1"
+        .. " ORDER BY " .. scope .. spec[4] .. " LIMIT $2",
         { id, limit })
     if err or type(rows) ~= "table" then
         return nil, internal("thread " .. spec[1] .. " page read failed", err or "missing result")
@@ -60,8 +62,8 @@ local function erase(tx: any, spec: { string }, id: string, rows: { any },
         params[#params + 1] = rows[i].row_key
         marks[i] = "$" .. tostring(i + 1)
     end
-    local result, err = tx:execute("DELETE FROM " .. spec[1] .. " WHERE ("
-        .. spec[3] .. ") AND " .. spec[2] .. " IN (" .. table.concat(marks, ",") .. ")", params)
+    local result, err = tx:execute("DELETE FROM " .. spec[1] .. " WHERE "
+        .. spec[3] .. "=$1 AND " .. spec[2] .. " IN (" .. table.concat(marks, ",") .. ")", params)
     if err or not result or tonumber(result.rows_affected) ~= count then
         return internal("thread " .. spec[1] .. " page delete failed", err or "missing row proof")
     end
@@ -94,35 +96,27 @@ local function add_counts(target: table, additions: any, label: string): error?
     return nil
 end
 
-local function body(tx: any, dbtype: string, id: string, page_seq: integer,
-        jobs_page: table, locked: { [string]: boolean }): (any?, error?)
-    local thread_rows, thread_err = tx:query([[SELECT teardown_counts_json,teardown_fence_done,teardown_page_seq
+local function body(tx: any, dbtype: string, id: string, locked: { [string]: boolean }): (any?, error?)
+    local rows, read_err = tx:query([[SELECT deleting_at,teardown_counts_json,teardown_fence_done,teardown_page_seq
         FROM kickside_thread WHERE id=$1]], { id })
-    if thread_err or type(thread_rows) ~= "table" then
-        return nil, internal("marked thread state unavailable", thread_err or "missing result")
+    if read_err or type(rows) ~= "table" then
+        return nil, internal("marked thread state unavailable", read_err or "missing result")
     end
-    if not thread_rows[1] then
+    local thread = rows[1]
+    if not thread then
         return { pending = false, discarded = {}, notified = {}, removed_cursors = {} }, nil
     end
-    local thread = thread_rows[1]
-    if thread.teardown_fence_done ~= true and thread.teardown_fence_done ~= 1 then
+    if thread.deleting_at == nil or (thread.teardown_fence_done ~= true and thread.teardown_fence_done ~= 1) then
         return nil, internal("thread cascade ran before consumer fence", id)
     end
-    if tonumber(thread.teardown_page_seq) ~= page_seq then
-        local current, current_err = json.decode(tostring(thread.teardown_counts_json))
-        if current_err or type(current) ~= "table" then
-            return nil, internal("thread teardown count corrupt", current_err)
-        end
-        return nil, pending(current)
+    local page_seq = math.tointeger(thread.teardown_page_seq)
+    if page_seq == nil or page_seq < 0 then
+        return nil, internal("thread teardown page sequence corrupt", id)
     end
     local counts, decode_err = json.decode(tostring(thread.teardown_counts_json))
     if decode_err or type(counts) ~= "table" then return nil, internal("thread teardown count corrupt", decode_err) end
     if counts.unresolved == nil then counts.unresolved = {} end
     if type(counts.unresolved) ~= "table" then return nil, internal("thread unresolved count corrupt", id) end
-    local count_err = add_counts(counts, jobs_page.discarded, "thread job discarded")
-    if count_err then return nil, count_err end
-    count_err = add_counts(counts.unresolved, jobs_page.unresolved, "thread job unresolved")
-    if count_err then return nil, count_err end
 
     local remaining = PAGE
     local notified: { string } = {}
@@ -176,26 +170,23 @@ local function body(tx: any, dbtype: string, id: string, page_seq: integer,
             end
             remaining = remaining - size
         end
-        if #selected > size or remaining == 0 then
-            local stamp_err = persist_counts(tx, id, counts, page_seq + 1)
-            if stamp_err then return nil, stamp_err end
-            local wake_keys: { string } = {}
-            for _, target in ipairs(notified) do wake_keys[#wake_keys + 1] = "thread:" .. target end
-            if #wake_keys > 0 then
-                local _, wake_err = jobs_wake.wake_multi(tx, wake_keys, dbtype)
-                if wake_err then return nil, wake_err end
-            end
-            return { pending = true, discarded = counts, notified = notified, removed_cursors = removed_cursors }, nil
-        end
+        if remaining == 0 then break end
     end
 
     local wake_keys: { string } = {}
     for _, target in ipairs(notified) do wake_keys[#wake_keys + 1] = "thread:" .. target end
-    if #wake_keys > 0 then
-        local _, wake_err = jobs_wake.wake_multi(tx, wake_keys, dbtype)
-        if wake_err then return nil, wake_err end
-    end
-    if jobs_page.done ~= true then
+    local jobs_page, jobs_err = jobs_cleanup.page_tx(tx, dbtype, id, page_seq, wake_keys)
+    if jobs_err then return nil, jobs_err end
+    if not jobs_page then return nil, internal("thread Jobs page unavailable", id) end
+    local count_err = add_counts(counts, jobs_page.discarded, "thread job discarded")
+    if count_err then return nil, count_err end
+    count_err = add_counts(counts.unresolved, jobs_page.unresolved, "thread job unresolved")
+    if count_err then return nil, count_err end
+
+    local finished = remaining > 0 and jobs_page.done == true
+    local _, ack_err = jobs_cleanup.ack_tx(tx, dbtype, id, page_seq, finished)
+    if ack_err then return nil, ack_err end
+    if not finished then
         local stamp_err = persist_counts(tx, id, counts, page_seq + 1)
         if stamp_err then return nil, stamp_err end
         return { pending = true, discarded = counts, notified = notified, removed_cursors = removed_cursors }, nil
@@ -210,26 +201,8 @@ end
 function M.run(db: any, id: string): (any?, error?)
     local dbtype, dbtype_err = writer.dbtype_of(db)
     if dbtype_err then return nil, dbtype_err end
-    local state, state_err = db:query([[SELECT deleting_at,teardown_fence_done,teardown_page_seq
-        FROM kickside_thread WHERE id=$1]], { id })
-    if state_err or type(state) ~= "table" then
-        return nil, internal("thread teardown state read failed", state_err or "missing result")
-    end
-    if not state[1] then
-        return { pending = false, discarded = {}, notified = {} }, nil
-    end
-    if state[1].deleting_at == nil or
-        (state[1].teardown_fence_done ~= true and state[1].teardown_fence_done ~= 1) then
-        return nil, internal("thread teardown page ran before its durable fence", id)
-    end
-    local page_seq = math.tointeger(state[1].teardown_page_seq)
-    if page_seq == nil or page_seq < 0 or page_seq ~= math.floor(page_seq) then
-        return nil, internal("thread teardown page sequence corrupt", id)
-    end
     local hooks, hook_err = drop_notify.hooks(db, id, PAGE)
     if hook_err then return nil, hook_err end
-    local job_page, job_err = jobs.cleanup_thread_page(id, page_seq)
-    if job_err or not job_page then return nil, job_err end
 
     local lock_ids: { string } = { id }
     local locked: { [string]: boolean } = { [id] = true }
@@ -240,9 +213,9 @@ function M.run(db: any, id: string): (any?, error?)
     local tx, begin_err = db:begin()
     if begin_err or not tx then return nil, internal("thread cascade transaction failed", begin_err) end
     local lock_err = writer.lock_threads_tx(tx, dbtype :: string, lock_ids)
-    if lock_err then tx:rollback(); return nil, lock_err end
-    local result, run_err = body(tx, dbtype :: string, id, page_seq :: integer, job_page :: table, locked)
-    if run_err then tx:rollback(); return nil, run_err end
+    if lock_err then return nil, sql_boundary.rollback(tx, lock_err, "thread cascade rollback failed") end
+    local result, run_err = body(tx, dbtype :: string, id, locked)
+    if run_err then return nil, sql_boundary.rollback(tx, run_err, "thread cascade rollback failed") end
     local _, commit_err = tx:commit()
     if commit_err then return nil, internal("thread cascade commit failed", commit_err) end
     local removed_err: error? = nil
@@ -251,9 +224,6 @@ function M.run(db: any, id: string): (any?, error?)
             return cursor_waiters.notify_cursor(cursor_id, nil, "removed")
         end, removed_err, "thread cursor removal notification failed")
     end
-    local _, ack_err = jobs.ack_thread_cleanup_page(id, page_seq :: integer,
-        (result :: any).pending ~= true)
-    if ack_err then return nil, ack_err end
     if removed_err then return nil, removed_err end
     if (result :: any).pending then return nil, pending((result :: any).discarded) end
     return result, nil

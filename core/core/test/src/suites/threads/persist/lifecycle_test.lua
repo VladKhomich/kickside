@@ -11,6 +11,7 @@ local teardown = require("threads_teardown")
 local fence = require("teardown_fence")
 local sweeper = require("sweeper")
 local jobs = require("jobs")
+local drop_notify = require("drop_notify")
 
 local DB = "app:db"
 
@@ -199,6 +200,8 @@ local function define_tests()
                 { uuid.v7(), survivor, doomed })
             insert("INSERT INTO kickside_thread_edge (id,from_thread_id,to_thread_id,edge_type) VALUES ($1,$2,$2,'self')",
                 { uuid.v7(), survivor })
+            insert("INSERT INTO kickside_thread_edge (id,from_thread_id,to_thread_id,edge_type) VALUES ($1,$2,$2,'self')",
+                { uuid.v7(), doomed })
             local owned_job, other_job = uuid.v7(), uuid.v7()
             for _, spec in ipairs({ { owned_job, doomed }, { other_job, survivor } }) do
                 insert([[INSERT INTO kickside_job (id,thread_id,job_type,job_identity,owner_kind,owner_id)
@@ -211,6 +214,7 @@ local function define_tests()
             local result, purge_err = teardown.purge_thread(d, doomed, nil)
             test.is_nil(purge_err, tostring(purge_err))
             test.is_true(result.purged)
+            test.eq(result.discarded.kickside_thread_edge, 3)
             test.eq(result.discarded.unresolved.kickside_event, 1)
             test.eq(result.discarded.unresolved.kickside_retention_pin, 1)
             test.is_nil(result.discarded.unresolved.kickside_job_run)
@@ -313,11 +317,11 @@ local function define_tests()
             local doomed = uuid.v7()
             local _, create_err = d:execute("INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'gc',$2,0)", { doomed, doomed })
             test.is_nil(create_err, tostring(create_err))
-            local original = jobs.cleanup_thread_page
+            local original = drop_notify.hooks
             local peer_result, peer_err
             local raced = false
-            jobs.cleanup_thread_page = function(id, page_seq)
-                local page, err = original(id, page_seq)
+            drop_notify.hooks = function(executor, id, limit)
+                local page, err = original(executor, id, limit)
                 if not raced then
                     raced = true
                     peer_result, peer_err = teardown.purge_thread(d, doomed, nil)
@@ -325,7 +329,7 @@ local function define_tests()
                 return page, err
             end
             local result, err = teardown.purge_thread(d, doomed, nil)
-            jobs.cleanup_thread_page = original
+            drop_notify.hooks = original
             test.is_nil(peer_err, tostring(peer_err))
             test.is_true(peer_result.purged)
             test.is_nil(err, tostring(err))
@@ -345,11 +349,11 @@ local function define_tests()
                     { uuid.v7(), doomed, seq })
                 test.is_nil(event_err, tostring(event_err))
             end
-            local original = jobs.cleanup_thread_page
+            local original = drop_notify.hooks
             local peer_err
             local raced = false
-            jobs.cleanup_thread_page = function(id, page_seq)
-                local page, err = original(id, page_seq)
+            drop_notify.hooks = function(executor, id, limit)
+                local page, err = original(executor, id, limit)
                 if not raced then
                     raced = true
                     local _, advanced_err = teardown.purge_thread(d, doomed, nil)
@@ -358,7 +362,7 @@ local function define_tests()
                 return page, err
             end
             local result, err = teardown.purge_thread(d, doomed, nil)
-            jobs.cleanup_thread_page = original
+            drop_notify.hooks = original
             test.not_nil(peer_err)
             test.is_true(peer_err:details().cleanup_pending)
             test.is_nil(result)
@@ -393,6 +397,125 @@ local function define_tests()
             test.is_nil(err, tostring(err))
             return id
         end
+
+        test.it("seeks a thread's projection range before decoding its drop hooks", function()
+            local d = db()
+            local unrelated, source = seed_purge_thread(d), seed_purge_thread(d)
+            local postgres = d:type() == sql.type.POSTGRES
+            local seed = postgres and [[INSERT INTO kickside_projection (id,thread_id,kind,projection_key)
+                SELECT ('00000000-0000-4000-8000-' || lpad(n::text,12,'0'))::uuid,
+                    CASE WHEN n<=100000 THEN $1::uuid ELSE $2::uuid END,'page',n::text
+                FROM generate_series(1,200000) AS n]]
+                or [[WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<200000)
+                INSERT INTO kickside_projection (id,thread_id,kind,projection_key)
+                SELECT '00000000-0000-4000-8000-' || printf('%012d',n),
+                    CASE WHEN n<=100000 THEN $1 ELSE $2 END,'page',CAST(n AS TEXT) FROM rows]]
+            local seeded, seed_err = d:execute(seed, { unrelated, source })
+            test.is_nil(seed_err, tostring(seed_err))
+            test.eq(tonumber(seeded.rows_affected), 200000)
+            local _, analyze_err = d:execute("ANALYZE kickside_projection")
+            test.is_nil(analyze_err, tostring(analyze_err))
+
+            local plan: string? = nil
+            local observer = { query = function(_, statement, args)
+                local explain = postgres and "EXPLAIN " or "EXPLAIN QUERY PLAN "
+                local rows, explain_err = d:query(explain .. statement, args)
+                if explain_err then return nil, explain_err end
+                local lines: { string } = {}
+                for _, row in ipairs(rows or {}) do
+                    lines[#lines + 1] = tostring(row.detail or row["QUERY PLAN"])
+                end
+                plan = table.concat(lines, "\n")
+                return d:query(statement, args)
+            end }
+            local hooks, hook_err = drop_notify.hooks(observer, source, 100)
+            test.is_nil(hook_err, tostring(hook_err))
+            test.eq(#hooks, 0)
+            test.is_true(tostring(plan):find("idx_projection_thread_id", 1, true) ~= nil, tostring(plan))
+            d:release()
+        end)
+
+        test.it("rolls back Jobs work and Core rows when the final thread delete fails", function()
+            local d = db()
+            local id, subscriber = seed_purge_thread(d), seed_purge_thread(d)
+            local job, subscriber_job = uuid.v7(), uuid.v7()
+            local wake_key = "thread:" .. subscriber
+            local _, event_err = d:execute("INSERT INTO kickside_event (id,thread_id,type,seq) VALUES ($1,$2,'gc',1)",
+                { uuid.v7(), id })
+            test.is_nil(event_err, tostring(event_err))
+            local _, projection_err = d:execute([[INSERT INTO kickside_projection (id,thread_id,kind,body)
+                VALUES ($1,$2,'gc',$3)]], {
+                uuid.v7(), id, '{"drop_notify":{"thread_id":"' .. subscriber .. '","type":"gc.dropped"}}',
+            })
+            test.is_nil(projection_err, tostring(projection_err))
+            for _, work in ipairs({ { job, id }, { subscriber_job, subscriber } }) do
+                local _, seed_err = d:execute([[INSERT INTO kickside_job
+                    (id,thread_id,job_type,job_identity,owner_kind,owner_id,status,wake_key)
+                    VALUES ($1,$2,'gc',$3,'thread',$4,'pending',$5)]],
+                    { work[1], id, "gc:" .. work[1], work[2], wake_key })
+                test.is_nil(seed_err, tostring(seed_err))
+            end
+
+            local blocker = "thread_delete_blocker_" .. suffix
+            local id_type = d:type() == sql.type.POSTGRES and "UUID" or "TEXT"
+            local _, table_err = d:execute("CREATE TABLE " .. blocker
+                .. " (thread_id " .. id_type .. " REFERENCES kickside_thread(id) ON DELETE RESTRICT)")
+            test.is_nil(table_err, tostring(table_err))
+            local _, blocker_err = d:execute("INSERT INTO " .. blocker .. " (thread_id) VALUES ($1)", { id })
+            test.is_nil(blocker_err, tostring(blocker_err))
+
+            local result, err = teardown.purge_thread(d, id, nil)
+            local _, unblocked_err = d:execute("DROP TABLE " .. blocker)
+            test.is_nil(unblocked_err, tostring(unblocked_err))
+            test.is_nil(result)
+            test.not_nil(err)
+            test.is_true(tostring(err):find("thread final delete failed", 1, true) ~= nil, tostring(err))
+            test.eq(count(d, "kickside_thread", "id", id), 1)
+            test.eq(count(d, "kickside_event", "thread_id", id), 1)
+            test.eq(count(d, "kickside_job", "id", job), 1, "Jobs deletion must roll back with Core")
+            test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 0)
+            test.eq(count(d, "kickside_projection", "thread_id", id), 1)
+            test.eq(count(d, "kickside_event", "thread_id", subscriber), 0)
+            test.eq(count(d, "kickside_wake_fanout", "key", wake_key), 0)
+
+            local purged, purge_err = teardown.purge_thread(d, id, nil)
+            test.is_nil(purge_err, tostring(purge_err))
+            test.is_true(purged.purged)
+            test.eq(purged.discarded.kickside_job, 1)
+            test.eq(purged.discarded.kickside_event, 1)
+            test.eq(count(d, "kickside_event", "thread_id", subscriber), 1)
+            test.eq(count(d, "kickside_wake_fanout", "key", wake_key), 1)
+            local retained = assert(d:query("SELECT thread_id,wake_generation FROM kickside_job WHERE id=$1",
+                { subscriber_job }))
+            test.is_nil(retained[1].thread_id)
+            test.eq(tonumber(retained[1].wake_generation), 1)
+            d:release()
+        end)
+
+        test.it("uses a Jobs receipt committed before the shared page transaction", function()
+            local d = db()
+            local id, job = seed_purge_thread(d), uuid.v7()
+            local _, seed_err = d:execute([[INSERT INTO kickside_job
+                (id,thread_id,job_type,job_identity,owner_kind,owner_id,status)
+                VALUES ($1,$2,'gc',$3,'thread',$4,'pending')]], { job, id, "gc:" .. job, id })
+            test.is_nil(seed_err, tostring(seed_err))
+            test.is_nil(fence.mark(d, id))
+            local receipt, receipt_err = jobs.cleanup_thread_page(id, 0)
+            test.is_nil(receipt_err, tostring(receipt_err))
+            test.eq(receipt.discarded.kickside_job, 1)
+
+            local result, err = teardown.purge_thread(d, id, nil)
+            test.is_nil(err, tostring(err))
+            test.is_true(result.purged)
+            test.eq(result.discarded.kickside_job, 1)
+            local rows = assert(d:query([[SELECT acknowledged_at FROM kickside_job_thread_cleanup_receipt
+                WHERE thread_id=$1 AND page_seq=0]], { id }))
+            test.not_nil(rows[1].acknowledged_at)
+            local replay = assert(jobs.cleanup_thread_page(id, 0))
+            test.eq(replay.discarded.kickside_job, 1)
+            d:release()
+        end)
+
         local function intercept(d: any, query: any): any
             return {
                 query = function(_self: any, statement: string, args: any): (any?, any?)

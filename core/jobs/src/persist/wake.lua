@@ -11,6 +11,7 @@ local wake = {}
 type DialectTransaction = { db_type: (any) -> (string?, error?) }
 type WakePlan = { key: string, generation: number, candidates: { table }, extras: { string },
     limit: integer, deferred: boolean?, continuation_id: string?, acknowledged: boolean? }
+type JobMutation = { ids: { string }, apply: ({ [string]: table }) -> error? }
 
 -- The published demand of one wake key (CONTRACTS jobs.wake_tx).
 type WakeResult = { demand_generation: integer, touched_count: integer, continuation_id: string? }
@@ -252,7 +253,8 @@ end
 -- with eligibility rechecked per row, then acknowledge each key or queue its
 -- continuation. Lock-only extras (a completing job, a continuation row) take
 -- no update. Returns each key's published demand.
-local function apply_plans(tx, plans: { WakePlan }, dbtype: string, completion_job_id: string?): ({ [string]: WakeResult }?, error?)
+local function apply_plans(tx, plans: { WakePlan }, dbtype: string, completion_job_id: string?,
+        mutation: JobMutation?): ({ [string]: WakeResult }?, error?)
     local now = clock.now(dbtype)
     local ts = timestamp_param(dbtype)
     local all_ids: { string } = {}
@@ -269,9 +271,16 @@ local function apply_plans(tx, plans: { WakePlan }, dbtype: string, completion_j
     end
     -- With no fan-out job locks, completion takes its sole job lock itself.
     if completion_job_id and #all_ids > 0 then all_ids[#all_ids + 1] = completion_job_id end
+    if mutation then
+        for _, id in ipairs(mutation.ids) do all_ids[#all_ids + 1] = id end
+    end
     local ordered = sorted_unique(all_ids)
     local retained, lock_err = prelock_sorted(tx, ordered, dbtype)
     if lock_err then return nil, lock_err end
+    if mutation then
+        local err = mutation.apply(retained)
+        if err then return nil, err end
+    end
     for _, id in ipairs(ordered) do
         local plan = owner[id]
         local snapshot = retained[id]
@@ -327,8 +336,11 @@ end
 -- rows in ascending key order, then all target job rows in ascending id
 -- order. Returns each key's published demand. Multi-thread append collects its keys here instead of waking each
 -- thread inline, which would interleave wake and job locks per thread.
-function wake.wake_multi(tx, keys: { string }, dbtype: string?, completion_job_id: string?): ({ [string]: WakeResult }?, error?)
-    if #keys == 1 then
+-- An accompanying mutation uses the same locked snapshots and updates them
+-- before wake applies demand to the remaining jobs.
+function wake.wake_multi(tx, keys: { string }, dbtype: string?, completion_job_id: string?,
+        mutation: JobMutation?): ({ [string]: WakeResult }?, error?)
+    if #keys == 1 and mutation == nil then
         local result, err = wake.wake_tx(tx, keys[1], dbtype, completion_job_id)
         if err then return nil, err end
         return { [keys[1]] = result }, nil
@@ -350,7 +362,7 @@ function wake.wake_multi(tx, keys: { string }, dbtype: string?, completion_job_i
         if prepare_err then return nil, prepare_err end
         plans[#plans + 1] = plan :: WakePlan
     end
-    return apply_plans(tx, plans, dialect, completion_job_id)
+    return apply_plans(tx, plans, dialect, completion_job_id, mutation)
 end
 
 function wake.continue_job(db: sql.DB, dbtype: string, job: table)
