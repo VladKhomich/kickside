@@ -593,6 +593,39 @@ local function define_tests()
             repaired:release()
         end)
 
+        test.it("convergence refuses a changed schedule on the primary thread", function()
+            local owner = security.new_actor("schedule-owner-" .. uuid.v4(), {security_groups = {}})
+            local threads = (contract.get("kickside.core:threads") :: any):with_actor(owner):with_scope(scope()):open()
+            local thread = assert(threads:create({impl_id = "app:converge_test_decl"}))
+            local thread_id = thread.thread_id
+            local d = db()
+            local before = assert(d:query("SELECT id, generation FROM kickside_projection_cursor WHERE thread_id=$1", {thread_id}))[1]
+            assert(d:execute([[UPDATE kickside_projection_cursor SET debounce_idle_ms=15,debounce_max_ms=30
+                WHERE id=$1]], {before.id}))
+            assert(d:release())
+
+            local summary, err = provision.converge(
+                security.new_actor("system:lifecycle", {system = true, security_groups = {}}), scope())
+            test.is_nil(err)
+            local refusal
+            for _, skipped in ipairs(summary.skipped) do
+                if skipped.component_id == thread_id then refusal = skipped.error end
+            end
+
+            d = db()
+            local after = assert(d:query([[SELECT generation,debounce_idle_ms,debounce_max_ms
+                FROM kickside_projection_cursor WHERE id=$1]], {before.id}))[1]
+            assert(d:release())
+            assert(threads:register_projection({thread_id = thread_id, kind = "test.converge",
+                worker_ref = "func://app:test_count_worker"}))
+            test.not_nil(refusal)
+            test.eq(refusal.details.code, "projection_declaration_requires_registration")
+            test.eq(refusal.details.projection_kind, "test.converge")
+            test.eq(after.generation, before.generation)
+            test.eq(tonumber(after.debounce_idle_ms), 15)
+            test.eq(tonumber(after.debounce_max_ms), 30)
+        end)
+
         test.it("converge registers a declared projection missing from a live thread", function()
             local owner_id = "cv-proj-" .. uuid.v4():sub(1, 8)
             local owner = security.new_actor(owner_id, { security_groups = {} })
@@ -777,11 +810,12 @@ local function define_tests()
             test.is_nil(provision_err)
 
             local d = db()
-            local _, update_err = d:execute([[
-                UPDATE kickside_projection
-                   SET body = $1
-                 WHERE thread_id = $2 AND kind = $3 AND projection_key = 'default'
-            ]], { '{"count":7}', cid, "test.count" })
+            local stored = assert(d:query([[SELECT id,body FROM kickside_projection
+                WHERE thread_id=$1 AND kind='test.count' AND projection_key='default']], {cid}))[1]
+            local body = assert(json.decode(stored.body))
+            body.count = 7
+            local body_json = assert(json.encode(body))
+            local _, update_err = d:execute("UPDATE kickside_projection SET body=$1 WHERE id=$2", {body_json, stored.id})
             d:release()
             test.is_nil(update_err)
 

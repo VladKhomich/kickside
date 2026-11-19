@@ -38,6 +38,7 @@ interface Props {
   viewArtifact: (artifact: UploadArtifact) => void
   gotoPartsPage: (page: number) => void
   retrying: boolean
+  requestErrors?: string[]
   retryUpload: (upload: Upload) => Promise<void>
 }
 
@@ -124,6 +125,8 @@ const emit = defineEmits<{ (event: 'update:partsExpanded', value: boolean): void
           </template>
         </Button>
       </header>
+
+      <div v-for="(error, index) in requestErrors" :key="index" class="kx-pv-fail" role="alert"><span>{{ error }}</span></div>
 
       <!-- A failed upload keeps its original bytes, so the drawer still opens: state
            the failure here instead of showing an empty Markdown view. -->

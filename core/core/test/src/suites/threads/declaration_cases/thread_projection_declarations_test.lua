@@ -138,7 +138,7 @@ local function define_tests()
             test.eq(event_type_count(thread_id, "kickside.test.threads:trigger"), 0)
         end)
 
-        test.it("re-registering a declared projection preserves the read-model and never writes private_context", function()
+        test.it("requires explicit registration to change a primary-thread projection and preserves its read-model", function()
             local thread_id = uuid.v4()
 
             -- First emit declares + first-touches the test.count projection.
@@ -175,16 +175,34 @@ local function define_tests()
                 {assert(json.encode(folded)), thread_id}))
             assert(stale_db:release())
 
-            -- Re-emit with the impl_id: emit converges declared projections, which
-            -- re-registers test.count over a thread that already has folded history.
-            local second, second_err = as_owner(EMIT, {
+            local ensured, ensure_err = as_owner("ensure_thread", {
+                component_id = thread_id, impl_id = "app:provision_test_decl",
+            })
+            test.is_nil(ensured)
+            test.eq(ensure_err and ensure_err:details().code, "projection_declaration_requires_registration")
+
+            local event = {
                 component_id = thread_id,
                 impl_id = "app:provision_test_decl",
                 thread_class = "test_ws",
                 type = "app:threads_ws_trigger",
                 body = { upload_id = "u-rr-2-" .. suffix },
                 external = { external_source = "actor:" .. owner, external_id = "rr-2-" .. suffix, external_version = "v1" },
-            })
+            }
+            local refused, refuse_err = as_owner(EMIT, event)
+            test.is_nil(refused)
+            test.eq(refuse_err and refuse_err:details().code, "projection_declaration_requires_registration")
+            local still_folded = projection_body_of(thread_id, "test.count")
+            test.eq(still_folded.events.input[1].type, "older.event")
+            test.eq(event_type_count(thread_id, "app:threads_ws_trigger"), 1)
+
+            local actor = security.new_actor(owner, {security_groups = {}})
+            local registered, register_err = funcs.new():with_actor(actor):with_scope(test_scope())
+                :call("app:test_register_projection", {thread_id = thread_id,
+                    body = {kind = "test.count", worker_ref = "func://" .. TEST_WORKER}})
+            test.is_nil(register_err)
+            test.eq(registered.status, 201)
+            local second, second_err = as_owner(EMIT, event)
             test.is_nil(second_err)
             test.eq(second.inserted, 1)
 

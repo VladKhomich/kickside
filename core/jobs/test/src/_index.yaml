@@ -4247,6 +4247,24 @@ entries:
     foreign_keys: true
     file: ":memory:"
 
+  - name: retention_by_type_test
+    kind: function.lua
+    meta: {type: test, suite: jobs_retention_by_type, timeout: 300s}
+    source: file://retention_by_type_test.lua
+    method: run
+    modules: [sql, uuid, time]
+    imports:
+      test: wippy.test:test
+      config: kickside.core.jobs:config
+      retention: kickside.core.jobs.persist:retention
+      retention_schedule: kickside.core.jobs.service:retention_schedule
+      job_fixture: app:job_fixture
+
+  - name: private_queue_retention_by_type
+    kind: db.sql.sqlite
+    foreign_keys: true
+    file: ":memory:"
+
   - name: retention_order_migration
     kind: library.lua
     source: file://retention_order_migration.lua
