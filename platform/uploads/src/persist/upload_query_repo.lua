@@ -199,6 +199,7 @@ function upload_query_repo.list_checkpoints(limit: integer, cursor: string?, db:
           AND ((u.processing_intent_state = 'acknowledged' AND u.processing_job_id IS NOT NULL)
             OR (]] .. INTENTLESS_SQL .. "))" .. after .. " ORDER BY u.uuid LIMIT " .. limit_arg
     local statement = publication .. "kickside_uploads u INDEXED BY idx_upload_checkpoint_candidates" .. page
+    local rows, err
     if dbtype == sql.type.POSTGRES then
         -- Page the partial index before fetching the wide rows or checking their events.
         -- The lateral limit keeps hydration to one primary-key lookup per candidate.
@@ -206,8 +207,25 @@ function upload_query_repo.list_checkpoints(limit: integer, cursor: string?, db:
             .. publication .. [[candidates c
             CROSS JOIN LATERAL (SELECT * FROM kickside_uploads WHERE uuid = c.uuid LIMIT 1) u
             ORDER BY c.uuid]]
+        local tx, begin_err = db:begin()
+        if begin_err then return nil, begin_err end
+        if not tx then
+            return nil, errors.new({kind = errors.INTERNAL, message = "Uploads checkpoint read transaction is missing"})
+        end
+        -- Skewed estimates can sort a full sequential or bitmap scan before the
+        -- limit. Keep the ordered seek and apply planner settings only to this read.
+        local _, configure_err = tx:execute(
+            "SET TRANSACTION READ ONLY; SET LOCAL enable_seqscan=off; SET LOCAL enable_bitmapscan=off")
+        if configure_err then
+            tx:rollback()
+            return nil, configure_err
+        end
+        rows, err = tx:query(statement, params)
+        local _, rollback_err = tx:rollback()
+        err = err or rollback_err
+    else
+        rows, err = db:query(statement, params)
     end
-    local rows, err = db:query(statement, params)
     if err then return nil, err end
     local checkpoints = {}
     for _, row in ipairs(rows) do
