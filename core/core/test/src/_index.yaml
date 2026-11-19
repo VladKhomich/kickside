@@ -739,6 +739,8 @@ entries:
       projections:
         - kind: test.reap
           worker_ref: "func://app:test_count_worker"
+      retention:
+        event_days: 7
       events:
         input:
           - type: app:threads_sys_reap

@@ -103,8 +103,8 @@ end
 -- is a check-then-act race -- two concurrent first-touch upserts for the same
 -- thread (e.g. provision.materialize's own call racing the create path's) both
 -- see "no row" and both insert, and the loser hits the unique constraint. The
--- database resolves the race atomically instead. Returns the normalized policy
--- that was persisted. A NULL window inherits the resolved Core policy.
+-- database resolves the race atomically and updates only changed policy values.
+-- Returns the normalized policy. A NULL window inherits the resolved Core policy.
 function repo.upsert(db: sql.DB, thread_id: string, input: table?): (Policy?, error?)
     if type(thread_id) ~= "string" or thread_id == "" then
         return nil, (errors.new({ message = "thread_id is required", kind = errors.INVALID }) :: error)
@@ -137,7 +137,10 @@ function repo.upsert(db: sql.DB, thread_id: string, input: table?): (Policy?, er
         .. " event_hot_retention_days=excluded.event_hot_retention_days,"
         .. " archive_mode=excluded.archive_mode,"
         .. " enabled=excluded.enabled,"
-        .. " updated_at=excluded.updated_at",
+        .. " updated_at=excluded.updated_at"
+        .. " WHERE " .. consts.POLICY_TABLE .. ".event_hot_retention_days IS DISTINCT FROM excluded.event_hot_retention_days"
+        .. " OR " .. consts.POLICY_TABLE .. ".archive_mode IS DISTINCT FROM excluded.archive_mode"
+        .. " OR " .. consts.POLICY_TABLE .. ".enabled IS DISTINCT FROM excluded.enabled",
         {
             uuid.v7(), thread_id, stored_window, p.archive_mode,
             enabled_value, now, now,

@@ -837,6 +837,75 @@ local function define_tests()
             d2:release()
         end)
 
+        test.it("ensure_system writes only drifted grants and retention policies", function()
+            local cid = autoinit.component_id(autoinit.SYSTEM_SCOPE_KEY, "test_sys")
+            local sys_actor = security.new_actor("system:lifecycle", { security_groups = {} })
+            assert(provision.ensure_system(sys_actor, scope()))
+
+            local d = db()
+            local postgres = tostring(d:type()) == sql.type.POSTGRES
+            local targets = {
+                { table_name = "kickside_component_access", owner_column = "component_id", trigger = "test_system_grant_update" },
+                { table_name = "kickside_retention_policy", owner_column = "thread_id", trigger = "test_system_retention_update" },
+            }
+            local function execute(statement: string, args: {any}?)
+                local _, err = d:execute(statement, args)
+                if err then error(tostring(err)) end
+            end
+            local function updates(target: string): number
+                local rows = assert(d:query("SELECT COUNT(*) AS n FROM test_system_provision_updates WHERE target=$1", { target }))
+                return assert(tonumber(rows[1].n))
+            end
+
+            local ok, failure = pcall(function()
+                execute("CREATE TABLE test_system_provision_updates (target TEXT NOT NULL)")
+                if postgres then
+                    execute([[CREATE FUNCTION test_system_provision_update() RETURNS trigger LANGUAGE plpgsql AS $$
+                        BEGIN
+                            INSERT INTO test_system_provision_updates (target) VALUES (TG_TABLE_NAME);
+                            RETURN NEW;
+                        END; $$]])
+                end
+                for _, target in ipairs(targets) do
+                    local action = postgres and " EXECUTE FUNCTION test_system_provision_update()"
+                        or (" BEGIN INSERT INTO test_system_provision_updates (target) VALUES ('" .. target.table_name .. "'); END")
+                    execute("CREATE TRIGGER " .. target.trigger .. " AFTER UPDATE ON " .. target.table_name
+                        .. " FOR EACH ROW WHEN (NEW." .. target.owner_column .. " = '" .. cid .. "')" .. action)
+                end
+
+                assert(provision.ensure_system(sys_actor, scope()))
+                local converged_grants = updates("kickside_component_access")
+                local converged_policies = updates("kickside_retention_policy")
+
+                local grant_where = [[ WHERE component_id=$1 AND source_component_id=$2
+                    AND subject_type='group' AND subject_id='app.security:admin']]
+                execute("UPDATE kickside_component_access SET access_mask=0" .. grant_where, { cid, cid })
+                execute("UPDATE kickside_retention_policy SET event_hot_retention_days=NULL WHERE thread_id=$1", { cid })
+                execute("DELETE FROM test_system_provision_updates")
+
+                assert(provision.ensure_system(sys_actor, scope()))
+                local repaired_grants = updates("kickside_component_access")
+                local repaired_policies = updates("kickside_retention_policy")
+                local grant = assert(d:query("SELECT access_mask FROM kickside_component_access" .. grant_where, { cid, cid }))
+                local policy = assert(d:query(
+                    "SELECT event_hot_retention_days FROM kickside_retention_policy WHERE thread_id=$1", { cid }))
+
+                test.eq(converged_grants + converged_policies, 0,
+                    "converged updates (grants: " .. converged_grants .. ", retention: " .. converged_policies .. ")")
+                test.eq(repaired_grants, 1, "drifted grant updates")
+                test.eq(repaired_policies, 1, "drifted retention updates")
+                test.eq(tonumber(grant[1].access_mask), 1)
+                test.eq(tonumber(policy[1].event_hot_retention_days), 7)
+            end)
+            for _, target in ipairs(targets) do
+                execute("DROP TRIGGER IF EXISTS " .. target.trigger .. (postgres and " ON " .. target.table_name or ""))
+            end
+            if postgres then execute("DROP FUNCTION IF EXISTS test_system_provision_update()") end
+            execute("DROP TABLE IF EXISTS test_system_provision_updates")
+            d:release()
+            if not ok then error(failure) end
+        end)
+
         test.it("exposes committed projection bodies without history or cursor controls", function()
             local cid = autoinit.component_id(user_id, "test_ws")
             local _, provision_err = provision.ensure_user(actor(), scope(), user_id)
