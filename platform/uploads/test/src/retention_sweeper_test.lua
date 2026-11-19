@@ -346,6 +346,13 @@ return test.run_cases(function()
                     return rows, err
                 end,
             }
+            if postgres then
+                local _, err, next_cursor = upload_query_repo.list_checkpoints(batch, nil, probe)
+                test.is_nil(err, tostring(err))
+                test.not_nil(next_cursor)
+                test.eq(examined, batch)
+                examined = 0
+            end
             for page = 1, 21 do
                 local rows, err, next_cursor = upload_query_repo.list_checkpoints(batch, cursor, probe)
                 test.is_nil(err, tostring(err))
