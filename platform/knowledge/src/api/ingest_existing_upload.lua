@@ -58,6 +58,21 @@ local function handler()
         return
     end
 
+    local reingest_key
+    if body.reingest ~= nil and type(body.reingest) ~= "boolean" then
+        res:set_status(http.STATUS.BAD_REQUEST)
+        res:write_json({ success = false, error = "reingest must be a boolean" })
+        return
+    end
+    if body.reingest == true then
+        reingest_key = req:header("Idempotency-Key")
+        if type(reingest_key) ~= "string" or #reingest_key == 0 or #reingest_key > 128 or reingest_key:find("[%c%s]") then
+            res:set_status(http.STATUS.BAD_REQUEST)
+            res:write_json({ success = false, error = "Re-ingest requires an Idempotency-Key of up to 128 bytes" })
+            return
+        end
+    end
+
     local ids: { string } = {}
     if type(body.upload_ids) == "table" then
         for _, v in ipairs(body.upload_ids :: { any }) do
@@ -93,7 +108,7 @@ local function handler()
                 size = rec.size,
                 metadata = rec.metadata,
                 trace_context = request_trace,
-            })
+            }, reingest_key)
             if ingest_err or not result then
                 table.insert(results, { upload_id = upload_id, success = false, error = tostring(ingest_err) })
             else
@@ -106,13 +121,17 @@ local function handler()
                     projection_id = result.projection_id,
                     run_id = result.run_id,
                     trace_context = result.trace_context,
+                    event_id = result.event_id,
+                    external_version = reingest_key and result.external_version or nil,
+                    duplicate = result.duplicate,
                 })
             end
         end
     end
 
     res:set_status(http.STATUS.OK)
-    res:write_json({ success = queued > 0, queued = queued, total = #ids, results = results })
+    res:write_json({ success = queued > 0, queued = queued, total = #ids, results = results,
+        reingest = reingest_key ~= nil and true or nil })
 end
 
 return { handler = handler }

@@ -1,5 +1,6 @@
 -- Canonical KB injection thread API.
 local base = require("thread_ingest_base")
+local reingest = require("thread_ingest_reingest")
 local util = require("util")
 local status = require("thread_ingest_status")
 local uuid = require("uuid")
@@ -304,7 +305,7 @@ function M.control(args)
     return result, nil
 end
 
-function M.append_content(kb_id, params)
+function M.append_content(kb_id, params, reingest_key)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end
     params = type(params) == "table" and params or {}
@@ -386,11 +387,16 @@ function M.append_content(kb_id, params)
         },
         trace_context = event_trace,
     }
-    local appended, append_err = emit_event(exec, kb_id, event)
+    local appended, append_err
+    if reingest_key then
+        appended, append_err = reingest.append(exec, kb_id, event, reingest_key)
+    else
+        appended, append_err = emit_event(exec, kb_id, event)
+    end
     -- Preserve every previously accepted inline event. Core owns the row limit:
     -- only its typed, rolled-back size refusal permits an artifact-only retry.
     -- Infrastructure/access errors must never change the stored representation.
-    if has_text and append_err and errors.is(append_err, errors.INVALID)
+    if not reingest_key and has_text and append_err and errors.is(append_err, errors.INVALID)
         and trim(source_ref.upload_id) ~= "" and trim(source_ref.artifact_id) ~= "" then
         local details = (append_err :: error):details()
         if type(details) == "table" and details.reason == "row_too_large"

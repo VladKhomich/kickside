@@ -238,6 +238,7 @@ entries:
     imports:
       text_trim: kickside.contract:text_trim
       engines: kickside.knowledge:engines
+      thread_ingest: kickside.knowledge.injection:thread_ingest
       component: kickside.component:component
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo
