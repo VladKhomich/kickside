@@ -3,10 +3,12 @@
 local sql = require("sql")
 local json = require("json")
 local uuid = require("uuid")
+local time = require("time")
 local clock = require("clock")
 local job_types = require("job_types")
 local cfg = require("config")
 local committed_policy = require("runtime_policy")
+local execution_policy = require("execution_policy")
 local trace_context = require("trace_context")
 local thread_fence = require("thread_fence")
 local row_bytes = require("row_bytes")
@@ -100,6 +102,7 @@ type EnqueueParams = {
     queue_tier: string?,
     priority: integer?,
     max_attempts: integer?,
+    progress_timeout_ms: integer?,
     idempotency_key: string?,
     scheduled_at: string?,
     trace_context: table?,
@@ -196,7 +199,9 @@ local function matching_existing(existing: table, params: EnqueueParams, payload
         or not same_value(immutable_payload(existing_payload :: table), immutable_payload(payload)) then
         return false, nil
     end
-    return true, nil
+    local progress_timeout_ms, policy_err = execution_policy.progress_timeout(existing)
+    if policy_err then return false, policy_err end
+    return progress_timeout_ms == params.progress_timeout_ms, nil
 end
 
 -- An active slot identity converges on the requested wake key in place, so its
@@ -268,7 +273,7 @@ end
 
 local function active_identity(exec: Executor, dbtype: string, identity: string, lock: boolean?): (table[]?, error?)
     local query = sql.builder.select("id", "status", "job_type", "worker_ref", "payload", "owner_kind", "owner_id",
-        "slot", "wake_key", "concurrency_key", "capacity_group")
+        "slot", "wake_key", "concurrency_key", "capacity_group", "lease_policy")
         :from("kickside_job"):where(sql.builder.eq({job_identity = identity}))
         :where("status IN ('pending','running')"):limit(1)
     if lock and dbtype == sql.type.POSTGRES then query = query:suffix("FOR UPDATE") end
@@ -293,6 +298,17 @@ local function enqueue_job_tx(db_or_tx: Executor, dbtype: string, params: Enqueu
     if type(policy) ~= "table" then return nil, response_error("policy") end
     if type(params.job_type) ~= "string" or params.job_type == "" then
         return nil, (errors.new({ message = "job_type is required", kind = errors.INVALID }) :: error)
+    end
+    local progress_timeout = params.progress_timeout_ms
+    if progress_timeout ~= nil then
+        local duration, duration_err
+        if type(progress_timeout) == "number" and math.tointeger(progress_timeout) and progress_timeout > 0 then
+            duration, duration_err = time.parse_duration(string.format("%dms", progress_timeout))
+        end
+        if duration_err or not duration then
+            return nil, errors.new({message = "progress_timeout_ms must be a positive, representable integer duration",
+                kind = errors.INVALID, retryable = false})
+        end
     end
     local payload, trace_payload_err = payload_with_trace(params.payload, params.trace_context)
     if trace_payload_err then
@@ -373,6 +389,11 @@ local function enqueue_job_tx(db_or_tx: Executor, dbtype: string, params: Enqueu
     }
     if params.idempotency_key ~= nil and params.idempotency_key ~= "" then
         row.idempotency_key = params.idempotency_key
+    end
+    if progress_timeout ~= nil then
+        local captured, capture_err = json.encode(cfg.capture(policy, progress_timeout))
+        if capture_err then return nil, capture_err end
+        row.lease_policy = captured
     end
     local size_err = row_bytes.check_job_insert(db_or_tx, dbtype, row, (policy :: any).max_row_bytes,
         owner.kind .. ":" .. owner.id, "enqueue_job")

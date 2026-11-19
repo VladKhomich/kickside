@@ -16,6 +16,7 @@ local uuid = require("uuid")
 local lifecycle = require("lifecycle")
 local cfg = require("config")
 local committed_policy = require("runtime_policy")
+local execution_policy = require("execution_policy")
 local wake = require("wake")
 
 local fixture = {}
@@ -276,12 +277,17 @@ function fixture.lease_own(db: sql.DB, dbtype: string, id: string?): (table?, er
     if not id or id == "" then return nil, failure("job fixture requires a job id") end
     local policy, policy_err = committed_policy.resolve()
     if policy_err then return nil, policy_err end
+    local previous, read_err = db:query("SELECT lease_policy FROM kickside_job WHERE id=$1", {id})
+    if read_err then return nil, read_err end
+    local progress_timeout, progress_err = execution_policy.progress_timeout(previous[1] or {})
+    if progress_err then return nil, progress_err end
+    local snapshot = cfg.capture(policy, progress_timeout)
     local now = lifecycle.now_string(dbtype)
     local due = dbtype == sql.type.POSTGRES and "COALESCE(scheduled_at, CAST(? AS TIMESTAMPTZ))"
         or "COALESCE(scheduled_at, ?)"
     local result, update_err = sql.builder.update("kickside_job")
         :set("status", "running")
-        :set("lease_policy", assert(json.encode(cfg.capture(policy))))
+        :set("lease_policy", assert(json.encode(snapshot)))
         :set("attempts", sql.builder.expr("attempts + 1"))
         :set("execution_seq", sql.builder.expr("execution_seq + 1"))
         :set("lease_token", uuid.v7())
@@ -298,7 +304,7 @@ function fixture.lease_own(db: sql.DB, dbtype: string, id: string?): (table?, er
         :where(sql.builder.eq({ id = id })):run_with(db):query()
     if read_err then return nil, failure("leased job " .. id .. " unreadable", read_err) end
     if not rows or #rows ~= 1 then return nil, failure("leased job " .. id .. " is missing") end
-    rows[1].lease_policy = cfg.capture(policy)
+    rows[1].lease_policy = snapshot
     return rows[1] :: table, nil
 end
 
@@ -310,7 +316,8 @@ function fixture.enqueue_leased(db: sql.DB, dbtype: string, params: lifecycle.En
         job_type = params.job_type, thread_id = params.thread_id,
         worker_ref = params.worker_ref, concurrency_key = params.concurrency_key,
         payload = params.payload, queue_tier = params.queue_tier, priority = params.priority,
-        max_attempts = params.max_attempts, idempotency_key = params.idempotency_key,
+        max_attempts = params.max_attempts, progress_timeout_ms = params.progress_timeout_ms,
+        idempotency_key = params.idempotency_key,
         scheduled_at = params.scheduled_at, trace_context = params.trace_context,
         job_identity = params.job_identity, slot = params.slot, wake_key = params.wake_key,
     }

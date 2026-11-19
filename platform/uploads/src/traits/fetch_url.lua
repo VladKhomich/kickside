@@ -165,11 +165,8 @@ local function completed_extras(upload_id, content_type)
             "artifact_read_failed", "primary artifact is unreadable")
     end
     if primary and type(primary.content) == "string" then
-        local mime = primary.mime_type or content_type or ""
-        if mime:find("text", 1, true) or mime:find("json", 1, true) or mime == "" then
-            result.markdown = primary.content
-            result.content_type = mime
-        end
+        result.markdown = primary.content
+        result.content_type = primary.mime_type or content_type
     end
 
     local artifacts, artifacts_err = M.deps.artifacts.list_artifacts(upload_id)

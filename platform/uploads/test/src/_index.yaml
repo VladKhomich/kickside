@@ -80,7 +80,9 @@ entries:
       upload_response: app:signed_upload_response
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_mime: kickside.uploads:uploads_mime
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
+      artifact_schema: kickside.uploads.persist:artifact_schema
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
       upload_tokens: kickside.uploads.persist:upload_tokens
       original_read: kickside.uploads:original_read
@@ -221,6 +223,7 @@ entries:
     imports:
       test: wippy.test:test
       upload_type: kickside.uploads:upload_type
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: intent_bootstrap_test
     kind: function.lua
@@ -956,6 +959,7 @@ entries:
     imports:
       uploads_resources: app:signed_upload_resources
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: signed_upload_list_fixture
     kind: library.lua
@@ -1039,6 +1043,7 @@ entries:
       registry: app:navigation_registry_fixture
       uploads_resources: app:navigation_api_fixture
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: navigation_list_fixture
     kind: library.lua

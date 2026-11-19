@@ -20,11 +20,12 @@ function M.get(storage_id, db_id, staging_id, cloud_id, query_db)
     if storage_id == "app.upload_errors:legacy_storage" then
         return nil, "upload test legacy storage failure"
     end
-    if storage_id == "app.upload_errors:unreadable_storage" then
-        return {readfile = function(_, path) return nil, failure("read", path) end}, nil
-    end
-    if storage_id == "app.upload_errors:invalid_storage" then
-        return {readfile = function(_, path) return nil, failure("read", path, errors.INVALID) end}, nil
+    if storage_id == "app.upload_errors:unreadable_storage" or storage_id == "app.upload_errors:invalid_storage" then
+        local function fail_read(_, path)
+            local kind = storage_id == "app.upload_errors:invalid_storage" and errors.INVALID or nil
+            return nil, failure("read", path, kind)
+        end
+        return {readfile = fail_read, open = fail_read}, nil
     end
     return adapter.get(storage_id, db_id, staging_id, cloud_id, query_db)
 end

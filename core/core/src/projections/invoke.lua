@@ -57,10 +57,11 @@ end
 
 local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?, error?)
     local rows, err = db:query([[SELECT c.id,c.projection_id,c.thread_id,c.cursor_key,c.last_seq,
-        c.generation,c.status,c.job_id,c.last_error,c.debounce_idle_ms,c.debounce_max_ms,
-        c.actor_id,c.execution_identity_json,p.kind,p.body,t.event_count
+        c.generation,c.status,c.job_id,c.last_error,c.debounce_idle_ms,c.debounce_max_ms,c.continuation,
+        c.actor_id,c.execution_identity_json,p.kind,p.projection_key,p.body,
+        t.component_id,t.thread_class,t.event_count,t.deleting_at
         FROM kickside_projection_cursor c
-        JOIN kickside_projection p ON p.id=c.projection_id
+        JOIN kickside_projection p ON p.id=c.projection_id AND p.thread_id=c.thread_id
         JOIN kickside_thread t ON t.id=c.thread_id
         WHERE c.id=$1]], { cursor_id })
     if err then return nil, errors.wrap(err, "projection snapshot failed") end
@@ -156,7 +157,46 @@ local function defer(db: sql.DB, job: table, due: string): (table?, error?)
     return { self_completed = true, completion = done, deferred_until = due }, nil
 end
 
-local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?)
+local function run_checkpointed(binding: table, input: table, host: string, db_id: string, job: table,
+        current: table, prefetched_last: number): (table?, error?, table?)
+    local first = tonumber(current.last_seq)
+    if first == nil then return nil, response_error("cursor.position"), current end
+    local first_continuation = current.continuation
+    local assigned_cursor = {}
+    for key, value in pairs(current) do assigned_cursor[key] = value end
+    input.checkpoint = {
+        job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq},
+        cursor = assigned_cursor,
+        prefetched_last = prefetched_last,
+    }
+    local result, run_err = worker.run_proc_supervised(binding, input, {proc_host = host})
+    if job_types.is_lease_lost_error(run_err) then return nil, run_err end
+
+    -- This process may have published several mutations before returning an
+    -- error. Read the committed position back before reporting a failure or
+    -- settling the slot. A returned range cannot change cursor progress.
+    local db, open_err = sql.get(db_id)
+    if open_err then return nil, open_err end
+    if not db then return nil, response_error("checkpoint.database") end
+    local latest, row_err = snapshot(db, tostring(current.id), tostring(job.id))
+    local read_err = release(db, row_err)
+    if read_err then return nil, read_err end
+    if not latest then return nil, response_error("checkpoint.snapshot") end
+    if latest.status ~= "active" or latest.generation ~= current.generation then
+        return apply.advance(db_id, job, current, first, {last_seq = first})
+    end
+    if run_err then return nil, run_err, latest end
+    if type(result) ~= "table" or result.checkpointed ~= true then
+        return nil, response_error("checkpoint.worker_receipt"), latest
+    end
+    if tonumber(latest.last_seq) == first and latest.continuation == first_continuation then
+        return nil, errors.new({kind = errors.INVALID, retryable = false,
+            message = "checkpoint worker returned without advancing the position"}), latest
+    end
+    return apply.finish_checkpointed(db_id, job, latest, first)
+end
+
+local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?, table?)
     local db: sql.DB? = connection
     local cursor_id = tostring(current.id)
     local head = tonumber(current.event_count)
@@ -188,22 +228,52 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         if type(parsed) ~= "table" then return nil, release(db, response_error("worker.reference")) end
         local system_identity = current.actor_id == nil and current.execution_identity_json == nil
         local binding, binding_err = worker.validate(parsed, system_identity)
-        if binding_err then return nil, release(db, binding_err) end
+        local needs_declaration = binding_err and worker.requires_checkpoint_declaration(binding_err)
+        if binding_err and not needs_declaration then return nil, release(db, binding_err) end
+        if needs_declaration then
+            binding = parsed
+            binding.checkpointed_apply = true
+        end
         if type(binding) ~= "table" then return nil, release(db, response_error("worker.binding")) end
         binding.actor_id = current.actor_id
         binding.actor_context = current.execution_identity_json
         binding.system_identity = system_identity
-        local post_err: error? = nil
-        post_commit, post_err = worker.post_commit_binding(binding)
-        if post_err then return nil, release(db, post_err) end
-        local types = event_types(body)
-        local events, events_err = worker.query_event_rows(db, tostring(current.thread_id), last + 1, target, page_size, types)
+        local types: {string}? = nil
+        local from = last + 1
+        local pinned: table? = nil
+        if binding.checkpointed_apply then
+            if current.deleting_at ~= nil then
+                return nil, release(db, job_types.lease_lost_error("projection source thread is deleting"))
+            end
+            local read_err
+            pinned, read_err = apply.continuation(current)
+            if read_err then return nil, release(db, read_err), current end
+            -- A committed partial step already selected its event. Explicit
+            -- backfills below that sequence follow the forward-only cursor.
+            if pinned then from = pinned.seq end
+            target = head
+        else
+            local post_err: error? = nil
+            post_commit, post_err = worker.post_commit_binding(binding)
+            if post_err then return nil, release(db, post_err) end
+            types = event_types(body)
+        end
+        local events, events_err = worker.query_event_rows(db, tostring(current.thread_id), from, target, page_size, types)
         if events_err then return nil, release(db, events_err) end
         if type(events) ~= "table" then return nil, release(db, response_error("events")) end
         local batch = events :: table[]
+        if binding.checkpointed_apply and (#batch == 0 or (pinned and batch[1].id ~= pinned.event_id)) then
+            return nil, release(db, errors.new({kind = errors.NOT_FOUND, retryable = false,
+                message = "projection checkpoint input is missing"})), current
+        end
         seen_last = target
         if not types and #batch > 0 then seen_last = tonumber(batch[#batch].seq) or last end
+        if binding.checkpointed_apply then target = seen_last end
         local mode = meta.worker_input_mode == "prefetch_events" and "prefetch_events" or "cursor_only"
+        if binding.checkpointed_apply and mode ~= "prefetch_events" then
+            return nil, release(db, errors.new({kind = errors.INVALID,
+                message = "checkpointed apply requires prefetched events"}))
+        end
         local work_input = {
             thread_id = current.thread_id,
             trace_context = trace_context.common(batch),
@@ -212,7 +282,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                 target_seq = target, batch_size = page_size, generation = tonumber(current.generation),
                 last_error = current.last_error },
             projection = { id = current.projection_id, kind = current.kind, body = body },
-            range = { from_seq = last + 1, to_seq = seen_last, target_seq = target, processed_count = #batch },
+            range = { from_seq = from, to_seq = seen_last, target_seq = target, processed_count = #batch },
             events = mode == "prefetch_events" and batch or nil,
         }
         if #batch > 0 then
@@ -222,10 +292,18 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             -- before invoking either a function or a monitored process.
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
+            if needs_declaration then
+                local admitted, declaration_err = worker.admit_declared_checkpoint(binding, current)
+                if not admitted then return nil, declaration_err or response_error("worker.declaration") end
+                binding = admitted
+            end
             if binding.worker_runtime == "proc" then
                 local host, host_err = apply.process_host()
                 if host_err then return nil, host_err end
                 if type(host) ~= "string" or host == "" then return nil, response_error("process_host") end
+                if binding.checkpointed_apply then
+                    return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last)
+                end
                 output, row_err = worker.run_proc_supervised(binding, work_input, {
                     proc_host = host,
                 })
@@ -275,11 +353,17 @@ function M.run(input: any): (table?, error?)
     local row, row_err = snapshot(db, cursor_id, job.id)
     local result: table? = nil
     local attempt_err: error? = nil
+    local checkpoint_failed = false
     if row_err then
         attempt_err = release(db, row_err)
         if not row then return nil, attempt_err end
     else
-        result, attempt_err = attempt(db, db_id, job, row :: table, page_size)
+        local failed_at
+        result, attempt_err, failed_at = attempt(db, db_id, job, row :: table, page_size)
+        if failed_at then
+            row = failed_at
+            checkpoint_failed = true
+        end
     end
     local current = row :: table
     if not attempt_err then return result, nil end
@@ -288,7 +372,7 @@ function M.run(input: any): (table?, error?)
     -- transition before Jobs can park the slot. Its generation/position fence
     -- keeps stale attempts from invalidating a resumed or committed cursor.
     local deterministic = job_types.is_deterministic_kind(attempt_err:kind())
-    local failed, fail_err = apply.fail(db_id, job, current, attempt_err, deterministic)
+    local failed, fail_err = apply.fail(db_id, job, current, attempt_err, deterministic, checkpoint_failed or nil)
     if fail_err then return nil, fail_err end
     if failed then return failed, nil end
     return nil, attempt_err

@@ -44,6 +44,8 @@ entries:
       - uuid
     imports:
       jobs: kickside.core.jobs:jobs
+      drop_notify: kickside.core.threads.persist:drop_notify
+      teardown_page: kickside.core.threads.persist:teardown_page
       test: wippy.test:test
       lifecycle: kickside.core.threads.persist:lifecycle
       threads_teardown: kickside.core.threads.persist:teardown

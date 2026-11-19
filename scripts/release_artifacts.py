@@ -42,6 +42,32 @@ def companion_modules(repository, paths):
     return modules
 
 
+def declared_dependencies(wippy, *, source, module=None):
+    """Inspect a tagged source tree through Wippy without resolving Hub versions."""
+    with tempfile.TemporaryDirectory(prefix='kickside-release-deps-') as directory:
+        root = Path(directory)
+        lock = root / 'wippy.lock'
+        config = root / '.wippy.yaml'
+        modules, replacements = [], {}
+        if module is not None:
+            name = module['name']
+            modules.append({'name': name, 'version': module['version']})
+            replacements[name] = str(source)
+            source = root / 'empty'
+            source.mkdir()
+        lock.write_text(json.dumps({'directories': {'src': str(source), 'modules': str(root / '.wippy')},
+                                    'modules': modules}))
+        config.write_text(json.dumps({'version': '1.0', 'workspace': {'replacements': replacements}}))
+        command = [wippy, '--config', str(config), 'registry']
+
+        def inspect(*args):
+            return json.loads(subprocess.check_output(
+                [*command, *args, '--lock-file', str(lock), '--json'], cwd=root, text=True))
+
+        entries = inspect('list', '--kind', 'ns.dependency')
+        return {inspect('show', entry['id'])['data']['component'] for entry in entries}
+
+
 @contextmanager
 def installed_artifacts(modules, wippy):
     # A lock install fetches only the named versions and verifies their digests.

@@ -17,7 +17,8 @@ vi.mock('@wippy-fe/webcomponent-vue', async () => {
 })
 vi.mock('@kickside/ui-kit/componentRealtime', () => ({ subscribeComponentMeta: vi.fn() }))
 const file = { uuid: 'b1544a30-d59a-4d70-8edc-023a5f4adeb8', filename: 'report.txt', size: 5,
-  mime_type: 'text/plain', status: 'completed', created_at: 0, raw_url: 'https://objects.example/report?signature=test' }
+  mime_type: 'text/plain', status: 'completed', created_at: 0, raw_url: 'https://objects.example/report?signature=test',
+  content_description: { kind: 'text', mime_type: 'text/plain', text_available: true, inline: true } }
 function render() {
   return mount(Uploads, { global: { stubs: {
     UploadPreviewDrawer: { props: ['preview', 'closePreview', 'activePreviewSource'], template: '<div data-testid="drawer"><span v-if="preview">{{ preview.filename }} {{ activePreviewSource(preview).sourceUrl }}</span><button @click="closePreview()">Close</button></div>' },
@@ -57,14 +58,14 @@ describe('upload deep links', () => {
     expect(navigate).toHaveBeenLastCalledWith('navigate', { path: file.uuid })
     wrapper.unmount()
   })
-  it.each([403, 404])('shows a clear unavailable state for HTTP %s', async status => {
+  it.each([[403, 'Forbidden'], [404, 'Not Found']])('shows a clear unavailable state for HTTP %i', async (status, statusText) => {
     props.value = { route: 'unavailable' }
     get.mockImplementation(async (url: string) => {
-      if (!url.endsWith('/list')) throw { response: { status } }
+      if (!url.endsWith('/list')) throw { response: { status, statusText } }
       return { data: { success: true, uploads: [] } }
     })
     const wrapper = render(); await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toMatch(/not found|permission/i)
+    expect(wrapper.get('[role="alert"]').text()).toContain(`File · ${statusText}`)
     wrapper.unmount()
   })
   it('ignores an old read when the route changes or closes', async () => {

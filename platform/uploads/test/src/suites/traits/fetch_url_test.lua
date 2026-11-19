@@ -151,6 +151,24 @@ local function define_tests()
             test.is_true(calls.status_reads >= 2)
         end)
 
+        for _, mime_type in ipairs({"application/xml", "application/sql"}) do
+            test.it("uses the primary text classification for " .. mime_type, function()
+                base_deps(function(deps)
+                    deps.http.get = function()
+                        return {status_code = 200, headers = {["content-type"] = mime_type}, body = "Source"}, nil
+                    end
+                    deps.read_model.get_for_actor = function() return {status = "completed"} end
+                    deps.artifacts.read_primary_content = function()
+                        return {content = "Source", mime_type = mime_type,
+                            content_description = {text_available = true}}, nil
+                    end
+                end)
+                local result = handler.handle({url = "https://example.com/source", wait = true})
+                test.eq(result.markdown, "Source")
+                test.eq(result.content_type, mime_type)
+            end)
+        end
+
         test.it("wait returns the complete extracted markdown and every derived artifact", function()
             local long_markdown = string.rep("Extracted paragraph line.\n", 1000)
             local artifact_rows = {}

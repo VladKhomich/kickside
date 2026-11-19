@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.93](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.92...knowledge-v0.1.93) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** re-ingest retained uploads explicitly ([#612](https://github.com/kicksideai/kickside/issues/612)) ([1cf0053](https://github.com/kicksideai/kickside/commit/1cf0053c1df2ccec55fd28c6a8f7de7af3059e4d))
+
+## [0.1.92](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.91...knowledge-v0.1.92) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** guide QueryKB callers to discover accessible IDs ([#601](https://github.com/kicksideai/kickside/issues/601)) ([420fe7b](https://github.com/kicksideai/kickside/commit/420fe7b26555adc711a43c58d851975d6ce9260e))
+
+## [0.1.91](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.90...knowledge-v0.1.91) (2026-11-19)
+
+
+### Features
+
+* **core:** expose bounded pending source work from projection cursors ([#589](https://github.com/kicksideai/kickside/issues/589)) ([de1698a](https://github.com/kicksideai/kickside/commit/de1698a2d01e6d4b044bfd73930c540c3e42c177))
+
+## [0.1.90](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.89...knowledge-v0.1.90) (2026-11-19)
+
+
+### Bug Fixes
+
+* **uploads:** keep TSV and text source uploads readable ([#554](https://github.com/kicksideai/kickside/issues/554)) ([3f265fa](https://github.com/kicksideai/kickside/commit/3f265fa80cd738eac07a037cbaebd7860549d9c1))
+
 ## [0.1.89](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.88...knowledge-v0.1.89) (2026-11-19)
 
 

@@ -10,6 +10,7 @@ local sql = require("sql")
 local uuid = require("uuid")
 local json = require("json")
 local committed_policy = require("runtime_policy")
+local execution_policy = require("execution_policy")
 
 local job_types = require("job_types")
 local cfg = require("config")
@@ -132,6 +133,14 @@ end
 
 local available_concurrency_key = eligibility.available_key
 
+local function capture(policy: table, job: table): (string?, error?, table?)
+    local progress_timeout, err = execution_policy.progress_timeout(job)
+    if err then return nil, err end
+    local snapshot = cfg.capture(policy, progress_timeout)
+    local encoded, encode_err = json.encode(snapshot)
+    return encoded, encode_err, snapshot
+end
+
 -- Lease one pending row inside tx and return the counters the row now holds.
 -- The new execution sequence follows both the row's own counter and every run
 -- recorded for the job, so a claim can never reuse a recorded execution, and
@@ -142,8 +151,12 @@ function claim.lease_row(tx: sql.Transaction, dbtype: string, id: string, token:
     if not captured then
         local policy, policy_err = read_committed()
         if policy_err then return nil, policy_err end
+        local rows, read_err = tx:query("SELECT lease_policy FROM kickside_job WHERE id=$1 AND status='pending'", {id})
+        rows, read_err = boundary.bounded_rows(rows, read_err, "claim policy lookup failed", "policy.job", 0, 1, response_error)
+        if read_err then return nil, read_err end
+        if #rows == 0 then return nil, nil end
         local encode_err
-        captured, encode_err = json.encode(cfg.capture(policy))
+        captured, encode_err = capture(policy :: table, rows[1])
         if encode_err then return nil, encode_err end
     end
     local greatest = dbtype == sql.type.POSTGRES and "GREATEST" or "MAX"
@@ -165,7 +178,7 @@ function claim.lease_row(tx: sql.Transaction, dbtype: string, id: string, token:
 end
 
 local function select_next_pending(tx: sql.Transaction, dbtype: string, now: string, lock_suffix: string): (table?, error?)
-    local query = sql.builder.select(table.unpack(SELECT_COLS))
+    local query = sql.builder.select("lease_policy", table.unpack(SELECT_COLS))
         :from("kickside_job")
         :where(sql.builder.eq({ status = job_types.JOB_STATE.PENDING }))
         :where(sql.builder.lte({ scheduled_at = now }))
@@ -185,8 +198,6 @@ end
 function claim.claim_job(db: sql.DB, dbtype: string): (table?, error?)
     local policy, policy_err = read_committed()
     if policy_err then return nil, policy_err end
-    local captured, capture_err = json.encode(cfg.capture(policy))
-    if capture_err then return nil, capture_err end
     local lease_seconds = (policy :: any).lease_timeout_seconds
     local now = lifecycle.now_string(dbtype)
     local lock_suffix = dbtype == sql.type.POSTGRES and "FOR UPDATE SKIP LOCKED" or ""
@@ -215,6 +226,8 @@ function claim.claim_job(db: sql.DB, dbtype: string): (table?, error?)
     end
     local lease_token = uuid.v7()
     local lease_until = lifecycle.future_string(dbtype, lease_seconds)
+    local captured, capture_err, snapshot = capture(policy :: table, job)
+    if capture_err then return nil, boundary.rollback(tx, capture_err, "claim rollback failed") end
     local size_err = row_bytes.check_update(tx, "kickside_job", job.id, function(row)
         local attempts, sequence = tonumber(row.attempts), tonumber(row.execution_seq)
         if not attempts or not sequence then return nil, (errors.new({
@@ -241,7 +254,7 @@ function claim.claim_job(db: sql.DB, dbtype: string): (table?, error?)
     job.wake_demand_at = nil
     if job.last_error == job_types.TERMINATION_SETTLED then job.last_error = nil end
     job.lease_token = lease_token
-    job.lease_policy = cfg.capture(policy)
+    job.lease_policy = snapshot
     job.lease_until = lease_until
     job.attempts = leased.attempts
     job.execution_seq = leased.execution_seq
@@ -433,8 +446,6 @@ function claim.claim_batch(db: sql.DB, dbtype: string, requested: integer?, pref
     local policy, policy_err = reservation and reservation.policy, nil
     if not policy then policy, policy_err = read_committed() end
     if policy_err then return nil, policy_err end
-    local captured, capture_err = json.encode(cfg.capture(policy))
-    if capture_err then return nil, capture_err end
     local lease_seconds = (policy :: any).lease_timeout_seconds
     local requested_n = tonumber(requested) or (policy :: any).worker_claim_batch
     if requested_n < 1 or requested_n > (policy :: any).worker_claim_batch
@@ -730,6 +741,8 @@ function claim.claim_batch(db: sql.DB, dbtype: string, requested: integer?, pref
         return count_err
     end
     for _, job in ipairs(reserved) do
+        local captured, capture_err, snapshot = capture(policy :: table, job)
+        if capture_err then return nil, boundary.rollback(tx, capture_err, "claim rollback failed") end
         local save_err = savepoint("SAVEPOINT kickside_claim_row")
         if save_err then return nil, boundary.rollback(tx, save_err, "claim rollback failed") end
         local token = uuid.v7()
@@ -756,7 +769,7 @@ function claim.claim_batch(db: sql.DB, dbtype: string, requested: integer?, pref
             job.wake_demand_at = nil
             if job.last_error == job_types.TERMINATION_SETTLED then job.last_error = nil end
             job.lease_token = token
-            job.lease_policy = cfg.capture(policy)
+            job.lease_policy = snapshot
             job.lease_until = lease_until
             job.attempts = leased.attempts
             job.execution_seq = leased.execution_seq
@@ -773,7 +786,8 @@ function claim.claim_batch(db: sql.DB, dbtype: string, requested: integer?, pref
                     return nil, boundary.rollback(tx, errors.new({message = "worker is not available for another claim",
                         kind = errors.CONFLICT, details = {reason = job_types.CLAIM_REFUSAL.WORKER_MARKER_OCCUPIED}}), "claim rollback failed")
                 end
-                local started_run, run_err = lifecycle.start_job_run(tx, dbtype, job, owner_id, leased.attempts)
+                -- This job comes from lock_candidates and remains locked through the insert.
+                local started_run, run_err = lifecycle.start_job_run(tx, dbtype, job, owner_id, leased.attempts, true)
                 if run_err then
                     if errors.is(run_err, errors.INTERNAL) then return nil, boundary.rollback(tx, run_err, "claim rollback failed") end
                     refusal = run_err

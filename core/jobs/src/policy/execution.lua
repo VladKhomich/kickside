@@ -26,6 +26,12 @@ function M.read(job: table): (table?, error?)
     job.lease_policy = value
     return value, nil
 end
+function M.progress_timeout(job: table): (integer?, error?)
+    if job.lease_policy == nil then return nil, nil end
+    local policy, err = M.read(job)
+    if err then return nil, err end
+    return (policy :: table).progress_timeout_ms, nil
+end
 function M.load_from(tx: any, job: table): (table?, error?)
     if job.lease_policy ~= nil then return M.read(job) end
     local rows, err = tx:query("SELECT lease_policy FROM kickside_job WHERE id=$1 AND execution_seq=$2",

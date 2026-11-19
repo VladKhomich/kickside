@@ -194,11 +194,14 @@ local function run_bound_worker(job: table, binding: table): (table?, error?)
     return output, nil
 end
 
--- Error text a supervised proc surfaces when its hard wall-clock ceiling elapses.
--- It is a plain failure (not a lost lease): fail_job runs normally and the job
--- retries through the usual backoff -> dead path.
+-- Error texts a supervised execution surfaces when its hard wall-clock ceiling
+-- or its heartbeat timeout elapses. Each is a plain failure (not a lost lease):
+-- fail_job runs normally and the job retries through the usual backoff -> dead
+-- path.
 local PROC_TIMEOUT_MARKER = "job exceeded max_execution_ms"
 worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
+local HEARTBEAT_TIMEOUT_MARKER = "job heartbeat timed out"
+worker.HEARTBEAT_TIMEOUT_MARKER = HEARTBEAT_TIMEOUT_MARKER
 
 -- A proc:// worker uses the native error transport in its status envelope. The
 -- runtime can also report a native failure directly in the monitored EXIT.

@@ -397,6 +397,8 @@ local function define_tests()
 				test.eq(result.content, bytes)
 				test.eq(result.size, #bytes)
 				test.eq(result.content_type, "image/webp")
+				test.eq(result.artifact_id, artifact.artifact_id)
+				test.is_false(result.content_description.text_available)
 
 				local files, files_err = executor("test-user"):call("kickside.uploads.traits:view_files", {
 					upload_ids = { upload_id },

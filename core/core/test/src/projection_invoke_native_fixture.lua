@@ -34,6 +34,7 @@ function M.parse(_ref: any, _system: any): (any, error?) return M.outcome("parse
 function M.validate(_parsed: any, _system: any): (any, error?)
     return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func"})
 end
+function M.requires_checkpoint_declaration(_err: any): boolean return false end
 function M.post_commit_binding(_binding: any): (any, error?)
     return M.outcome("post_binding", M.stage == "post_run" and {} or nil)
 end

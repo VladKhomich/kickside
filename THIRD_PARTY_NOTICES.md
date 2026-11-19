@@ -97,7 +97,7 @@ Lockfiles: `app/frontend/applications/main/package-lock.json`
 
 License: MIT
 
-Lockfiles: `app/frontend/applications/main/package-lock.json`, `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/sessions/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
+Lockfiles: `app/frontend/applications/main/package-lock.json`, `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 license.txt: [License text](#license-text-045ce74712fc613fdd74d1c55f5140a08d623836ff2aca44132b38d68fbc67ad)
 
@@ -121,7 +121,7 @@ license.txt: [License text](#license-text-7cef50a4477dcd1f0ea036d3c7031430851ea2
 
 License: MIT
 
-Lockfiles: `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/sessions/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
+Lockfiles: `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 license.txt: [License text](#license-text-7cef50a4477dcd1f0ea036d3c7031430851ea21228e65658c6c84a57754e1b65)
 
@@ -731,7 +731,13 @@ Lockfiles: `app/frontend/applications/main/package-lock.json`
 
 License: UNLICENSED
 
-Lockfiles: `app/frontend/applications/main/package-lock.json`, `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/automation/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/sessions/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`, `platform/workflows/ui/package-lock.json`
+Lockfiles: `app/frontend/applications/main/package-lock.json`, `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/automation/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`, `platform/workflows/ui/package-lock.json`
+
+### npm: @wippy-fe/theme@0.0.70
+
+License: UNLICENSED
+
+Lockfiles: `platform/sessions/ui/package-lock.json`
 
 ### npm: @wippy-fe/vue-utils@0.0.60
 
@@ -743,13 +749,25 @@ Lockfiles: `app/frontend/applications/main/package-lock.json`
 
 License: UNLICENSED
 
-Lockfiles: `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/automation/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/sessions/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`, `platform/workflows/ui/package-lock.json`
+Lockfiles: `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/automation/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`, `platform/workflows/ui/package-lock.json`
+
+### npm: @wippy-fe/webcomponent-core@0.0.70
+
+License: UNLICENSED
+
+Lockfiles: `platform/sessions/ui/package-lock.json`
 
 ### npm: @wippy-fe/webcomponent-vue@0.0.60
 
 License: UNLICENSED
 
-Lockfiles: `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/automation/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/sessions/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`, `platform/workflows/ui/package-lock.json`
+Lockfiles: `app/templates/plugin/ui/package-lock.json`, `platform/agents/ui/package-lock.json`, `platform/automation/ui/package-lock.json`, `platform/channel/ui/package-lock.json`, `platform/connection/ui/package-lock.json`, `platform/hub/ui/package-lock.json`, `platform/identity/ui/package-lock.json`, `platform/inbox/ui/package-lock.json`, `platform/knowledge/ui/package-lock.json`, `platform/mcp/ui/package-lock.json`, `platform/models/ui/package-lock.json`, `platform/renderers/ui/package-lock.json`, `platform/security/ui/package-lock.json`, `platform/settings/ui/package-lock.json`, `platform/skills/ui/package-lock.json`, `platform/sync/ui/package-lock.json`, `platform/transfer/ui/package-lock.json`, `platform/transform/ui/package-lock.json`, `platform/ui/ui/package-lock.json`, `platform/uploads/ui/package-lock.json`, `platform/users/ui/package-lock.json`, `platform/webhooks/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`, `platform/workflows/ui/package-lock.json`
+
+### npm: @wippy-fe/webcomponent-vue@0.0.70
+
+License: UNLICENSED
+
+Lockfiles: `platform/sessions/ui/package-lock.json`
 
 ### npm: adler-32@1.3.1
 

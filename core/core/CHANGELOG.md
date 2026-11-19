@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.3.29](https://github.com/kicksideai/kickside/compare/core-v0.3.28...core-v0.3.29) (2026-11-19)
+
+
+### Features
+
+* **core:** look up the latest retained external event ([#611](https://github.com/kicksideai/kickside/issues/611)) ([679d4bc](https://github.com/kicksideai/kickside/commit/679d4bcb90bdf4c062e97c7c4c3df25e0eed1e4b))
+
+## [0.3.28](https://github.com/kicksideai/kickside/compare/core-v0.3.27...core-v0.3.28) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** admit private checkpoints from their installed declarations ([#606](https://github.com/kicksideai/kickside/issues/606)) ([e541a15](https://github.com/kicksideai/kickside/commit/e541a1586a0f60f2706d2d4e901d6169c70a62e8))
+
+
+### Performance Improvements
+
+* **core:** index private checkpoint declarations by owner ([#607](https://github.com/kicksideai/kickside/issues/607)) ([c70b0fd](https://github.com/kicksideai/kickside/commit/c70b0fdfc668f246c70cea32c0c3f848e25bd804))
+
+## [0.3.27](https://github.com/kicksideai/kickside/compare/core-v0.3.26...core-v0.3.27) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** resume marked thread deletion after a missing Jobs page ([d0951cf](https://github.com/kicksideai/kickside/commit/d0951cf04a397e8e3bb6d16bc9a9593931cc56e0))
+* **core:** resume marked thread deletion after a missing Jobs page ([c85392b](https://github.com/kicksideai/kickside/commit/c85392bd5c1c08177650f8dce692eccffd30de59))
+
+## [0.3.26](https://github.com/kicksideai/kickside/compare/core-v0.3.25...core-v0.3.26) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** commit thread teardown pages atomically ([#576](https://github.com/kicksideai/kickside/issues/576)) ([5f934f0](https://github.com/kicksideai/kickside/commit/5f934f05dc51d165db195168d75fe350ad701492))
+* **core:** converge declared lifecycle projections ([#466](https://github.com/kicksideai/kickside/issues/466)) ([ebc59f8](https://github.com/kicksideai/kickside/commit/ebc59f83121a6c2a412e6d359ee1ca655d3264b7))
+
+## [0.3.25](https://github.com/kicksideai/kickside/compare/core-v0.3.24...core-v0.3.25) (2026-11-19)
+
+
+### Features
+
+* **core:** checkpoint supervised projections under the Jobs lease ([#585](https://github.com/kicksideai/kickside/issues/585)) ([f6a586b](https://github.com/kicksideai/kickside/commit/f6a586b2bc5841078e076c4ef1fedd2e45d28af3))
+* **core:** expose bounded pending source work from projection cursors ([#589](https://github.com/kicksideai/kickside/issues/589)) ([de1698a](https://github.com/kicksideai/kickside/commit/de1698a2d01e6d4b044bfd73930c540c3e42c177))
+
+
+### Bug Fixes
+
+* **core:** require the Jobs checkpoint lease API ([#592](https://github.com/kicksideai/kickside/issues/592)) ([49c7e08](https://github.com/kicksideai/kickside/commit/49c7e08bf3bca7604f899f9365951585567ba0f2))
+* **core:** validate checkpoint position and writer types ([#594](https://github.com/kicksideai/kickside/issues/594)) ([cf0c736](https://github.com/kicksideai/kickside/commit/cf0c736152f7f8403c04bc413f06f35b99bd7ee0))
+
 ## [0.3.24](https://github.com/kicksideai/kickside/compare/core-v0.3.23...core-v0.3.24) (2026-11-19)
 
 
