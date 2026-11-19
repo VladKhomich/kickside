@@ -1,6 +1,7 @@
 -- One actor-scoped Flow capability for agents: a compact catalog prompt and one
 -- generic run_flow tool. Discovery and execution share the same catalog policy.
 
+local trim = require("text_trim").trim
 local ctx = require("ctx")
 local execution = require("execution")
 local schema_validate = require("schema_validate")
@@ -56,7 +57,7 @@ function M.catalog(args: any?): ({ Map }?, error?)
 end
 
 local function clipped_text(value: any, max_len: number): string
-    local text = str(value):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    local text = trim(str(value):gsub("%s+", " "))
     if #text > max_len then return text:sub(1, math.max(1, max_len - 1)) .. "…" end
     return text
 end

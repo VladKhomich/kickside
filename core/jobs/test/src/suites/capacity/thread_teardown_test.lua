@@ -2,10 +2,12 @@ local test = require("test")
 local sql = require("sql")
 local time = require("time")
 local channel = require("channel")
+local claim = require("claim")
 local lifecycle = require("lifecycle")
 local slot_purge = require("slot_purge")
 local claim_execution = require("claim_execution")
 local retention = require("retention")
+local config = require("config")
 local uuid = require("uuid")
 local jobs = require("jobs")
 local thread_fence = require("thread_fence")
@@ -19,8 +21,190 @@ local function open_db(): sql.DB
     return db :: sql.DB
 end
 
+local function waits_for(db: sql.DB, backend_id: number, settled: () -> boolean): boolean
+    for _ = 1, 500 do
+        if settled() then return false end
+        local rows = assert(db:query([[SELECT count(*) AS n FROM pg_stat_activity
+            WHERE datname=current_database() AND $1::integer=ANY(pg_blocking_pids(pid))]], { backend_id }))
+        if tonumber(rows[1].n) > 0 then return true end
+        time.sleep("10ms")
+    end
+    return false
+end
+
 local function define_tests()
     test.describe("jobs-owned thread cleanup", function()
+        local function parked_slot(thread_id: string, key: string): table
+            return {
+                namespace = "test", scope = thread_id, key = key,
+                owner_locator = {kind = "thread", id = thread_id},
+                job_type = "test.slot_retirement", slot = true, parked = true,
+                immutable_payload = {},
+            }
+        end
+
+        local function fence_rows(db: sql.DB, thread_id: string): table
+            return assert(db:query("SELECT started,next_page_seq FROM kickside_job_thread_cleanup WHERE thread_id=$1",
+                {thread_id}))
+        end
+
+        test.it("retires the blank owner fence after purging its last parked slot", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local request = parked_slot(thread_id, "retire")
+            local original = assert(jobs.enqueue(request))
+            test.eq(#fence_rows(db, thread_id), 1)
+            test.eq(assert(jobs.purge_slot(request)), 1)
+            test.eq(#fence_rows(db, thread_id), 0)
+            test.eq(assert(jobs.purge_slot(request)), 0)
+            test.eq(#fence_rows(db, thread_id), 0)
+
+            local next_job = assert(jobs.enqueue(request))
+            test.is_false(next_job.existing)
+            test.is_true(original.id ~= next_job.id)
+            test.eq(#fence_rows(db, thread_id), 1)
+            test.eq(assert(jobs.purge_slot(request)), 1)
+            assert(db:release())
+        end)
+
+        test.it("preserves a sibling job and its lease during a parked slot purge", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local parked = parked_slot(thread_id, "retire")
+            local sibling_request = parked_slot(thread_id, "leased")
+            assert(jobs.enqueue(parked))
+            local sibling = assert(jobs.enqueue(sibling_request))
+            local lease = assert(job_fixture.lease_own(db, tostring(db:type()), sibling.id))
+            test.eq(assert(jobs.purge_slot(parked)), 1)
+            test.eq(#fence_rows(db, thread_id), 1)
+            local rows = assert(db:query([[SELECT status,lease_token,lease_until,execution_seq
+                FROM kickside_job WHERE id=$1]], {sibling.id}))
+            test.eq(#rows, 1)
+            test.eq(rows[1].status, "running")
+            test.eq(rows[1].lease_token, lease.lease_token)
+            test.eq(rows[1].lease_until, lease.lease_until)
+            test.eq(rows[1].execution_seq, lease.execution_seq)
+            local removed, err = jobs.purge_slot(sibling_request)
+            test.is_nil(removed)
+            test.eq(err:details().wait_for, "lease_release")
+            assert(db:release())
+        end)
+
+        test.it("preserves cleanup state when purging a slot with prior receipt history", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local request = parked_slot(thread_id, "history")
+            assert(jobs.enqueue(request))
+            assert(db:execute([[INSERT INTO kickside_job_thread_cleanup_receipt
+                (thread_id,page_seq,processed,done,discarded_json,unresolved_json,created_at,acknowledged_at)
+                VALUES ($1,0,5,TRUE,'{}','{}','2000-01-01T00:00:00Z','2000-01-01T00:00:00Z')]], {thread_id}))
+            test.eq(assert(jobs.purge_slot(request)), 1)
+            test.eq(#fence_rows(db, thread_id), 1)
+            local receipts = assert(db:query([[SELECT processed FROM kickside_job_thread_cleanup_receipt
+                WHERE thread_id=$1 AND page_seq=0 AND acknowledged_at IS NOT NULL]], {thread_id}))
+            test.eq(#receipts, 1)
+            test.eq(tonumber(receipts[1].processed), 5)
+            assert(db:release())
+        end)
+
+        test.it("admits a waiting enqueue after a purged owner fence is removed", function()
+            local db, thread_id = open_db(), uuid.v7()
+            local dbtype = tostring(db:type())
+            if dbtype ~= sql.type.POSTGRES then db:release(); return end
+            local request = parked_slot(thread_id, "before")
+            local original = assert(jobs.enqueue(request))
+            local tx = assert(db:begin())
+            local pid = assert(tonumber(assert(tx:query("SELECT pg_backend_pid() AS pid"))[1].pid))
+            assert(thread_fence.lock(tx, thread_id))
+            assert(tx:execute("DELETE FROM kickside_job WHERE id=$1", {original.id}))
+            test.is_nil(thread_fence.remove_unused(tx, thread_id))
+            local finished = false
+            local result = channel.new(1)
+            coroutine.spawn(function()
+                local job, err = jobs.enqueue(parked_slot(thread_id, "after"))
+                finished = true
+                result:send({job = job, err = err})
+            end)
+            local waited = waits_for(db, pid, function() return finished end)
+            assert(tx:commit())
+            local completion = channel.select({result:case_receive(), time.after("10s"):case_receive()})
+            test.eq(completion.channel, result)
+            test.is_true(waited)
+            test.is_nil(completion.value.err, tostring(completion.value.err))
+            test.not_nil(completion.value.job)
+            test.eq(#fence_rows(db, thread_id), 1)
+            assert(db:release())
+        end)
+
+        local function independent_link(thread_id, owner_id, key)
+            return {
+                namespace = "thread", scope = thread_id, key = key, thread_id = thread_id,
+                owner_locator = { kind = "user", id = owner_id }, job_type = "test.cleanup_callback",
+                immutable_payload = { callback = key },
+            }
+        end
+
+        test.it("preserves independent callback admission without linking to a finished cleanup", function()
+            local db = open_db()
+            local thread_id, user_id = uuid.v7(), uuid.v7()
+            local dbtype = tostring(db:type())
+            local tx = assert(db:begin())
+            local early = assert(jobs.enqueue_tx(tx, dbtype, independent_link(thread_id, user_id, "early")))
+            assert(tx:commit())
+            test.eq(assert(jobs.get_job(early.id)).thread_id, thread_id)
+            local before = assert(db:query("SELECT 1 FROM kickside_job_thread_cleanup WHERE thread_id=$1", {thread_id}))
+            test.eq(#before, 0)
+
+            test.is_true(assert(jobs.cleanup_thread_page(thread_id, 0)).done)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            local late_request = independent_link(thread_id, user_id, "late")
+            local late = assert(jobs.enqueue(late_request))
+            local replay = assert(jobs.enqueue(late_request))
+            test.eq(replay.id, late.id)
+            test.is_true(replay.existing)
+            local linked_tx = assert(db:begin())
+            local late_tx = assert(jobs.enqueue_tx(linked_tx, dbtype, independent_link(thread_id, user_id, "late-tx")))
+            assert(linked_tx:commit())
+
+            for _, id in ipairs({early.id, late.id, late_tx.id}) do
+                local row = assert(jobs.get_job(id))
+                test.eq(row.owner_kind, "user")
+                test.eq(row.owner_id, user_id)
+                test.is_nil(row.thread_id)
+                test.eq(row.status, "pending")
+            end
+            db:release()
+        end)
+
+        test.it("retries concurrent linked work and cleanup without waiting on the other transaction", function()
+            local db = open_db()
+            local dbtype = tostring(db:type())
+            if dbtype ~= sql.type.POSTGRES then db:release(); return end
+            local thread_id, user_id = uuid.v7(), uuid.v7()
+            local early = independent_link(thread_id, user_id, "early-busy")
+            local late = independent_link(thread_id, user_id, "late-busy")
+            local enqueue_tx = assert(db:begin())
+            local queued = assert(jobs.enqueue_tx(enqueue_tx, dbtype, early))
+            local page, cleanup_err = jobs.cleanup_thread_page(thread_id, 0)
+            test.is_nil(page)
+            test.is_true(cleanup_err:retryable())
+            test.eq(cleanup_err:details().code, "job_thread_link_busy")
+            test.is_true(cleanup_err:details().cleanup_pending)
+            assert(enqueue_tx:commit())
+            test.eq(assert(jobs.get_job(queued.id)).thread_id, thread_id)
+
+            local cleanup_tx = assert(db:begin())
+            test.is_true(assert(thread_teardown.page_tx(cleanup_tx, dbtype, thread_id, 0)).done)
+            local admission, enqueue_err = jobs.enqueue(late)
+            test.is_nil(admission)
+            test.is_true(enqueue_err:retryable())
+            test.eq(enqueue_err:details().code, "job_thread_link_busy")
+            assert(cleanup_tx:commit())
+
+            local retried = assert(jobs.enqueue(late))
+            test.is_nil(assert(jobs.get_job(queued.id)).thread_id)
+            test.is_nil(assert(jobs.get_job(retried.id)).thread_id)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            db:release()
+        end)
+
         test.it("acquires the durable cleanup fence in one round trip and preserves its state", function()
             local db = open_db()
             local tx, begin_err = db:begin()
@@ -46,6 +230,48 @@ local function define_tests()
             test.eq(reads, 2)
         end)
 
+        test.it("rechecks the completed fence before reclaiming jobs after candidate discovery", function()
+            local db = open_db()
+            local dbtype = tostring(db:type())
+            local thread_id, stale_id = uuid.v7(), uuid.v7()
+            test.is_true(assert(jobs.cleanup_thread_page(thread_id, 0)).done)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            assert(db:execute([[INSERT INTO kickside_job
+                (id,job_type,job_identity,owner_kind,owner_id,status)
+                VALUES ($1,'test.cleanup',$2,'thread',$3,'done')]], { stale_id, stale_id, thread_id }))
+            local replacement_job = ""
+            local observed: any = {
+                query = function(_, statement: string, args: { any })
+                    local rows = assert(db:query(statement, args))
+                    local candidate
+                    for _, row in ipairs(rows) do
+                        if row.thread_id == thread_id then candidate = row end
+                    end
+                    test.is_true(candidate and (candidate.eligible == true or candidate.eligible == 1))
+
+                    -- Another sweep and a successful replacement commit before the old
+                    -- candidate takes its lock.
+                    test.is_true(assert(thread_teardown.reclaim_completed(db, dbtype, 100)) >= 1)
+                    local tx = assert(db:begin())
+                    assert(tx:execute([[INSERT INTO kickside_thread
+                        (id,thread_class,component_id,event_count) VALUES ($1,'jobs-cleanup',$2,0)]],
+                        { thread_id, thread_id }))
+                    test.eq(assert(thread_teardown.prepare_replacement_tx(tx, dbtype, thread_id)), 1)
+                    assert(tx:commit())
+                    replacement_job = assert(jobs.enqueue({
+                        namespace = "thread", scope = thread_id, key = "replacement",
+                        owner_locator = { kind = "thread", id = thread_id }, job_type = "test.cleanup",
+                        immutable_payload = {},
+                    })).id
+                    return { candidate }, nil
+                end,
+                begin = function() return db:begin() end,
+            }
+            test.eq(assert(thread_teardown.reclaim_completed(observed, dbtype, 100)), 0)
+            test.eq(#assert(db:query("SELECT id FROM kickside_job WHERE id=$1", { replacement_job })), 1)
+            db:release()
+        end)
+
         test.it("commits a truthful retained-row receipt when a competing detach follows discovery", function()
             local db = open_db()
             local dbtype, type_err = db:type()
@@ -68,8 +294,8 @@ local function define_tests()
                     if begin_err or not tx then return tx, begin_err end
                     return job_fixture.observe_tx(tx, function(statement)
                         if dbtype ~= sql.type.POSTGRES or detached
-                            or statement:find("SELECT id,status,owner_kind,owner_id FROM kickside_job WHERE", 1, true) ~= 1
-                            or not statement:find("thread_id=$1 AND NOT (owner_kind='thread' AND owner_id=$2)", 1, true) then return end
+                            or statement:find("SELECT id FROM kickside_job WHERE", 1, true) ~= 1
+                            or not statement:find("AND NOT (owner_kind='thread' AND owner_id=$2)", 1, true) then return end
                         local changed, detach_err = (competing :: sql.DB):execute([[UPDATE kickside_job SET thread_id=NULL
                             WHERE id=$1 AND thread_id=$2]], { job_id, thread_id })
                         test.is_nil(detach_err, tostring(detach_err))
@@ -82,13 +308,14 @@ local function define_tests()
             if competing then competing:release() end
             test.is_nil(page_err, tostring(page_err))
             test.not_nil(page)
-            test.eq(page.processed, 1)
+            test.eq(detached, dbtype == sql.type.POSTGRES)
+            test.eq(page.processed, detached and 0 or 1)
             test.is_true(page.done)
             local receipt, receipt_err = db:query([[SELECT processed,done FROM kickside_job_thread_cleanup_receipt
                 WHERE thread_id=$1 AND page_seq=0]], { thread_id })
             test.is_nil(receipt_err, tostring(receipt_err))
             test.eq(#receipt, 1)
-            test.eq(tonumber(receipt[1].processed), 1)
+            test.eq(tonumber(receipt[1].processed), page.processed)
             test.is_true(receipt[1].done == true or receipt[1].done == 1)
             local retained, retained_err = db:query("SELECT thread_id,owner_kind,owner_id,status FROM kickside_job WHERE id=$1", { job_id })
             test.is_nil(retained_err, tostring(retained_err))
@@ -149,10 +376,11 @@ local function define_tests()
                     end
                 end
                 local candidate_prefix = operation == "unstarted assignment release"
-                    and "SELECT id,status,owner_kind,owner_id,job_id FROM kickside_job_run WHERE owner_kind="
-                    or "SELECT id,status,owner_kind,owner_id FROM kickside_job WHERE owner_kind="
+                    and "SELECT id,job_id FROM kickside_job_run WHERE owner_kind="
+                    or "SELECT id FROM kickside_job WHERE owner_kind="
                 local done = channel.new(1)
                 local started, finished, waiting = false, false, false
+                local parent_selection_bounded = false
                 local observed: any = { begin = function()
                     local tx, begin_err = db:begin()
                     if begin_err or not tx then return tx, begin_err end
@@ -160,9 +388,13 @@ local function define_tests()
                     if dbtype == sql.type.POSTGRES then
                         local rows, pid_err = tx:query("SELECT pg_backend_pid() AS pid")
                         test.is_nil(pid_err)
-                        backend_id = tonumber(rows[1].pid)
+                        backend_id = assert(tonumber(rows[1].pid))
                     end
                     return job_fixture.observe_tx(tx, function(statement)
+                        if statement:find("SELECT id", 1, true) == 1
+                            and statement:find("FROM kickside_job WHERE owner_kind=", 1, true) then
+                            parent_selection_bounded = not statement:find("FROM kickside_job_run", 1, true)
+                        end
                         if started or dbtype ~= sql.type.POSTGRES
                             or statement:find(candidate_prefix, 1, true) ~= 1 then return end
                         started = true
@@ -171,14 +403,7 @@ local function define_tests()
                             finished = true
                             done:send({ value = value, err = err })
                         end)
-                        for _ = 1, 500 do
-                            if finished then break end
-                            local rows, wait_err = db:query([[SELECT count(*) AS n FROM pg_stat_activity
-                                WHERE datname=current_database() AND $1::integer=ANY(pg_blocking_pids(pid))]], { backend_id })
-                            test.is_nil(wait_err)
-                            if tonumber(rows[1].n) > 0 then waiting = true; break end
-                            time.sleep("10ms")
-                        end
+                        waiting = waits_for(db, backend_id, function() return finished end)
                     end), nil
                 end }
                 local page, page_err = thread_teardown.page(observed, dbtype, thread_id, 0)
@@ -199,6 +424,7 @@ local function define_tests()
                 test.eq(page.discarded.kickside_job, 1)
                 if operation == "unstarted assignment release" then test.eq(page.discarded.kickside_job_run, 1) end
                 test.is_true(page.done)
+                test.is_true(parent_selection_bounded, "the parent scope is bounded before probing its children")
                 if dbtype == sql.type.POSTGRES then test.is_true(waiting, "competitor waits for the cleanup fence") end
                 test.is_nil(competed.err, tostring(competed.err))
                 if operation == "unstarted assignment release" then test.is_false(competed.value)
@@ -323,6 +549,137 @@ local function define_tests()
             db:execute("DELETE FROM kickside_thread WHERE id=$1", { thread_id })
         end
 
+        for _, operation in ipairs({ "run start", "completion" }) do
+            test.it("keeps a surviving claim detached across cleanup pages during " .. operation, function()
+                local db = open_db()
+                local dbtype = tostring(db:type())
+                local thread_id, owner_id = uuid.v7(), uuid.v7()
+                local job_type = "test.thread_cleanup." .. owner_id
+                assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
+                    VALUES ($1,'jobs-cleanup',$2,0)]], { thread_id, thread_id }))
+                local job_id = assert(lifecycle.enqueue_job(db, dbtype, {
+                    thread_id = thread_id, owner_locator = { kind = "automation", id = owner_id },
+                    job_type = job_type,
+                    job_identity = { namespace = "test", scope = owner_id, key = "retained" },
+                }))
+                local tx = assert(db:begin())
+                for seq = 2, 101 do
+                    assert(tx:execute([[INSERT INTO kickside_job_run
+                        (id,job_id,thread_id,job_type,attempt_no,execution_seq,status,owner_kind,owner_id)
+                        VALUES ($1,$2,$3,'test.thread_cleanup',1,$4,'completed','automation',$5)]],
+                        { uuid.v7(), job_id, thread_id, seq, owner_id }))
+                end
+                local _, commit_err = tx:commit()
+                test.is_nil(commit_err)
+
+                local job: any
+                local function claim_survivor()
+                    job = assert(claim.claim_batch(db, dbtype, 1, nil, nil, nil, { job_type }))[1]
+                    test.eq(job.id, job_id)
+                    test.eq(job.thread_id, thread_id)
+                end
+                if dbtype == sql.type.SQLITE then claim_survivor() end
+                local function compete(): (any, error?)
+                    if operation == "completion" then
+                        return jobs.complete(job_id, { token = job.lease_token, execution_seq = job.execution_seq }, {})
+                    end
+                    return lifecycle.start_job_run(db, dbtype, job, "cleanup-race", 1)
+                end
+                local finished, waiting = false, false
+                local done = channel.new(1)
+                local observed: any = { begin = function()
+                    local page_tx = assert(db:begin())
+                    if dbtype == sql.type.SQLITE then return page_tx, nil end
+                    local pid = assert(tonumber(assert(page_tx:query("SELECT pg_backend_pid() AS pid"))[1].pid))
+                    return job_fixture.observe_tx(page_tx, function(statement)
+                        if statement:find("SELECT id FROM kickside_job WHERE thread_id", 1, true) == 1 then
+                            claim_survivor()
+                        end
+                        if not statement:find("UPDATE kickside_job SET thread_id=NULL", 1, true) then return end
+                        coroutine.spawn(function()
+                            local value, err = compete()
+                            finished = true
+                            done:send({ value = value, err = err })
+                        end)
+                        waiting = waits_for(db, pid, function() return finished end)
+                    end), nil
+                end }
+                local first = assert(thread_teardown.page(observed, dbtype, thread_id, 0))
+                test.eq(first.processed, 100)
+                test.is_false(first.done)
+                local parent = assert(db:query("SELECT thread_id FROM kickside_job WHERE id=$1", { job_id }))
+                test.is_nil(parent[1].thread_id, "the parent is detached before its run links drain")
+                if dbtype == sql.type.POSTGRES then
+                    test.is_true(waiting, "the competing writer waits for parent detachment")
+                    local event = channel.select({ done:case_receive(), time.after("10s"):case_receive() })
+                    test.eq(event.channel, done)
+                    test.is_nil(event.value.err, tostring(event.value.err))
+                    test.not_nil(event.value.value)
+                else
+                    assert(compete())
+                end
+                local history = assert(db:query([[SELECT thread_id,owner_kind,owner_id,status FROM kickside_job_run
+                    WHERE job_id=$1 AND execution_seq=$2]], { job_id, job.execution_seq }))
+                test.eq(#history, 1)
+                test.is_nil(history[1].thread_id)
+                test.eq(history[1].owner_kind, "automation")
+                test.eq(history[1].owner_id, owner_id)
+                test.eq(history[1].status, operation == "run start" and "running" or "completed")
+                local last = assert(jobs.cleanup_thread_page(thread_id, 1))
+                test.eq(last.processed, 1)
+                test.is_true(last.done)
+                test.is_nil(last.discarded.kickside_job_run)
+                local counts = assert(db:query([[SELECT count(*) AS n FROM kickside_job_run
+                    WHERE job_id=$1 AND thread_id IS NULL]], { job_id }))
+                test.eq(tonumber(counts[1].n), 101)
+                assert(db:execute("DELETE FROM kickside_job WHERE id=$1", { job_id }))
+                forget_thread(db, thread_id)
+                db:release()
+            end)
+        end
+
+        test.it("counts a completing owned run by the status actually discarded", function()
+            local db = open_db()
+            local dbtype = tostring(db:type())
+            local thread_id = uuid.v7()
+            local job_type = "test.thread_cleanup." .. thread_id
+            assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id,event_count)
+                VALUES ($1,'jobs-cleanup',$2,0)]], { thread_id, thread_id }))
+            local job_id = assert(lifecycle.enqueue_job(db, dbtype, {
+                thread_id = thread_id, owner_locator = { kind = "thread", id = thread_id },
+                job_type = job_type,
+                job_identity = { namespace = "test", scope = thread_id, key = "owned" },
+            }))
+            local job = assert(claim.claim_batch(db, dbtype, 1, nil, nil, nil, { job_type }))[1]
+            test.eq(job.id, job_id)
+            assert(lifecycle.start_job_run(db, dbtype, job, "cleanup-race", 1))
+            local completed = false
+            local function complete()
+                assert(jobs.complete(job_id, { token = job.lease_token, execution_seq = job.execution_seq }, {}))
+                completed = true
+            end
+            -- SQLite serializes the completion writer before the cleanup transaction.
+            if dbtype == sql.type.SQLITE then complete() end
+            local observed: any = { begin = function()
+                local tx = assert(db:begin())
+                return job_fixture.observe_tx(tx, function(statement)
+                    if not completed and statement:find("FROM kickside_job_run WHERE owner_kind=", 1, true) then
+                        complete()
+                    end
+                end), nil
+            end }
+            local page = assert(thread_teardown.page(observed, dbtype, thread_id, 0))
+            test.is_true(completed)
+            test.eq(page.processed, 2)
+            test.is_true(page.done)
+            test.eq(page.discarded.kickside_job, 1)
+            test.eq(page.discarded.kickside_job_run, 1)
+            test.is_nil(page.unresolved.kickside_job)
+            test.is_nil(page.unresolved.kickside_job_run)
+            forget_thread(db, thread_id)
+            db:release()
+        end)
+
         test.it("removes a thread's owner-only slot and its runs before reporting done", function()
             local thread_id = uuid.v7()
             local db = open_db()
@@ -368,6 +725,108 @@ local function define_tests()
             test.eq(owned_count(verify, thread_id), 0)
             forget_thread(verify, thread_id)
             verify:release()
+        end)
+
+        for _, limit in ipairs({1, 100}) do
+            test.it("drains retained links after a full completed-owner batch of " .. limit, function()
+                local db = open_db()
+                local dbtype = tostring(db:type())
+                local thread_id, job_id, run_id, owner_id = uuid.v7(), uuid.v7(), uuid.v7(), uuid.v7()
+                assert(jobs.cleanup_thread_page(thread_id, 0))
+                assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+
+                local tx = assert(db:begin())
+                -- Place this owner first in the scan; earlier suites may
+                -- have created completed fences without any leftovers.
+                local completed_at = "1900-01-01T00:00:00Z"
+                assert(tx:execute("UPDATE kickside_job_thread_cleanup SET completed_at=$1 WHERE thread_id=$2",
+                    { completed_at, thread_id }))
+                for _ = 1, limit do
+                    local id = uuid.v7()
+                    assert(tx:execute([[INSERT INTO kickside_job
+                        (id,job_type,job_identity,owner_kind,owner_id,status)
+                        VALUES ($1,'test.thread_cleanup',$2,'thread',$3,'pending')]], { id, id, thread_id }))
+                end
+                assert(tx:execute([[INSERT INTO kickside_job
+                    (id,thread_id,job_type,job_identity,owner_kind,owner_id,status,slot)
+                    VALUES ($1,$2,'test.thread_cleanup',$3,'automation',$4,'pending',TRUE)]],
+                    { job_id, thread_id, job_id, owner_id }))
+                assert(tx:execute([[INSERT INTO kickside_job_run
+                    (id,job_id,thread_id,job_type,attempt_no,execution_seq,status,owner_kind,owner_id)
+                    VALUES ($1,$2,$3,'test.thread_cleanup',1,1,'completed','automation',$4)]],
+                    { run_id, job_id, thread_id, owner_id }))
+                assert(tx:commit())
+
+                local processed, cursor = 0, nil
+                for _ = 1, 3 do
+                    local count, scan_err, next_cursor = thread_teardown.reclaim_completed(db, dbtype, limit, cursor)
+                    test.is_nil(scan_err)
+                    test.is_true(count <= limit)
+                    processed = processed + count
+                    cursor = next_cursor
+                end
+                test.eq(processed, limit + 2)
+                test.eq(assert(thread_teardown.reclaim_completed(db, dbtype, limit)), 0)
+                test.eq(owned_count(db, thread_id), 0)
+                local retained = assert(db:query([[SELECT j.thread_id,r.thread_id AS run_thread_id,j.owner_id,j.status
+                    FROM kickside_job j JOIN kickside_job_run r ON r.job_id=j.id WHERE j.id=$1]], { job_id }))
+                test.eq(#retained, 1)
+                test.is_nil(retained[1].thread_id)
+                test.is_nil(retained[1].run_thread_id)
+                test.eq(retained[1].owner_id, owner_id)
+                test.eq(retained[1].status, "pending")
+                assert(db:execute("DELETE FROM kickside_job WHERE id=$1", { job_id }))
+                forget_thread(db, thread_id)
+                db:release()
+            end)
+        end
+
+        test.it("detaches a surviving run when the remaining owned job reaches its TTL", function()
+            local db = open_db()
+            local dbtype = tostring(db:type())
+            local thread_id, job_id, run_id, owner_id = uuid.v7(), uuid.v7(), uuid.v7(), uuid.v7()
+            local limit = assert(config.policy()).thread_cleanup_batch
+            assert(jobs.cleanup_thread_page(thread_id, 0))
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+
+            local tx = assert(db:begin())
+            for _ = 1, limit do
+                local id = uuid.v7()
+                assert(tx:execute([[INSERT INTO kickside_job
+                    (id,job_type,job_identity,owner_kind,owner_id,status,finished_at)
+                    VALUES ($1,'test.thread_cleanup',$2,'thread',$3,'done',CURRENT_TIMESTAMP)]], {id, id, thread_id}))
+            end
+            assert(tx:execute([[INSERT INTO kickside_job
+                (id,thread_id,job_type,job_identity,owner_kind,owner_id,status,slot)
+                VALUES ($1,$2,'test.thread_cleanup',$3,'automation',$4,'pending',TRUE)]],
+                {job_id, thread_id, job_id, owner_id}))
+            assert(tx:execute([[INSERT INTO kickside_job_run
+                (id,job_id,thread_id,job_type,attempt_no,execution_seq,status,owner_kind,owner_id,finished_at)
+                VALUES ($1,$2,$3,'test.thread_cleanup',1,1,'completed','automation',$4,CURRENT_TIMESTAMP)]],
+                {run_id, job_id, thread_id, owner_id}))
+            assert(tx:commit())
+
+            local first = assert(retention.sweep(db, dbtype))
+            local remaining = owned_count(db, thread_id)
+            assert(db:execute([[UPDATE kickside_job SET finished_at=$1
+                WHERE owner_kind='thread' AND owner_id=$2]], {"2000-01-01T00:00:00Z", thread_id}))
+            local second = assert(retention.sweep(db, dbtype))
+            local final_count = owned_count(db, thread_id)
+            local retained = assert(db:query([[SELECT j.thread_id,r.thread_id AS run_thread_id,j.owner_id,j.status
+                FROM kickside_job j JOIN kickside_job_run r ON r.job_id=j.id WHERE j.id=$1]], {job_id}))[1]
+            assert(db:execute("DELETE FROM kickside_job WHERE id=$1", {job_id}))
+            forget_thread(db, thread_id)
+            db:release()
+
+            test.eq(first.thread_cleanup_leftovers, limit)
+            test.is_true(remaining > 0)
+            test.is_true(second.jobs + second.thread_cleanup_leftovers >= remaining)
+            test.eq(final_count, 0)
+            test.not_nil(retained)
+            test.is_nil(retained.thread_id)
+            test.is_nil(retained.run_thread_id)
+            test.eq(retained.owner_id, owner_id)
+            test.eq(retained.status, "pending")
         end)
 
         test.it("preserves surviving-owner jobs and reports only discarded evidence", function()

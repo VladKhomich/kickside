@@ -1,8 +1,10 @@
 local uuid = require("uuid")
 local time = require("time")
 local hash = require("hash")
+local funcs = require("funcs")
 local logger = require("logger")
 local execution_identity = require("execution_identity")
+local binding_errors = require("binding_errors")
 
 local upload_record_repo = require("upload_record_repo")
 local upload_query_repo = require("upload_query_repo")
@@ -62,7 +64,6 @@ end
 
 local upload_mime = require("upload_mime")
 local get_file_extension = upload_mime.get_file_extension
-local get_mime_type_from_extension = upload_mime.get_mime_type_from_extension
 local determine_upload_type = upload_mime.determine_upload_type
 
 local function freeze_current_identity(metadata: any, parent_upload_id: string?, actor_id: string?): any?
@@ -155,44 +156,53 @@ local function release_storage(upload: any, storage_override: any?): error?
     return nil
 end
 
-local function invoke_on_delete(upload): error?
+local function invoke_on_delete(upload, owner_teardown: boolean): error?
     if not upload.type_id or upload.type_id == "" then
         return nil
     end
 
-    local on_delete, err = upload_type.get_on_delete(upload.type_id)
+    local on_delete, err = upload_type.get_on_delete(upload.type_id, owner_teardown)
     if err then return typed(err, errors.UNAVAILABLE, "infrastructure", "upload delete stages unavailable: ") end
     if type(on_delete) ~= "table" then
         return failure("upload delete stages returned no result", errors.INTERNAL, "infrastructure", true)
     end
     if #on_delete == 0 then return nil end
 
-    -- Run delete stages as the uploading actor by reconstructing the execution identity
-    -- frozen at upload time, so a stage can do scoped work like deleting the workspace
-    -- component it created. Failed reconstruction leaves the upload as a retry target.
-    local executor, recon_err = pipeline_lib.upload_stage_executor(upload, "delete:" .. tostring(upload.uuid), {
-        upload_id = upload.uuid,
-        actor_id = upload.actor_id,
-        mime_type = upload.mime_type,
-        type_id = upload.type_id,
-    })
-    if recon_err or not executor then
-        return typed(recon_err or "no executor", errors.UNAVAILABLE, "infrastructure",
-            "upload delete execution identity unavailable: ")
-    end
-
+    local executor
     for i, stage in ipairs(on_delete) do
-        local func_id = stage.func
+        local owner_func = owner_teardown and stage.owner_func or nil
+        local func_id = owner_func or stage.func
         if func_id then
-            local result, call_err = executor:call(tostring(func_id), {
-                upload_id = upload.uuid,
-                mime_type = upload.mime_type,
-                storage_id = upload.storage_id,
-                storage_path = upload.storage_path,
-                size = upload.size,
-                metadata = upload.metadata,
-                processor_id = func_id,
-            })
+            local result, call_err
+            if owner_func then
+                -- A registered owner cleanup owns a narrow maintenance operation.
+                -- It receives the stored owner and upload ID, with no user credentials or private metadata.
+                result, call_err = funcs.call(tostring(owner_func), { upload_id = upload.uuid, owner_id = upload.actor_id })
+            else
+                -- Ordinary stages use the execution identity frozen when the file was uploaded.
+                if not executor then
+                    local recon_err
+                    executor, recon_err = pipeline_lib.upload_stage_executor(upload, "delete:" .. tostring(upload.uuid), {
+                        upload_id = upload.uuid,
+                        actor_id = upload.actor_id,
+                        mime_type = upload.mime_type,
+                        type_id = upload.type_id,
+                    })
+                    if recon_err or not executor then
+                        return typed(recon_err or "no executor", errors.UNAVAILABLE, "infrastructure",
+                            "upload delete execution identity unavailable: ")
+                    end
+                end
+                result, call_err = executor:call(tostring(func_id), {
+                    upload_id = upload.uuid,
+                    mime_type = upload.mime_type,
+                    storage_id = upload.storage_id,
+                    storage_path = upload.storage_path,
+                    size = upload.size,
+                    metadata = upload.metadata,
+                    processor_id = func_id,
+                })
+            end
 
             if call_err then
                 return typed(call_err, errors.UNAVAILABLE, "infrastructure",
@@ -209,10 +219,21 @@ end
 
 local token_flow = require("uploads_tokens")
 
-local function persist_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, processing: boolean)
+local function persist_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, processing: boolean, multipart_token: string?)
     metadata = type(metadata) == "table" and metadata or {}
-    local bound_id, bound_err = token_flow.bound_token_upload_id(metadata)
-    if bound_err then return nil, bound_err end
+    local bound_id, multipart_payload
+    if multipart_token ~= nil then
+        multipart_payload = upload_tokens.unpack(multipart_token)
+        if not multipart_payload then
+            return nil, failure("Invalid or expired upload token", errors.INVALID, "declaration")
+        end
+        bound_id = multipart_payload.upload_id
+        metadata.__upload_token = multipart_token
+    else
+        local bound_err
+        bound_id, bound_err = token_flow.bound_token_upload_id(metadata)
+        if bound_err then return nil, bound_err end
+    end
     local upload_uuid = parent_upload_id and uuid.v4() or (bound_id or uuid.v4())
     if parent_upload_id then
         local rebind_err = token_flow.rebind_child_tokens(metadata, upload_uuid)
@@ -239,7 +260,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
     end
 
     metadata.filename = filename
-    local trace_context, trace_err = token_flow.take_trace_context(metadata)
+    local trace_context, trace_err = token_flow.take_trace_context(metadata, multipart_payload)
     if trace_err then return nil, typed(trace_err, errors.INVALID, "declaration", "") end
 
     -- Freeze the uploader's execution identity so the durable job can run pipeline
@@ -250,9 +271,9 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         return nil, identity_err
     end
 
-    if not mime_type or mime_type == "" or mime_type == "application/octet-stream" then
-        mime_type = get_mime_type_from_extension(filename)
-    end
+    local description, mime_err = upload_mime.describe(mime_type, filename)
+    if mime_err then return nil, typed(mime_err, errors.UNAVAILABLE, "infrastructure", "") end
+    mime_type = description.mime_type
 
     local success
     success, err = storage:writefile(storage_path, file_data)
@@ -348,9 +369,9 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         content_sha256,
         trace_context,
         processing,
-        processing and process_worker.max_execution_ms() or nil
     }
-    local function create_record(tx)
+    local function create_record(tx, _dbtype, ceiling)
+        create_args[13] = ceiling
         if tx then return upload_record_repo.create_tx(tx, table.unpack(create_args, 1, create_args.n)) end
         return upload_record_repo.create(table.unpack(create_args, 1, create_args.n))
     end
@@ -359,7 +380,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         local submitted
         submitted, err = process_worker.enqueue_upload_job({ uuid = upload_uuid, actor_id = actor_id,
             mime_type = mime_type, size = size, type_id = type_id, metadata = metadata,
-            trace_context = trace_context, processing_max_execution_ms = process_worker.max_execution_ms() },
+            trace_context = trace_context },
             false, create_record)
         upload = submitted and submitted.upload
     else
@@ -392,8 +413,8 @@ function upload_lib.store_file(actor_id: string, file_data: string | stream.Stre
     return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, false)
 end
 
-function upload_lib.upload_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?)
-    return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, true)
+function upload_lib.upload_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, multipart_token: string?)
+    return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, true, multipart_token)
 end
 
 -- Run the processing of a failed upload again on its stored bytes.
@@ -406,7 +427,9 @@ function upload_lib.retry_upload(uuid)
         return nil, typed(err, errors.UNAVAILABLE, "infrastructure", "")
     end
 
-    local max_ms = math.floor(tonumber(upload.processing_max_execution_ms) or process_worker.max_execution_ms())
+    -- A retry is a new processing attempt under the current processing limits.
+    local max_ms, limits_err = process_worker.max_execution_ms(upload.type_id)
+    if not max_ms then return nil, typed(limits_err, errors.UNAVAILABLE, "infrastructure", "") end
     local marked, mark_err = upload_record_repo.mark_failed_for_retry(upload.uuid, max_ms)
     if mark_err then return nil, typed(mark_err, errors.UNAVAILABLE, "infrastructure", "") end
     if not marked then
@@ -424,7 +447,7 @@ function upload_lib.retry_upload(uuid)
     return upload
 end
 
-function upload_lib.delete_upload(uuid)
+local function delete_upload(uuid, teardown_owner: string?)
     local upload, err = upload_query_repo.get(uuid)
     if err then
         if errors.is(err, errors.NOT_FOUND) then
@@ -433,9 +456,12 @@ function upload_lib.delete_upload(uuid)
         return nil, typed(err, errors.UNAVAILABLE, "infrastructure", "")
     end
     if not upload then return nil, failure("upload lookup returned no result", errors.INTERNAL, "infrastructure", true) end
+    if teardown_owner and upload.actor_id ~= teardown_owner then
+        return nil, failure("upload is owned by another principal", errors.PERMISSION_DENIED, "subject")
+    end
 
     cancel_processing_job(upload)
-    local stage_err = invoke_on_delete(upload)
+    local stage_err = invoke_on_delete(upload, teardown_owner ~= nil)
     if stage_err then return nil, stage_err end
 
     -- Release the original bytes plus this upload's artifacts/chunks first. A cleanup
@@ -445,15 +471,62 @@ function upload_lib.delete_upload(uuid)
         return nil, release_err
     end
 
-    -- Project the deletion onto the actor's uploads thread (automation source).
-    local emitted, emit_err = uploads_events.emit(tostring(upload.actor_id), upload_types.EVENT.DELETED,
-        { upload_id = uuid }, uuid, upload.trace_context)
-    if emit_err then return nil, typed(emit_err, errors.UNAVAILABLE, "infrastructure", "upload deletion event failed: ") end
-    if emitted ~= true then
-        return nil, failure("upload deletion event reported no result", errors.UNAVAILABLE, "infrastructure", true)
+    -- Only a foreground deletion changes the projection of a live Uploads thread.
+    -- Component and principal teardown erase their owner read model directly.
+    if not teardown_owner then
+        local emitted, emit_err = uploads_events.emit(tostring(upload.actor_id), upload_types.EVENT.DELETED,
+            { upload_id = uuid }, uuid, upload.trace_context)
+        if emit_err then return nil, typed(emit_err, errors.UNAVAILABLE, "infrastructure", "upload deletion event failed: ") end
+        if emitted ~= true then
+            return nil, failure("upload deletion event reported no result", errors.UNAVAILABLE, "infrastructure", true)
+        end
     end
 
     return upload_record_repo.delete(uuid)
+end
+
+function upload_lib.delete_upload(uuid)
+    return delete_upload(uuid)
+end
+
+-- Trusted component and principal lifecycle callers supply the stored owner.
+function upload_lib.purge_owner(actor_id: string): any
+    local deleted = 0
+    while true do
+        local rows, list_err = upload_query_repo.list_by_actor(actor_id, 100, 0)
+        if list_err or type(rows) ~= "table" then
+            local err = list_err and binding_errors.from(list_err, errors.UNAVAILABLE, "upload_list_failed", "list uploads")
+                or binding_errors.new(errors.INTERNAL, "upload owner scan returned no rows result", "upload_list_failed", true)
+            return { success = false, error = err, deleted = deleted }
+        end
+        if #rows == 0 then break end
+        for _, row in ipairs(rows) do
+            local upload_id = tostring(row.uuid)
+            local result, delete_err = delete_upload(upload_id, actor_id)
+            if errors.is(delete_err, errors.NOT_FOUND) then
+                -- A delete stage can report NOT_FOUND while the upload still exists.
+                local remaining, read_err = upload_query_repo.get(upload_id)
+                if not remaining and errors.is(read_err, errors.NOT_FOUND) then
+                    result, delete_err = { deleted = true }, nil
+                end
+            end
+            if delete_err or not result then
+                local err = delete_err and binding_errors.from(delete_err, errors.UNAVAILABLE, "upload_delete_failed")
+                    or binding_errors.new(errors.INTERNAL, "upload deletion returned no result", "upload_delete_failed", true)
+                return { success = false, error = err, deleted = deleted }
+            end
+            deleted = deleted + 1
+        end
+    end
+
+    local read_rows, read_err = upload_read_model.delete_for_actor(actor_id)
+    if read_err or read_rows == nil then
+        local err = read_err and binding_errors.from(read_err, errors.UNAVAILABLE, "read_model_cleanup_failed")
+            or binding_errors.new(errors.INTERNAL, "upload read-model owner cleanup returned no result",
+                "read_model_cleanup_missing", true)
+        return { success = false, error = err, deleted = deleted }
+    end
+    return { success = true, deleted = deleted, read_rows_deleted = read_rows }
 end
 
 return require("uploads_presigned").attach(upload_lib, {

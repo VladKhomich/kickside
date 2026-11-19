@@ -93,7 +93,7 @@ local function define_tests()
 
                 process.registry.unregister(name, process.registry.CONSISTENT)
                 process.unlisten(control_ch)
-                local settled, settle_err = lifecycle_cancel.finish_cancellation(db, dbtype, {
+                local settled, settle_err = reclaim.finish_cancellation(db, dbtype, {
                     id = job.id, token = job.lease_token, execution_seq = job.execution_seq,
                     reason = "test cancellation",
                 })

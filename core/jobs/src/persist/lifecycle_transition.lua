@@ -9,9 +9,9 @@ local enqueue = require("lifecycle_enqueue")
 local row_bytes = require("row_bytes")
 local row_mutations = require("row_mutations")
 local worker_marker = require("worker_marker")
-local lifecycle_cancel = require("lifecycle_cancel")
-local proc_supervisor = require("proc_supervisor")
 local sql_boundary = require("sql_boundary")
+local dead_outcome = require("dead_outcome")
+local log = require("logger"):named("job_outcome")
 
 local lifecycle = {}
 
@@ -65,7 +65,8 @@ lifecycle.decode_payload = decode_payload
 
 -- Insert a run under its lifetime execution sequence. Retry attempt numbers
 -- are diagnostic and may repeat after a slot parks and resumes.
-local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, pid: string, attempt_no: integer): (table?, error?)
+local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, pid: string,
+        attempt_no: integer, parent_locked: boolean?): (table?, error?)
     local job_id = tostring(job.id or "")
     if job_id == "" then
         return nil, (errors.new({ message = "job.id is required for run history", kind = errors.INVALID }) :: error)
@@ -94,6 +95,13 @@ local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, 
     local size_err = row_bytes.check(run_row, (policy :: any).max_row_bytes,
         owner.kind .. ":" .. owner.id, "start_job_run")
     if size_err then return nil, size_err end
+    if not parent_locked then
+        -- A claim snapshot can still carry a link that teardown has cleared.
+        -- Read the parent in the insert so SQLite starts with a write and
+        -- PostgreSQL serializes the projection with the parent detach.
+        local lock = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
+        run_row.thread_id = sql.builder.expr("(SELECT thread_id FROM kickside_job WHERE id=?" .. lock .. ")", job_id)
+    end
     local statement, params, build_err = sql.builder.insert("kickside_job_run")
         :set_map(run_row):suffix("ON CONFLICT DO NOTHING")
         :placeholder_format(sql.builder.dollar):to_sql()
@@ -116,9 +124,10 @@ local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, 
     end
     return nil, (errors.new({ message = "run execution sequence already belongs to another lease", kind = errors.CONFLICT }) :: error)
 end
-local function start_job_run(db_or_tx: Executor, dbtype: string, job: table, pid: string, attempt_no: integer): (table?, error?)
+local function start_job_run(db_or_tx: Executor, dbtype: string, job: table, pid: string,
+        attempt_no: integer, parent_locked: boolean?): (table?, error?)
     if type((db_or_tx :: any).db_type) == "function" then
-        return start_job_run_tx(db_or_tx, dbtype, job, pid, attempt_no)
+        return start_job_run_tx(db_or_tx, dbtype, job, pid, attempt_no, parent_locked)
     end
     local tx, begin_err = sql_boundary.begin(db_or_tx :: sql.DB, "job run transaction failed", "transaction", response_error)
     if begin_err then return nil, begin_err end
@@ -289,6 +298,38 @@ local function resolve_max_backoff(job: table): (number?, error?)
     return nil, nil
 end
 
+-- A job that the failure made dead hands its outcome to the dead handler its
+-- worker declares, in the same transaction. A thread owner whose cleanup has
+-- started receives none.
+local function enqueue_dead_outcome(db_or_tx: Executor, dbtype: string, id: string): error?
+    local rows, read_err = db_or_tx:query([[SELECT id,status,worker_ref,owner_kind,owner_id,thread_id,
+        queue_tier,priority,job_identity FROM kickside_job WHERE id=$1]], { id })
+    if read_err then return errors.wrap(read_err, "dead outcome job read failed") end
+    if type(rows) ~= "table" or type(rows[1]) ~= "table" then return response_error("dead_outcome.rows") end
+    local row = rows[1]
+    if row.status ~= job_types.JOB_STATE.DEAD then return nil end
+    if dead_outcome.is_outcome(row) then
+        log:warn("dead outcome delivery ends", {job_id = id})
+        return nil
+    end
+    local handler, handler_err = dead_outcome.handler(row.worker_ref)
+    if handler_err then
+        if handler_err:retryable() then return handler_err end
+        log:warn("dead outcome target is undeliverable", {job_id = id, error = tostring(handler_err)})
+        return nil
+    end
+    if not handler then return nil end
+    local _, enqueue_err = enqueue.enqueue_job(db_or_tx, dbtype, dead_outcome.params(row, handler :: string))
+    if enqueue_err then
+        if not enqueue_err:retryable() then
+            log:warn("dead outcome admission refused", {job_id = id, error = tostring(enqueue_err)})
+            return nil
+        end
+        return errors.wrap(enqueue_err, "dead outcome enqueue failed")
+    end
+    return nil
+end
+
 -- A failed one-shot job is terminal (dead) on a deterministic failure or once
 -- its attempts reach max_attempts; an infrastructure failure below that bound
 -- retries with backoff. A slot lives as long as its owner, so a slot never dies
@@ -366,7 +407,9 @@ local function fail_in_tx(db_or_tx: Executor, job: table, dbtype: string, error_
     if count == 0 then
         return job_types.lease_lost_error("lease lost while failing job")
     end
-    return worker_marker.clear(db_or_tx, job.id)
+    local marker_err = worker_marker.clear(db_or_tx, job.id)
+    if marker_err then return marker_err end
+    return enqueue_dead_outcome(db_or_tx, dbtype, tostring(job.id))
 end
 
 local function fail_job(db: sql.DB, job: table, dbtype: string, error_text: string?, failure_class: string?, retry_floor: table?): error?
@@ -384,24 +427,6 @@ lifecycle.fail_job = fail_job
 -- the lease-fenced failure inside it.
 lifecycle.fail_tx = fail_in_tx
 
--- Deliver committed execution revocations to their token-qualified owners.
--- When no supervisor is registered, its register-before-read fence guarantees
--- that a late execution will fail validation, so the caller can settle now.
-function lifecycle.notify_cancellations(db: sql.DB, dbtype: string, executions: table[]): error?
-    for _, execution in ipairs(executions) do
-        local sequence = tonumber(execution.execution_seq)
-        if sequence then
-            local sent, send_err = proc_supervisor.notify(tostring(execution.id),
-                tostring(execution.token), sequence, "revoked", nil)
-            if send_err then return send_err end
-            if not sent then
-                local _, finish_err = lifecycle_cancel.finish_cancellation(db, dbtype, execution)
-                if finish_err then return finish_err end
-            end
-        end
-    end
-    return nil
-end
 type EnqueueParams = enqueue.EnqueueParams
 type IdentityParams = enqueue.IdentityParams
 lifecycle.EnqueueParams = EnqueueParams

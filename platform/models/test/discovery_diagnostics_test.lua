@@ -30,6 +30,97 @@ local function check(message, diagnostics, kind, retryable, status)
 end
 
 return {run = test.run_cases(function()
+    test.describe("provider discovery timeout", function()
+        test.it("uses saved timeout strings and environment durations for discovery and connection probes", function()
+            local saved = assert(repo.create_profile({name = "Provider discovery timeout",
+                provider_id = "wippy.llm.openai_compat:provider", api_key = "test-key",
+                config = {timeout = "60.25", timeout_env = "MODELS_DISCOVERY_TIMEOUT"}}))
+            local original = discovery.adapter_for
+            discovery.adapter_for = function() return openai end
+            local ok, err = pcall(function()
+                local function check_requests(expected)
+                    http_fixture.prepare({status_code = 200, body = '{"data":[]}'}, nil)
+                    assert(discovery.discover(saved.id))
+                    test.eq(http_fixture.timeout(), expected)
+                    http_fixture.prepare({status_code = 200, body = "{}"}, nil)
+                    assert(discovery.test(saved.id, {model = "test-model"}))
+                    test.eq(http_fixture.timeout(), expected)
+                end
+
+                check_requests("60250ms")
+                assert(repo.update_profile(saved.id, {timeout = ""}))
+                check_requests("1500ms")
+                assert(repo.update_profile(saved.id, {config = {timeout_env = "MODELS_VERTEX_CREDS_A"}}))
+                check_requests("30000ms")
+            end)
+            discovery.adapter_for = original
+            assert(repo.delete_profile(saved.id))
+            if not ok then error(err, 0) end
+        end)
+    end)
+
+    test.describe("OpenAI profile generation probe", function()
+        local function prepare_models(ids)
+            local items = {}
+            for _, id in ipairs(ids) do table.insert(items, { id = id }) end
+            http_fixture.prepare_probe(assert(json.encode({ data = items })))
+        end
+
+        local function first_party()
+            local value = profile()
+            value.provider_id = "wippy.llm.openai:provider"
+            return value
+        end
+
+        test.it("selects a model for Responses past completions-only, embedding, and image entries", function()
+            prepare_models({ "babbage-002", "gpt-3.5-turbo-instruct", "text-embedding-3-small", "gpt-image-2", "gpt-4o-mini" })
+            local result = assert(openai.test(first_party(), {}))
+            test.eq(result.model, "gpt-4o-mini")
+            test.eq(result.mode, "responses")
+            local request = assert(http_fixture.probe())
+            test.eq(request.url, "https://example.invalid/responses")
+            local body = assert(json.decode(request.body))
+            test.eq(body.model, "gpt-4o-mini")
+        end)
+
+        test.it("reports the authenticated model list when no generation model is available", function()
+            prepare_models({ "text-embedding-3-small", "davinci-002", "gpt-4o-search-preview",
+                "gpt-4o-mini-search-preview-2025-03-11" })
+            local result = assert(openai.test(first_party(), {}))
+            test.eq(result.mode, "models")
+            test.eq(result.count, 4)
+            test.is_nil(http_fixture.probe())
+        end)
+
+        test.it("can probe a reasoning model that is only available through Responses", function()
+            prepare_models({ "text-embedding-3-small", "o3-pro" })
+            local result = assert(openai.test(first_party(), {}))
+            test.eq(result.model, "o3-pro")
+            local request = assert(http_fixture.probe())
+            test.eq(request.url, "https://example.invalid/responses")
+            local body = assert(json.decode(request.body))
+            test.eq(body.input, "ping")
+            test.eq(body.max_output_tokens, 16)
+            test.eq(body.store, false)
+            test.is_nil(body.temperature)
+        end)
+
+        test.it("keeps configured overrides and does not apply OpenAI naming rules to compatible providers", function()
+            prepare_models({ "babbage-002" })
+            local result = assert(openai.test(profile(), {}))
+            test.eq(result.model, "babbage-002")
+            test.eq(result.mode, "chat_completions")
+            test.eq(assert(http_fixture.probe()).url, "https://example.invalid/chat/completions")
+
+            local explicit = first_party()
+            explicit.config.test_model = "configured-chat-model"
+            result = assert(openai.test(explicit, {}))
+            test.eq(result.model, "configured-chat-model")
+            result = assert(openai.test(explicit, { model = "requested-chat-model" }))
+            test.eq(result.model, "requested-chat-model")
+        end)
+    end)
+
     test.describe("safe discovery diagnostics", function()
         for _, row in ipairs({{401, errors.PERMISSION_DENIED, false}, {429, errors.RATE_LIMITED, true},
             {503, errors.UNAVAILABLE, true}}) do

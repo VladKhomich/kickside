@@ -25,11 +25,13 @@ entries:
     source: file://upload_http_dedup_test.lua
     method: run
     meta: { type: test, suite: upload_http_dedup }
-    modules: [uuid, security, funcs, sql]
+    modules: [uuid, security, funcs, sql, fs, registry, http_client, json, env]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       types: kickside.uploads:types
+      secret_cipher: kickside.contract:secret_cipher
+      upload_tokens: kickside.uploads.persist:upload_tokens
 
   - name: upload_app_policy_test
     kind: function.lua
@@ -74,17 +76,20 @@ entries:
   - name: upload_artifacts_fixture
     kind: library.lua
     source: file://fixtures/artifacts.lua
-    modules: [security]
+    modules: [security, logger]
     imports:
       http: app:upload_http_probe
       upload_response: app:signed_upload_response
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_mime: kickside.uploads:uploads_mime
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
+      artifact_schema: kickside.uploads.persist:artifact_schema
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
       upload_tokens: kickside.uploads.persist:upload_tokens
       original_read: kickside.uploads:original_read
       http_errors: kickside.contract:http_errors
+      binding_errors: kickside.uploads.binding:binding_errors
 
   - name: upload_delete_fixture
     kind: library.lua
@@ -220,6 +225,7 @@ entries:
     imports:
       test: wippy.test:test
       upload_type: kickside.uploads:upload_type
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: intent_bootstrap_test
     kind: function.lua
@@ -343,6 +349,12 @@ entries:
     modules: [sql]
     method: handle
 
+  - name: callback_reject
+    kind: function.lua
+    source: file://callback_probe.lua
+    modules: [sql]
+    method: reject
+
   - name: admit_upload
     kind: function.lua
     meta:
@@ -358,9 +370,12 @@ entries:
   - name: failing_stage
     kind: function.lua
     meta:
+      reports_progress: true
       comment: Test-only universal upload stage that fails when explicitly requested.
     source: file://failing_stage.lua
     method: process
+    imports:
+      jobs: kickside.core.jobs:jobs
 
   - name: packed_storage_test
     kind: function.lua
@@ -447,14 +462,17 @@ entries:
       suite: kickside_uploads_rasterize
       comment: Discovery, PDF adapter, and the empty-document rasterize pipeline stage.
     source: file://rasterize_test.lua
-    modules: [registry, funcs, fs, uuid, security, contract, json, time]
+    modules: [registry, funcs, fs, uuid, security, contract, json, time, sql, process, channel]
     imports:
+      proc_supervisor: kickside.core.jobs:proc_supervisor
       page_images: kickside.uploads.rasterize:page_images
       test: wippy.test:test
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       rasterizer: kickside.uploads.rasterize:rasterizer
+      stage_fixture: app:rasterize_stage_fixture
+      stage_logger: app:page_bytes_logger
       fixtures: app:rasterize_fixtures
       upload_query_repo: kickside.uploads.persist:upload_query_repo
     method: run
@@ -683,12 +701,19 @@ entries:
       comment: The supervised Core retention sweeper runs the uploads owner under its declared identity.
     source: file://retention_sweeper_test.lua
     method: run
-    modules: [sql, uuid, time, process, security, contract]
+    modules: [sql, uuid, time, process, security, contract, funcs, json, env, fs]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       retention_notifier: kickside.core.retention:notifier
       types: kickside.uploads:types
+      upload_tokens: kickside.uploads.persist:upload_tokens
+      secret_cipher: kickside.contract:secret_cipher
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      upload_read_model: kickside.uploads.persist:upload_read_model
+      process_job: kickside.uploads.service:process_dead
+      threads_writer: kickside.core.threads.persist:writer
+      jobs_retention: kickside.core.jobs.persist:retention
 
   - name: delete_stage_failure_test
     kind: function.lua
@@ -953,6 +978,7 @@ entries:
     imports:
       uploads_resources: app:signed_upload_resources
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: signed_upload_list_fixture
     kind: library.lua
@@ -994,11 +1020,13 @@ entries:
       comment: Library for handling file uploads to configured storage backends.
     source: file://fixtures/uploads.lua
     modules:
+    - funcs
     - uuid
     - time
     - hash
     - logger
     imports:
+      binding_errors: kickside.uploads.binding:binding_errors
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       upload_read_model: kickside.uploads.persist:upload_read_model
@@ -1034,6 +1062,7 @@ entries:
       registry: app:navigation_registry_fixture
       uploads_resources: app:navigation_api_fixture
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: navigation_list_fixture
     kind: library.lua
@@ -1103,12 +1132,13 @@ entries:
     meta: {type: test, suite: uploads}
     source: file://referenced_upload_access_test.lua
     method: run
-    modules: [uuid, security, funcs, fs, sql, registry, http_client, contract]
+    modules: [uuid, security, funcs, fs, sql, registry, http_client, contract, json]
     imports:
       test: wippy.test:test
       records: kickside.uploads.persist:upload_record_repo
       types: kickside.uploads:types
       upload_tokens: kickside.uploads.persist:upload_tokens
+      artifacts: kickside.uploads.persist:artifact_content_repo
 
   - name: reference_api
     kind: http.router
@@ -1125,6 +1155,13 @@ entries:
     method: GET
     path: /uploads/{uuid}/raw
     func: kickside.uploads.api:raw_handler
+
+  - name: reference_create_upload.endpoint
+    kind: http.endpoint
+    meta: {router: reference_api}
+    method: POST
+    path: /uploads
+    func: kickside.uploads.api:upload_handler
 
   - name: reference_artifacts.endpoint
     kind: http.endpoint

@@ -93,6 +93,8 @@ entries:
     meta:
       comment: Canonical validator for an exact immutable Automation binding revision.
     source: file://../automation_ref.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: automation
     kind: library.lua

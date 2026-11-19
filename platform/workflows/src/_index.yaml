@@ -56,7 +56,7 @@ entries:
     component: kickside/component
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.9'
     kind: ns.dependency
     component: kickside/contract
 
@@ -388,6 +388,8 @@ entries:
     meta:
       comment: Canonical registry-declared workflow-node configuration validator shared by assist, publish, and launch.
     source: file://config_schema.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     modules: [json]
 
   - name: workflow_state
@@ -397,6 +399,7 @@ entries:
     source: file://workflow_state.lua
     modules: [uuid, json]
     imports:
+      text_trim: kickside.contract:text_trim
       types: kickside.workflows:types
       mapping: kickside.workflows.execution:mapping
       policy: kickside.workflows:policy_config
@@ -557,6 +560,8 @@ entries:
     source: file://assist.lua
     modules: [json, expr, time]
     imports:
+      text_trim: kickside.contract:text_trim
+      unfence: kickside.contract:unfence
       assist_prompts: kickside.workflows:assist_prompts
       assist_validate: kickside.workflows:assist_validate
       assist_edge: kickside.workflows:assist_edge

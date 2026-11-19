@@ -19,14 +19,18 @@ entries:
 
   - name: list_kb
     kind: function.lua
+    security:
+      policies: [kickside.knowledge.security:authorized_store_stats]
     source: file://list_kb.lua
     modules: [http, json, security, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       deletion_progress: kickside.component:deletion_progress
       component: kickside.component:component
       engines: kickside.knowledge:engines
       query_params: kickside.knowledge.api:query_params
       listing_page: kickside.knowledge.api:listing_page
+      stores: kickside.knowledge:stores
       http_errors: kickside.contract:http_errors
     method: handler
 
@@ -76,6 +80,8 @@ entries:
 
   - name: get_kb
     kind: function.lua
+    security:
+      policies: [kickside.knowledge.security:authorized_store_stats]
     source: file://get_kb.lua
     modules: [http, json, security, registry]
     imports:
@@ -235,7 +241,9 @@ entries:
     source: file://ingest_upload.lua
     modules: [contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       engines: kickside.knowledge:engines
+      thread_ingest: kickside.knowledge.injection:thread_ingest
       component: kickside.component:component
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo

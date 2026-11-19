@@ -1,6 +1,6 @@
 -- The jobs runtime configuration (design §8): one registry entry,
--- kickside.core.jobs:policy, whose data carries defaults and whose meta
--- carries explicit host overrides. A host overrides any value through .wippy.yaml
+-- kickside.core.jobs:policy, whose meta carries the defaults and host
+-- assignments. A host overrides any value through .wippy.yaml
 -- "kickside.core.jobs:policy:meta.<path>". resolve validates the shape into the
 -- runtime values; a malformed policy is a declaration fault and never falls
 -- back to a code default.
@@ -74,6 +74,42 @@ local function duration_ms(value: any, path: string): (integer?, error?)
     return ms :: integer, nil
 end
 
+-- Bound the size of the declared override map.
+M.MAX_RETENTION_TYPES = 64
+
+type RetentionWindow = {
+    jobs_ms: integer,
+    job_runs_ms: integer,
+}
+
+-- retention.by_type maps a job type to both of its windows, so an overridden
+-- type never falls back to a global cutoff.
+local function retention_windows(value: any): ({ [string]: RetentionWindow }?, error?)
+    if type(value) ~= "table" then return nil, invalid("retention.by_type must be an object") end
+    local windows: { [string]: RetentionWindow } = {}
+    local total = 0
+    for job_type, window in pairs(value) do
+        if type(job_type) ~= "string" or job_type == "" then
+            return nil, invalid("retention.by_type keys must be job types")
+        end
+        total = total + 1
+        if total > M.MAX_RETENTION_TYPES then
+            return nil, invalid("retention.by_type allows at most " .. tostring(M.MAX_RETENTION_TYPES) .. " job types")
+        end
+        local path = "retention.by_type." .. job_type
+        if type(window) ~= "table" then return nil, invalid(path .. " must be an object") end
+        for key in pairs(window) do
+            if key ~= "jobs" and key ~= "job_runs" then return nil, invalid(path .. " contains an unknown key") end
+        end
+        local jobs_ms, jobs_err = duration_ms(window.jobs, path .. ".jobs")
+        if jobs_err then return nil, jobs_err end
+        local job_runs_ms, runs_err = duration_ms(window.job_runs, path .. ".job_runs")
+        if runs_err then return nil, runs_err end
+        windows[job_type] = { jobs_ms = jobs_ms :: integer, job_runs_ms = job_runs_ms :: integer }
+    end
+    return windows, nil
+end
+
 local FAIRNESS_TIERS = { "live", "backfill", "maintenance" }
 M.FAIRNESS_TIERS = FAIRNESS_TIERS
 
@@ -116,6 +152,7 @@ type Resolved = {
     max_row_bytes: integer,
     retention_jobs_ms: integer,
     retention_job_runs_ms: integer,
+    retention_by_type: { [string]: RetentionWindow },
     retention_thread_cleanup_receipts_ms: integer,
     retention_interval_ms: integer,
     retention_batch: integer,
@@ -197,6 +234,8 @@ function M.resolve(meta: any): (Resolved?, error?)
     if e_jobs then return nil, e_jobs end
     local retention_job_runs_ms, e_runs = duration_ms((retention :: table).job_runs, "retention.job_runs")
     if e_runs then return nil, e_runs end
+    local retention_by_type, e_by_type = retention_windows((retention :: table).by_type)
+    if e_by_type then return nil, e_by_type end
     local retention_thread_cleanup_receipts_ms, e_cleanup_receipts = duration_ms(
         (retention :: table).thread_cleanup_receipts, "retention.thread_cleanup_receipts")
     if e_cleanup_receipts then return nil, e_cleanup_receipts end
@@ -228,11 +267,19 @@ function M.resolve(meta: any): (Resolved?, error?)
         max_row_bytes = max_row_bytes :: integer,
         retention_jobs_ms = retention_jobs_ms :: integer,
         retention_job_runs_ms = retention_job_runs_ms :: integer,
+        retention_by_type = retention_by_type :: { [string]: RetentionWindow },
         retention_thread_cleanup_receipts_ms = retention_thread_cleanup_receipts_ms :: integer,
         retention_interval_ms = retention_interval_ms :: integer,
         retention_batch = retention_batch :: integer,
         thread_cleanup_batch = thread_cleanup_batch :: integer,
     }, nil
+end
+
+-- Worker pulses retain the one-second cadence for ordinary leases and leave
+-- three pulse intervals of scheduling margin for shorter leases.
+function M.worker_liveness(policy: any): (integer, integer)
+    local seconds = policy.lease_timeout_seconds :: integer
+    return seconds, math.min(1000, math.floor(seconds * 1000 / 4)) :: integer
 end
 
 -- Weighted round-robin quotas shared by the pool and durable claim path. `step`
@@ -264,38 +311,9 @@ function M.copy(value: any): any
     return result
 end
 
-local function merge(defaults: any, host: any): table
-    local out = type(defaults) == "table" and M.copy(defaults) or {}
-    for key, value in pairs(host or {}) do
-        if type(value) == "table" and type(out[key]) == "table" then
-            out[key] = merge(out[key], value)
-        else
-            out[key] = M.copy(value)
-        end
-    end
-    return out
-end
-
 function M.editable(key: any): boolean
     for _, field in ipairs(policy_fields) do if field.key == key then return true end end
     return false
-end
-
--- Registry meta contains only explicit host values; admin overrides from
--- Settings apply over them and the shipped defaults.
-local function layers(host: any, defaults: any, overrides: table): (any?, error?)
-    if type(host) ~= "table" then return nil, invalid("meta must be an object") end
-    local fallback = merge(defaults, host)
-    local meta = M.copy(fallback)
-    for key, value in pairs(overrides) do
-        if not M.editable(key) then return nil, invalid("key is not live-editable: " .. tostring(key)) end
-        local group, field = key:match("^([^.]+)%.(.+)$")
-        if type(meta[group]) ~= "table" then return nil, invalid(group .. " is required") end
-        meta[group][field] = M.copy(value)
-    end
-    local resolved, err = M.resolve(meta)
-    if err then return nil, err end
-    return {policy = resolved, meta = meta, fallback = fallback}, nil
 end
 
 function M.declaration(): (any?, error?)
@@ -310,16 +328,22 @@ end
 function M.runtime(overrides: table): (Resolved?, error?)
     local entry, err = M.declaration()
     if err then return nil, err end
-    local result, resolve_err = layers(entry.meta, entry.data and entry.data.defaults, overrides)
-    return result and result.policy, resolve_err
+    if type(entry.meta) ~= "table" then return nil, invalid("meta must be an object") end
+    local meta = M.copy(entry.meta)
+    for key, value in pairs(overrides) do
+        if not M.editable(key) then return nil, invalid("key is not live-editable: " .. tostring(key)) end
+        local group, field = key:match("^([^.]+)%.(.+)$")
+        if type(meta[group]) ~= "table" then return nil, invalid(group .. " is required") end
+        meta[group][field] = M.copy(value)
+    end
+    return M.resolve(meta)
 end
 
--- An execution carries only the editable values it consumes. Fixed limits
--- retain their registry-version-cached semantics in each engine primitive.
-function M.capture(policy: any): table
+-- An execution carries the editable values it consumes and its declared progress deadline.
+function M.capture(policy: any, progress_timeout_ms: integer?): table
     return {lease_timeout_seconds = policy.lease_timeout_seconds, lease_heartbeat_ms = policy.lease_heartbeat_ms,
         proc_max_execution_ms = policy.proc_max_execution_ms, retry_after_ms = policy.retry_after_ms,
-        retry_max_delay_ms = policy.retry_max_delay_ms}
+        retry_max_delay_ms = policy.retry_max_delay_ms, progress_timeout_ms = progress_timeout_ms}
 end
 
 local cached_version: string? = nil
@@ -331,6 +355,7 @@ local function policy_copy(value: Resolved): Resolved
     local shares: table = {}
     for key, item in pairs(value.fairness_shares) do shares[key] = item end
     out.fairness_shares = shares
+    out.retention_by_type = M.copy(value.retention_by_type)
     return out :: Resolved
 end
 
@@ -351,5 +376,6 @@ M.WAKE_TOPIC = "kickside.core.jobs:wake"
 M.POOL_NAME = "kickside.core.jobs.worker_pool"
 M.IDLE_TOPIC = "kickside.core.jobs:worker_idle"
 M.ASSIGN_TOPIC = "kickside.core.jobs:worker_assign"
+M.SHUTDOWN_TOPIC = "kickside.core.jobs:worker_shutdown"
 
 return M

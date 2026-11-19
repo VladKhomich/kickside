@@ -1,5 +1,6 @@
 -- Job dispatch, process binding and supervised child termination.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local funcs = require("funcs")
 local registry = require("registry")
@@ -25,13 +26,6 @@ local PROC_BLOCKED = {
     ["kickside.core.jobs.service:loop"] = "job worker loop is a daemon and cannot be used as a job worker_ref",
     ["kickside.core.jobs.service:job_child"] = "job execution child cannot be used as a job worker_ref",
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function entry_kind(entry: any): string?
     if type(entry) ~= "table" then
@@ -200,11 +194,14 @@ local function run_bound_worker(job: table, binding: table): (table?, error?)
     return output, nil
 end
 
--- Error text a supervised proc surfaces when its hard wall-clock ceiling elapses.
--- It is a plain failure (not a lost lease): fail_job runs normally and the job
--- retries through the usual backoff -> dead path.
+-- Error texts a supervised execution surfaces when its hard wall-clock ceiling
+-- or its heartbeat timeout elapses. Each is a plain failure (not a lost lease):
+-- fail_job runs normally and the job retries through the usual backoff -> dead
+-- path.
 local PROC_TIMEOUT_MARKER = "job exceeded max_execution_ms"
 worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
+local HEARTBEAT_TIMEOUT_MARKER = "job heartbeat timed out"
+worker.HEARTBEAT_TIMEOUT_MARKER = HEARTBEAT_TIMEOUT_MARKER
 
 -- A proc:// worker uses the native error transport in its status envelope. The
 -- runtime can also report a native failure directly in the monitored EXIT.
@@ -372,6 +369,5 @@ local function execute_job(db: sql.DB, dbtype: string, job: table): (table?, err
 end
 worker.execute_job = execute_job
 worker.proc_binding_for = proc_binding_for
-
 
 return worker

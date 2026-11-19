@@ -2,6 +2,9 @@ import { computed, ref, type Ref } from 'vue'
 import { keeperHub, type HubInstallPlan } from '../keeper-hub.ts'
 import { errorMessage, resolvedDependencyVersion } from '../lib.ts'
 import type { InstalledRow, UpdateInfo, UpdateStatus } from './modules-page.types.ts'
+import {
+  APP_COMPONENT, KEEPER_COMPONENT, activateKeeperForAppUpdate, legacyKeeperForAppUpdate, updatePlanBlocker,
+} from './app-update-prerequisite.ts'
 
 interface ModuleUpdatesOptions {
   hub: ReturnType<typeof keeperHub>
@@ -19,6 +22,7 @@ export function useModuleUpdates({ hub, installed, installedError, installedCanU
   const updateScan = ref<Record<string, UpdateInfo>>({})
   const updateScanLoading = ref(false)
   const updateAllRunning = ref(false)
+  let updatingRoot = false
   const availableUpdates = computed(() => installed.value.filter(dep => {
     const info = updateInfoForDep(dep)
     return installedCanUpdate(dep) && installedIsRoot(dep) && info
@@ -153,9 +157,10 @@ async function planRootUpdate(component: string, version: string): Promise<HubIn
   setUpdateInfo(component, { status: 'planning', message: undefined })
   try {
     const plan = await hub!.planInstall({ component, version, run_migrations: true })
-    const missing = plan.missing_requirements || []
-    if (missing.length) {
-      const message = `Missing required settings: ${missing.join(', ')}`
+    const message = component === APP_COMPONENT
+      ? updatePlanBlocker(plan)
+      : (plan.missing_requirements?.length ? `Missing required settings: ${plan.missing_requirements.join(', ')}` : null)
+    if (message) {
       setUpdateInfo(component, { status: 'blocked', message })
       return null
     }
@@ -167,12 +172,26 @@ async function planRootUpdate(component: string, version: string): Promise<HubIn
   }
 }
 
+async function stageKeeper(legacy: NonNullable<Awaited<ReturnType<typeof legacyKeeperForAppUpdate>>>) {
+  const offered = updateScan.value[KEEPER_COMPONENT]?.latestVersion
+  setUpdateInfo(KEEPER_COMPONENT, { currentVersion: legacy.active, status: 'planning' })
+  try {
+    const version = await activateKeeperForAppUpdate(hub!, legacy, offered)
+    setUpdateInfo(KEEPER_COMPONENT, { status: 'updated', currentVersion: version, latestVersion: version })
+  } catch (e: unknown) {
+    setUpdateInfo(KEEPER_COMPONENT, { status: 'failed', message: errorMessage(e, 'Keeper update failed') })
+    throw e
+  }
+}
+
 async function updateInstalledDependency(dep: InstalledRow): Promise<boolean> {
-  if (!hub || !dep.component) return false
-  let info = updateInfoForDep(dep)
-  if (!info) {
-    const currentVersion = resolvedDependencyVersion(dep)
-    try {
+  if (!hub || !dep.component || updateAllRunning.value || updatingRoot) return false
+  updatingRoot = true
+  let keeperUpdated = false
+  try {
+    let info = updateInfoForDep(dep)
+    if (!info) {
+      const currentVersion = resolvedDependencyVersion(dep)
       const versions = await hub.listVersions(dep.component)
       const latestVersion = latestVersionFrom(versions.items)
       info = {
@@ -182,93 +201,127 @@ async function updateInstalledDependency(dep: InstalledRow): Promise<boolean> {
         status: isNewerVersion(latestVersion, currentVersion) ? 'available' : 'current',
       }
       setUpdateInfo(dep.component, info)
-    } catch (e: unknown) {
-      setUpdateInfo(dep.component, { status: 'failed', message: errorMessage(e, 'version scan failed') })
-      return false
     }
-  }
-  if (!info.latestVersion || !isNewerVersion(info.latestVersion, resolvedDependencyVersion(dep))) return true
-  try {
+    if (!info.latestVersion || !isNewerVersion(info.latestVersion, resolvedDependencyVersion(dep))) return true
+
     const version = trackingConstraint(info.latestVersion)
-    const planned = await planRootUpdate(dep.component, version)
+    const legacy = dep.component === APP_COMPONENT ? await legacyKeeperForAppUpdate(hub) : null
+    let planned = await planRootUpdate(dep.component, version)
     if (!planned) return false
-    const installing = hub.install({
+    if (legacy) {
+      await stageKeeper(legacy)
+      keeperUpdated = true
+      planned = await planRootUpdate(dep.component, version)
+      if (!planned) {
+        const message = updateInfoForDep(dep)?.message || 'KickSide update paused'
+        setUpdateInfo(dep.component, { message: `Keeper was updated. ${message}` })
+        return false
+      }
+    }
+
+    setUpdateInfo(dep.component, { status: 'updating' })
+    await hub.install({
       ...planned.install_payload,
       component: dep.component,
       version,
       run_migrations: true,
       migration_policy: 'up',
     })
-    setUpdateInfo(dep.component, { status: 'updating' })
-    await installing
     setUpdateInfo(dep.component, {
       status: 'updated',
       currentVersion: info.latestVersion,
       latestVersion: info.latestVersion,
-      message: undefined,
     })
-    notifyModulesChanged()
+    if (!keeperUpdated) notifyModulesChanged()
     return true
   } catch (e: unknown) {
-    setUpdateInfo(dep.component, { status: 'failed', message: errorMessage(e, 'update failed') })
+    const message = errorMessage(e, 'update failed')
+    setUpdateInfo(dep.component, { status: 'failed', message: keeperUpdated ? `Keeper was updated. ${message}` : message })
     return false
+  } finally {
+    try {
+      if (keeperUpdated) {
+        notifyModulesChanged()
+        await refreshUpdateStatus()
+      }
+    } finally {
+      updatingRoot = false
+    }
   }
 }
 
-async function updateAllAvailable() {
-  if (updateAllRunning.value || availableUpdates.value.length === 0) return
-  updateAllRunning.value = true
-  const pending = [...availableUpdates.value]
+async function refreshUpdateStatus() {
   try {
-    for (const dep of pending) setUpdateInfo(dep.component, { status: 'planning' })
-    const plan = await hub!.planBatchInstall({
-      dependencies: pending.map(dep => ({
-        id: dep.dependencyId,
-        component: dep.component,
-        version: trackingConstraint(updateInfoForDep(dep)!.latestVersion),
-      })),
-      run_migrations: true,
-      migration_policy: 'up',
-    })
-    const blockers = new Map<string, string>()
-    for (const root of plan.plans) {
-      const missing = root.missing_requirements || []
-      const invalid = (root.requirements || []).filter(requirement => requirement.invalid)
-        .map(requirement => `${requirement.id || requirement.parameter_name}: ${requirement.invalid_reason || 'invalid value'}`)
-      if (root.applicable === false || missing.length || invalid.length) {
-        const message = [
-          missing.length ? `Missing required settings: ${missing.join(', ')}` : '',
-          invalid.length ? `Invalid settings: ${invalid.join(', ')}` : '',
-        ].filter(Boolean).join('. ') || 'Update plan cannot be applied'
-        blockers.set(root.dependency?.component || 'Unknown module', message)
-      }
-    }
-    if (!plan.applicable || blockers.size) {
-      for (const dep of pending) setUpdateInfo(dep.component, {
-        status: blockers.has(dep.component) ? 'blocked' : 'skipped',
-        message: blockers.get(dep.component) || 'Batch not applied because its plan is blocked',
-      })
-      showToast('error', blockers.size
-        ? [...blockers].map(([component, message]) => `${component}: ${message}`).join('; ')
-        : 'Update plan cannot be applied. No modules were changed.')
-      return
-    }
-    if (!plan.install_payload?.dependencies?.length) throw new Error('Update plan returned no install payload')
-    for (const dep of pending) setUpdateInfo(dep.component, { status: 'updating' })
-    await hub!.install(plan.install_payload)
-    for (const dep of pending) setUpdateInfo(dep.component, { status: 'updated' })
-    notifyModulesChanged()
-    showToast('ok', `Updated ${pending.length} module${pending.length === 1 ? '' : 's'}`)
+    await refreshAll()
+    await refreshSelectedDetail()
   } catch (e: unknown) {
-    const message = errorMessage(e, 'update failed')
+    showToast('error', `Module status could not be refreshed: ${errorMessage(e, 'refresh failed')}`)
+  }
+}
+
+async function planAvailableUpdates(pending: InstalledRow[], keeperUpdated: boolean) {
+  for (const dep of pending) setUpdateInfo(dep.component, { status: 'planning' })
+  const plan = await hub!.planBatchInstall({
+    dependencies: pending.map(dep => ({
+      id: dep.dependencyId,
+      component: dep.component,
+      version: trackingConstraint(updateInfoForDep(dep)!.latestVersion),
+    })),
+    run_migrations: true,
+    migration_policy: 'up',
+  })
+  const blockers = new Map<string, string>()
+  for (const root of plan.plans) {
+    const blocker = updatePlanBlocker(root)
+    if (blocker) blockers.set(root.dependency?.component || 'Unknown module', blocker)
+  }
+  if (!plan.applicable || blockers.size) {
+    for (const dep of pending) setUpdateInfo(dep.component, {
+      status: blockers.has(dep.component) ? 'blocked' : 'skipped',
+      message: blockers.get(dep.component) || 'Batch not applied because its plan is blocked',
+    })
+    const message = blockers.size
+      ? [...blockers].map(([component, text]) => `${component}: ${text}`).join('. ')
+      : keeperUpdated ? 'Update plan cannot be applied.' : 'Update plan cannot be applied. No modules were changed.'
+    showToast('error', keeperUpdated ? `Keeper was updated. ${message}` : message)
+    return null
+  }
+  if (!plan.install_payload?.dependencies?.length) throw new Error('Update plan returned no install payload')
+  return plan.install_payload
+}
+
+async function updateAllAvailable() {
+  if (updateAllRunning.value || updatingRoot || availableUpdates.value.length === 0) return
+  updateAllRunning.value = true
+  let pending = [...availableUpdates.value]
+  let keeperUpdated = false
+  let batchUpdated = false
+  try {
+    const legacy = pending.some(dep => dep.component === APP_COMPONENT) ? await legacyKeeperForAppUpdate(hub!) : null
+    let payload = await planAvailableUpdates(pending, false)
+    if (!payload) return
+    if (legacy) {
+      await stageKeeper(legacy)
+      keeperUpdated = true
+      pending = pending.filter(dep => dep.component !== KEEPER_COMPONENT)
+      payload = await planAvailableUpdates(pending, true)
+      if (!payload) return
+    }
+    const count = pending.length + (keeperUpdated ? 1 : 0)
+    for (const dep of pending) setUpdateInfo(dep.component, { status: 'updating' })
+    await hub!.install(payload)
+    batchUpdated = true
+    for (const dep of pending) setUpdateInfo(dep.component, { status: 'updated' })
+    showToast('ok', `Updated ${count} module${count === 1 ? '' : 's'}`)
+  } catch (e: unknown) {
+    const error = errorMessage(e, 'update failed')
+    const message = keeperUpdated ? `Keeper was updated. ${error}` : error
     for (const dep of pending) setUpdateInfo(dep.component, { status: 'failed', message })
     showToast('error', message)
   } finally {
     try {
-      await refreshAll()
-      await refreshSelectedDetail()
-    } catch (e: unknown) {
-      showToast('error', `Module status could not be refreshed: ${errorMessage(e, 'refresh failed')}`)
+      if (keeperUpdated || batchUpdated) notifyModulesChanged()
+      await refreshUpdateStatus()
     } finally {
       updateAllRunning.value = false
     }

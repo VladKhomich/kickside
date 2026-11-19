@@ -17,8 +17,12 @@ entries:
     modules: [time, contract]
     security:
       actor: { id: system:kickside.uploads.retention }
-      policies: [kickside.uploads.security:retention_db_access, kickside.uploads.security:retention_prune_boundary]
+      policies: [kickside.uploads.security:retention_db_access, kickside.uploads.security:retention_prune_boundary, kickside.uploads:token_call]
     imports:
+      process_job: kickside.uploads.service:process_dead
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      uploads_resources: kickside.uploads.binding:uploads_resources
+      upload_types: kickside.uploads:types
       uploads_retention_policy: kickside.uploads:retention_policy
       upload_read_model_retention: kickside.uploads.persist:read_model_retention
       artifact_cleanup_repo: kickside.uploads.persist:artifact_cleanup_repo
@@ -59,7 +63,36 @@ entries:
       comment: Any file with no specialised processor; stored as-is and exposed to universal stages.
     type_key: generic
     priority: 0
-    extensions: []
+    extension_mime_types:
+      odt: application/vnd.oasis.opendocument.text
+      ods: application/vnd.oasis.opendocument.spreadsheet
+      odp: application/vnd.oasis.opendocument.presentation
+      mp3: audio/mpeg
+      wav: audio/wav
+      ogg: audio/ogg
+      flac: audio/flac
+      aac: audio/aac
+      m4a: audio/mp4
+      mp4: video/mp4
+      avi: video/x-msvideo
+      mov: video/quicktime
+      wmv: video/x-ms-wmv
+      mkv: video/x-matroska
+      webm: video/webm
+      flv: video/x-flv
+      rar: application/x-rar-compressed
+      7z: application/x-7z-compressed
+      tar: application/x-tar
+      gz: application/gzip
+      ttf: font/ttf
+      otf: font/otf
+      woff: font/woff
+      woff2: font/woff2
+      eml: message/rfc822
+      exe: application/octet-stream
+      bin: application/octet-stream
+      dmg: application/x-apple-diskimage
+      iso: application/x-iso9660-image
     mime_types:
       - ".*"
     pipeline: []
@@ -76,7 +109,7 @@ entries:
     meta:
       comment: Shared KickSide contract definitions implemented by the upload content provider.
     component: kickside/contract
-    version: '>=0.3.8'
+    version: '>=0.3.9'
 
   - name: dependency.migration
     kind: ns.dependency
@@ -100,6 +133,8 @@ entries:
       - entry: kickside.uploads.migrations:04_create_artifact_tables
         path: .meta.target_db
       - entry: kickside.uploads.migrations:05_scope_archive_deduplication
+        path: .meta.target_db
+      - entry: kickside.uploads.migrations:06_index_terminal_checkpoints
         path: .meta.target_db
 
   - name: storage_id
@@ -298,8 +333,10 @@ entries:
   - name: text_trim
     kind: library.lua
     meta:
-      comment: Whitespace trim uses a linear scan to avoid backtracking; the runtime matcher stops at MaxBacktracks = 100000 (wippyai/go-lua pm.go) and reports no match, so the anchored pattern fails on large text.
+      comment: Shared whitespace trim.
     source: file://text_trim.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: metadata_sanitizer
     kind: library.lua
@@ -313,7 +350,7 @@ entries:
     kind: registry.entry
     meta:
       type: kickside.settings:definition
-      comment: Hard wall-clock ceiling for one upload processing attempt; the supervising job worker terminates a run that exceeds it.
+      comment: Hard wall-clock ceiling for one upload processing attempt; the supervising job worker terminates a run that exceeds it even while it makes progress.
     namespace: kickside.uploads
     key: process_max_execution_ms
     value_type: int
@@ -321,7 +358,24 @@ entries:
     title: Processing time limit (ms)
     category: Limits
     order: 20
-    description: Maximum milliseconds a single upload processing attempt (conversion + OCR) may run before the job worker terminates it and retries.
+    description: Maximum total milliseconds for one processing attempt. With no explicit override, progress-reporting pipelines use a two-hour ceiling and other pipelines use this default.
+    scope: global
+    editable: true
+    visible: true
+
+  - name: setting.process_heartbeat_timeout_ms
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+      comment: Longest an upload processing attempt may run without progress; the supervising job worker terminates a run that stops making progress.
+    namespace: kickside.uploads
+    key: process_heartbeat_timeout_ms
+    value_type: int
+    default: 600000
+    title: Processing progress timeout (ms)
+    category: Limits
+    order: 21
+    description: Maximum milliseconds an upload processing attempt may run without progress before the job worker terminates it and retries. Only pipelines whose processors declare reports_progress use this deadline. Existing ceiling overrides retain their policy until this setting is explicitly set.
     scope: global
     editable: true
     visible: true
@@ -365,6 +419,7 @@ entries:
       upload_tokens: kickside.uploads.persist:upload_tokens
       types: kickside.uploads:types
       execution_identity: kickside.execution:execution_identity
+      trace_context: kickside.execution:trace
       jobs: kickside.core.jobs:jobs
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
@@ -378,8 +433,9 @@ entries:
     meta:
       comment: Library for handling file uploads to configured storage backends.
     source: file://uploads.lua
-    modules: [uuid, time, hash, logger]
+    modules: [uuid, time, hash, logger, funcs]
     imports:
+      binding_errors: kickside.uploads.binding:binding_errors
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       upload_response: kickside.uploads.api:upload_response
@@ -413,8 +469,10 @@ entries:
     meta:
       comment: Upload filename and MIME classification.
     source: file://uploads_mime.lua
+    modules: [registry]
     imports:
       upload_type: kickside.uploads:upload_type
+      artifact_schema: kickside.uploads.persist:artifact_schema
 
   - name: uploads_tokens
     kind: library.lua
@@ -433,6 +491,8 @@ entries:
     meta:
       comment: Presigned object upload lifecycle attached to the uploads library.
     source: file://uploads_presigned.lua
+    imports:
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: types
     kind: library.lua
@@ -469,6 +529,8 @@ entries:
         in the caller process.'
     targets:
     - entry: kickside.uploads.service:process_job_proc
+      path: .imports.processing_hooks
+    - entry: kickside.uploads.service:process_dead
       path: .imports.processing_hooks
     - entry: kickside.uploads:retention
       path: .imports.processing_hooks

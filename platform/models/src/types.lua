@@ -19,6 +19,9 @@ M.SOURCE_OVERLAY = "overlay"
 
 M.DEFAULT_PROVIDER = "wippy.llm.openai_compat:provider"
 
+-- Version of the GET /models/export and POST /models/import document.
+M.EXPORT_VERSION = 1
+
 -- Topic a provider profile write broadcasts to. Provider-owned background
 -- services (e.g. the Vertex token supervisor) subscribe and self-filter by
 -- provider; the write path never targets a service by provider name.
@@ -41,15 +44,18 @@ function M.slug(value: any): string
     return s
 end
 
-function M.limits_configured(max_tokens: any, output_tokens: any, capabilities: any): boolean
-    if (tonumber(max_tokens) or 0) <= 0 then return false end
-    if type(capabilities) ~= "table" then return false end
-    for _, capability in ipairs(capabilities) do
-        if capability == "generate" then
-            return (tonumber(output_tokens) or 0) > 0
-        end
-    end
-    return true
+function M.positive_limit(value: any): number?
+    local limit = tonumber(value)
+    if limit and limit > 0 then return limit end
+    return nil
+end
+
+function M.is_positive_number(value: any): boolean
+    return type(value) == "number" and value > 0 and value < math.huge
+end
+
+function M.is_nonnegative_number(value: any): boolean
+    return value == 0 or M.is_positive_number(value)
 end
 
 return M

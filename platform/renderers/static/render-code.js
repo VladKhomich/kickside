@@ -20,7 +20,7 @@ ${r}`
     };
   }
   static get vueConfig() {
-    return i(() => import("./RenderCode-B_Rk9SUz.js").then((t) => ({ rootComponent: t.default })), { surface: "compact", loading: "Loading the code viewer…", failed: "Could not load the code viewer. Reload the page to try again.", delay: 200, timeout: 3e4 });
+    return i(() => import("./RenderCode-bUDKaXwk.js").then((t) => ({ rootComponent: t.default })), { surface: "compact", loading: "Loading the code viewer…", failed: "Could not load the code viewer. Reload the page to try again.", delay: 200, timeout: 3e4 });
   }
 }
 async function c() {

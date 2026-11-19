@@ -197,6 +197,10 @@ function M.find_event_by_external(args: any): (any?, error?)
     if args.external_version ~= nil and type(args.external_version) ~= "string" then
         return nil, (errors.new({ message = "external_version must be a string", kind = errors.INVALID }) :: error)
     end
+    if (args.latest ~= nil and type(args.latest) ~= "boolean")
+        or (args.latest == true and args.external_version ~= nil) then
+        return nil, (errors.new({ message = "latest requires a boolean and excludes external_version", kind = errors.INVALID }) :: error)
+    end
     local db, db_err = open_db()
     if db_err then return nil, db_err end
     local _db = db :: sql.DB
@@ -206,7 +210,8 @@ function M.find_event_by_external(args: any): (any?, error?)
         args.event_type :: string,
         args.external_source :: string,
         args.external_id :: string,
-        args.external_version
+        args.external_version,
+        args.latest == true
     )
     read_err = error_envelope.cleanup(function() return _db:release() end, read_err, "Release external event database")
     if read_err then return nil, read_err end

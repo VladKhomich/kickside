@@ -1,5 +1,6 @@
 -- Canonical KB injection thread API.
 local base = require("thread_ingest_base")
+local reingest = require("thread_ingest_reingest")
 local util = require("util")
 local status = require("thread_ingest_status")
 local uuid = require("uuid")
@@ -155,6 +156,15 @@ function M.status(kb_id, opts)
     return load_status(exec, kb_id, kb.impl_id)
 end
 
+-- The Core lookup checks the caller's READ access on the KB primary thread.
+-- Return only the source work count to callers that render progress.
+function M.pending_source(kb_id: string, impl_id: string): (any?, any?)
+    local exec, exec_err = current_executor()
+    if not exec then return nil, exec_err end
+    local source, read_err = status.lookup_source_projection(exec, kb_id, impl_id, true)
+    return source and source.pending_source or nil, read_err
+end
+
 function M.pause(kb_id, opts)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end
@@ -295,7 +305,7 @@ function M.control(args)
     return result, nil
 end
 
-function M.append_content(kb_id, params)
+function M.append_content(kb_id, params, reingest_key)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end
     params = type(params) == "table" and params or {}
@@ -377,11 +387,16 @@ function M.append_content(kb_id, params)
         },
         trace_context = event_trace,
     }
-    local appended, append_err = emit_event(exec, kb_id, event)
+    local appended, append_err
+    if reingest_key then
+        appended, append_err = reingest.append(exec, kb_id, event, reingest_key)
+    else
+        appended, append_err = emit_event(exec, kb_id, event)
+    end
     -- Preserve every previously accepted inline event. Core owns the row limit:
     -- only its typed, rolled-back size refusal permits an artifact-only retry.
     -- Infrastructure/access errors must never change the stored representation.
-    if has_text and append_err and errors.is(append_err, errors.INVALID)
+    if not reingest_key and has_text and append_err and errors.is(append_err, errors.INVALID)
         and trim(source_ref.upload_id) ~= "" and trim(source_ref.artifact_id) ~= "" then
         local details = (append_err :: error):details()
         if type(details) == "table" and details.reason == "row_too_large"
@@ -426,7 +441,11 @@ function M.delete_content(kb_id, params)
     local access_err, kb = validate_kb_access(kb_id, component.ACCESS.WRITE)
     if access_err then return nil, access_err end
 
-    local external_id = natural_external_id_for(params, metadata)
+    local node_id = metadata.node_id
+    if node_id ~= nil and (type(node_id) ~= "string" or not uuid.validate(node_id)) then
+        return nil, "invalid selected document node ID"
+    end
+    local external_id = natural_external_id_for(params, metadata) or node_id
     if not external_id or external_id == "" then
         return nil, "external_id, upload_id, source_url, or reference source_ref is required for delete"
     end
@@ -442,7 +461,8 @@ function M.delete_content(kb_id, params)
     local external_version = trim(params.external_version)
     if external_version == "" then external_version = trim(metadata.external_version) end
     if external_version == "" then external_version = trim(source.external_version) end
-    if external_version == "" then external_version = "delete:" .. uuid.v7() end
+    if node_id or external_version == "" then external_version = "delete:" .. uuid.v7() end
+    if node_id then metadata.external_version = external_version end
     local source_ref, source_ref_err = source_ref_for(params, metadata, nil, nil, external_id, external_version)
     if source_ref_err or not source_ref then return nil, source_ref_err end
     metadata.source_ref = source_ref
@@ -451,6 +471,15 @@ function M.delete_content(kb_id, params)
     if exec_err or not exec then return nil, exec_err end
     local projection, projection_err = source_projection(exec, kb_id, kb.impl_id)
     if projection_err then return nil, projection_err end
+    if node_id and projection.target_kb_ids then
+        local has_targets, includes_self = false, false
+        for _, id in ipairs(projection.target_kb_ids) do
+            local target = trim(tostring(id))
+            has_targets = has_targets or target ~= ""
+            includes_self = includes_self or target == kb_id
+        end
+        if has_targets and not includes_self then return nil, "source projection excludes the selected knowledge base" end
+    end
 
     local appended, append_err = emit_event(exec, kb_id, {
         type = M.EVENT_CONTENT_DELETED,

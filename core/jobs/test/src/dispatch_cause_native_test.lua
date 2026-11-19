@@ -29,6 +29,18 @@ return {run = test.run_cases(function()
                 end
             end
         end
+        test.it("preserves deterministic job diagnostics containing a mebibyte of whitespace", function()
+            local diagnostic = "before" .. string.rep(" ", 1024 * 1024) .. "after"
+            fixture.reset("", nil)
+            fixture.output = { job_error = " " .. diagnostic .. " ", failure_class = "deterministic" }
+
+            local _, actual = invoke("executor")
+
+            test.not_nil(actual)
+            test.is_true(errors.is(actual, errors.INVALID))
+            test.is_true(actual:message() == diagnostic)
+            test.eq(fixture.calls, 1)
+        end)
         for _, stage in ipairs({"executor", "spawn"}) do
             test.it("healthy dispatch/" .. stage, function()
                 fixture.reset("", nil); local output, err = invoke(stage)

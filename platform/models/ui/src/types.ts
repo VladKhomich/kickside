@@ -76,9 +76,9 @@ export interface ModelCard {
   capabilities?: string[]
   class?: string[]
   priority?: number
-  max_tokens?: number
-  output_tokens?: number
-  dimensions?: number
+  max_tokens?: number | null
+  output_tokens?: number | null
+  dimensions?: number | null
   pricing?: Record<string, unknown>
   source?: string
   enabled?: boolean
@@ -156,4 +156,16 @@ export interface ProviderEditorSpec {
   defaultProviderId: string
   icon: string
   fields: ProviderField[]
+}
+
+export interface ImportChanges {
+  created: string[]
+  updated: string[]
+  unchanged: string[]
+}
+
+export interface ImportReport {
+  success: boolean
+  profiles: ImportChanges
+  cards: ImportChanges
 }

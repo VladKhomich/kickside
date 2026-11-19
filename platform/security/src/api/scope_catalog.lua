@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- The read model for the scopes admin. Merges the three authorization
 -- surfaces into one catalog:
---   * policies  — every security.policy (the grants a scope can include)
+--   * policies  — policy inventory and declared module permissions
 --   * scopes    — built-in implicit groups (app.security:*), registry-shipped
 --                 security.scope entries, and DB-backed custom scopes
 -- Internal/system scopes (ingress + meta.internal) are classified so the UI can
@@ -13,6 +13,7 @@ local consts = require("security_consts")
 local store = require("scope_store")
 local stypes = require("security_types")
 local scope_key = require("scope_key")
+local composition = require("policy_composition")
 
 local M = {}
 
@@ -20,44 +21,70 @@ local function meta_of(entry: any): { [string]: any }
     return (type(entry) == "table" and type(entry.meta) == "table") and (entry.meta :: { [string]: any }) or {}
 end
 
--- All security.policy entries, normalized to PolicySummary. A policy is private
--- (meta.private = true) when it is an internal/system grant that must not be
--- offered when composing a scope; only public policies are selectable.
+local function policy_summary(entry: any): stypes.PolicySummary
+    local meta = meta_of(entry)
+    local policy = (type(entry.data.policy) == "table") and entry.data.policy or {}
+    return {
+        id = tostring(entry.id),
+        title = (meta.title and tostring(meta.title)) or tostring(entry.id),
+        surface = meta.surface and tostring(meta.surface) or nil,
+        intent = meta.intent and tostring(meta.intent) or nil,
+        comment = meta.comment and tostring(meta.comment) or nil,
+        effect = policy.effect and tostring(policy.effect) or nil,
+        actions = policy.actions,
+        resources = policy.resources,
+        private = meta.private == true,
+    }
+end
+
+local function by_policy_id(a: stypes.PolicySummary, b: stypes.PolicySummary): boolean
+    return a.id < b.id
+end
+
 local function policy_index(): (any?, error?)
     local entries, read_err = registry.find({ [".kind"] = consts.POLICY_KIND })
     if read_err then return nil, read_err end
     local by_id: { [string]: stypes.PolicySummary } = {}
     local list: { stypes.PolicySummary } = {}
-    local group_policies = {}
+    local group_policies, native_groups = {}, {}
     for _, entry in ipairs(entries :: { any }) do
-        local data = entry.data
-        local meta = meta_of(entry)
-        local policy = (type(data.policy) == "table") and data.policy or {}
-        local summary: stypes.PolicySummary = {
-            id = tostring(entry.id),
-            title = (meta.title and tostring(meta.title)) or tostring(entry.id),
-            surface = meta.surface and tostring(meta.surface) or nil,
-            intent = meta.intent and tostring(meta.intent) or nil,
-            comment = meta.comment and tostring(meta.comment) or nil,
-            effect = policy.effect and tostring(policy.effect) or nil,
-            actions = policy.actions,
-            resources = policy.resources,
-            private = meta.private == true,
-        }
-        for _, group in ipairs(data.groups or {}) do
+        local summary = policy_summary(entry)
+        local native = not composition.is_derived(entry)
+        for _, group in ipairs(entry.data.groups or {}) do
             group_policies[group] = group_policies[group] or {}
-            group_policies[group][#group_policies[group] + 1] = tostring(entry.id)
+            group_policies[group][#group_policies[group] + 1] = summary.id
+            if native then
+                native_groups[group] = native_groups[group] or {}
+                native_groups[group][#native_groups[group] + 1] = summary.id
+            end
         end
-        by_id[tostring(entry.id)] = summary
+        by_id[summary.id] = summary
         list[#list + 1] = summary
     end
-    table.sort(list, function(a, b) return tostring(a.id) < tostring(b.id) end)
-    return {by_id = by_id, list = list, entries = entries, groups = group_policies}, nil
+    table.sort(list, by_policy_id)
+    return {by_id = by_id, list = list, entries = entries, groups = group_policies, native_groups = native_groups}, nil
 end
 
--- policies returns the policy catalog (the grants). include_internal defaults false.
+local function assignable_policies(): ({ stypes.PolicySummary }?, error?)
+    local out: { stypes.PolicySummary } = {}
+    for _, intent in ipairs({"module_access", "module_management", "tool_access"}) do
+        local entries, read_err = registry.find({ [".kind"] = consts.POLICY_KIND, ["meta.intent"] = intent })
+        if read_err then return nil, read_err end
+        for _, entry in ipairs(entries :: { any }) do
+            local meta = meta_of(entry)
+            if meta.assignable ~= false and meta.private ~= true and meta.internal ~= true and meta.service_only ~= true
+                and type(meta.title) == "string" and meta.title:find("%S") and meta.title ~= tostring(entry.id) then
+                out[#out + 1] = policy_summary(entry)
+            end
+        end
+    end
+    table.sort(out, by_policy_id)
+    return out, nil
+end
+
 function M.policies(opts: any?): ({ stypes.PolicySummary }?, error?)
     opts = opts or {}
+    if opts.assignable == true then return assignable_policies() end
     local index, read_err = policy_index()
     if read_err then return nil, read_err end
     local list = index.list
@@ -88,19 +115,20 @@ local function role_descriptors(): (any?, error?)
     return by_id
 end
 
--- resolve_policies summarizes a scope's policies. A stored selection (stored)
--- lists only the policies still installed, the rule its projection applies; a
--- registry-declared scope names policies that must exist.
-local function resolve_policies(ids: any, by_id: { [string]: stypes.PolicySummary }, stored: boolean): ({ stypes.PolicySummary }?, error?)
+local function resolve_policies(ids: any, by_id: { [string]: stypes.PolicySummary }, stored: boolean,
+    include_unavailable: boolean): ({ stypes.PolicySummary }?, error?)
     local out: { stypes.PolicySummary } = {}
     if type(ids) ~= "table" then return out end
     for _, pid in ipairs(ids) do
-        local s = by_id[tostring(pid)]
+        local id = tostring(pid)
+        local s = by_id[id]
         if s then
             out[#out + 1] = s
         elseif not stored then
             return nil, (errors.new({kind = errors.NOT_FOUND, retryable = false,
-                message = "policy unavailable: " .. tostring(pid)}) :: error)
+                message = "policy unavailable: " .. id}) :: error)
+        elseif include_unavailable then
+            out[#out + 1] = {id = id, available = false}
         end
     end
     return out
@@ -110,8 +138,8 @@ local function default_label(id: string): string
     return id:match("([^:%.]+)$") or id
 end
 
-local function descriptor_policies(entry, index, projection)
-    local data, selected, out = entry.data or {}, {}, {}
+local function descriptor_policies(data, groups, sources)
+    local selected, out = {}, {}
     local function include(ids)
         for _, id in ipairs(ids or {}) do
             if not selected[id] then selected[id] = true; out[#out + 1] = id end
@@ -119,16 +147,27 @@ local function descriptor_policies(entry, index, projection)
     end
     include(data.policies)
     include(data.direct_policies)
-    if projection then include((projection.data or {}).policies) end
-    for _, group in ipairs(data.groups or {}) do include(index.groups[group]) end
+    for _, ids in ipairs(sources) do include(ids) end
+    for _, group in ipairs(data.groups or {}) do include(groups[group]) end
     table.sort(out)
     return out
+end
+
+local function original_policies(id, data, index, projections)
+    local route = (projections[id] or {}).data or {}
+    local sources = {route.direct_policies or {}, index.native_groups[id] or {}}
+    for _, group in ipairs(route.groups or {}) do
+        local inherited = (projections[group] or {}).data or {}
+        sources[#sources + 1] = inherited.policies or index.native_groups[group] or {}
+    end
+    return descriptor_policies(data, index.native_groups, sources)
 end
 
 -- scopes returns the merged scope/role catalog. include_internal defaults false.
 function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     opts = opts or {}
     local include_internal = opts.include_internal == true
+    local include_unavailable = opts.include_unavailable == true
     local index, policies_err = policy_index()
     if policies_err then return nil, policies_err end
     local projections, projection_err = registry.find({[".kind"] = "registry.entry", ["meta.type"] = scope_key.META_TYPE})
@@ -143,6 +182,10 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     end
     local descriptors, roles_err = role_descriptors()
     if roles_err then return nil, roles_err end
+    local scope_entries, scopes_err = registry.find({ [".kind"] = consts.SCOPE_KIND })
+    if scopes_err then return nil, scopes_err end
+    local declared_by_id = {}
+    for _, entry in ipairs(scope_entries or {}) do declared_by_id[tostring(entry.id)] = entry.data end
     local by_id = index.by_id
     local out: { stypes.CatalogScope } = {}
     local seen: { [string]: boolean } = {}
@@ -151,13 +194,17 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     local function emit(scope: any): (boolean?, error?)
         if scope.internal and not include_internal then return true, nil end
         if seen[scope.id] then return true, nil end
-        local policies, policy_err = resolve_policies(scope.policies, by_id, scope.source == consts.SOURCE.CUSTOM)
+        local policies, policy_err = resolve_policies(scope.policies, by_id, scope.source == consts.SOURCE.CUSTOM, include_unavailable)
         if policy_err then return nil, policy_err end
         scope.policies = policies
         local overlay = overlays_by_target[scope.id]
         if overlay then
-            local overlay_policies, overlay_err = resolve_policies(overlay.policies, by_id, true)
+            local original_ids = original_policies(scope.id, declared_by_id[scope.id] or {}, index, by_target)
+            local base_policies, base_err = resolve_policies(original_ids, by_id, false, include_unavailable)
+            if base_err then return nil, base_err end
+            local overlay_policies, overlay_err = resolve_policies(overlay.policies, by_id, true, include_unavailable)
             if overlay_err then return nil, overlay_err end
+            scope.base_policies = base_policies
             scope.overlay_policies = overlay_policies
             scope.overlay_slug = overlay.slug
         end
@@ -191,11 +238,12 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     -- 2. Host-declared roles referenced by policies. Role descriptors are the
     -- ownership boundary; package code never assumes the host's namespace.
     local group_policies: { [string]: { string } } = {}
-    local declared_scopes, declared_err = registry.find({[".kind"] = consts.SCOPE_KIND})
-    if declared_err then return nil, declared_err end
-    for _, entry in ipairs(declared_scopes or {}) do
+    for _, entry in ipairs(scope_entries or {}) do
         local id = tostring(entry.id)
-        if descriptors[id] then group_policies[id] = descriptor_policies(entry, index, by_target[tostring(entry.id)]) end
+        if descriptors[id] then
+            local route = (by_target[id] or {}).data or {}
+            group_policies[id] = descriptor_policies(entry.data or {}, index.groups, {route.policies or {}})
+        end
     end
     for id, projection in pairs(by_target) do
         if descriptors[id] and not group_policies[id] then group_policies[id] = projection.data.policies or {} end
@@ -240,12 +288,11 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     -- 3. Registry-shipped security.scope entries. Skip the ones THIS service
     -- projects (managed_by) — those are represented as custom scopes or as
     -- overlays on their base scope, not as separate registry scopes.
-    local scope_entries, scopes_err = registry.find({ [".kind"] = consts.SCOPE_KIND })
-    if scopes_err then return nil, scopes_err end
     for _, entry in ipairs(scope_entries :: { any }) do
         local id = tostring(entry.id)
         local meta = meta_of(entry)
         if meta.managed_by ~= consts.MANAGED_BY then
+            local route = (by_target[id] or {}).data or {}
             local _, emit_err = emit({
                 id = id,
                 label = meta.title or id,
@@ -254,7 +301,7 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
                 internal = meta.internal == true,
                 built_in = false,
                 enabled = true,
-                policies = descriptor_policies(entry, index, by_target[tostring(entry.id)]),
+                policies = descriptor_policies(entry.data or {}, index.groups, {route.policies or {}}),
             })
             if emit_err then return nil, emit_err end
         end

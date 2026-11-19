@@ -28,6 +28,7 @@ endef
 # first, because it is not in the repo and not on any npm registry - without it
 # the build dies on ENOENT for the import. Add a module here when it adopts.
 UI_KIT_CONSUMERS := app-main agents automation channel connection hub inbox knowledge mcp models renderers security sessions settings skills sync transform ui uploads users webhooks widgets workflows
+UI_KIT_BUILD_INPUTS := build-inputs
 # These modules typecheck source imported from platform/widgets/ui via the
 # @widgets path alias. TypeScript resolves that source's bare imports from the
 # widgets package directory, so its local dependencies must exist before any
@@ -36,7 +37,7 @@ WIDGET_SOURCE_CONSUMERS := agents automation channel connection hub identity inb
 
 FE_MODULES := app-main plugin-template $(patsubst platform/%/ui/package.json,%,$(wildcard platform/*/ui/package.json))
 
-.PHONY: help install build watch cleaninstall lockrefresh typecheck typecheck-shared test ui-kit facade-css facade-css-check facade-css-watch install-all build-all cleaninstall-all lockrefresh-all typecheck-all test-all
+.PHONY: help install build release-build-inputs watch cleaninstall lockrefresh typecheck typecheck-shared test ui-kit facade-css facade-css-check facade-css-watch install-all build-all cleaninstall-all lockrefresh-all typecheck-all test-all
 
 help:
 	@echo "kickside FE build interface"
@@ -76,6 +77,9 @@ build:
 	@case " $(UI_KIT_CONSUMERS) " in *" $(MOD) "*) $(MAKE) ui-kit MOD=$(MOD) || exit 1;; esac
 	cd $(call fe_dir,$(MOD)) && { [ -d node_modules ] || npm install --no-audit --no-fund; } && npm run build $(call fe_build_args,$(MOD))
 
+release-build-inputs:
+	@case " $(UI_KIT_CONSUMERS) " in *" $(MOD) "*) printf '%s\n' "$(UI_KIT_BUILD_INPUTS)/src";; esac
+
 watch:
 	@test -n "$(MOD)" || { echo "watch needs MOD=<module>"; exit 1; }
 	@case " workflows agents " in *" $(MOD) "*) ;; *) echo "watch supports only MOD=workflows or MOD=agents"; exit 1;; esac
@@ -98,17 +102,18 @@ test:
 	@case " $(UI_KIT_CONSUMERS) " in *" $(MOD) "*) $(MAKE) ui-kit MOD=$(MOD) || exit 1;; esac
 	cd $(call fe_dir,$(MOD)) && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npm test $(TEST_IF_PRESENT) -- $(TEST_ARGS)
 
+# A targeted install materializes the locked UI Kit into the consumer.
 ui-kit:
 	@test -n "$(MOD)" || { echo "ui-kit needs MOD=<module>"; exit 1; }
 	@set -e; \
-	wapp="$(UI_KIT_WAPP)"; \
-	if [ -z "$$wapp" ]; then \
-	  ( cd build-inputs && $(WIPPY_BIN) update --src-dir src ); \
-	  wapp=$$(ls build-inputs/.wippy/vendor/kickside/ui-kit-*.wapp 2>/dev/null | grep -v sha256 | sort | tail -1); \
+	root="$(CURDIR)/$(call fe_dir,$(MOD))/.wippy"; \
+	if [ -n "$(UI_KIT_WAPP)" ]; then \
+	  "$(WIPPY_BIN)" artifacts materialize "$(UI_KIT_WAPP)" kickside.ui_kit:package_fs --root "$$root"; \
+	else \
+	  ( cd "$(UI_KIT_BUILD_INPUTS)" && "$(WIPPY_BIN)" update --src-dir src && \
+	    "$(WIPPY_BIN)" install kickside/ui-kit --set "artifact.materialization_root=$$root" ); \
 	fi; \
-	test -n "$$wapp" || { echo "no kickside/ui-kit .wapp; is the module published?"; exit 1; }; \
-	$(WIPPY_BIN) artifacts materialize "$$wapp" kickside.ui_kit:package_fs --root $(call fe_dir,$(MOD))/.wippy; \
-	cd $(call fe_dir,$(MOD)) && node $(CURDIR)/scripts/wire-ui-kit.mjs && npm install --no-audit --no-fund
+	cd $(call fe_dir,$(MOD)) && node "$(CURDIR)/scripts/wire-ui-kit.mjs" && npm install --no-audit --no-fund
 
 # Facade CSS assembler (app-level, no node_modules needed): concatenates
 # app/facade-src/{custom,children}/*.css into app/static/*.facade.generated.css.

@@ -21,6 +21,7 @@ entries:
       - process
       - time
     imports:
+      text_trim: kickside.contract:text_trim
       types: kickside.core.projections:types
       execution_identity: kickside.execution:execution_identity
       trace_context: kickside.execution:trace
@@ -29,6 +30,19 @@ entries:
       projection_policy: kickside.core.projections:policy_config
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
+      checkpoint_declaration: kickside.core.projections.persist:checkpoint_declaration
+
+  - name: checkpoint_declaration
+    kind: library.lua
+    meta:
+      comment: Check a private checkpoint against its owning primary-thread declaration.
+    source: file://checkpoint_declaration.lua
+    imports:
+      autoinit: kickside.component:autoinit
+      component: kickside.component:component
+      execution_identity: kickside.execution:execution_identity
+      register: kickside.core.projections.persist:register
+      text_trim: kickside.contract:text_trim
 
   - name: reader
     kind: library.lua
@@ -38,6 +52,7 @@ entries:
     modules:
       - sql
     imports:
+      text_trim: kickside.contract:text_trim
       types: kickside.core.projections:types
 
   - name: register
@@ -45,8 +60,11 @@ entries:
     meta:
       comment: Projection registration and cursor slot creation in one transaction.
     source: file://register.lua
-    modules: [sql, json, uuid]
+    modules: [sql, json, uuid, registry]
     imports:
+      text_trim: kickside.contract:text_trim
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
       clock: kickside.core.jobs:clock
       types: kickside.core.projections:types
       core_types: kickside.core:types
@@ -67,9 +85,10 @@ entries:
     modules:
       - sql
     imports:
+      text_trim: kickside.contract:text_trim
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
-      job_lifecycle: kickside.core.jobs.persist:lifecycle
+      job_reclaim: kickside.core.jobs.persist:reclaim
       job_lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       jobs_wake: kickside.core.jobs.persist:wake
       cursor_waiters: kickside.core.threads:cursor_waiters

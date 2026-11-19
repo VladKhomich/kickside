@@ -2,10 +2,7 @@ local M = {}
 
 local prefix = "user_agent:"
 
-local function trim(value)
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 function M.user_component_id(ref)
     local raw = trim(ref)

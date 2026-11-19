@@ -7,9 +7,15 @@ cp "$models_test_dir/../src/api/list_models.lua" "$models_test_dir/fixtures/list
 # source (sources outside the harness directory cannot be referenced).
 cp "$models_test_dir/../src/api/admin/upsert_card.lua" "$models_test_dir/fixtures/upsert_card.lua"
 cp "$models_test_dir/../src/api/admin/get_admin.lua" "$models_test_dir/fixtures/get_admin.lua"
+cp "$models_test_dir/../src/api/admin/export_models.lua" "$models_test_dir/fixtures/export_models.lua"
+cp "$models_test_dir/../src/api/admin/import_models.lua" "$models_test_dir/fixtures/import_models.lua"
 
 cp "$models_test_dir/../src/discovery/reference_openrouter.lua" "$models_test_dir/fixtures/reference_openrouter.lua"
-cp "$models_test_dir/../src/persist/profile_reload.lua" "$models_test_dir/fixtures/profile_reload.lua"
+cp "$models_test_dir/../src/providers/profile/driver.lua" "$models_test_dir/fixtures/profile_driver.lua"
+cp "$models_test_dir/../src/persist/repo.lua" "$models_test_dir/fixtures/profile_repo.lua"
+cp "$models_test_dir/../src/catalog/model_catalog.lua" "$models_test_dir/fixtures/profile_catalog.lua"
+cp "$models_test_dir/../src/catalog/resolver.lua" "$models_test_dir/fixtures/profile_resolver.lua"
+cp "$models_test_dir/../src/service/cache.lua" "$models_test_dir/fixtures/profile_cache.lua"
 for provider in openai_like anthropic google_genai bedrock; do
     cp "$models_test_dir/../src/discovery/providers/$provider.lua" "$models_test_dir/fixtures/$provider.lua"
 done

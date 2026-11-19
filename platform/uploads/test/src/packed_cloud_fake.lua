@@ -21,7 +21,12 @@ function M.get(id)
     function storage:download_object(key, writer, options)
         if download_failure then return nil, M.failed end
         assert(options.if_match == '"version"')
-        return writer:write(objects[key])
+        local bytes = objects[key]
+        if options.range then
+            local last = assert(tonumber(options.range:match("^bytes=0%-(%d+)$")))
+            bytes = bytes:sub(1, last + 1)
+        end
+        return writer:write(bytes)
     end
     function storage:delete_objects(keys)
         for _, key in ipairs(keys) do objects[key] = nil end

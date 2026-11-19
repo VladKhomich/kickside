@@ -119,10 +119,10 @@ entries:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"max_pruned_seq\": { \"type\": \"integer\", \"minimum\": 0 }\n  },\n  \"required\": [\"thread_id\", \"max_pruned_seq\"]\n}\n"
       - name: find_event_by_external
-        description: Resolve one event by its exact durable external identity after a READ access check. A missing external_version matches only an unversioned event.
+        description: Resolve one event by its exact durable external identity after a READ access check. A missing external_version matches only an unversioned event. With latest=true and no version, resolve the newest retained event for the same external identity within the authorized thread.
         input_schemas:
           - format: application/schema+json
-            definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"event_type\": { \"type\": \"string\" },\n    \"external_source\": { \"type\": \"string\" },\n    \"external_id\": { \"type\": \"string\" },\n    \"external_version\": { \"type\": \"string\" }\n  },\n  \"required\": [\"thread_id\", \"event_type\", \"external_source\", \"external_id\"]\n}\n"
+            definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"event_type\": { \"type\": \"string\" },\n    \"external_source\": { \"type\": \"string\" },\n    \"external_id\": { \"type\": \"string\" },\n    \"external_version\": { \"type\": \"string\" },\n    \"latest\": { \"type\": \"boolean\" }\n  },\n  \"required\": [\"thread_id\", \"event_type\", \"external_source\", \"external_id\"]\n}\n"
         output_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": { \"event\": { \"type\": [\"object\", \"null\"] } },\n  \"required\": [\"event\"]\n}\n"
@@ -258,13 +258,24 @@ entries:
               { "type": "object", "properties": {
                 "thread_id": { "type": "string", "minLength": 1 },
                 "kind": { "type": "string", "minLength": 1 },
-                "projection_key": { "type": "string" }, "cursor_key": { "type": "string" }
+                "projection_key": { "type": "string" }, "cursor_key": { "type": "string" },
+                "pending_event_types": {
+                  "description": "Optionally count these event types in at most 512 retained sequence positions after the committed cursor.",
+                  "type": "array", "minItems": 1, "maxItems": 16,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+                }
               }, "required": ["thread_id", "kind"] }
         output_schemas:
           - format: application/schema+json
             definition: |
               { "type": "object", "properties": {
-                "thread_id": { "type": "string" }, "projection": { "type": "object" }, "cursor": { "type": "object" }
+                "thread_id": { "type": "string" }, "projection": { "type": "object" }, "cursor": { "type": "object" },
+                "pending_events": {
+                  "description": "When event types are requested, count matching retained events. Truncated counts are lower bounds.",
+                  "type": "object", "properties": {
+                    "count": { "type": "integer", "minimum": 0 }, "truncated": { "type": "boolean" }
+                  }, "required": ["count", "truncated"]
+                }
               }, "required": ["thread_id", "projection", "cursor"] }
       - name: catch_up_projection
         description: Wake one projection slot and wait for its cursor after a READ check. The optional RFC3339 deadline bounds the wait; expiry returns a retriable failure. Used by durable writers for projection-backed read-after-write consistency.

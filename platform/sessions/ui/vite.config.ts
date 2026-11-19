@@ -14,7 +14,7 @@ export default defineConfig({
         },
       },
     }),
-    wippyComponentPlugin({ required: true, lazyEntries: ['index', 'artifacts'] }),
+    wippyComponentPlugin({ required: true, lazyEntries: ['index', 'artifacts', 'chat_empty_state'] }),
   ],
   // Lib builds don't auto-replace process.env; provide it so deps that read
   // NODE_ENV don't throw "process is not defined" in the browser/shadow DOM.
@@ -34,6 +34,8 @@ export default defineConfig({
         artifacts: resolve(__dirname, 'src/artifacts.ts'),
         artifact_panel: resolve(__dirname, 'src/artifact_panel.ts'),
         artifact_coordinator: resolve(__dirname, 'src/artifact_coordinator.ts'),
+        chat_coordinator: resolve(__dirname, 'src/chat_coordinator.ts'),
+        chat_empty_state: resolve(__dirname, 'src/chat_empty_state.ts'),
       },
       name: 'KicksideSessions',
       formats: ['es'],
@@ -45,6 +47,8 @@ export default defineConfig({
         artifacts: resolve(__dirname, 'src/artifacts.ts'),
         artifact_panel: resolve(__dirname, 'src/artifact_panel.ts'),
         artifact_coordinator: resolve(__dirname, 'src/artifact_coordinator.ts'),
+        chat_coordinator: resolve(__dirname, 'src/chat_coordinator.ts'),
+        chat_empty_state: resolve(__dirname, 'src/chat_empty_state.ts'),
       },
       external: hostExternals,
       output: {

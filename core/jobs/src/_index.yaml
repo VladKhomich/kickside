@@ -35,7 +35,11 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:27_disabled_slots
         path: .meta.target_db
+      - entry: kickside.core.jobs.migrations:29_demand_rearm
+        path: .meta.target_db
       - entry: kickside.core.jobs.migrations:26_owner_listing
+        path: .meta.target_db
+      - entry: kickside.core.jobs.migrations:30_retention_by_type
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:25_retention_order
         path: .meta.target_db
@@ -57,9 +61,9 @@ entries:
   # .wippy.yaml "kickside.core.jobs:policy:meta.<path>".
   - name: policy
     kind: registry.entry
-    # Defaults stay outside meta so explicit host assignments retain presence,
-    # including assignments whose value equals the shipped default.
-    defaults:
+    # Old workers still read this entry while their executions drain.
+    meta:
+      comment: Jobs runtime policy defaults and host configuration.
       worker:
         count_sqlite: 2
         count_postgres: 4
@@ -95,19 +99,8 @@ entries:
         sweep_interval: 1h
         batch: 500
         thread_cleanup_batch: 100
-
-    meta:
-      comment: Jobs runtime policy defaults with explicit host overrides under meta.
-      worker: {}
-      lease: {}
-      retry: {}
-      slot_retry: {}
-      fairness: {}
-      wake: {}
-      proc: {}
-      health: {}
-      limits: {}
-      retention: {}
+        # Job type -> {jobs, job_runs} windows; the global windows govern other types.
+        by_type: {}
 
   - name: process_host
     kind: ns.requirement
@@ -153,6 +146,8 @@ entries:
     meta:
       comment: Job / JobRun / EffectIntent entity shapes and job state vocabulary.
     source: file://types.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: job_class
     kind: library.lua
@@ -184,7 +179,7 @@ entries:
   - name: proc_supervisor
     kind: library.lua
     meta:
-      comment: Monitored process supervision with a hard execution deadline.
+      comment: Monitored process supervision with a hard execution deadline and an optional heartbeat deadline.
     source: file://proc_supervisor.lua
     modules:
       - time
@@ -232,7 +227,7 @@ entries:
     kind: function.lua
     meta:
       private: true
-      comment: Delivers one committed lease revocation or renewal to its token-qualified execution owner.
+      comment: Delivers one committed lease revocation, renewal or execution heartbeat to its token-qualified execution owner.
     source: file://proc_supervisor.lua
     method: signal_execution
     modules: [time, channel, process, funcs]
@@ -262,7 +257,7 @@ entries:
   - name: jobs
     kind: library.lua
     meta:
-      comment: "Durable jobs API: enqueue, post-commit nudge, slot purge, fenced cancellation, lease validation, completion, listing, retention, and health."
+      comment: "Durable jobs API: enqueue, post-commit nudge, slot purge, fenced cancellation, lease validation, execution heartbeats, completion, listing, retention, and health."
     source: file://jobs.lua
     modules:
       - sql
@@ -272,6 +267,7 @@ entries:
       config: kickside.core.jobs:config
       lifecycle: kickside.core.jobs.persist:lifecycle
       lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
+      reclaim: kickside.core.jobs.persist:reclaim
       lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
       lease_status: kickside.core.jobs.persist:lease_status
       wake: kickside.core.jobs.persist:wake
@@ -280,12 +276,14 @@ entries:
       completion: kickside.core.jobs.persist:completion
       retention: kickside.core.jobs.persist:retention
       thread_teardown: kickside.core.jobs.persist:thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: kickside.core.jobs.api:scope
       lease_release: kickside.core.jobs:lease_release
       claim: kickside.core.jobs.persist:claim
       error_envelope: kickside.contract:error_envelope
       committed_error: kickside.contract:committed_error
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      proc_supervisor: kickside.core.jobs:proc_supervisor
 
   # The config suite's env.set/env.get fixtures (int/duration parsers and the
   # worker-count override path) are registered in the standalone test harness
@@ -323,4 +321,4 @@ entries:
     meta: {comment: "Dep kickside contract."}
     kind: ns.dependency
     component: kickside/contract
-    version: '*'
+    version: '>=0.3.9'

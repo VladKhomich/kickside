@@ -43,6 +43,7 @@ entries:
   modules:
   - sql
   imports:
+    text_trim: kickside.contract:text_trim
     component_identity: kickside.core.threads:component_identity
     execution_identity: app:principal_resolution_execution
     threads_env: kickside.core.threads:env

@@ -1,3 +1,4 @@
+local trim_text = require("text_trim").trim
 local json = require("json")
 local canonical_json = require("canonical_json")
 
@@ -13,7 +14,7 @@ local MAX_SUMMARY_FIELDS = 24
 local MAX_SUMMARY_TITLE_CHARS = 160
 
 local function trim(s: any): string
-    return tostring(s or ""):match("^%s*(.-)%s*$") or ""
+    return trim_text(tostring(s or ""))
 end
 
 local function schema_properties(schema: any): any

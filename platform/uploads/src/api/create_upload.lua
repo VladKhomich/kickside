@@ -159,10 +159,14 @@ local function handler()
         return
     end
 
-    -- Extract upload token if provided
+    -- The explicit completion token must be a single text field.
+    local token_field = type(form.values) == "table" and form.values.upload_token or nil
     local upload_token = form_value(form.values, "upload_token")
-    if upload_token then
-        metadata.__upload_token = upload_token
+    if form.files.upload_token or (token_field ~= nil
+        and (upload_token == nil or (type(token_field) == "table" and #token_field ~= 1))) then
+        res:set_status(http.STATUS.BAD_REQUEST)
+        res:write_json({ success = false, error = "upload_token must be a single text field" })
+        return
     end
 
     -- Determine storage type if specified
@@ -176,7 +180,9 @@ local function handler()
         file_size,
         mime_type,
         storage_type,
-        metadata
+        metadata,
+        nil,
+        upload_token
     )
 
     if err then

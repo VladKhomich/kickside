@@ -1,5 +1,112 @@
 # Changelog
 
+## [0.1.95](https://github.com/kicksideai/kickside/compare/jobs-v0.1.94...jobs-v0.1.95) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** recover singleton handoff after owner exit ([#657](https://github.com/kicksideai/kickside/issues/657)) ([b00a6ce](https://github.com/kicksideai/kickside/commit/b00a6ce35099d7f4e8b5aa9ba5c402dfd6a2c357))
+
+## [0.1.94](https://github.com/kicksideai/kickside/compare/jobs-v0.1.93...jobs-v0.1.94) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound completed fence expiry inspection ([#646](https://github.com/kicksideai/kickside/issues/646)) ([7548fcb](https://github.com/kicksideai/kickside/commit/7548fcbf7bd9e9109bf26705612aca2ee5e88df7))
+* **jobs:** retire empty thread fences after slot purge ([#645](https://github.com/kicksideai/kickside/issues/645)) ([1f84bcf](https://github.com/kicksideai/kickside/commit/1f84bcfc15c11b6b3c36b9f09fd7fd98bdca1ddd))
+
+## [0.1.93](https://github.com/kicksideai/kickside/compare/jobs-v0.1.92...jobs-v0.1.93) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound completed fence retention inspection ([#637](https://github.com/kicksideai/kickside/issues/637)) ([9819572](https://github.com/kicksideai/kickside/commit/9819572532af56cd5d4fb70ab6cbd11af9822635))
+
+## [0.1.92](https://github.com/kicksideai/kickside/compare/jobs-v0.1.91...jobs-v0.1.92) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** detach independent links during thread cleanup ([#628](https://github.com/kicksideai/kickside/issues/628)) ([b44ab06](https://github.com/kicksideai/kickside/commit/b44ab064611734492311c4cda63f29cf20668321))
+
+## [0.1.91](https://github.com/kicksideai/kickside/compare/jobs-v0.1.90...jobs-v0.1.91) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** guard replacement thread cleanup sequences ([#624](https://github.com/kicksideai/kickside/issues/624)) ([8e715ed](https://github.com/kicksideai/kickside/commit/8e715ede1a265bab118732f658719c146871e0d3))
+
+## [0.1.90](https://github.com/kicksideai/kickside/compare/jobs-v0.1.89...jobs-v0.1.90) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** deliver terminal outcomes and preserve upload retry ([#474](https://github.com/kicksideai/kickside/issues/474)) ([d1e19d1](https://github.com/kicksideai/kickside/commit/d1e19d1666c659f61779c87e2e02f5a65782106d))
+
+## [0.1.89](https://github.com/kicksideai/kickside/compare/jobs-v0.1.88...jobs-v0.1.89) (2026-11-19)
+
+
+### Features
+
+* **jobs:** enforce opt-in execution progress deadlines ([#596](https://github.com/kicksideai/kickside/issues/596)) ([7f8f7fa](https://github.com/kicksideai/kickside/commit/7f8f7fa8eeb10a1fe0bc2c797efb1eb56c4a0074))
+
+## [0.1.88](https://github.com/kicksideai/kickside/compare/jobs-v0.1.87...jobs-v0.1.88) (2026-11-19)
+
+
+### Features
+
+* **jobs:** retain job history per job type ([#530](https://github.com/kicksideai/kickside/issues/530)) ([bd6e9e7](https://github.com/kicksideai/kickside/commit/bd6e9e7ccc8bb54b0db3b33225e1864e6f9835a8))
+
+
+### Bug Fixes
+
+* **core:** commit thread teardown pages atomically ([#576](https://github.com/kicksideai/kickside/issues/576)) ([5f934f0](https://github.com/kicksideai/kickside/commit/5f934f05dc51d165db195168d75fe350ad701492))
+
+## [0.1.87](https://github.com/kicksideai/kickside/compare/jobs-v0.1.86...jobs-v0.1.87) (2026-11-19)
+
+
+### Features
+
+* **core:** checkpoint supervised projections under the Jobs lease ([#585](https://github.com/kicksideai/kickside/issues/585)) ([f6a586b](https://github.com/kicksideai/kickside/commit/f6a586b2bc5841078e076c4ef1fedd2e45d28af3))
+
+## [0.1.86](https://github.com/kicksideai/kickside/compare/jobs-v0.1.85...jobs-v0.1.86) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound thread cleanup and serialize run links ([#574](https://github.com/kicksideai/kickside/issues/574)) ([36390d3](https://github.com/kicksideai/kickside/commit/36390d30d730cbf98070cea7ac631c0ad953766e))
+
+## [0.1.85](https://github.com/kicksideai/kickside/compare/jobs-v0.1.84...jobs-v0.1.85) (2026-11-19)
+
+
+### Features
+
+* **jobs:** allow demand to advance optional rearm deadlines ([#561](https://github.com/kicksideai/kickside/issues/561)) ([5bdfdbf](https://github.com/kicksideai/kickside/commit/5bdfdbf630afbc77405b42702a0d32908d67f137))
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.1.84](https://github.com/kicksideai/kickside/compare/jobs-v0.1.83...jobs-v0.1.84) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** prune workers by lease liveness ([#525](https://github.com/kicksideai/kickside/issues/525)) ([5108208](https://github.com/kicksideai/kickside/commit/5108208556e4085cf25734a5f8d0eb24b76ca383))
+* **models:** probe first-party OpenAI generation through Responses ([#559](https://github.com/kicksideai/kickside/issues/559)) ([2e3eea9](https://github.com/kicksideai/kickside/commit/2e3eea93c4eddae321e27f8b34f87ae9d28e2ca8))
+
+## [0.1.83](https://github.com/kicksideai/kickside/compare/jobs-v0.1.82...jobs-v0.1.83) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound pool shutdown without interrupting planned drains ([#552](https://github.com/kicksideai/kickside/issues/552)) ([d18abd2](https://github.com/kicksideai/kickside/commit/d18abd2fb96215dc025542ed232fd93ca1e2324e))
+* **jobs:** bound retention pages across blocked history ([#517](https://github.com/kicksideai/kickside/issues/517)) ([286818c](https://github.com/kicksideai/kickside/commit/286818ca89dc00d3d645a469675f2aa867f7f370))
+* **jobs:** close the run of a cancelled execution when cancellation settles ([#526](https://github.com/kicksideai/kickside/issues/526)) ([452a15e](https://github.com/kicksideai/kickside/commit/452a15e51c0268cf1f435b9393e19969bc1ee2d4))
+* **jobs:** keep the runtime policy readable during live upgrades ([#567](https://github.com/kicksideai/kickside/issues/567)) ([201033d](https://github.com/kicksideai/kickside/commit/201033dd8305b502e46a88dd57fd29dcb9022048))
+* **jobs:** preserve running executions on pool cancellation ([#564](https://github.com/kicksideai/kickside/issues/564)) ([f48642e](https://github.com/kicksideai/kickside/commit/f48642eb20431096508f754209b48e3ab84c67ae))
+
 ## [0.1.82](https://github.com/kicksideai/kickside/compare/jobs-v0.1.81...jobs-v0.1.82) (2026-11-17)
 
 

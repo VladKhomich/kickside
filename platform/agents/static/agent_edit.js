@@ -1,5 +1,5 @@
 import { W as i, l as n, P as o } from "./wc-runtime-BREvwtdZ.js";
-import { s as r } from "./styles-CaBNoIpG.js";
+import { s as r } from "./styles-CZoHAEY8.js";
 import { define as s } from "@wippy-fe/proxy";
 const p = {
   type: "object",
@@ -20,7 +20,7 @@ class e extends i {
     };
   }
   static get vueConfig() {
-    return n(() => import("./AgentEdit-ClTbdJb_.js").then((t) => ({ rootComponent: t.default, plugins: [o] })), { surface: "compact", loading: "Loading agent editor…", failed: "Could not load the agent editor. Reload the page to try again.", delay: 200, timeout: 3e4 });
+    return n(() => import("./AgentEdit-Cd7rrMt-.js").then((t) => ({ rootComponent: t.default, plugins: [o] })), { surface: "compact", loading: "Loading agent editor…", failed: "Could not load the agent editor. Reload the page to try again.", delay: 200, timeout: 3e4 });
   }
 }
 async function d() {

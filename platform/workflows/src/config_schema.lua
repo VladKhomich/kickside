@@ -20,9 +20,7 @@ local SUPPORTED_TYPES: { [string]: boolean } = {
     object = true, array = true, string = true, number = true, integer = true, boolean = true,
 }
 
-local function trim(value: string): string
-    return value:gsub("^%s+", ""):gsub("%s+$", "")
-end
+local trim = require("text_trim").trim
 
 local function decode(raw: any): any
     if type(raw) == "table" then return raw end

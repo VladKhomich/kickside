@@ -1,5 +1,5 @@
 import { W as o, l as s } from "./wc-runtime-BREvwtdZ.js";
-import { s as i } from "./styles-CaBNoIpG.js";
+import { s as i } from "./styles-CZoHAEY8.js";
 import { define as n } from "@wippy-fe/proxy";
 const p = { props: { type: "object", properties: {} } }, r = {
   wippy: p
@@ -14,7 +14,7 @@ class e extends o {
   }
   static get vueConfig() {
     return {
-      ...s(() => import("./lazy-mount-DFwuJeBS.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Agents. Reload the page to try again.", timeout: 3e4 })
+      ...s(() => import("./lazy-mount-CHyuRk2R.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Agents. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }

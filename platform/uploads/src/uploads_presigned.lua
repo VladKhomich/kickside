@@ -1,3 +1,5 @@
+local upload_mime = require("upload_mime")
+
 -- Direct-object upload lifecycle, attached to the public uploads library.
 local function failure(message, kind, error_kind, retryable)
     return errors.new({ message = message, kind = kind, retryable = retryable == true,
@@ -35,7 +37,6 @@ local function attach(upload_lib, deps)
             return nil, failure("Invalid file size", errors.INVALID, "declaration")
         end
 
-        mime_type = mime_type or "application/octet-stream"
         expires_in = expires_in or upload_types.DEFAULT_PRESIGN_EXPIRES_SECONDS
         if metadata ~= nil and type(metadata) ~= "table" then
             return nil, failure("metadata must be an object", errors.INVALID, "declaration")
@@ -58,7 +59,10 @@ local function attach(upload_lib, deps)
             return nil, identity_err
         end
 
-        local type_id, type_err = determine_upload_type(mime_type, filename)
+        local description, mime_err = upload_mime.describe(mime_type, filename)
+        if mime_err then return nil, typed(mime_err, errors.UNAVAILABLE, "infrastructure", "") end
+        local resolved_mime = description.mime_type
+        local type_id, type_err = determine_upload_type(resolved_mime, filename)
         if not type_id then
             return nil, typed(type_err, errors.INVALID, "declaration", "")
         end
@@ -74,7 +78,8 @@ local function attach(upload_lib, deps)
         local presigned_url
         presigned_url, err = s3:presigned_put_url(object_key, {
             expires_in = expires_in,
-            content_type = mime_type,
+            -- Sign the PUT header the caller supplies. Processing uses the stored upload MIME.
+            content_type = mime_type or "application/octet-stream",
             metadata = {
                 actor_id = actor_id,
                 original_name = filename,
@@ -91,7 +96,7 @@ local function attach(upload_lib, deps)
             id,
             actor_id,
             size,
-            mime_type,
+            resolved_mime,
             resources.get_storage_id(),
             "s3://" .. resources.get_s3_id() .. "/" .. object_key,
             type_id,
@@ -179,9 +184,9 @@ local function attach(upload_lib, deps)
             return nil, failure("Upload is in invalid storage state: " .. tostring(upload.storage_state), errors.CONFLICT, "declaration")
         end
 
-        local submitted, submit_err = process_worker.enqueue_upload_job(upload, true, function(tx, dbtype)
+        local submitted, submit_err = process_worker.enqueue_upload_job(upload, true, function(tx, dbtype, ceiling)
             return deps.upload_record_repo.finalize_tx(tx, dbtype, upload_id, metadata_updates,
-                etag, key, trace_context, deps.processing_max_execution_ms())
+                etag, key, trace_context, ceiling or deps.processing_max_execution_ms())
         end)
         if submit_err then return nil, submit_err end
         return submitted.upload

@@ -235,10 +235,13 @@ local function define_tests()
                 actor_id = (row :: any).actor_id,
                 actor_context = (row :: any).actor_context,
             }
-            local output, err = worker.run_proc_supervised(binding, {
+            local input = {
+                execution_deadline_ns = 1,
                 projection = { body = { stats = { count = 2 } } },
                 range = { processed_count = 3, to_seq = 5 },
-            }, {
+            }
+            local started_at = time.now():unix_nano()
+            local output, err = worker.run_proc_supervised(binding, input, {
                 proc_host = "app:processes",
             })
             test.is_nil(err)
@@ -247,6 +250,8 @@ local function define_tests()
             test.eq((output :: table).body.proc_actor_id, actor_id)
             test.eq((output :: table).body.proc_actor_user_id, actor_id)
             test.is_true((output :: table).body.proc_has_scope)
+            test.is_true((output :: table).body.proc_deadline_ns > started_at)
+            test.eq(input.execution_deadline_ns, 1)
         end)
 
         test.it("preserves the supervising caller's process options", function()

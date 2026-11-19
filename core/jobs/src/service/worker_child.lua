@@ -1,6 +1,7 @@
 -- Own the supervised execution child, its token-qualified owner registration,
 -- and the durable quarantine used when termination cannot be confirmed.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local logger = require("logger")
 local time = require("time")
@@ -10,7 +11,7 @@ local job_types = require("job_types")
 local cfg = require("config")
 local execution_policy = require("execution_policy")
 local lease_status = require("lease_status")
-local lifecycle_cancel = require("lifecycle_cancel")
+local reclaim = require("reclaim")
 local worker_fence = require("worker_fence")
 local proc_supervisor = require("proc_supervisor")
 local worker_dispatch = require("worker_dispatch")
@@ -23,11 +24,7 @@ local function response_error(field: string): error
 end
 local PROC_TIMEOUT_MARKER = worker_dispatch.PROC_TIMEOUT_MARKER
 worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+worker.HEARTBEAT_TIMEOUT_MARKER = worker_dispatch.HEARTBEAT_TIMEOUT_MARKER
 
 -- Returns (err, control, retire): retire reports that the supervising loop's
 -- code became outdated while the execution ran to its own end.
@@ -36,6 +33,7 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
     if policy_err or not policy then return policy_err, nil, false end
     local max_execution_ms, duration_err = worker_dispatch.resolve_max_execution_ms(job, policy)
     if duration_err then return duration_err, nil, false end
+    local progress_timeout_ms = policy.progress_timeout_ms
     local host = trim(cfg.process_host())
     if host == "" then
         return (errors.new({ message = "job child requires a process host", kind = errors.INTERNAL }) :: error), nil, false
@@ -50,7 +48,16 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
         return register_err and errors.wrap(register_err, "job supervisor registration failed") or response_error("registration"), nil, false
     end
     local deadline: any = nil
+    local heartbeat_deadline: any = nil
     local lease_deadline: any = nil
+    local function next_heartbeat(): any
+        if progress_timeout_ms == nil then return nil end
+        return time.now():add((progress_timeout_ms :: integer) * time.MILLISECOND)
+    end
+    local function attempt_deadline(): any
+        if heartbeat_deadline ~= nil and heartbeat_deadline:before(deadline) then return heartbeat_deadline end
+        return deadline
+    end
     local function read_lease(): (boolean, error?, string?)
         local db, err = sql.get(cfg.db_id())
         if err then return false, errors.wrap(err, "job liveness db unavailable"), nil end
@@ -73,7 +80,7 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
         local settle_type, settle_type_err = settle_db:type()
         local settled, finish_err = false, nil
         if not settle_type_err then
-            settled, finish_err = lifecycle_cancel.finish_cancellation(settle_db, tostring(settle_type), {
+            settled, finish_err = reclaim.finish_cancellation(settle_db, tostring(settle_type), {
                 id = job.id, token = job.lease_token, execution_seq = job.execution_seq,
             })
         end
@@ -103,6 +110,7 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
             if not pid then return nil, response_error("process.id") end
             child_pid = tostring(pid)
             deadline = ceiling
+            heartbeat_deadline = next_heartbeat()
             return child_pid, nil
         end,
         terminate = function(pid: string): () process.terminate(pid) end,
@@ -120,8 +128,12 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
         end,
         set_lease_deadline = function(value: any): () lease_deadline = value end,
         wait = function(): table
-            local signal = proc_supervisor.wait_once(events_ch, deadline, child_pid,
+            local chosen = attempt_deadline()
+            local signal = proc_supervisor.wait_once(events_ch, chosen, child_pid,
                 heartbeat_pid, control_ch, lease_deadline)
+            if signal.kind == "timeout" and chosen ~= deadline then
+                return { kind = "timeout", message = worker.HEARTBEAT_TIMEOUT_MARKER }
+            end
             if signal.kind ~= "control" or type(signal.message) ~= "table" then return signal end
             local message = signal.message :: any
             if tostring(message.lease_token or "") ~= tostring(job.lease_token or "")
@@ -129,6 +141,10 @@ local function supervise_job_child(job: table, run_id: string?, heartbeat_pid: s
                 return { kind = "other" }
             end
             if message.kind == "revoked" then return { kind = "revoked" } end
+            if message.kind == "heartbeat" then
+                heartbeat_deadline = next_heartbeat()
+                return { kind = "heartbeat" }
+            end
             if message.kind == "lease_renewed" then
                 local renewed, parse_err = proc_supervisor.parse_deadline(message.lease_until)
                 if parse_err or not renewed then return { kind = "lease_expired" } end

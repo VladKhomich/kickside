@@ -87,6 +87,14 @@ return {run = test.run_cases(function()
                 status = "in_progress", cleanup_pending = true, job_id = "job"}))
         end)
         local message = require("post_message")
+        test.it("appends a thread message with a mebibyte of internal whitespace", function()
+            local text = "before" .. string.rep(" ", 1024 * 1024) .. "after"
+            fixture.reset("", nil, encoded({text = " " .. text .. "\t"}))
+            message.handler()
+            test.eq(fixture.status, 201)
+            test.eq(fixture.appended.type, "kickside.threads:message.created")
+            test.is_true(fixture.appended.body.text == text)
+        end)
         for _, kind in ipairs(kinds) do
             for _, policy in ipairs({{}, {retryable = false}, {retryable = true}}) do
                 test.it("post_message/completed append/read failure/" .. kind .. "/" .. tostring(policy.retryable), function()

@@ -11,6 +11,7 @@ local upload_types = require("types")
 local jobs = require("jobs")
 local provision = require("provision")
 local processing_intent_repo = require("processing_intent_repo")
+local upload_type = require("upload_type")
 
 local IDENTITY_META_KEY = assert(execution_identity.CONTEXT_KEY, "execution_identity.CONTEXT_KEY is required")
 local JOB_TYPE = "kickside.uploads.service:process_job_proc"
@@ -21,27 +22,47 @@ local SETTINGS_CONTRACT = "kickside.settings:settings"
 local SETTINGS_NS = "kickside.uploads"
 local SETTING_MAX_EXECUTION_MS = "process_max_execution_ms"
 local DEFAULT_MAX_EXECUTION_MS = 600000
+local DEFAULT_PROGRESS_MAX_EXECUTION_MS = 7200000
+local SETTING_HEARTBEAT_TIMEOUT_MS = "process_heartbeat_timeout_ms"
+local DEFAULT_HEARTBEAT_TIMEOUT_MS = 600000
 
 local function failure(message: string, kind: string, error_kind: string, retryable: boolean?): error
     return errors.new({ message = message, kind = kind, retryable = retryable == true,
         details = { error_kind = error_kind } })
 end
 
--- Admin-tunable hard ceiling for one processing attempt, served from the warmed
--- settings cache. The worker uses it as the per-job termination deadline. A
--- settings outage degrades to the code default rather than blocking the upload.
-local function max_execution_ms(): integer
+-- Settings provenance preserves an existing ceiling override's total-time policy.
+-- An explicit progress override opts that installation into progress deadlines.
+local function processing_limits(type_id: string?): (table?, any?)
+    local limits = {max_execution_ms = DEFAULT_MAX_EXECUTION_MS,
+        heartbeat_timeout_ms = DEFAULT_HEARTBEAT_TIMEOUT_MS}
     local def = contract.get(SETTINGS_CONTRACT)
-    if def then
-        local inst = def:open()
-        if inst then
-            local r = inst:get({ namespace = SETTINGS_NS, key = SETTING_MAX_EXECUTION_MS })
-            if r and r.success and tonumber(r.value) and tonumber(r.value) >= 1 then
-                return math.floor(tonumber(r.value) :: number) :: integer
-            end
+    local inst = def and def:open()
+    local response = inst and inst:get_namespace({namespace = SETTINGS_NS})
+    local values = response and response.success and response.values or {}
+    for _, key in ipairs({SETTING_MAX_EXECUTION_MS, SETTING_HEARTBEAT_TIMEOUT_MS}) do
+        local n = tonumber(values[key])
+        if n and n >= 1 and n < math.huge and n == math.floor(n) then
+            if key == SETTING_MAX_EXECUTION_MS then limits.max_execution_ms = n
+            else limits.heartbeat_timeout_ms = n end
         end
     end
-    return DEFAULT_MAX_EXECUTION_MS
+    local overridden = {}
+    for _, key in ipairs(response and response.success and response.overridden or {}) do overridden[key] = true end
+    local reports_progress, progress_err = false, nil
+    if type_id then reports_progress, progress_err = upload_type.reports_progress(type_id) end
+    if progress_err then return nil, progress_err end
+    if not reports_progress or (overridden[SETTING_MAX_EXECUTION_MS] and not overridden[SETTING_HEARTBEAT_TIMEOUT_MS]) then
+        limits.heartbeat_timeout_ms = nil
+    elseif not overridden[SETTING_MAX_EXECUTION_MS] then
+        limits.max_execution_ms = DEFAULT_PROGRESS_MAX_EXECUTION_MS
+    end
+    return limits, nil
+end
+
+local function max_execution_ms(type_id: string?): (integer?, any?)
+    local limits, err = processing_limits(type_id)
+    return limits and limits.max_execution_ms, err
 end
 
 local function upload_identity(upload: any, deferred: boolean?): (any?, any?, any?)
@@ -98,6 +119,14 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
             errors.UNAVAILABLE, "infrastructure", true)
     end
 
+    local limits, limits_err = processing_limits(upload.type_id)
+    if limits_err then return nil, limits_err end
+    local ceiling = tonumber(upload.processing_max_execution_ms) or limits.max_execution_ms
+    local progress_timeout = limits.heartbeat_timeout_ms
+    if upload.processing_max_execution_ms ~= nil and ceiling ~= limits.max_execution_ms then
+        progress_timeout = nil
+    end
+
     local params = {
         namespace = "uploads", scope = tostring(upload.uuid),
         owner_locator = { kind = "user", id = owner_actor_id :: string },
@@ -108,8 +137,8 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
         priority = 20,
         max_attempts = 5,
         concurrency_key = "uploads:" .. component_id,
-        immutable_payload = { upload_id = upload.uuid,
-            max_execution_ms = tonumber(upload.processing_max_execution_ms) or max_execution_ms() },
+        progress_timeout_ms = progress_timeout,
+        immutable_payload = { upload_id = upload.uuid, max_execution_ms = ceiling },
         trace_context = upload.trace_context,
     }
     local event = {
@@ -120,11 +149,6 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
             mime_type = upload.mime_type,
             size = upload.size,
             type_id = upload.type_id,
-        },
-        external = {
-            external_source = upload_types.EVENT_SOURCE,
-            external_id = tostring(upload.uuid),
-            external_version = upload_types.EVENT.QUEUED,
         },
     }
     local body_json, encode_err = json.encode(event.body)
@@ -144,7 +168,7 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
         return nil, err
     end
     if persist then
-        local stored, persist_err = persist(tx, dbtype)
+        local stored, persist_err = persist(tx, dbtype, ceiling)
         if persist_err or not stored then return abort(persist_err) end
         upload = stored
         if upload.deduped then
@@ -154,12 +178,19 @@ local function enqueue_upload_job(upload: any, deferred: boolean?, persist: any?
             return { upload = upload, duplicate = true, job_id = upload.processing_job_id }, nil
         end
         params.trace_context = upload.trace_context
-        params.immutable_payload.max_execution_ms = upload.processing_max_execution_ms
+        params.immutable_payload.max_execution_ms = tonumber(upload.processing_max_execution_ms) or ceiling
+        if params.immutable_payload.max_execution_ms ~= ceiling then params.progress_timeout_ms = nil end
         event.trace_context = upload.trace_context
     end
     local enqueued, enqueue_err = jobs.enqueue_tx(tx, dbtype, params)
     if enqueue_err then return abort(enqueue_err) end
     if not enqueued.existing then
+        -- Each processing attempt is one job, so its lifecycle events dedupe per job.
+        event.external = {
+            external_source = upload_types.EVENT_SOURCE,
+            external_id = tostring(upload.uuid),
+            external_version = tostring(enqueued.id),
+        }
         local _, append_err = threads_writer.append_system_tx(tx, dbtype, component_id, { event })
         if append_err then return abort(append_err) end
     end

@@ -15,6 +15,7 @@ local CURATOR = "kickside.agents.traits:trait_curator"
 local MASTER = "kickside.agents.traits:trait_master"
 local ROSTER = "kickside.agents.traits:agent_roster"
 local FILE_MANAGER = "kickside.uploads.traits:file_manager"
+local KB_READER = "kickside.knowledge.traits:kb_reader"
 local PROMPT_FUNC = "kickside.agents.traits:active_traits_prompt"
 local TOOL_FUNC = "kickside.agents.traits:trait_curator_tool"
 local VALIDATE_CONTEXT_FUNC = "kickside.agents.traits:validate_trait_context"
@@ -69,6 +70,44 @@ local function define_tests()
                 TOOL_FUNC, { action = "list", q = "Artifacts" })
             test.is_nil(scope_err)
             test.is_nil(capability_ids(scoped)["kickside.agents.traits:artifacts"])
+        end)
+        test.it("finds Knowledge Base Reader when the query words occur in different catalog fields", function()
+            local args = { action = "list", q = "Query Knowledge Base", fields = { "description" } }
+            local listed, err = executor():call(TOOL_FUNC, args)
+            test.is_nil(err)
+            local reader = capability_ids(listed)[KB_READER]
+            test.not_nil(reader)
+            test.eq(reader.title, "Knowledge Base Reader")
+            test.eq(type(reader.description), "string")
+
+            for _, context in ipairs({ { namespaces = { "app" } }, { trait_ids = { FILE_MANAGER } } }) do
+                local scoped, scope_err = executor(context):call(TOOL_FUNC, args)
+                test.is_nil(scope_err)
+                test.is_nil(capability_ids(scoped)[KB_READER])
+            end
+        end)
+        test.it("uses word matches only when there is no literal phrase and keeps keyset order", function()
+            local first_id = "app:public_trait_probe"
+            local last_id = "app:reordered_trait_probe"
+            local exec = executor({ trait_ids = { first_id, last_id } })
+            local exact, exact_err = exec:call(TOOL_FUNC, { action = "list", q = "Public Trait Probe", limit = 1 })
+            test.is_nil(exact_err)
+            test.eq(exact.count, 1)
+            test.eq(exact.capabilities[1].id, first_id)
+            test.is_nil(exact.next_cursor)
+
+            local args = { action = "list", q = "Probe   Public Trait", limit = 1 }
+            local first, first_err = exec:call(TOOL_FUNC, args)
+            test.is_nil(first_err)
+            test.eq(first.count, 1)
+            test.eq(first.capabilities[1].id, first_id)
+            test.eq(first.next_cursor, first_id)
+            args.cursor = first.next_cursor
+            local last, last_err = exec:call(TOOL_FUNC, args)
+            test.is_nil(last_err)
+            test.eq(last.count, 1)
+            test.eq(last.capabilities[1].id, last_id)
+            test.is_nil(last.next_cursor)
         end)
         test.it("pages capabilities in id order with a cursor", function()
             local seen: { string } = {}

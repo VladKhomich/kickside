@@ -17,6 +17,7 @@ entries:
       - json
       - time
     imports:
+      text_trim: kickside.contract:text_trim
       threads_consts: kickside.core.threads:consts
       clock: kickside.core.jobs:clock
 
@@ -29,9 +30,13 @@ entries:
       - sql
       - json
     imports:
+      text_trim: kickside.contract:text_trim
       subjects: kickside.core.threads.persist:subjects
       threads_component: kickside.core.threads:component
       core_types: kickside.core:types
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      lifecycle_consts: kickside.core.lifecycle:consts
+      contract_common: kickside.core.threads:contract_common
 
   - name: append
     kind: library.lua
@@ -90,6 +95,9 @@ entries:
       autoinit: kickside.component:autoinit
       threads_normalize: kickside.core.threads.persist:normalize
       natural_key: kickside.core.threads.persist:natural_key
+      jobs_cleanup: kickside.core.jobs.persist:thread_teardown
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
 
   - name: thread_crud
     kind: library.lua
@@ -156,14 +164,14 @@ entries:
   - name: teardown_page
     kind: library.lua
     meta:
-      comment: Bounded Core-owned thread cleanup page with Jobs receipt acknowledgment.
+      comment: Atomic Core and Jobs thread cleanup page.
     source: file://teardown_page.lua
-    modules: [sql, json]
+    modules: [json, sql]
     imports:
       threads_writer: kickside.core.threads.persist:writer
       threads_drop_notify: kickside.core.threads.persist:drop_notify
-      jobs_wake: kickside.core.jobs.persist:wake
-      jobs: kickside.core.jobs:jobs
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
+      jobs_cleanup: kickside.core.jobs.persist:thread_teardown
       cursor_waiters: kickside.core.threads:cursor_waiters
       error_envelope: kickside.contract:error_envelope
 

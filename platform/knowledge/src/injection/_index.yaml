@@ -73,6 +73,16 @@ entries:
       thread_ingest_base: kickside.knowledge.injection:thread_ingest_base
       engines: kickside.knowledge:engines
 
+  - name: thread_ingest_reingest
+    kind: library.lua
+    meta:
+      private: true
+    source: file://thread_ingest_reingest.lua
+    modules: [json]
+    imports:
+      thread_ingest_base: kickside.knowledge.injection:thread_ingest_base
+      thread_ingest_status: kickside.knowledge.injection:thread_ingest_status
+
   - name: thread_ingest
     kind: library.lua
     meta:
@@ -90,6 +100,7 @@ entries:
       util: kickside.knowledge:util
       thread_ingest_base: kickside.knowledge.injection:thread_ingest_base
       thread_ingest_status: kickside.knowledge.injection:thread_ingest_status
+      thread_ingest_reingest: kickside.knowledge.injection:thread_ingest_reingest
       component: kickside.component:component
 
   - name: thread_ingest_control

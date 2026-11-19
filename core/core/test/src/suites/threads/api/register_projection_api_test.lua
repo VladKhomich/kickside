@@ -87,10 +87,12 @@ local function define_tests()
             local thread_id = new_thread()
             local targets: string[] = { "app:test_private_projection_worker", "app:test_actor_projection_worker",
                 "app:test_scoped_projection_worker", "app:test_private_proc_projection_worker",
+                "app:declared_checkpoint_worker",
                 "kickside.core.lifecycle:reaper" }
             for _, target in ipairs(targets) do
                 local kind = target:match(":(.+)$")
-                local scheme = target == "app:test_private_proc_projection_worker" and "proc://" or "func://"
+                local proc = target == "app:test_private_proc_projection_worker" or target == "app:declared_checkpoint_worker"
+                local scheme = proc and "proc://" or "func://"
                 local res = run_as(owner, { thread_id = thread_id,
                     body = { kind = kind, worker_ref = scheme .. target } })
                 test.eq(res.status, 403, json.encode(res.body))

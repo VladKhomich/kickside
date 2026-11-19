@@ -1,5 +1,5 @@
 import { W as s, m as o } from "./wc-runtime-RWZ7nf8c.js";
-import { s as i } from "./styles-DRIjahFu.js";
+import { s as i } from "./styles-BHCP8M7N.js";
 import { define as n } from "@wippy-fe/proxy";
 const r = { props: { type: "object", properties: { mode: { type: "string", default: "manager", description: "manager (default) or sidebar" }, "active-session-id": { type: "string", description: "Session currently rendered by the app-owned chat panel.", default: "" }, "artifacts-active": { type: "boolean", default: !1, description: "Whether the cross-session artifact gallery owns the adjacent workspace." } } } }, a = {
   wippy: r
@@ -14,7 +14,7 @@ class e extends s {
   }
   static get vueConfig() {
     return {
-      ...o(() => import("./index-mount-BhIZ3_qD.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the sessions list. Reload the page to try again.", timeout: 3e4 })
+      ...o(() => import("./index-mount-EIjVDKM9.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the sessions list. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }

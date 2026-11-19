@@ -5,10 +5,14 @@
 -- the requested mask — there is NO kickside_component_access / kickside_component_group_access SQL
 -- join here. Every entry takes the caller's db handle and returns rows as values.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local json = require("json")
 local component = require("threads_component")
 local masks = require("core_types")
+local lifecycle = require("component_lifecycle_log")
+local lifecycle_consts = require("lifecycle_consts")
+local common = require("contract_common")
 local subjects = require("subjects")
 
 local reader = {}
@@ -40,13 +44,6 @@ local EVENT_COLUMNS = {
     "trace_id", "run_id", "caused_by_event_id", "correlation_key",
     "created_at", "subject", "subject_version",
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function attach_trace_context(row: table): table
     local trace_id = trim(row.trace_id)
@@ -97,10 +94,18 @@ local function load_thread_row(db_or_tx: Executor, thread_id: string): (table?, 
     return rows[1], nil
 end
 
-local function authorize_thread(thread: table, required_mask: integer): (table?, error?)
+local function authorize_thread(thread: table, required_mask: integer, lifecycle_registration: boolean?): (table?, error?)
     local component_id = trim(thread.component_id)
     if component_id == "" then
-        return nil, (errors.new({ message = "thread has no component", kind = errors.NOT_FOUND }) :: error)
+        local attrs: any = thread.attrs
+        if lifecycle_registration and type(attrs) == "string" then attrs = json.decode(attrs) end
+        if not lifecycle_registration or thread.component_id ~= "" or type(attrs) ~= "table" or attrs.lifecycle ~= true
+            or type(attrs.component_id) ~= "string" or lifecycle.thread_id(attrs.component_id) ~= thread.id then
+            return nil, (errors.new({ message = "thread has no component", kind = errors.NOT_FOUND }) :: error)
+        end
+        if common.is_maintenance_actor() then return thread, nil end
+        component_id = lifecycle_consts.thread_id()
+        required_mask = masks.ACCESS.ADMIN
     end
     local allowed, access_err = component.has_access(component_id, required_mask)
     if access_err then
@@ -115,7 +120,8 @@ end
 -- gate_read resolves a thread's component_id and checks the actor's READ access
 -- through the component contract. Returns the thread row on success, a NOT_FOUND
 -- when the thread or its access is missing, or a PERMISSION_DENIED otherwise.
-local function gate_read(db_or_tx: Executor, thread_id: string, required_mask: integer): (table?, error?, boolean)
+local function gate_read(db_or_tx: Executor, thread_id: string, required_mask: integer,
+    lifecycle_registration: boolean?): (table?, error?, boolean)
     local thread, load_err = load_thread_row(db_or_tx, thread_id)
     if load_err then
         return nil, load_err, false
@@ -123,7 +129,7 @@ local function gate_read(db_or_tx: Executor, thread_id: string, required_mask: i
     if not thread then
         return nil, (errors.new({ message = "thread not found", kind = errors.NOT_FOUND }) :: error), false
     end
-    local authorized, access_err = authorize_thread(thread, required_mask)
+    local authorized, access_err = authorize_thread(thread, required_mask, lifecycle_registration)
     return authorized, access_err, true
 end
 
@@ -415,7 +421,8 @@ function reader.find_event_by_external(
     event_type: string,
     external_source: string,
     external_id: string,
-    external_version: string?
+    external_version: string?,
+    latest: boolean?
 ): (table?, error?)
     local id = trim(thread_id)
     local kind = trim(event_type)
@@ -427,20 +434,34 @@ function reader.find_event_by_external(
     local _, gate_err = gate_read(db_or_tx, id, (masks.ACCESS.READ :: integer))
     if gate_err then return nil, gate_err end
 
-    local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
-        :from("kickside_event")
-        :where(sql.builder.eq({
-            thread_id = id,
-            type = kind,
-            external_source = source,
-            external_id = external_key,
-        }))
-    if external_version ~= nil then
-        query = query:where(sql.builder.eq({ external_version = external_version }))
+    local rows, query_err
+    if latest then
+        -- Resolve the sequence through the scoped external-identity index before
+        -- fetching the payload. Ordering the outer rows by sequence makes the
+        -- planner consider walking unrelated events in a busy thread.
+        rows, query_err = db_or_tx:query("SELECT " .. table.concat(EVENT_COLUMNS, ", ") .. [[
+            FROM kickside_event
+            WHERE thread_id = $1 AND seq = (
+                SELECT max(seq) FROM kickside_event
+                WHERE thread_id = $1 AND type = $2 AND external_source = $3 AND external_id = $4
+                GROUP BY thread_id, type, external_source, external_id
+            )]], { id, kind, source, external_key })
     else
-        query = query:where(sql.builder.expr("external_version IS NULL"))
+        local query = sql.builder.select(table.unpack(EVENT_COLUMNS))
+            :from("kickside_event")
+            :where(sql.builder.eq({
+                thread_id = id,
+                type = kind,
+                external_source = source,
+                external_id = external_key,
+            }))
+        if external_version ~= nil then
+            query = query:where(sql.builder.eq({ external_version = external_version }))
+        else
+            query = query:where(sql.builder.expr("external_version IS NULL"))
+        end
+        rows, query_err = query:limit(1):run_with(db_or_tx):query()
     end
-    local rows, query_err = query:limit(1):run_with(db_or_tx):query()
     local read_err = rows_error(rows, query_err, "failed to find external event", "external.rows")
     if read_err then return nil, read_err end
     local event = rows[1]

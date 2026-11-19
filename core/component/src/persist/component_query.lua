@@ -3,6 +3,7 @@
 -- ordering and pagination. Pure query construction; the reader executes it.
 
 local sql = require("sql")
+local security = require("security")
 local access_subjects = require("access_subjects")
 local component_types = require("component_types")
 
@@ -77,8 +78,7 @@ end
 -- subjects' direct grants on the component and on every ancestor). When the
 -- caller scopes to specific component ids, the filter is pushed into the reach
 -- rows so single-component reads stay bounded.
-local function apply_access_join(query_builder: any, user_id: string, component_ids: string[]?, access_mask_filter: integer?): any
-    local subjects = access_subjects.resolve(user_id)
+local function apply_access_join(query_builder: any, subjects: any, prefixes: {string}?, component_ids: string[]?, access_mask_filter: integer?): any
     local reach, args = access_subjects.reach_rows(subjects, component_ids)
     local join_sql = "(SELECT x.component_id AS component_id, " .. access_subjects.EFFECTIVE_MASK
         .. " AS access_mask FROM (" .. reach .. ") x GROUP BY x.component_id) ca ON c.component_id = ca.component_id"
@@ -92,7 +92,6 @@ local function apply_access_join(query_builder: any, user_id: string, component_
     -- confine results to its whitelisted subtrees. AND-ed onto the real access join, so
     -- it can only reject, never widen. An empty list is the deny-all sentinel. Per
     -- prefix the dialect matches placement: "/"-bearing -> sqlite LIKE, else pg ltree.
-    local prefixes = access_subjects.access_filter(user_id)
     if prefixes then
         if #prefixes == 0 then
             query_builder = query_builder:where("1 = 0")
@@ -116,6 +115,28 @@ local function apply_access_join(query_builder: any, user_id: string, component_
     end
 
     return query_builder
+end
+
+-- Build the ACL proof for a foreign payload query. The caller supplies an
+-- already observed component key and fences that binding in its statement.
+-- Implementation visibility in Component listings is independent of this ACL.
+function M.snapshot_access(component_id: string, mask: integer, actor: any?): (any?, error?)
+    local err: error?
+    if actor == nil then actor, err = security.actor() end
+    if err then return nil, err end
+    local user_id, id_err
+    if actor then user_id, id_err = actor:id() end
+    if id_err then return nil, id_err end
+    if type(user_id) ~= "string" or user_id == "" then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "component access requires an actor"})
+    end
+    local subjects, subject_err = access_subjects.resolve(user_id, actor)
+    if subject_err then return nil, subject_err end
+    local prefixes, filter_err = access_subjects.access_filter(user_id, actor)
+    if filter_err then return nil, filter_err end
+    local query = sql.builder.select("c.component_id"):from(component_types.TABLES.COMPONENTS .. " c")
+        :where("c.component_id = ?", component_id)
+    return apply_access_join(query, subjects, prefixes, {component_id}, mask), nil
 end
 
 -- Apply placement filters shared by main and count queries.
@@ -201,7 +222,9 @@ end
 local function filtered_query(state: ReaderState, fields: { string }): any
     local query_builder = sql.builder.select(unpack(fields)):from(component_types.TABLES.COMPONENTS .. " c")
     if state._user_id then
-        query_builder = apply_access_join(query_builder, state._user_id, access_component_ids(state), state._access_mask_filter)
+        local subjects = access_subjects.resolve(state._user_id)
+        local prefixes = access_subjects.access_filter(state._user_id)
+        query_builder = apply_access_join(query_builder, subjects, prefixes, access_component_ids(state), state._access_mask_filter)
     end
     return apply_filters(state, query_builder)
 end

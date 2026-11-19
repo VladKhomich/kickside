@@ -60,7 +60,7 @@ local function new(runtime: {contract: any?, registry: any?}): table
     end
 
     -- Missing workers remain unconfigured because dispatch owns target validation.
-    function M.descriptor(worker_ref: any): (Descriptor?, error?)
+    function M.descriptor(worker_ref: any): (Descriptor?, error?, table?)
         local reference = job_types.worker_reference(worker_ref)
         if not reference or reference.worker_ref == job_types.WAKE_CONTINUATION_TYPE then return nil, nil end
         local entry, lookup_err = registry.get(reference.target_id)
@@ -70,16 +70,17 @@ local function new(runtime: {contract: any?, registry: any?}): table
         end
         if not entry then return nil, nil end
         local meta = entry_meta(entry)
-        return parse(meta)
+        local descriptor, err = parse(meta)
+        return descriptor, err, meta
     end
 
-    function M.admit(worker_ref: any, concurrency_key: any): (Descriptor?, error?)
-        local descriptor, descriptor_err = M.descriptor(worker_ref)
-        if descriptor_err or not descriptor then return descriptor, descriptor_err end
+    function M.admit(worker_ref: any, concurrency_key: any): (Descriptor?, error?, table?)
+        local descriptor, descriptor_err, meta = M.descriptor(worker_ref)
+        if descriptor_err or not descriptor then return descriptor, descriptor_err, meta end
         if type(concurrency_key) ~= "string" or concurrency_key == "" then
             return nil, invalid("workers declaring " .. M.META .. " require concurrency_key")
         end
-        return descriptor, nil
+        return descriptor, nil, meta
     end
 
     local function same_settings(left: Descriptor, right: Descriptor): boolean

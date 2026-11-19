@@ -1,6 +1,7 @@
 -- Workflow state model: validate command batches, fold events, and produce
 -- inverse data without owning persistence or transaction boundaries.
 
+local trim = require("text_trim").trim
 local uuid = require("uuid")
 local json = require("json")
 local mapping = require("mapping")
@@ -56,7 +57,7 @@ local function normalize_labels(value: any): ({ string }?, string?)
     local seen: { [string]: boolean } = {}
     for i, raw in ipairs(value :: { any }) do
         if type(raw) ~= "string" then return nil, "label at [" .. tostring(i) .. "] must be a string" end
-        local label = raw:gsub("^%s+", ""):gsub("%s+$", "")
+        local label = trim(raw)
         if label == "" then return nil, "label at [" .. tostring(i) .. "] must not be blank" end
         if not seen[label] then
             seen[label] = true

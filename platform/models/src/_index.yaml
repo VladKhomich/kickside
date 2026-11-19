@@ -33,8 +33,14 @@ entries:
         path: .meta.target_db
       - entry: kickside.models.migrations:04_encrypt_legacy_headers
         path: .meta.target_db
+      - entry: kickside.models.migrations:05_optional_model_limits
+        path: .meta.target_db
+      - entry: kickside.models.migrations:06_unset_zero_profile_timeouts
+        path: .meta.target_db
       - entry: kickside.models:db_config
         path: .meta.db_id
+      - entry: kickside.models.catalog:catalog_database
+        path: .policy.resources +=
 
   - name: db_config
     kind: registry.entry
@@ -74,6 +80,10 @@ entries:
       - entry: kickside.models.api.admin:upsert_card.endpoint
         path: .meta.router
       - entry: kickside.models.api.admin:delete_card.endpoint
+        path: .meta.router
+      - entry: kickside.models.api.admin:export.endpoint
+        path: .meta.router
+      - entry: kickside.models.api.admin:import.endpoint
         path: .meta.router
 
   - name: ui_server
@@ -124,6 +134,29 @@ entries:
         methods:
           resolve: kickside.models.catalog:model_resolver_func
 
+  - name: provider
+    kind: registry.entry
+    meta:
+      type: llm.provider
+      name: models
+      title: Saved model profiles
+    driver:
+      id: kickside.models:profile_driver
+
+  - name: profile_driver
+    kind: contract.binding
+    contracts:
+      - contract: wippy.llm:provider
+        methods: {status: kickside.models.providers.profile:status}
+      - contract: wippy.llm:generator
+        methods: {generate: kickside.models.providers.profile:generate}
+      - contract: wippy.llm:embedder
+        methods: {embed: kickside.models.providers.profile:embed}
+      - contract: wippy.llm:structured_output
+        methods: {structured_output: kickside.models.providers.profile:structured_output}
+      - contract: wippy.llm:evaluator
+        methods: {evaluate: kickside.models.providers.profile:evaluate}
+
   - name: openai_compat_plain.driver
     kind: contract.binding
     meta:
@@ -164,8 +197,8 @@ entries:
       timeout:
         default_env: OPENAI_COMPAT_TIMEOUT
         default_value: 600
-        description: Request timeout in seconds.
-        type: integer
+        description: Positive request timeout in seconds. Omit to use the provider default.
+        type: number
       retry:
         description: Provider-level retry policy for transient transport/provider failures.
         type: object
@@ -344,7 +377,7 @@ entries:
   - name: dep.kickside.contract
     kind: ns.dependency
     component: kickside/contract
-    version: '>=0.3.8'
+    version: '>=0.3.9'
 
   - name: encryption_key
     kind: ns.requirement

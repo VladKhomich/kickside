@@ -19,7 +19,7 @@ end
 
 -- A name already registered to this process is claimed: an in-place upgrade
 -- keeps the PID, and with it every name the previous code registered.
-function M.claim_or_owner(name: string, dependencies: any?): (boolean, string?, error?)
+local function claim_or_owner(name: string, dependencies: any?, monitor_miss: error?): (boolean, string?, error?)
     local deps = dependencies or {}
     local proc = deps.process or process
     local names = deps.registry or proc.registry
@@ -37,33 +37,48 @@ function M.claim_or_owner(name: string, dependencies: any?): (boolean, string?, 
             if tostring(owner) == tostring(proc.pid()) then return true, nil, nil end
             return false, tostring(owner), nil
         end
+        if monitor_miss then return false, nil, monitor_miss end
     end
+end
+
+function M.claim_or_owner(name: string, dependencies: any?): (boolean, string?, error?)
+    return claim_or_owner(name, dependencies)
 end
 
 function M.claim_singleton(name: string, events_ch: any, dependencies: any?): (boolean, boolean, error?, string?)
     local deps = dependencies or {}
     local proc = deps.process or process
     local select = deps.channel or channel
+    local monitor_miss: error? = nil
     while true do
-        local claimed, owner, claim_err = M.claim_or_owner(name, deps)
+        local claimed, owner, claim_err = claim_or_owner(name, deps, monitor_miss)
         if claim_err then return false, false, claim_err end
         if claimed then return true, false, nil end
         if owner then
             local monitored, monitor_err = proc.monitor(tostring(owner))
-            if monitor_err then return false, false, monitor_err end
-            if not monitored then
-                return false, false, (errors.new({ kind = errors.UNAVAILABLE, retryable = true,
-                    message = "singleton owner monitor returns no acknowledgement: " .. name }) :: error)
-            end
-            while true do
-                local selected = select.select({ events_ch:case_receive() })
-                local event = selected.value
-                if selected.ok == false then return false, true, nil, nil end
-                if type(event) == "table" and (event.kind == proc.event.CANCEL or event.kind == proc.event.OUTDATED) then
-                    return false, true, nil, event.kind :: string
+            if monitor_err then
+                if monitor_miss or not errors.is(monitor_err, errors.NOT_FOUND) then
+                    return false, false, monitor_err
                 end
-                if type(event) == "table" and tostring(event.from) == tostring(owner)
-                    and (event.kind == proc.event.EXIT or event.kind == proc.event.LINK_DOWN) then break end
+                -- An owner can exit before monitor admission. Allow one immediate
+                -- claim after that gap, then require a monitored exit to try again.
+                monitor_miss = monitor_err
+            else
+                if not monitored then
+                    return false, false, (errors.new({ kind = errors.UNAVAILABLE, retryable = true,
+                        message = "singleton owner monitor returns no acknowledgement: " .. name }) :: error)
+                end
+                while true do
+                    local selected = select.select({ events_ch:case_receive() })
+                    local event = selected.value
+                    if selected.ok == false then return false, true, nil, nil end
+                    if type(event) == "table" and (event.kind == proc.event.CANCEL or event.kind == proc.event.OUTDATED) then
+                        return false, true, nil, event.kind :: string
+                    end
+                    if type(event) == "table" and tostring(event.from) == tostring(owner)
+                        and (event.kind == proc.event.EXIT or event.kind == proc.event.LINK_DOWN) then break end
+                end
+                monitor_miss = nil
             end
         end
     end
@@ -71,7 +86,7 @@ end
 
 local CONTROL_TOPIC = "kickside.core.jobs:execution_control"
 local EXECUTION_SIGNAL = "kickside.core.jobs:execution_signal"
-local CONTROL_KINDS: { [string]: boolean } = { revoked = true, lease_renewed = true }
+local CONTROL_KINDS: { [string]: boolean } = { revoked = true, lease_renewed = true, heartbeat = true }
 local NAME_PREFIX = "kickside.core.jobs.execution:"
 local CHILD_PREFIX = "kickside.core.jobs.execution_child:"
 local DEFAULT_TERMINATE_GRACE_MS = 2000
@@ -102,10 +117,11 @@ function M.child_alive(job_id: string, lease_token: string): (boolean, error?)
     return pid ~= nil, nil
 end
 
--- notify delivers one committed lease control (revocation or renewal) to the
--- token-qualified execution owner. Delivery runs in the execution_signal
--- function under the Jobs identity, so revoking and renewing principals need no
--- process messaging authority. Returns false when no owner is registered.
+-- notify delivers one committed lease control (revocation, renewal or an
+-- execution heartbeat) to the token-qualified execution owner. Delivery runs in
+-- the execution_signal function under the Jobs identity, so revoking, renewing
+-- and heartbeating principals need no process messaging authority. Returns
+-- false when no owner is registered.
 function M.notify(job_id: string, lease_token: string, execution_seq: number,
         kind: string, lease_until: string?): (boolean, error?)
     local sent, call_err = funcs.call(EXECUTION_SIGNAL, job_id, lease_token, execution_seq, kind, lease_until)
@@ -337,8 +353,10 @@ local function supervise(hooks: table, child_pid: string, opts: table, state: ta
         elseif kind == "crash" then
             return nil, (errors.new({ message = tostring((opts :: any).crash_message) .. child_pid, kind = errors.INTERNAL }) :: error), nil
         elseif kind == "timeout" then
+            -- A wait hook names the deadline that elapsed; the default is the ceiling.
+            local message = (sig :: any).message or (opts :: any).timeout_message
             return terminate_child(hooks, child_pid, opts, "timeout", outcome_error(errors.TIMEOUT,
-                tostring((opts :: any).timeout_message), "job_execution_timeout", nil), state)
+                tostring(message), "job_execution_timeout", nil), state)
         elseif kind == "cancel" or kind == "heartbeat_lost" then
             local reason = kind == "cancel" and "cancelled" or "heartbeat lost"
             local message = kind == "cancel" and (opts :: any).cancel_message or "worker heartbeat exited during execution"
@@ -364,8 +382,9 @@ local function supervise(hooks: table, child_pid: string, opts: table, state: ta
             end
         elseif kind == "peer_down" then
             return await_peer_exit(hooks, child_pid, opts, grace, state)
-        elseif kind == "other" or kind == "lease_renewed" then
-            -- Event noise and a committed extension are direct inputs. Neither
+        elseif kind == "other" or kind == "lease_renewed" or kind == "heartbeat" then
+            -- Event noise, a committed extension and a heartbeat are direct
+            -- inputs. The wait hook owns the deadlines a heartbeat moves; none
             -- changes the max-execution deadline.
         else
             return nil, (errors.new({ message = "proc supervise unknown signal: " .. kind, kind = errors.INTERNAL }) :: error), nil

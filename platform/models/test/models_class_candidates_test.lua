@@ -5,17 +5,16 @@ local registry_models = require("registry_models")
 local models_repo = require("models_repo")
 
 local function scenario(fn, cards)
-    local registry_get, overlays_get = registry_models.get_all, models_repo.list_card_overlays
+    local registry_get, snapshot_get = registry_models.get_all, models_repo.snapshot
     registry_models.get_all = function() return {} end
-    models_repo.list_card_overlays = function()
-        return cards or {
+    local snapshot = {cards = cards or {
             { name = "low", class = { "ranked" }, priority = 10, providers = { { id = "provider.low" } } },
             { name = "disabled", class = { "ranked" }, priority = 100, enabled = false },
             { name = "high", class = { "ranked" }, priority = 90, providers = { { id = "provider.high" } } },
-        }
-    end
+        }}
+    models_repo.snapshot = function() return snapshot end
     local ok, err = pcall(fn)
-    registry_models.get_all, models_repo.list_card_overlays = registry_get, overlays_get
+    registry_models.get_all, models_repo.snapshot = registry_get, snapshot_get
     if not ok then error(err, 0) end
 end
 
@@ -69,7 +68,8 @@ local function define_tests()
             scenario(function()
                 local card, err = model_catalog.resolve("class:ranked")
                 test.is_nil(card)
-                test.eq(err, "No models found for class: ranked")
+                test.is_true(errors.is(err, errors.NOT_FOUND), tostring(err))
+                test.eq(tostring(err), "No models found for class: ranked")
                 local implicit, implicit_err = model_catalog.resolve("ranked")
                 test.is_nil(implicit)
                 test.eq(implicit_err, "Model or class not found: ranked")

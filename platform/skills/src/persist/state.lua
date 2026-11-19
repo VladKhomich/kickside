@@ -2,6 +2,7 @@
 -- body through the read-model contract. Event history and cursor state are not
 -- observable here, and this path can never advance a projection.
 
+local trim = require("text_trim").trim
 local errors = require("errors")
 local contract = require("contract")
 local security = require("security")
@@ -10,11 +11,6 @@ local types = require("types")
 
 local M = {}
 local READ_MODELS = "kickside.core:read_models"
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function read_models(): (any?, error?)
     local actor = security.actor()

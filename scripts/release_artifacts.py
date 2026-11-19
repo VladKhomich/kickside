@@ -3,9 +3,26 @@
 """Native, exact-version artifact installs shared by release publication gates."""
 from contextlib import contextmanager
 import json
+import re
 from pathlib import Path
 import subprocess
 import tempfile
+
+
+def approved_manifest(repository, commit):
+    """Read publication ownership from the immutable release commit."""
+    key = 'Hub-Artifact-Manifest-SHA256'
+    message = subprocess.check_output(
+        ['git', 'show', '-s', '--format=%B', commit], cwd=repository, text=True)
+    mentions = re.findall(r'^' + key + r'\b.*$', message, re.IGNORECASE | re.MULTILINE)
+    if not mentions:
+        return None
+    trailers = subprocess.check_output(['git', 'interpret-trailers', '--parse'],
+                                      input=message, cwd=repository, text=True)
+    values = re.findall(r'^' + key + r': ([0-9a-f]{64})$', trailers, re.MULTILINE | re.IGNORECASE)
+    if len(mentions) != 1 or len(values) != 1:
+        raise ValueError('Expected one valid ' + key + ' trailer on the release commit')
+    return values[0].lower()
 
 
 @contextmanager
@@ -40,6 +57,32 @@ def companion_modules(repository, paths):
         modules.append({**module, 'path': path, 'name': module['organization'] + '/' + module['module'],
                         'version': versions[path]})
     return modules
+
+
+def declared_dependencies(wippy, *, source, module=None):
+    """Inspect a tagged source tree through Wippy without resolving Hub versions."""
+    with tempfile.TemporaryDirectory(prefix='kickside-release-deps-') as directory:
+        root = Path(directory)
+        lock = root / 'wippy.lock'
+        config = root / '.wippy.yaml'
+        modules, replacements = [], {}
+        if module is not None:
+            name = module['name']
+            modules.append({'name': name, 'version': module['version']})
+            replacements[name] = str(source)
+            source = root / 'empty'
+            source.mkdir()
+        lock.write_text(json.dumps({'directories': {'src': str(source), 'modules': str(root / '.wippy')},
+                                    'modules': modules}))
+        config.write_text(json.dumps({'version': '1.0', 'workspace': {'replacements': replacements}}))
+        command = [wippy, '--config', str(config), 'registry']
+
+        def inspect(*args):
+            return json.loads(subprocess.check_output(
+                [*command, *args, '--lock-file', str(lock), '--json'], cwd=root, text=True))
+
+        entries = inspect('list', '--kind', 'ns.dependency')
+        return {inspect('show', entry['id'])['data']['component'] for entry in entries}
 
 
 @contextmanager

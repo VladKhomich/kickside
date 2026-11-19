@@ -1,5 +1,107 @@
 # Changelog
 
+## [0.3.32](https://github.com/kicksideai/kickside/compare/core-v0.3.31...core-v0.3.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** reprovision threads after completed cleanup ([#625](https://github.com/kicksideai/kickside/issues/625)) ([8d50a1f](https://github.com/kicksideai/kickside/commit/8d50a1f0e173191c078eab4007da2fbbdf857d3e))
+
+## [0.3.31](https://github.com/kicksideai/kickside/compare/core-v0.3.30...core-v0.3.31) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** deliver terminal outcomes and preserve upload retry ([#474](https://github.com/kicksideai/kickside/issues/474)) ([d1e19d1](https://github.com/kicksideai/kickside/commit/d1e19d1666c659f61779c87e2e02f5a65782106d))
+
+## [0.3.30](https://github.com/kicksideai/kickside/compare/core-v0.3.29...core-v0.3.30) (2026-11-19)
+
+
+### Features
+
+* **core:** converge settled projection workers in place ([#615](https://github.com/kicksideai/kickside/issues/615)) ([b6ebc09](https://github.com/kicksideai/kickside/commit/b6ebc09a1a4885e65da978ddeb79e350b974365a))
+
+## [0.3.29](https://github.com/kicksideai/kickside/compare/core-v0.3.28...core-v0.3.29) (2026-11-19)
+
+
+### Features
+
+* **core:** look up the latest retained external event ([#611](https://github.com/kicksideai/kickside/issues/611)) ([679d4bc](https://github.com/kicksideai/kickside/commit/679d4bcb90bdf4c062e97c7c4c3df25e0eed1e4b))
+
+## [0.3.28](https://github.com/kicksideai/kickside/compare/core-v0.3.27...core-v0.3.28) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** admit private checkpoints from their installed declarations ([#606](https://github.com/kicksideai/kickside/issues/606)) ([e541a15](https://github.com/kicksideai/kickside/commit/e541a1586a0f60f2706d2d4e901d6169c70a62e8))
+
+
+### Performance Improvements
+
+* **core:** index private checkpoint declarations by owner ([#607](https://github.com/kicksideai/kickside/issues/607)) ([c70b0fd](https://github.com/kicksideai/kickside/commit/c70b0fdfc668f246c70cea32c0c3f848e25bd804))
+
+## [0.3.27](https://github.com/kicksideai/kickside/compare/core-v0.3.26...core-v0.3.27) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** resume marked thread deletion after a missing Jobs page ([d0951cf](https://github.com/kicksideai/kickside/commit/d0951cf04a397e8e3bb6d16bc9a9593931cc56e0))
+* **core:** resume marked thread deletion after a missing Jobs page ([c85392b](https://github.com/kicksideai/kickside/commit/c85392bd5c1c08177650f8dce692eccffd30de59))
+
+## [0.3.26](https://github.com/kicksideai/kickside/compare/core-v0.3.25...core-v0.3.26) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** commit thread teardown pages atomically ([#576](https://github.com/kicksideai/kickside/issues/576)) ([5f934f0](https://github.com/kicksideai/kickside/commit/5f934f05dc51d165db195168d75fe350ad701492))
+* **core:** converge declared lifecycle projections ([#466](https://github.com/kicksideai/kickside/issues/466)) ([ebc59f8](https://github.com/kicksideai/kickside/commit/ebc59f83121a6c2a412e6d359ee1ca655d3264b7))
+
+## [0.3.25](https://github.com/kicksideai/kickside/compare/core-v0.3.24...core-v0.3.25) (2026-11-19)
+
+
+### Features
+
+* **core:** checkpoint supervised projections under the Jobs lease ([#585](https://github.com/kicksideai/kickside/issues/585)) ([f6a586b](https://github.com/kicksideai/kickside/commit/f6a586b2bc5841078e076c4ef1fedd2e45d28af3))
+* **core:** expose bounded pending source work from projection cursors ([#589](https://github.com/kicksideai/kickside/issues/589)) ([de1698a](https://github.com/kicksideai/kickside/commit/de1698a2d01e6d4b044bfd73930c540c3e42c177))
+
+
+### Bug Fixes
+
+* **core:** require the Jobs checkpoint lease API ([#592](https://github.com/kicksideai/kickside/issues/592)) ([49c7e08](https://github.com/kicksideai/kickside/commit/49c7e08bf3bca7604f899f9365951585567ba0f2))
+* **core:** validate checkpoint position and writer types ([#594](https://github.com/kicksideai/kickside/issues/594)) ([cf0c736](https://github.com/kicksideai/kickside/commit/cf0c736152f7f8403c04bc413f06f35b99bd7ee0))
+
+## [0.3.24](https://github.com/kicksideai/kickside/compare/core-v0.3.23...core-v0.3.24) (2026-11-19)
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.3.23](https://github.com/kicksideai/kickside/compare/core-v0.3.22...core-v0.3.23) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** expose projection attempt state to workers ([#550](https://github.com/kicksideai/kickside/issues/550)) ([87fa84d](https://github.com/kicksideai/kickside/commit/87fa84d40c2fc78d434844033d70d8df996d3e24))
+
+## [0.3.22](https://github.com/kicksideai/kickside/compare/core-v0.3.21...core-v0.3.22) (2026-11-19)
+
+
+### Features
+
+* **core:** add a shared Unicode case-folding library ([#549](https://github.com/kicksideai/kickside/issues/549)) ([9804e84](https://github.com/kicksideai/kickside/commit/9804e848595bba63e9674fad4479388d55811fef))
+
+
+### Bug Fixes
+
+* **component:** encrypt declared credentials and mask external reads ([#469](https://github.com/kicksideai/kickside/issues/469)) ([03389bf](https://github.com/kicksideai/kickside/commit/03389bf0bdb5b5092883a061f40fed55ca78db37))
+* **core:** derive retention wake-ups from bounded rotations ([#551](https://github.com/kicksideai/kickside/issues/551)) ([8a48065](https://github.com/kicksideai/kickside/commit/8a48065794355f2c303e94f41d1ce91c692871f0))
+* **core:** preserve retention deadlines across scoped wakes ([#546](https://github.com/kicksideai/kickside/issues/546)) ([c9e1dc3](https://github.com/kicksideai/kickside/commit/c9e1dc324a88f26a2f2505c2d586dfcf2940e57e))
+* **core:** release PostgreSQL prune locks before WAL flush ([#553](https://github.com/kicksideai/kickside/issues/553)) ([6c9cc67](https://github.com/kicksideai/kickside/commit/6c9cc67757bfdfe5f3a9d4a95c4a8323eec08ed6))
+* **core:** rotate event retention across threads ([#545](https://github.com/kicksideai/kickside/issues/545)) ([084adc8](https://github.com/kicksideai/kickside/commit/084adc844c4fb911ffb72061146ff3d831305b09))
+* **jobs:** close the run of a cancelled execution when cancellation settles ([#526](https://github.com/kicksideai/kickside/issues/526)) ([452a15e](https://github.com/kicksideai/kickside/commit/452a15e51c0268cf1f435b9393e19969bc1ee2d4))
+* keep secret operations in owning module frames ([#483](https://github.com/kicksideai/kickside/issues/483)) ([47f4f8a](https://github.com/kicksideai/kickside/commit/47f4f8af2dba69d4b8e818ab78530ec6fad12be9))
+
 ## [0.3.21](https://github.com/kicksideai/kickside/compare/core-v0.3.20...core-v0.3.21) (2026-11-17)
 
 

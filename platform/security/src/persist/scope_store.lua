@@ -127,22 +127,26 @@ function M.upsert(args: any, _actor_id: any): (any?, error?, boolean?)
     local policies = args.policies
     if type(policies) ~= "table" then policies = {} end
 
-    local _, composition_err = composition.authorize_mutation(policies, "kickside.security.api:save_scope.endpoint")
-    if composition_err then return nil, composition_err end
-
     local db, err = open()
     if not db then return nil, err end
     local dbh = db :: sql.DB
-    local previous, previous_err, previous_row = previous_policies(dbh, slug, "kickside.security.api:save_scope.endpoint")
+    local gate = "kickside.security.api:save_scope.endpoint"
+    local previous, previous_err, previous_row = previous_policies(dbh, slug, gate)
     if previous_err then dbh:release(); return nil, previous_err end
+    local old_target = previous_row and previous_row.target or ""
+    local target = tostring(args.target or "")
+    local saved = {}
+    if previous_row and old_target == target then
+        for _, id in ipairs(previous_row.policies) do saved[id] = true end
+    end
+    local _, composition_err = composition.authorize_mutation(policies, gate, false, saved)
+    if composition_err then dbh:release(); return nil, composition_err end
     local encoded, encode_err = json.encode(policies)
     if encode_err then dbh:release(); return nil, (errors.wrap(encode_err, "scope policy encoding failed") :: error) end
     local now = time.now():utc():format_rfc3339()
-    local old_target = previous_row and previous_row.target or ""
-    if not previous_row or not same_policies(previous_row.policies, policies) or old_target ~= tostring(args.target or "")
+    if not previous_row or not same_policies(previous_row.policies, policies) or old_target ~= target
         or previous_row.enabled ~= (args.enabled ~= false) then
         local old_group = old_target ~= "" and old_target or consts.CUSTOM_SCOPE_NS .. ":" .. slug
-        local target = tostring(args.target or "")
         local group = target ~= "" and target or consts.CUSTOM_SCOPE_NS .. ":" .. slug
         local groups = {old_group}
         if group ~= old_group then groups[#groups + 1] = group end
@@ -162,7 +166,7 @@ function M.upsert(args: any, _actor_id: any): (any?, error?, boolean?)
             AND kickside_security_scopes.enabled = $12
     ]], {
         slug, tostring(args.label or ""), tostring(args.description or ""),
-        encoded, tostring(args.target or ""),
+        encoded, target,
         args.internal == true, args.enabled ~= false, now, now, previous,
         previous_row and previous_row.target or "", previous_row and previous_row.enabled or false,
     })

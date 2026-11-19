@@ -1,5 +1,5 @@
 import { W as t, l as i } from "./wc-runtime-BQHcLGi8.js";
-import { s } from "./styles-DP6s77yi.js";
+import { s } from "./styles-DkVjMRNl.js";
 import { p as n } from "./package-CCTUAjDf.js";
 import { define as r } from "@wippy-fe/proxy";
 class e extends t {

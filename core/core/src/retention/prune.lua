@@ -164,7 +164,8 @@ end
 
 -- prune_thread runs bounded transactions until eligibility ends or the
 -- sweep's remaining event budget is exhausted.
-function prune.prune_thread(db: sql.DB, thread_id: string, opts: { cutoff: string, batch_size: integer?, max_total: integer? }): (Result?, error?)
+function prune.prune_thread(db: sql.DB, thread_id: string, opts: {
+        cutoff: string, batch_size: integer?, max_total: integer?, postgres_async_commit: boolean? }): (Result?, error?)
     local total = 0
     local boundary = 0
     local requested = (type(opts) == "table" and opts.batch_size) or prune.BATCH_SIZE
@@ -179,6 +180,15 @@ function prune.prune_thread(db: sql.DB, thread_id: string, opts: { cutoff: strin
     while total < maximum do
         local tx, begin_err = db:begin()
         if begin_err then return nil, errors.wrap(begin_err, "failed to begin prune transaction") end
+        if opts.postgres_async_commit then
+            -- A background prune can be repeated after crash recovery. Let
+            -- commit release the thread before waiting for a WAL flush.
+            local _, mode_err = tx:execute("SET LOCAL synchronous_commit = off", {})
+            if mode_err then
+                tx:rollback()
+                return nil, errors.wrap(mode_err, "failed to set background prune commit mode")
+            end
+        end
         local result, err = prune.prune_tx(tx :: sql.Transaction, thread_id,
             { cutoff = opts.cutoff, batch_size = math.min(batch, maximum - total) })
         if err then

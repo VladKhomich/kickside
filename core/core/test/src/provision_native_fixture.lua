@@ -7,7 +7,9 @@ M.actor = M.new_actor("user", {})
 M.scope = {evaluate = function(self: any, actor: any, action: string, resource: string): string
     return M.scope_decision or "allow"
 end}
-function M.converge(db: any, skipped: {any}): (integer?, error?) return 0, nil end
+function M.converge(db: any, skipped: {any}, continuation: table?): (integer?, error?, table?)
+    return 0, nil, nil
+end
 function M.reset(stage: string, source: any)
     M.stage, M.source, M.release_source, M.grant_result = stage, source, nil, nil
     M.scope_decision = nil
@@ -67,24 +69,37 @@ function M.declarations(): {any}
     return {{scope = "user", class = "class", impl_id = "impl", retention = {event_days = 7}, grants = {{subject_id = "reader", access_mask = 1}}}}
 end
 function M.declared_kinds(): {any}
-    return {{class = "class", impl_id = "impl", projections = {{kind = "projection"}}}}
+    return {{class = "class", impl_id = "impl", projections = {{kind = "projection", worker_ref = "func://app:test_count_worker"}}}}
 end
-M.builder = {}
-function M.builder.select(columns: string): any
-    local chain = {}
-    function chain:from(value: string): any return self end
-    function chain:join(value: string): any return self end
-    function chain:left_join(value: string): any return self end
-    function chain:where(value: string, argument: any?): any return self end
-    function chain:run_with(handle: any): any return self end
-    function chain:query(): (any, error?)
-        M.queries = M.queries + 1
-        if ((M.stage == "thread_scan" or M.stage == "thread_scan_release") and M.queries == 1) or (M.stage == "projection_scan" and M.queries == 2) then
-            return nil, M.source
+function db:type(): string return "sqlite" end
+function db:query(statement: string, args: table): (table?, error?)
+    M.queries = M.queries + 1
+    if M.stage == "page_budget" then
+        if statement:find("AS upper", 1, true) then return {{upper = "260"}}, nil end
+        local rows = {}
+        if statement:find("FROM kickside_components", 1, true) then
+            local after = #args == 4 and tonumber(args[3]) or 0
+            for index = after + 1, math.min(after + args[#args], 260) do
+                rows[#rows + 1] = {component_id = tostring(index)}
+            end
+        else
+            local projection = statement:find("JOIN kickside_projection", 1, true)
+            for index = 1, #args - (projection and 3 or 0) do
+                local id = args[index]
+                rows[#rows + 1] = {component_id = id, thread_id = id, thread_class = "class",
+                    component_type = "thread", component_class = "class", job_id = id ~= "260" and "job" or nil}
+            end
         end
+        return rows, nil
+    end
+    if statement:find("FROM kickside_projection", 1, true) or statement:find("JOIN kickside_projection", 1, true) then
+        if M.stage == "projection_scan" then return nil, M.source end
         return {{component_id = "component"}}, nil
     end
-    return chain
+    if statement:find("AS upper", 1, true) then return {{upper = "component"}}, nil end
+    if statement:find("FROM kickside_components", 1, true) then return {{component_id = "component"}}, nil end
+    if M.stage == "thread_scan" or M.stage == "thread_scan_release" then return nil, M.source end
+    return {{component_id = "component", thread_id = "component", thread_class = "old"}}, nil
 end
 function M.execution_identity_of(component_id: string): (any, error?)
     if M.stage == "identity" then return nil, M.source end

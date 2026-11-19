@@ -3,14 +3,20 @@ local test = require("test")
 local lifecycle = require("lifecycle")
 local uuid = require("uuid")
 local time = require("time")
+local http = require("http")
+local presign_api = require("presign_api")
+local upload_mime = require("upload_mime")
+local records = require("records")
+local uploads = require("uploads")
 return {
 	run = test.run_cases(function()
 		test.describe("presigned packed locations", function()
-			test.it("persists native cloud authority and the filesystem volume for reads", function()
-				local saved
+			test.it("persists the cloud location and resolves the upload MIME at admission", function()
+				local signed_mime
 				local api: any = {}
 				local s3 = {}
-				function s3:presigned_put_url(key)
+				function s3:presigned_put_url(key, options)
+					signed_mime = options.content_type
 					return "https://storage.example/" .. key, nil
 				end
 				function s3:release() end
@@ -30,22 +36,47 @@ return {
 					},
 					upload_types = { DEFAULT_PRESIGN_EXPIRES_SECONDS = 300 },
 					token_flow = { bound_token_upload_id = function() end, take_trace_context = function() end },
-					determine_upload_type = function()
-						return "text"
-					end,
+					determine_upload_type = upload_mime.determine_upload_type,
 					freeze_current_identity = function() end,
-					upload_record_repo = {
-						create = function(id, actor, size, mime, storage_id, storage_path)
-							saved = { id = id, storage_id = storage_id, storage_path = storage_path }
-							return saved, nil
-						end,
-					},
+					upload_record_repo = records,
 				})
-				local result, err = api.generate_presigned_url("owner", "note.txt", 5, "text/plain")
-				test.is_nil(err)
-				test.not_nil(result)
-				test.eq("app:uploads", saved.storage_id)
-				test.eq("s3://app:objects/owner/" .. saved.id .. "/note.txt", saved.storage_path)
+				local actor_id = uuid.v4()
+				local body, status, response
+				local handler = presign_api.new({
+					upload_lib = api,
+					http = {
+						CONTENT = http.CONTENT,
+						STATUS = http.STATUS,
+						request = function() return {
+							body_json = function() return body end,
+							is_content_type = function() return true end,
+						} end,
+						response = function() return {
+							set_content_type = function() end,
+							set_status = function(_, value) status = value end,
+							write_json = function(_, value) response = value end,
+						} end,
+					},
+					security = {actor = function() return {id = function() return actor_id end} end},
+				}).handler
+				for _, case in ipairs({
+					{filename = "note.txt", input = "text/plain", stored = "text/plain"},
+					{filename = "inventory.TSV", stored = "text/tab-separated-values"},
+					{filename = "inventory.tsv", input = "application/octet-stream", stored = "text/tab-separated-values"},
+					{filename = "inventory.tsv", input = "text/csv", stored = "text/csv"},
+					{filename = "data.unknown", stored = "application/octet-stream"},
+				}) do
+					body, status, response = {filename = case.filename, size = 5, content_type = case.input}, nil, nil
+					handler()
+					test.eq(status, http.STATUS.OK, response and response.details)
+					local reply = assert(response :: any)
+					test.is_true(reply.success)
+					local saved = assert(uploads.get(reply.upload_id))
+					test.eq("app:uploads", saved.storage_id)
+					test.eq("s3://app:objects/" .. actor_id .. "/" .. saved.uuid .. "/" .. case.filename, saved.storage_path)
+					test.eq(saved.mime_type, case.stored)
+					test.eq(signed_mime, case.input or "application/octet-stream")
+				end
 			end)
 		end)
 	end),

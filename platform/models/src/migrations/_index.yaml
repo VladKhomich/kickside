@@ -59,3 +59,34 @@ entries:
     imports:
       migration: wippy.migration:migration
       catalog_policy: kickside.models.catalog:policy
+    security:
+      policies: [kickside.models:secret_key_access]
+
+  - name: 05_optional_model_limits
+    kind: function.lua
+    meta:
+      type: migration
+      depends_on:
+        - ns:wippy.migration
+        - kickside.models.migrations:04_encrypt_legacy_headers
+      timestamp: "2026-11-17T00:00:01Z"
+    source: file://05_optional_model_limits.lua
+    method: migrate
+    imports:
+      migration: wippy.migration:migration
+
+  - name: 06_unset_zero_profile_timeouts
+    kind: function.lua
+    meta:
+      type: migration
+      depends_on:
+        - ns:wippy.migration
+        - kickside.models.migrations:05_optional_model_limits
+      timestamp: "2026-11-18T00:00:01Z"
+    source: file://06_unset_zero_profile_timeouts.lua
+    method: migrate
+    modules: [json, logger]
+    imports:
+      migration: wippy.migration:migration
+      models_types: kickside.models:models_types
+      llm_transport: wippy.llm.util:transport

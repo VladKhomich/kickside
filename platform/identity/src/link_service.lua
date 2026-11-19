@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local sql = require("sql")
 local crypto = require("crypto")
 local uuid = require("uuid")
@@ -97,7 +98,7 @@ function M.generate_code(user_id: string, agent_id: string?): (string?, LinkErro
     local eligible, eligibility_err = credential_eligibility.check(user_id)
     if not eligible then return nil, eligibility_err end
 
-    local chosen_agent = type(agent_id) == "string" and (agent_id :: string):gsub("^%s*(.-)%s*$", "%1") or ""
+    local chosen_agent = trim(agent_id)
     if chosen_agent ~= "" and not user_can_access_agent(user_id, chosen_agent) then
         return nil, "agent is not accessible to this user"
     end

@@ -1,10 +1,12 @@
-local M: any = {}
+local M: any = {TABLE = "kickside_job_thread_cleanup"}
 function M.reset(api, mode, stage, source)
     M.api, M.mode, M.stage, M.source = api, mode, stage, source
     M.primary, M.missing, M.value = nil, false, nil
     M.rollbacks, M.commits, M.writes = 0, 0, 0
     M.candidates, M.continuations, M.mutations, M.encodes, M.decodes = 0, 0, 0, 0, 0
     M.fence = {next_page_seq = (mode == "replay" or mode == "prior") and 1 or 0}
+    if api == "reclaim" then M.fence.completed_at = "completed" end
+    if api == "ack" or mode == "prior" then M.fence.started = true end
     M.row = {thread_id = "thread", page_seq = 0, processed = 1, done = true,
         discarded_json = '{"kickside_job":1}', unresolved_json = '{}',
         acknowledged_at = mode == "already" and "acknowledged" or nil}
@@ -19,27 +21,33 @@ function M.result(stage, value)
     return value, nil
 end
 function M.lock(...): (any?, error?) return M.result("fence", M.fence) end
+M.lock_existing = M.lock
+function M.lock_link(...) return nil end
 function M.database(): any
     local db: any = {}
     function db:begin() return M.result("begin", self) end
     function db:rollback() M.rollbacks = M.rollbacks + 1; return M.result("rollback", true) end
     function db:commit() M.commits = M.commits + 1; return M.result("commit", true) end
     function db:query(statement, params)
-        if statement:find("SELECT f.thread_id", 1, true) then return M.result("owners", {{thread_id = "thread"}}) end
+        if statement:find("SELECT f.thread_id", 1, true) then
+            return M.result("owners", {{thread_id = "thread", completed_at = M.fence.completed_at, eligible = true}})
+        end
         if statement:find("FROM kickside_job_thread_cleanup_receipt", 1, true) then
             return M.result(M.mode == "prior" and "previous" or "receipt", {M.row})
         end
-        if statement:find("WHERE id=$1 FOR UPDATE", 1, true) then
-            return M.result(statement:find("FROM kickside_job_run", 1, true) and "lock_run" or "lock_job", {{id = "job"}})
+        if statement:find("ORDER BY id FOR UPDATE", 1, true) then
+            return M.result("lock_job", {{id = "job"}})
         end
-        if statement:find("LIMIT 1", 1, true) then
+        if statement:find("RETURNING status", 1, true) then
+            M.mutations = M.mutations + 1
+            return M.result("mutation_" .. tostring(M.mutations), {{status = "done"}})
+        end
+        if statement:find("SELECT 1 FROM", 1, true) == 1 then
             M.continuations = M.continuations + 1
             return M.result("continuation_" .. tostring(M.continuations), {})
         end
         M.candidates = M.candidates + 1
-        local owned = M.candidates > 2
-        local rows = M.mode == "selected" and {{id = "job", job_id = "parent", status = "done",
-            owner_kind = owned and "thread" or "external", owner_id = owned and "thread" or "external"}} or {}
+        local rows = M.mode == "selected" and {{id = "job-" .. tostring(M.candidates), job_id = "parent"}} or {}
         return M.result("candidate_" .. tostring(M.candidates), rows)
     end
     function db:execute(statement, params)
@@ -49,11 +57,7 @@ function M.database(): any
         elseif statement:find("UPDATE kickside_job_thread_cleanup_receipt", 1, true) then
             stage = M.mode == "prior" and "previous_ack" or "ack_update"
         elseif statement:find("SET started=", 1, true) then stage = "state"
-        elseif statement:find("UPDATE kickside_job_thread_cleanup", 1, true) then stage = "completed"
-        else
-            M.mutations = M.mutations + 1
-            stage = "mutation_" .. tostring(M.mutations)
-        end
+        elseif statement:find("UPDATE kickside_job_thread_cleanup", 1, true) then stage = "completed" end
         return M.result(stage, {rows_affected = 1})
     end
     return db

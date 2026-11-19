@@ -66,6 +66,15 @@ local function define_tests()
                 test.eq(listed_scope.policies[1].id, "app:module_access")
                 test.eq(table.concat(assert(store.get(slug)).policies, ","), retired_id .. ",app:module_access")
 
+                local editable = assert(scope_catalog.scopes({include_unavailable = true}))
+                for _, scope in ipairs(editable) do
+                    if scope.id == listed_scope.id then listed_scope = scope end
+                end
+                test.eq(#listed_scope.policies, 2)
+                test.eq(listed_scope.policies[1].id, retired_id)
+                test.eq(listed_scope.policies[1].available, false)
+                test.eq(listed_scope.policies[2].id, "app:module_access")
+
                 local member = assert(security.new_scope({assert(security.policy("app:member_catalog_caller"))}))
                 local result, list_err = funcs.new():with_actor(security.new_actor("member-catalog-caller", {}))
                     :with_scope(member):call(LIST, {})
@@ -73,6 +82,49 @@ local function define_tests()
                 test.is_true(listed(result):find("kickside.security.scopes:" .. slug, 1, true) ~= nil)
             end)
             store.delete(slug)
+            if registry.get(retired_id) then
+                changes = assert(registry.snapshot()):changes()
+                changes:delete(retired_id)
+                test.is_nil(select(2, changes:apply()))
+            end
+            if not ok then error(failure) end
+        end)
+
+        test.it("allows edits to retain an unavailable policy only in its saved role", function()
+            local slug = "retired_role_edit"
+            local retired_id = "app:retired_role_edit_policy"
+            local changes = assert(registry.snapshot()):changes()
+            changes:create({id = retired_id, kind = "security.policy",
+                data = {policy = {actions = "access", resources = "app:retired.edit", effect = "allow"}}})
+            test.is_nil(select(2, changes:apply()))
+            local selection = {retired_id, "app:module_access"}
+            test.not_nil(assert(store.upsert({slug = slug, policies = selection}, "tester")))
+            local ok, failure = pcall(function()
+                changes = assert(registry.snapshot()):changes()
+                changes:delete(retired_id)
+                test.is_nil(select(2, changes:apply()))
+
+                local saved, save_err = store.upsert({slug = slug, label = "Renamed role", policies = selection}, "tester")
+                test.is_nil(save_err)
+                test.eq(saved.label, "Renamed role")
+                test.eq(table.concat(saved.policies, ","), table.concat(selection, ","))
+
+                local copy, copy_err = store.upsert({slug = slug .. "_copy", policies = selection}, "tester")
+                test.is_nil(copy)
+                test.is_true(errors.is(copy_err, errors.NOT_FOUND), tostring(copy_err))
+
+                local moved, move_err = store.upsert({slug = slug, target = "app.security:user", policies = selection}, "tester")
+                test.is_nil(moved)
+                test.is_true(errors.is(move_err, errors.NOT_FOUND), tostring(move_err))
+
+                local removed = assert(store.upsert({slug = slug, policies = {"app:module_access"}}, "tester"))
+                test.eq(table.concat(removed.policies, ","), "app:module_access")
+                local restored, restore_err = store.upsert({slug = slug, policies = selection}, "tester")
+                test.is_nil(restored)
+                test.is_true(errors.is(restore_err, errors.NOT_FOUND), tostring(restore_err))
+            end)
+            store.delete(slug)
+            store.delete(slug .. "_copy")
             if registry.get(retired_id) then
                 changes = assert(registry.snapshot()):changes()
                 changes:delete(retired_id)

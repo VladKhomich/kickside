@@ -75,6 +75,11 @@ A blank result commits a blank page only when it has no usable text layer.
 Changing the setting does not reprocess completed uploads. Incomplete stages
 read the current policy on retry; a new processing job starts every stage.
 
+Page-count failures produce one warning. When renderer failures leave pages
+without images, the stage emits one warning with the affected page range and
+the classification of a representative batch or page probe. Both warnings use
+fixed messages and bounded error classifications.
+
 Work that depends on a processed file attaches a completion callback instead of
 polling upload status. A callback is an upload token minted by the module that
 owns the follow-up work:
@@ -100,6 +105,10 @@ Attach the token as the `upload_token` multipart field of `POST /uploads`, as
 `upload_token` in the presigned or complete request body, or as
 `metadata.__upload_token` for `upload_file`. Several tokens may be attached as
 `metadata.__upload_tokens`.
+
+Multipart `POST /uploads` returns HTTP 400 before storing the file when its
+explicit `upload_token` is malformed or expired. If the field is omitted,
+Uploads admits the file without a completion token.
 
 Uploads admits a durable Jobs job under the identity frozen in the token once
 per upload, token and outcome. The job may retry up to eight attempts, so the
@@ -129,6 +138,19 @@ member, and runs them when it settles.
 Knowledge ingestion uses this flow: `kickside.knowledge.api:upload_token` mints
 a token for `kickside.knowledge.injection:on_upload_complete`, and the
 Knowledge URL fetch tool attaches one before it stores fetched content.
+
+## Deletion
+
+Deleting a single upload publishes its deletion on the owner's Uploads thread.
+Deleting an Uploads component or principal drains the stored owner's upload rows,
+artifacts, bytes, and read model without provisioning a thread. Type-specific
+delete stages that only cascade to another upload of the same owner can declare
+`delete_scope: single_upload`. The owner sweep visits those uploads directly.
+A universal `upload.delete_stage` can declare an `owner_func` for owner teardown.
+That function runs under the lifecycle caller and receives only `upload_id` and
+`owner_id` from the stored upload row. Its ordinary `func` still runs as the
+recorded uploader on single-file deletion. Stages without a maintenance entry
+retain their existing uploader authority.
 
 ## Packed storage and delivery
 
@@ -190,7 +212,24 @@ dependency has no `trusted_reader` entry and drops `att.metadata`.
 The `upload.type` entries in [types/_index.yaml](types/_index.yaml),
 [documents/_index.yaml](documents/_index.yaml), and
 [archive/_index.yaml](archive/_index.yaml) declare supported extensions and pipelines.
+Use `extension_mime_types` to associate a lowercase extension with its default
+MIME type when the client omits the content type or sends a generic one. Use
+`extensions` for extensions that select a pipeline without assigning a MIME type.
 The generic MIME catch-all applies after a declared extension match.
+
+The content provider, upload list and detail, and artifact listing expose an effective
+`content_description` with `kind`, `mime_type`, `text_available`, and
+`inline`. The original and any artifact linked to its bytes share the upload's
+concrete MIME. A derived artifact describes its own bytes. The extension map and
+artifact metadata identify content with a missing or generic MIME. A CSV or TSV
+with a stored `text/plain` MIME has effective kind `table`. Inline support also
+includes types declared by registered renderers. Extracted-only and trusted text
+reads stream a bounded prefix and report the full byte length.
+
+An explicit `get_content({max_size = ...})` limit applies to both the default
+and raw reads. The response includes the returned byte count in `size`, the full
+stored byte count in `total_size`, and whether it was `truncated`. Trusted image
+reads reject images larger than the requested limit after a bounded storage read.
 
 | Types | Declared output |
 | --- | --- |
@@ -249,3 +288,36 @@ errors (a string or a message-only envelope) map to retryable
 An uncached PDF read invokes the adapter once. The current PDF API parses during
 `open()` for page count and again during `render()`; removing those two parses
 requires a converter API change. Uploads adds no separate count call to a read.
+
+### Processing limits
+
+The default hard ceiling `process_max_execution_ms` is 600000 ms (ten minutes).
+`process_heartbeat_timeout_ms` defaults to 600000 ms (ten minutes). A processor
+entry declares `meta.reports_progress: true` when it calls `jobs.heartbeat` through
+the supplied `cancel_ref` between useful batches. A pipeline stage can declare
+`reports_progress` directly; an explicit stage value overrides the processor.
+Pipelines whose every stage declares progress support receive the job-wide
+progress deadline and a default hard ceiling of 7200000 ms (two hours).
+
+An existing explicit hard-ceiling override keeps its effective behavior. Setting
+an explicit progress timeout opts that installation into progress deadlines for
+compatible pipelines. Jobs already queued retain their captured limits; manual
+retry captures current settings. A saved ceiling that differs from the current
+setting also retains its original policy.
+
+### Interrupted processing
+
+A processing job that ends dead delivers its declared outcome and settles the
+upload as failed. For uploads stranded by earlier releases, use Retry in the
+processing preview. Retry preserves stored bytes and queues processing once when
+the previous job is terminal or absent; pending or running work cannot restart.
+This also supports earlier records without processing intents or job pointers.
+A permanent failure to prepare a failure callback is recorded separately as
+`callback_error` on the failure event; it does not undo the failed upload.
+
+New attempts record terminal state, callback jobs, and the outcome event in
+one transaction. Earlier workers could commit terminal storage separately.
+Recovery can restore a provably unpublished outcome event from that storage.
+If an earlier worker could have called an external integration, the recovered
+event records the unverified delivery as `callback_error`. Already-published
+outcomes keep their event and projection.

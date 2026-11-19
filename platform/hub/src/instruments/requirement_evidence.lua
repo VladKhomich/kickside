@@ -7,10 +7,7 @@ local M = {}
 M._hub = nil
 M._registry = nil
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function valid_component(value: any): boolean
     local component = trim(value)

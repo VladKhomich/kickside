@@ -7,6 +7,7 @@ M.process_events = mailbox()
 function M.reset(stage: string, source: any)
     M.stage, M.source = stage, source
     M.responses, M.wakes = {}, 0
+    M.deadlines, M.deadlines_at_wake, M.timer_retained = 0, nil, false
     M.claims, M.registers, M.subscribes, M.acquisitions, M.recoveries = 0, 0, 0, 0, 0
     M.unregisters, M.unlistens, M.closes, M.releases, M.selects = 0, 0, 0, 0, 0
 end
@@ -45,7 +46,7 @@ function M.get(id: string): (any, error?)
     if M.stage == "acquire" then return nil, M.source end
     return {release = function(self: any): () M.releases = M.releases + 1 end}, nil
 end
-function M.recover(db: any, pid: string): (any, error?)
+function M.recover(db: any, pid: string, _traversal: table?): (any, error?)
     M.recoveries = M.recoveries + 1
     if M.responses.recover then return M.responses.recover.value, nil end
     if M.stage == "recover" then return nil, M.source end
@@ -53,12 +54,29 @@ function M.recover(db: any, pid: string): (any, error?)
 end
 function M.select(cases: table): table
     M.selects = M.selects + 1
+    if M.stage == "scoped_wake" then
+        if #cases == 2 then return {default = true} end
+        if M.selects == 1 then
+            return {channel = cases[3].channel,
+                value = {kind = "events_appended", owner_locator = "test:owner"}, ok = true}
+        end
+        M.timer_retained = #cases == 5
+    end
     return {channel = M.process_events,
         value = {kind = M.stage == "wake" and M.selects == 1 and "wake" or "cancel"}, ok = true}
 end
-function M.wake(db: any, pid: string, change: table): (any, error?)
+function M.wake(db: any, pid: string, change: table, _traversal: table?): (any, error?)
     M.wakes = M.wakes + 1
+    M.deadlines_at_wake = M.deadlines
     if M.responses.wake then return M.responses.wake.value, nil end
+    return {}, nil
+end
+function M.wakes_batch(db: any, pid: string, changes: table[], traversal: table?): (any, error?)
+    assert(#changes == 1 and changes[1].owner_locator == "test:owner")
+    return M.wake(db, pid, changes[1], traversal)
+end
+function M.deadline(_db: any, _pid: string, _traversal: table?): (any, error?)
+    M.deadlines = M.deadlines + 1
     return {}, nil
 end
 return M

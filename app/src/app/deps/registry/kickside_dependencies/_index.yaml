@@ -13,7 +13,7 @@ entries:
         value: app:gateway
 
   # app.deps:kickside_hub
-  - version: ">=0.1.74"
+  - version: ">=0.1.77"
     name: kickside_hub
     kind: ns.dependency
     meta: {}

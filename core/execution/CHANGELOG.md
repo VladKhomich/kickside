@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.10](https://github.com/kicksideai/kickside/compare/execution-v0.2.9...execution-v0.2.10) (2026-11-19)
+
+
+### Bug Fixes
+
+* **security:** list declared permissions in the role picker ([#558](https://github.com/kicksideai/kickside/issues/558)) ([b768118](https://github.com/kicksideai/kickside/commit/b7681183c3fe087165dbb9638b4a565ed0eb3e61))
+
+## [0.2.9](https://github.com/kicksideai/kickside/compare/execution-v0.2.8...execution-v0.2.9) (2026-11-19)
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+* **security:** declare infrastructure grants nonassignable ([#583](https://github.com/kicksideai/kickside/issues/583)) ([2df1d32](https://github.com/kicksideai/kickside/commit/2df1d32d3cdad285b1c854f3ca0c7d99e6624be9))
+
 ## [0.2.8](https://github.com/kicksideai/kickside/compare/execution-v0.2.7...execution-v0.2.8) (2026-11-13)
 
 

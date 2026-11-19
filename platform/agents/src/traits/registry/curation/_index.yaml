@@ -50,8 +50,8 @@ entries:
       "find a document" describes knowledge or files. Search these operation
       keywords rather than the whole request; the catalog supplies the available
       capabilities and their supported actions.
-      `q` is a literal substring filter. If a phrase finds no match, retry with a
-      shorter keyword or list without `q` before concluding that no capability exists.
+      `q` first matches a literal phrase, then tries its individual words together
+      if the phrase has no matches. If no results appear, try a shorter keyword or list without `q`.
       The capability catalog shows operations available to this caller. It does
       not list workspace resources. If the needed capability is absent, explain
       that you cannot access that operation; do not infer that its resources are empty.
@@ -73,7 +73,7 @@ entries:
           "type": "object",
           "properties": {
             "action": { "type": "string", "description": "list the activatable capabilities, or activate/deactivate one", "enum": ["list", "activate", "deactivate"] },
-            "q": { "type": "string", "description": "list only: case-insensitive substring of capability title, id, description or tags. Use a task keyword for a focused catalog." },
+            "q": { "type": "string", "description": "list only: case-insensitive search of capability title, id, description and tags. Match a literal phrase first. If no capability matches the phrase, require each whitespace-separated word to match somewhere in the same capability." },
             "fields": { "type": "array", "items": { "type": "string", "enum": ["description"] }, "description": "list only: optional larger row fields. Default rows are compact summaries; description returns the full capability description." },
             "trait_id": { "type": "string", "description": "Registry id of the capability to activate or deactivate (e.g. kickside.knowledge.traits:kb_reader). Required for activate/deactivate." },
             "context": { "type": "object", "description": "Optional context to pass to the activated capability. Use only when it expects context, such as selected KB ids or connection ids." },
@@ -175,8 +175,8 @@ entries:
       "find a document" describes knowledge or files. Search these operation
       keywords rather than the whole request; the catalog supplies the available
       capabilities and their supported actions.
-      `q` is a literal substring filter. If a phrase finds no match, retry with a
-      shorter keyword or list without `q` before concluding that no capability exists.
+      `q` first matches a literal phrase, then tries its individual words together
+      if the phrase has no matches. If no results appear, try a shorter keyword or list without `q`.
       The capability catalog shows operations available to this caller. It does
       not list workspace resources. If the needed capability is absent, explain
       that you cannot access that operation; do not infer that its resources are empty.

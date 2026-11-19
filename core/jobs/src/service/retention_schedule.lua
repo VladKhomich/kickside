@@ -14,6 +14,10 @@ function schedule.new(dependencies: any): any
     local retry_count = 0
     local active_policy: any = nil
     local driver = {}
+    local job_cursor: table? = nil
+    -- nil starts a round. Keep an exhausted fence scan closed while other
+    -- retention work still needs another pass.
+    local completed_fence_cursor: table | boolean | nil = nil
 
     local function retry_delay_ms(policy: any): number
         retry_count = retry_count + 1
@@ -38,14 +42,17 @@ function schedule.new(dependencies: any): any
         end
         active_policy = policy
 
-        local stats, sweep_err = sweep()
+        local stats, sweep_err = sweep(job_cursor, completed_fence_cursor)
         if sweep_err then
             log:error("job_worker retention sweep failed: " .. tostring(sweep_err))
             deadline_ns = now_ns + retry_delay_ms(policy) * 1000000
             return
         end
         retry_count = 0
-        local full = stats.jobs >= policy.retention_batch or stats.job_runs >= policy.retention_batch
+        job_cursor = stats.job_cursor
+        completed_fence_cursor = stats.completed_fence_cursor or false
+        local full = job_cursor ~= nil or completed_fence_cursor ~= false
+            or stats.jobs >= policy.retention_batch or stats.job_runs > 0
             or stats.workers >= policy.retention_batch or stats.worker_pulses >= policy.retention_batch
             or stats.wake_rows >= policy.retention_batch
             or stats.thread_cleanup_receipts >= policy.retention_batch
@@ -53,6 +60,7 @@ function schedule.new(dependencies: any): any
             or stats.thread_cleanup_leftovers > 0
         -- Each pass yields to the pool's dispatch and message handling before
         -- another bounded pass. The idle interval starts only after draining.
+        if not full then completed_fence_cursor = nil end
         deadline_ns = full and now_ns or now_ns + policy.retention_interval_ms * 1000000
     end
 

@@ -166,18 +166,19 @@ function Do-UiKit {
     # The .wapp comes from build-inputs/, a lock holding only build-time modules,
     # not from the app: ui-kit has no runtime role and adding it to app/wippy.lock
     # forces a boot-time re-resolution that fails offline.
-    if ($env:UI_KIT_WAPP) {
-        $wappPath = $env:UI_KIT_WAPP
-    } else {
-        Invoke-In 'build-inputs' { & $wippy update --src-dir src; if ($LASTEXITCODE -ne 0) { throw "wippy update failed (exit $LASTEXITCODE)" } }
-        $found = Get-ChildItem 'build-inputs/.wippy/vendor/kickside' -Filter 'ui-kit-*.wapp' |
-            Where-Object { $_.Name -notlike '*sha256*' } | Sort-Object Name | Select-Object -Last 1
-        if (-not $found) { throw "no kickside/ui-kit .wapp; is the module published?" }
-        $wappPath = $found.FullName
-    }
     Write-Host "==> ui-kit $($m.dir)" -ForegroundColor Cyan
-    & $wippy artifacts materialize $wappPath 'kickside.ui_kit:package_fs' --root (Join-Path $m.dir '.wippy')
-    if ($LASTEXITCODE -ne 0) { throw "artifacts materialize failed (exit $LASTEXITCODE)" }
+    $root = Join-Path $PSScriptRoot (Join-Path $m.dir '.wippy')
+    if ($env:UI_KIT_WAPP) {
+        & $wippy artifacts materialize $env:UI_KIT_WAPP 'kickside.ui_kit:package_fs' --root $root
+        if ($LASTEXITCODE -ne 0) { throw "artifacts materialize failed (exit $LASTEXITCODE)" }
+    } else {
+        Invoke-In 'build-inputs' {
+            & $wippy update --src-dir src
+            if ($LASTEXITCODE -ne 0) { throw "wippy update failed (exit $LASTEXITCODE)" }
+            & $wippy install 'kickside/ui-kit' --set "artifact.materialization_root=$root"
+            if ($LASTEXITCODE -ne 0) { throw "wippy install ui-kit failed (exit $LASTEXITCODE)" }
+        }
+    }
     $wire = Join-Path $PSScriptRoot 'scripts/wire-ui-kit.mjs'
     Invoke-In $m.dir {
         node $wire

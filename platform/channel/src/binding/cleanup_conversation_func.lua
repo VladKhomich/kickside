@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local persist = require("channel_persist")
 local consts = require("channel_consts")
 local session_service = require("session_service")
@@ -15,11 +16,6 @@ local conversation_gc = require("conversation_gc")
 -- cascade time the connection component may already be gone. Idempotent: an
 -- already-clean conversation (no row / no session) is a no-op success.
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 function M.cleanup_conversation(args: any): any
     args = type(args) == "table" and args or {}

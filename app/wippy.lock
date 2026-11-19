@@ -3,8 +3,8 @@ directories:
     src: ./src
 modules:
     - name: keeper/keeper
-      version: 0.5.114
-      hash: 58c7e224916af48133bc4e6150931ff6a85b94ca93469ef09a74975fa65c710c
+      version: 0.5.116
+      hash: b534428796dd2ee3a8d4cf379bc3821605ee9e5fc95e9d6d1cd27614a5f0542b
     - name: kickside/agent-onboarding
       version: 0.1.6
       hash: 5056a59dc81bbc958c49dd27dd549ae6e364dd8ee022915248568bcfd4989ea1
@@ -26,8 +26,8 @@ modules:
       version: 0.5.0
       hash: 169cb8259da3da1e50d01ea8b2022b17af0b9adc5e847fe444141f5b5005315f
     - name: kickside/contract
-      version: 0.3.1
-      hash: 6c5dfc2c588c7dde21827f8cdd9d2ac1607306584582629d9ed06b68c57b6479
+      version: 0.3.9
+      hash: e7d6ec472f7a36002f8740396a1b96b79ffe078ddeef06f3838641904a60bfbc
     - name: kickside/core
       version: 0.3.4
       hash: aa808f7ad54cc1a405656b9472d290f98f14810dd6158b51fd65fc09e6cedc76
@@ -41,7 +41,8 @@ modules:
       version: 0.2.7
       hash: 3954d2cc679886deb8a15a4a3c8c36e4ea09e578f09a2eb6f27f0ac62e10fdf7
     - name: kickside/hub
-      version: 0.1.74
+      version: 0.1.77
+      hash: 37b1fe296e3d7ae302e7a6a7ef99d37e2c73301829f078b194c8e64bfd7b3e61
     - name: kickside/identity
       version: 0.1.41
       hash: 84832f069b02235148da036e891d69ce955ca4c8a8348a15ee714f08f52992cd

@@ -1,5 +1,7 @@
-local deletion_progress = require("deletion_progress")
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+
+local trim = require("text_trim").trim
+local deletion_progress = require("deletion_progress")
 -- Read side of the skills slice (queries). A skill's metadata lives on its
 -- component (discovery); its body, version history, and file manifests live in the
 -- committed projection body (state.lua), folded from thread events; file bytes
@@ -213,7 +215,7 @@ function M.list(args: any): ({ skill_types.SkillSummary }?, error?)
     if is_str(list_args.ids) then
         want_ids = {}
         for id in string.gmatch(tostring(list_args.ids), "([^,]+)") do
-            local trimmed = id:match("^%s*(.-)%s*$")
+            local trimmed = trim(id)
             if trimmed ~= "" then (want_ids :: { [string]: boolean })[trimmed] = true end
         end
     end

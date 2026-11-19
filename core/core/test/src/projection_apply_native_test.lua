@@ -54,6 +54,26 @@ local function native(first: integer, last: integer)
     end
 end
 local function outcomes()
+    for _, stage in ipairs({"notify", "retention", "release"}) do
+        test.it("returns a durable checkpoint receipt after a/" .. stage .. " failure", function()
+            local source = errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "follow-up failed",
+                details = {code = "follow_up"}})
+            fixture.reset(stage, source, "advance")
+            local receipt, err = apply.checkpoint("app:db", {id = "job", lease_token = "token", execution_seq = 1},
+                {id = "cursor", thread_id = "thread", projection_id = "projection", generation = 1, last_seq = 0, body = {}},
+                1, {last_seq = 1}, function(_tx, _dialect)
+                    return true, nil
+                end)
+            test.eq(receipt.last_seq, 1)
+            test.is_false(receipt.self_completed)
+            test.is_true(errors.is(err, errors.UNAVAILABLE))
+            test.is_false(err:retryable())
+            test.eq(err:details().code, "follow_up")
+            test.eq(fixture.commits, 1)
+            test.eq(fixture.rollbacks, 0)
+            test.eq(fixture.releases, 1)
+        end)
+    end
     test.it("an absent process host remains a retryable dependency failure", function()
         for _, config in ipairs({{}, {meta = {}}, {meta = {host_id = ""}}, {meta = {host_id = false}}}) do
             fixture.reset("registry", nil, "host")

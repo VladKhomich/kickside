@@ -40,6 +40,11 @@ entries:
       retention_pin: kickside.core.retention:pin
       execution_identity: kickside.execution:execution_identity
       error_envelope: kickside.contract:error_envelope
+      committed_error: kickside.contract:committed_error
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
+      lease_status: kickside.core.jobs.persist:lease_status
+      job_types: kickside.core.jobs:types
 
   - name: invoke
     kind: library.lua
@@ -115,6 +120,7 @@ entries:
     method: get
     modules: [sql, json]
     imports:
+      text_trim: kickside.contract:text_trim
       core_db: kickside.core:db
       component: kickside.core.threads:component
       core_types: kickside.core:types

@@ -337,6 +337,18 @@ local function define_tests()
             test.eq(route.start.system_prompt, "Reply only in haiku.")
         end)
 
+        for _, field in ipairs({ "context", "system_prompt" }) do
+            test.it("carries responder " .. field .. " with a mebibyte of whitespace", function()
+                local text = "before" .. string.rep(" ", 1024 * 1024) .. "after"
+                seed_responder({ [field] = " " .. text .. "\t" })
+
+                local result = receive.receive(inbound())
+
+                test.eq(result.status, "routed")
+                test.is_true(sent_route(1).start[field] == text)
+            end)
+        end
+
         test.it("carries the responder response_policy into the session start", function()
             seed_responder({
                 response_policy = {

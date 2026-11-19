@@ -13,6 +13,12 @@ local page_images = require("page_images")
 local contract = require("contract")
 local json = require("json")
 local time = require("time")
+local stage_fixture = require("stage_fixture")
+local stage_logger = require("stage_logger")
+local sql = require("sql")
+local process = require("process")
+local channel = require("channel")
+local proc_supervisor = require("proc_supervisor")
 
 local STORAGE_ID = "app:uploads"
 -- Synthetic image-only PDF (no text layer, no embedded fonts): doc2md extracts no
@@ -137,6 +143,20 @@ local function save_stage_metadata(upload_id: string, result: any): any
     return assert(upload_query_repo.get(upload_id)).metadata
 end
 
+local function safe_warnings(): {any}
+    local warnings = {}
+    for _, record in ipairs(stage_logger.records) do
+        local encoded = assert(json.encode(record))
+        test.is_nil((encoded:find("/private/", 1, true)))
+        test.is_nil((encoded:find("stack traceback", 1, true)))
+        test.is_nil((encoded:find("renderer.lua:42", 1, true)))
+        test.is_true(#encoded < 1024)
+        if record.level == "warn" then warnings[#warnings + 1] = record end
+    end
+    test.eq(#warnings, 1)
+    return warnings
+end
+
 local function define_tests()
     test.describe("kickside.uploads.rasterize discovery", function()
         test.it("resolves a PDF rasterizer by mime", function()
@@ -217,6 +237,88 @@ local function define_tests()
     end)
 
     test.describe("kickside.uploads.rasterize stage", function()
+        for _, spec in ipairs({
+            {name = "returned string", failure = PRIVATE_ERROR, kind = "string", code = "render_failed"},
+            {name = "returned classification", failure = {kind = "invalid", code = "bad_document", message = PRIVATE_ERROR},
+                kind = "invalid", code = "bad_document"},
+            {name = "invalid classification", failure = {kind = PRIVATE_ERROR, code = string.rep("x", 65), message = PRIVATE_ERROR},
+                kind = "table", code = "render_failed"},
+            {name = "thrown string", failure = PRIVATE_ERROR, throw = true, code = "render_failed"},
+        }) do
+            for _, partial in ipairs({false, true}) do
+                test.it("bounds and redacts " .. spec.name .. (partial and " page failures" or " document failures"), function()
+                    local path = scripted_document({total = 16, fail_all = not partial,
+                        fail_pages = partial and {2, 10} or nil, failure = spec.failure, throw = spec.throw})
+                    local upload_id = seed_document(SCRIPTED_MIME, "")
+                    stage_logger.records = {}
+                    local result = stage_fixture.process({upload_id = upload_id, mime_type = SCRIPTED_MIME,
+                        storage_id = STORAGE_ID, storage_path = path, size = FIXTURE_SIZE})
+                    test.is_true(result.success); test.eq(result.completed, false)
+                    test.eq(result.metadata.rendered_page_count, partial and 14 or 0)
+                    local failures = result.metadata.rasterize_failures
+                    test.eq(#failures, partial and 2 or 1)
+                    test.eq(failures[1].code, spec.code)
+                    test.eq(failures[1].error, "Unable to render document pages.")
+                    test.eq(failures[1].page, partial and 2 or nil)
+                    local warnings = safe_warnings()
+                    test.eq(#stage_logger.records, 3)
+                    test.eq(warnings[1].fields.failed_first_page, partial and 2 or 1)
+                    test.eq(warnings[1].fields.failed_last_page, partial and 10 or 16)
+                    local diagnostic = warnings[1].fields.diagnostic
+                    test.not_nil(diagnostic)
+                    test.eq(diagnostic.message, "Unable to render document pages.")
+                    test.eq(diagnostic.code, spec.code)
+                    test.eq(diagnostic.kind, spec.kind or failures[1].kind)
+                    test.not_nil(diagnostic.kind)
+                    test.eq(diagnostic.attempt, partial and "single_page_probe" or "batch")
+                    test.eq(diagnostic.first_page, partial and 2 or 1)
+                    test.eq(diagnostic.last_page, partial and 2 or 8)
+                    test.eq(#script_state(path).calls, partial and 19 or 10)
+                end)
+            end
+            test.it("redacts " .. spec.name .. " page count failures", function()
+                local path = scripted_document({total = 16, count_error = true,
+                    failure = spec.failure, throw = spec.throw})
+                local upload_id = seed_document(SCRIPTED_MIME, "")
+                stage_logger.records = {}
+                local result = stage_fixture.process({upload_id = upload_id, mime_type = SCRIPTED_MIME,
+                    storage_id = STORAGE_ID, storage_path = path, size = FIXTURE_SIZE})
+                test.is_true(result.success); test.eq(result.completed, false)
+                local failures = result.metadata.rasterize_failures
+                test.eq(#failures, 1)
+                local expected_code = spec.code == "bad_document" and spec.code or "page_count_failed"
+                test.eq(failures[1].code, expected_code)
+                test.eq(failures[1].error, "Unable to count document pages.")
+                local diagnostic = safe_warnings()[1].fields.diagnostic
+                test.eq(#stage_logger.records, 1)
+                test.eq(diagnostic.code, expected_code)
+                test.eq(diagnostic.kind, spec.kind or failures[1].kind)
+                test.eq(diagnostic.attempt, "count")
+                test.eq(#script_state(path).calls, 1)
+            end)
+        end
+
+        test.it("reports the remaining range when a later batch cannot render", function()
+            local path = scripted_document({total = 24, fail_pages = {9, 10, 11, 12, 13, 14, 15, 16},
+                failure = PRIVATE_ERROR})
+            local upload_id = seed_document(SCRIPTED_MIME, "")
+            stage_logger.records = {}
+            local result = stage_fixture.process({upload_id = upload_id, mime_type = SCRIPTED_MIME,
+                storage_id = STORAGE_ID, storage_path = path, size = FIXTURE_SIZE})
+            test.is_true(result.success)
+            test.eq(result.completed, false)
+            test.eq(result.metadata.rendered_page_count, 8)
+            local failures = result.metadata.rasterize_failures
+            test.eq(#failures, 1)
+            test.is_nil(failures[1].page)
+            local fields = safe_warnings()[1].fields
+            test.eq(fields.diagnostic.first_page, 9)
+            test.eq(fields.diagnostic.last_page, 16)
+            test.eq(fields.failed_first_page, 9)
+            test.eq(fields.failed_last_page, 24)
+            test.eq(#script_state(path).calls, 11)
+        end)
+
         test.it("renders a page with a large image and an additional small image", function()
             local upload_id = seed_document("application/pdf", "<!-- page 1 -->\n\n<!-- page 2 -->")
             for _, size in ipairs({60000, 100}) do
@@ -421,6 +523,40 @@ local function define_tests()
                 test.eq(pages[i].metadata.name, "page_" .. tostring(i) .. ".jpg")
                 test.eq(tonumber(pages[i].metadata.page), i)
             end
+        end)
+
+        test.it("heartbeats the processing job after each rendered batch without rewriting it", function()
+            local job_id = uuid_v4()
+            local db = assert(sql.get("app:db"))
+            assert(sql.builder.insert("kickside_job"):set_map({ id = job_id, job_type = "raster.fixture",
+                job_identity = job_id, owner_kind = "installation", owner_id = "raster-fixture", status = "running",
+                lease_token = "raster-lease", execution_seq = 1, lease_until = "2100-01-01 00:00:00" })
+                :run_with(db):exec())
+            local controls = assert(process.listen(proc_supervisor.CONTROL_TOPIC))
+            local name = proc_supervisor.execution_name(job_id, "raster-lease")
+            assert(process.registry.register(name, nil, process.registry.CONSISTENT))
+            local path = scripted_document({total = 16})
+            local rendered, err = executor("user-raster"):call(RASTERIZE_STAGE, {
+                upload_id = seed_document(SCRIPTED_MIME, ""), mime_type = SCRIPTED_MIME,
+                storage_id = STORAGE_ID, storage_path = path, size = FIXTURE_SIZE,
+                cancel_ref = { job_id = job_id, lease_token = "raster-lease", execution_seq = 1 },
+            })
+            test.is_nil(err)
+            test.is_true(rendered.success, json.encode(rendered))
+            test.eq(rendered.metadata.rendered_page_count, 16)
+            for _ = 1, 2 do
+                local signal = channel.select({controls:case_receive(), time.after("5s"):case_receive()})
+                test.eq(signal.channel, controls)
+                test.eq(signal.value.kind, "heartbeat")
+                test.eq(signal.value.job_id, job_id)
+                test.eq(signal.value.lease_token, "raster-lease")
+                test.eq(signal.value.execution_seq, 1)
+            end
+            test.is_true(channel.select({controls:case_receive(), default = true}).default)
+            test.is_nil(assert(db:query("SELECT heartbeat_at FROM kickside_job WHERE id=$1", {job_id}))[1].heartbeat_at)
+            assert(process.registry.unregister(name, process.registry.CONSISTENT))
+            assert(sql.builder.delete("kickside_job"):where("id = ?", job_id):run_with(db):exec())
+            db:release()
         end)
 
         test.it("skips rendering when doc2md already extracted one large image per page", function()

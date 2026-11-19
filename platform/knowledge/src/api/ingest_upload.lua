@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local component = require("component")
 local artifact_parts_repo = require("artifact_parts_repo")
 local contract = require("contract")
@@ -5,6 +6,7 @@ local security = require("security")
 local errors = require("errors")
 local upload_query_repo = require("upload_query_repo")
 local engines = require("engines")
+local thread_ingest = require("thread_ingest")
 
 -- Shared "ingest an upload into a KB" core. One path turns a processed upload
 -- (its primary artifact + original-file provenance) into a KB content event,
@@ -44,7 +46,7 @@ local TEXT_CONTENT_TYPES: { [string]: boolean } = {
 }
 
 local function is_text_content(content_type: string): boolean
-    local base = (content_type:lower():match("^[^;]+") or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local base = trim(content_type:lower():match("^[^;]+"))
     if base:sub(1, 5) == "text/" then return true end
     if base:sub(1, 12) == "application/" and (base:match(".+%+json$") or base:match(".+%+xml$")) then return true end
     return TEXT_CONTENT_TYPES[base] == true
@@ -155,7 +157,7 @@ local function ensure_kb_exists(kb_id: string): (any, any?)
     return nil, comp
 end
 
-local function ingest_archive_children(kb_id: string, upload_id: string, file: any, seen: { [string]: boolean }): (any, any)
+local function ingest_archive_children(kb_id: string, upload_id: string, file: any, seen: { [string]: boolean }, reingest_key: string?): (any, any)
     local child_ids = archive_child_ids(upload_id, file)
     if not child_ids then return nil, nil end
 
@@ -168,7 +170,7 @@ local function ingest_archive_children(kb_id: string, upload_id: string, file: a
             first_err = first_err or rec_err or "upload not found"
             results[#results + 1] = { upload_id = child_id, success = false, error = rec_err or "upload not found" }
         else
-            local result, ingest_err = ingest_impl(kb_id, child_id, child_file, seen)
+            local result, ingest_err = ingest_impl(kb_id, child_id, child_file, seen, reingest_key)
             if ingest_err or not result then
                 first_err = first_err or tostring(ingest_err)
                 results[#results + 1] = { upload_id = child_id, success = false, error = tostring(ingest_err) }
@@ -247,7 +249,7 @@ end
 -- ingest(kb_id, upload_id, file) -> (result, err).
 -- file (optional) carries caller-side file facts: { mime_type, size, metadata,
 -- trace_context }. Upload storage locators never cross into KB events.
-function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: boolean }): (any, any)
+function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: boolean }, reingest_key: string?): (any, any)
     if type(kb_id) ~= "string" or kb_id == "" then return nil, "kb_id is required" end
     if type(upload_id) ~= "string" or upload_id == "" then return nil, "upload_id is required" end
     file = type(file) == "table" and file or {}
@@ -259,7 +261,7 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
 
     local primary, content_err = read_upload_content(upload_id)
     if content_err or not primary then
-        local archive_result, archive_err = ingest_archive_children(kb_id, upload_id, file, seen)
+        local archive_result, archive_err = ingest_archive_children(kb_id, upload_id, file, seen, reingest_key)
         if archive_result or archive_err then return archive_result, archive_err end
 
         return nil, content_err or typed(errors.INVALID, "failed to get upload content")
@@ -267,8 +269,12 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
 
     local content = primary.content or ""
     local artifact = primary.artifact or { artifact_id = primary.artifact_id, checksum = primary.checksum }
-    local content_type = primary.content_type or primary.mime_type or "text/plain"
-    if content == "" or not is_text_content(content_type) then
+    local description = primary.content_description
+    local content_type = description and description.mime_type or primary.content_type or primary.mime_type or "text/plain"
+    local text_available = description and description.text_available
+    -- The published content provider contract also permits MIME-only responses.
+    if text_available == nil then text_available = is_text_content(content_type) end
+    if content == "" or not text_available then
         local engine, engine_err = engines.by_impl(comp.impl_id)
         if engine_err then return nil, engine_err end
         if not engine or not engine.accepts_files then
@@ -326,10 +332,7 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
     put_if_present(metadata, "external_version", external_version)
     put_if_present(source_ref, "external_version", external_version)
 
-    local engine, open_err = component.open(kb_id, component.ACCESS.WRITE, "kickside.contract:embeddable")
-    if open_err then return nil, open_err end
-    if not engine then return nil, errors.new({ message = "knowledge base has no embeddable engine binding", kind = errors.INTERNAL }) end
-    local result, ingest_err = engine:embed_content({
+    local params = {
         content = content,
         content_type = content_type,
         metadata = metadata,
@@ -338,8 +341,25 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
         external_version = external_version,
         source_ref = source_ref,
         trace_context = file.trace_context,
-    })
+    }
+    if reingest_key then
+        local queued, err = thread_ingest.append_content(kb_id, params, reingest_key)
+        if err or not queued then return nil, err end
+        local append = queued.append
+        local event = append and append.events and append.events[1]
+        if not event or not event.event_id then
+            return nil, typed(errors.INTERNAL, "Re-ingest returned no durable event receipt")
+        end
+        queued.success = true
+        queued.event_id = event.event_id
+        queued.duplicate = append.duplicates == 1
+        return queued, nil
+    end
 
+    local engine, open_err = component.open(kb_id, component.ACCESS.WRITE, "kickside.contract:embeddable")
+    if open_err then return nil, open_err end
+    if not engine then return nil, errors.new({ message = "knowledge base has no embeddable engine binding", kind = errors.INTERNAL }) end
+    local result, ingest_err = engine:embed_content(params)
     if ingest_err or not result or result.success ~= true then
         ingest_err = ingest_err or (result and result.error)
         return nil, "failed to queue upload artifact: " .. tostring(ingest_err)
@@ -348,8 +368,8 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
     return result, nil
 end
 
-function M.ingest(kb_id: any, upload_id: any, file: any): (any, any)
-    return ingest_impl(kb_id, upload_id, file, {})
+function M.ingest(kb_id: any, upload_id: any, file: any, reingest_key: string?): (any, any)
+    return ingest_impl(kb_id, upload_id, file, {}, reingest_key)
 end
 
 return M

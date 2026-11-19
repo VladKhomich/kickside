@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local contract = require("contract")
 local security = require("security")
 local hash = require("hash")
@@ -15,11 +16,6 @@ local RESPONDER_IMPL = "kickside.channel.responder:channel_responder"
 -- only writes through it.
 local function construct(publisher: any?): any
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 -- call_threads(method, args, actor?, scope?): invoke one kickside.core:threads
 -- contract method under an actor + scope. When an explicit actor/scope is supplied

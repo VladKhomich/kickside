@@ -54,10 +54,7 @@ local function utf8_encode(n: number): string
     )
 end
 
-local function trim(s: any): string
-    if type(s) ~= "string" then return "" end
-    return (s:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 -- Decode decimal (&#NNN;), hex (&#xHH;), and named HTML entities to real
 -- characters. Invalid/out-of-range references are dropped.

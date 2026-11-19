@@ -25,6 +25,8 @@ The host wires these `ns.requirement`s via `ns.dependency`:
 
 - `target_db` — required SQL database for all `kickside_*` tables and
   all runtime persistence, routed through the module's injected `db_config`.
+  Bind Core and Jobs to the same SQL database and schema. Thread appends and
+  teardown pass the open Core transaction to Jobs.
 
 Child slices declare their own required process-host, router, and security-scope
 requirements where needed.
@@ -32,6 +34,22 @@ requirements where needed.
 The `threads` slice additionally consumes the `kickside.component:component_service`
 contract (the component module is a sibling dependency) for ownership, access, and
 hierarchy.
+
+## Projection worker attempts
+
+The worker input carries the previous cursor diagnostic in `cursor.last_error`
+when one exists. Supervised process workers also receive
+`execution_deadline_ns`, the Unix nanosecond deadline enforced by Core.
+The budget starts immediately before process spawn. A worker can stop before
+that deadline and return the last sequence whose effects are complete as
+`last_seq`.
+
+## Unicode case folding
+
+Import `kickside.core:casefold` and call `fold(s)` to build case-insensitive
+keys or search text. It applies the Unicode 17.0.0 default full mappings
+independently of Unicode normalization. Malformed UTF-8 returns `nil` and a
+native `INVALID` error.
 
 ## Per-user provisioning
 
@@ -52,6 +70,46 @@ Provisioning is idempotent and does not replace existing singleton identities;
 existing installations use the normal owner-authorized identity recovery.
 
 ## Module-owned retention
+
+Each Core retention pass reads one page of up to 256 thread IDs in order,
+checks their event heads, and shares the configured event deletion cap across
+the page. It then runs receipt cleanup and owner hooks. An append wake on a
+sparse installation still reads only one candidate page.
+
+Boot recovery starts a rotation immediately. The service keeps the last
+visited ID and the rotation's highest ID in memory. It schedules the next
+page immediately until it reaches the endpoint. For a stable set of threads,
+one rotation takes `ceil(threads / 256)` passes when the deletion and projection
+budgets allow each page to finish. A pass that reaches a budget resumes from
+its last processed thread ID, even if that thread has since been deleted.
+
+Each page contributes the earliest eligibility time among the event heads it
+visits. Core uses the inherited or per-thread retention window and skips heads
+blocked by a pin or a non-invalid projection cursor. The candidate page samples
+up to five cursors from each head's indexed thread range before checking their
+sequences. If more cursors could protect a head, the service checks up to 256
+additional cursor rows per pass and continues immediately while the check is
+unfinished. PostgreSQL resumes at the thread's projection key and then at the
+cursor key within that projection. It opens at most 16 projection ranges per
+pass and releases the read connection before receipt and owner work. SQLite
+resumes by row ID within the thread and status. The prune transaction rechecks
+protections before deleting events. A PostgreSQL head dated `infinity` has no
+age deadline, and one dated `-infinity` satisfies the age cutoff.
+
+Background PostgreSQL event pruning commits each bounded delete and its prune
+boundary atomically without waiting for a synchronous WAL flush. A database
+crash can restore an unflushed batch. Core rechecks the recovered boundary on
+startup and prunes any eligible events again. Appends, explicit per-thread
+pruning and receipt cleanup use their configured commit mode.
+
+At the end of a rotation, after owner hooks, Core reads the oldest committed
+receipt using its index. It waits for the earliest of the observed event,
+receipt or owner deadlines, or a change wake. Committed component lifecycle
+appends wake retention even when the thread has no projections. A due head
+can trigger an early follow-up rotation to discover its
+successor after pruning. A change wake during a rotation also brings the next
+rotation forward so changes to earlier IDs and newly created higher IDs are
+seen before the service sleeps. Each new rotation starts at the first ID.
 
 An installed module registers its maintenance function with
 `meta.type: kickside.retention.owner`. Core invokes ready owners on recovery,
@@ -117,3 +175,25 @@ Thread deletion removes its own projection cursors and their blocked-input pins;
 those local pins do not require a surviving consumer's deletion fence. The fence
 pages raw pins before checking local cursor ownership by primary key, so pages
 advance through local pins with bounded work.
+
+## Declared projection convergence
+
+After Core's migrations are current, lifecycle boot checks declared projections
+on the component's primary thread or, for `on: lifecycle`, its lifecycle thread.
+Child lifecycle projections attach when the child emits its lifecycle events.
+A new lifecycle projection begins at the last pruned sequence and consumes the
+remaining events. If its projection row still holds a fold, a replacement
+cursor resumes at the later of the fold's checkpoint and the retention boundary.
+
+Each pass examines up to 256 owners by indexed key range. Disabled Jobs slots
+are restored in pages of up to 100. Boot resumes these pages between service
+events. Each repair commits before convergence moves to another projection or
+owner.
+
+Boot and ordinary declaration attachment refuse drift against a stored cursor
+with `projection_declaration_requires_registration`. Boot logs the code,
+thread ID, projection address and cursor key as structured fields. Explicitly
+re-register to resume at the committed sequence, activate the cursor and clear
+its error. Request a reset to rebuild from a retained sequence. For a
+per-component lifecycle thread, the existing registration control requires
+ADMIN on the system lifecycle component or a framework maintenance actor.

@@ -16,6 +16,11 @@ local function is_string(value: any): boolean
     return type(value) == "string" and value ~= ""
 end
 
+function artifact_schema.references_original(artifact: any): boolean
+    return artifact ~= nil and not is_string(artifact.blob_id)
+        and is_object(artifact.locator) and artifact.locator.type == "upload.original"
+end
+
 local function is_checksum(value: any): boolean
     return type(value) == "string" and #value == 64 and value:match("^[0-9a-fA-F]+$") ~= nil
 end

@@ -21,6 +21,7 @@ entries:
       process_worker: kickside.uploads.service:process_worker
       jobs: kickside.core.jobs:jobs
       claim: kickside.core.jobs.persist:claim
+      proc_supervisor: kickside.core.jobs:proc_supervisor
       page_images: kickside.uploads.rasterize:page_images
   - name: pipeline_resume_child
     kind: process.lua

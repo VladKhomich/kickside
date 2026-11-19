@@ -32,6 +32,25 @@ entries:
       ops: kickside.component.persist:component_ops
       component_types: kickside.component:types
 
+  - name: create_lock_order_test
+    kind: function.lua
+    meta:
+      title: Component Create Lock Order Test
+      type: test
+      suite: component_create_lock_order
+      group: Components
+      comment: A registration repeating an existing child id resolves it before locking the parent, so it never deadlocks with a writer of that child.
+    source: file://create_lock_order_test.lua
+    method: run
+    security:
+      actor: { id: "system:kickside.automation.declaration" }
+      policies: [app:test_scope_policy]
+    modules: [sql, uuid, time]
+    imports:
+      test: wippy.test:test
+      ops: kickside.component.persist:component_ops
+      placement_ops: kickside.component.persist:placement_ops
+
   - name: meta_lock_order_test
     kind: function.lua
     meta:

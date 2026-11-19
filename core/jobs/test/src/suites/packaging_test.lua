@@ -8,6 +8,7 @@
 -- scheduler slice lives in the core module now; its own mount coverage rides
 -- with the core packaging test.
 
+local trim = require("text_trim").trim
 local test = require("test")
 local registry = require("registry")
 local config = require("config")
@@ -16,13 +17,6 @@ local config = require("config")
 local PREFIXES = {
     "kickside.core.jobs",
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function entry_kind(entry: any): string
     if type(entry) ~= "table" then
@@ -168,7 +162,6 @@ local function define_tests()
             test.eq(#owners, 1, "expected exactly one job-worker service, got " .. tostring(#owners))
             test.eq(owners[1], "kickside.core.jobs.service:worker.service")
         end)
-
 
         test.it("the loop process the pool spawns exists", function()
             test.is_true(resolves("kickside.core.jobs.service:loop"),

@@ -31,10 +31,11 @@ local function remaining(job, field)
         or "(julianday(" .. field .. ")-julianday($1))*86400"
     return tonumber(assert(db:query("SELECT " .. expr .. " AS seconds FROM kickside_job WHERE id=$2", {clock.now(dialect),job.id}))[1].seconds)
 end
-local function enqueue(key)
+local function enqueue(key, progress_timeout_ms: integer?)
     return assert(lifecycle.enqueue_job(db, dialect, {
         job_identity = {namespace = "policy", scope = "execution", key = key}, job_type = "policy.capture",
-        owner_locator = {kind = "test", id = "policy.capture"}, payload = {}, max_attempts = 3}))
+        owner_locator = {kind = "test", id = "policy.capture"}, payload = {}, max_attempts = 3,
+        progress_timeout_ms = progress_timeout_ms}))
 end
 local function claimed(key, single)
     local id = enqueue(key)
@@ -71,6 +72,23 @@ return {run = test.run_cases(function()
                 test.is_true(remaining(job, "lease_until") > 115)
                 local stored = assert(json.decode(row(job).lease_policy))
                 for key, value in pairs(job.lease_policy) do test.eq(stored[key], value) end
+            end)
+            test.it("captures declared progress through a retry/" .. tostring(single), function()
+                local id = enqueue("progress", 1000)
+                local function take(): table
+                    return single and assert(claim.claim_job(db, dialect)) or assert(claim.claim_batch(db, dialect, 1))[1]
+                end
+                local job = take()
+                test.eq(job.id, id)
+                test.eq(job.lease_policy.progress_timeout_ms, 1000)
+                test.eq(assert(json.decode(row(job).lease_policy)).progress_timeout_ms, 1000)
+                test.is_nil(lifecycle.fail_job(db, job, dialect, "interrupted", "infrastructure"))
+                assert(db:execute("UPDATE kickside_job SET scheduled_at=$1 WHERE id=$2", {clock.now(dialect), id}))
+                edit({["lease.timeout"] = "5s", ["lease.heartbeat"] = "2s"})
+                local again = take()
+                test.eq(again.id, id)
+                test.eq(again.lease_policy.progress_timeout_ms, 1000)
+                test.eq(again.lease_policy.lease_timeout_seconds, 5)
             end)
         end
         test.it("takes committed batch bounds and fairness without a pool reservation", function()
@@ -171,7 +189,7 @@ return {run = test.run_cases(function()
             local snapshot = row(job).lease_policy
             test.is_true(assert(cancel.cancel_job(db, dialect, {id = job.id})))
             test.eq(row(job).lease_policy, snapshot)
-            test.is_true(assert(cancel.finish_cancellation(db, dialect,
+            test.is_true(assert(reclaim.finish_cancellation(db, dialect,
                 {id = job.id, token = job.lease_token, execution_seq = job.execution_seq})))
             test.eq(row(job).status, "cancelled")
         end)

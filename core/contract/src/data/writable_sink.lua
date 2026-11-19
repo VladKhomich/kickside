@@ -3,10 +3,7 @@
 -- answers with.
 local M = {}
 
-function M.trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+M.trim = require("text_trim").trim
 
 function M.fail(message: string, code: string?, retriable: boolean?, scope: string?, details: any?): any
     return { success = false, error = { code = code or "invalid_request", message = tostring(message),

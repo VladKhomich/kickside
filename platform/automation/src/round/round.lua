@@ -121,16 +121,15 @@ local function logger(deps: Map): any
     return deps.logger:named("automation.round")
 end
 
--- complete(ctx, rearm?, parked?) completes the slot attempt: rearmed at
--- `rearm`, parked (wake_enabled off until a control wake) or left pending
--- for wake demand.
-local function complete(ctx: Map, rearm: string?, parked: boolean?, error_text: string?): (Map?, error?)
+local function complete(ctx: Map, options: Map): (Map?, error?)
     local job = ctx.job :: Map
-    local options: Map = { rearm = rearm }
-    if parked then options.record = { status = "parked", error = error_text } end
     local result, err = ctx.deps.jobs.complete(job.id, { token = job.lease_token, execution_seq = job.execution_seq }, options)
     if err then return nil, err end
     return { self_completed = true, completion = result }, nil
+end
+
+local function park(ctx: Map, message: string): (Map?, error?)
+    return complete(ctx, { record = { status = "parked", error = message } })
 end
 
 -- A component notification is a wakeup to read canonical committed status.
@@ -170,13 +169,13 @@ local function settle(ctx: Map, round: Map, failure: Map, error_kind: string?, p
     if settle_err then return nil, settle_err end
     logger(ctx.deps):warn("round failed", { automation_id = round.automation_id, drive_key = round.drive_key, phase = recorded.phase,
         error = failure.message, fenced = not (settled :: Map).committed })
-    if not (settled :: Map).committed then return complete(ctx, drive.utc_now()) end
+    if not (settled :: Map).committed then return complete(ctx, { rearm = drive.utc_now() }) end
     local wake_err = wake_dispatcher_after_release(settled :: Map)
     if wake_err then return nil, wake_err end
     local notify_err = notify_status(ctx, round.automation_id)
     if notify_err then return nil, notify_err end
-    local parks = recorded.next_run_at == nil
-    return complete(ctx, recorded.next_run_at, parks, parks and tostring(failure.message) or nil)
+    if recorded.next_run_at == nil then return park(ctx, tostring(failure.message)) end
+    return complete(ctx, { rearm = recorded.next_run_at })
 end
 
 local function prior_attempts(d: Map): integer
@@ -232,7 +231,7 @@ local function run(deps: Map, input: any): (Map?, error?)
             local failure = classify(stamp_err)
             local _, parks = outcome.failure_phase(failure)
             if not parks then return nil, stamp_err end
-            return complete(ctx, nil, true, tostring(failure.message))
+            return park(ctx, tostring(failure.message))
         end
         s = stamped :: Map
         local observed = type(s.drive) == "table" and (s.drive :: Map) or nil
@@ -243,29 +242,29 @@ local function run(deps: Map, input: any): (Map?, error?)
         if attempt == 1 and observed and observed.pending_command_id ~= nil then
             local recovered, recover_err = (deps.recover_drive or automations_lib.recover_drive)(automation_id, drive_key)
             if recover_err then
-                if errors.is(recover_err, errors.NOT_FOUND) then return complete(ctx, nil, true, "drive removed") end
+                if errors.is(recover_err, errors.NOT_FOUND) then return park(ctx, "drive removed") end
                 return nil, recover_err
             end
             local rec = recovered :: Map
-            if rec.state == "removed" then return complete(ctx, nil, true, "drive removed") end
+            if rec.state == "removed" then return park(ctx, "drive removed") end
             if not rec.stamp then
-                return complete(ctx, rec.next_attempt_at or drive.utc_after(p.round_retry_after_ms))
+                return complete(ctx, { rearm = rec.next_attempt_at or drive.utc_after(p.round_retry_after_ms) })
             end
         else
             break
         end
     end
-    if s.state == claim.STATE.MISSING then return complete(ctx, nil, true, "drive removed") end
+    if s.state == claim.STATE.MISSING then return park(ctx, "drive removed") end
     if s.state == claim.STATE.OCCUPIED then
         -- rearm = max(now, the holder's deadline) + the round retry (design v5 §4.2).
         local base = s.rearm_after > now and s.rearm_after or now
-        return complete(ctx, after_ms(base, p.round_retry_after_ms))
+        return complete(ctx, { rearm = after_ms(base, p.round_retry_after_ms) })
     end
-    if s.state == claim.STATE.PARKED then return complete(ctx, nil, true, s.reason or ("drive " .. tostring((s.drive :: Map).phase))) end
+    if s.state == claim.STATE.PARKED then return park(ctx, s.reason or ("drive " .. tostring((s.drive :: Map).phase))) end
     if s.state == claim.STATE.IDLE then
         local notify_err = notify_status(ctx, automation_id)
         if notify_err then return nil, notify_err end
-        return complete(ctx, s.rearm)
+        return complete(ctx, { rearm = s.rearm })
     end
 
     local d = s.drive :: Map
@@ -301,7 +300,7 @@ local function run(deps: Map, input: any): (Map?, error?)
         if release_err then return nil, release_err end
         local wake_err = wake_dispatcher_after_release(released :: Map?)
         if wake_err then return nil, wake_err end
-        return complete(ctx, nil, true, "kind implements no round consumer")
+        return park(ctx, "kind implements no round consumer")
     end
     local identity = (auto :: Map).identity
 
@@ -335,7 +334,8 @@ local function run(deps: Map, input: any): (Map?, error?)
                 return reconcile.stale(db, round, d, limit)
             end)
             if stale_err then return nil, nil, classify(stale_err) end
-            return { items = reconcile.delete_items(stale :: { string }), has_more = false }, #(stale :: { string }), nil, nil
+            local items = reconcile.delete_items(stale :: { string }, d.reconcile_pass_id)
+            return { items = items, has_more = false }, #items, nil, nil
         end
         if not pulls then return { items = {}, has_more = false }, nil, nil, nil end
         local cursor: any = nil
@@ -391,7 +391,7 @@ local function run(deps: Map, input: any): (Map?, error?)
             end)
         end
         if check_err then return settle(ctx, round, classify(check_err), nil, attempts, rp) end
-        if not still_ours then return complete(ctx, drive.utc_now()) end
+        if not still_ours then return complete(ctx, { rearm = drive.utc_now() }) end
     end
 
     local interrupted: Map? = nil
@@ -511,7 +511,7 @@ local function run(deps: Map, input: any): (Map?, error?)
         return commit.commit_tx(tx, round, result)
     end)
     if commit_err then return settle(ctx, round, classify(commit_err), nil, attempts, rp) end
-    if not (committed :: Map).committed then return complete(ctx, drive.utc_now()) end
+    if not (committed :: Map).committed then return complete(ctx, { rearm = drive.utc_now() }) end
     if acquiring and not continues and not reconciling and not manual and not result.failure and claim.interval_poll(d) then
         local due,due_err=claim.next_after_round(d,now,drive.utc_now())
         if due_err then return nil,due_err end
@@ -523,7 +523,7 @@ local function run(deps: Map, input: any): (Map?, error?)
                 {next_run_at=due or sql.NULL})
         end)
         if update_err then return nil,update_err end
-        if not changed then return complete(ctx,drive.utc_now()) end
+        if not changed then return complete(ctx, { rearm = drive.utc_now() }) end
         next_due=due
     end
     local wake_err = wake_dispatcher_after_release(committed :: Map)
@@ -544,16 +544,20 @@ local function run(deps: Map, input: any): (Map?, error?)
     end
 
     if result.failure then
-        return complete(ctx,result.failure.next_run_at,result.failure.next_run_at == nil,
-            tostring(result.failure.error.message))
+        if result.failure.next_run_at == nil then return park(ctx, tostring(result.failure.error.message)) end
+        return complete(ctx, { rearm = result.failure.next_run_at })
     end
 
     -- A drained backpressured drive resumes pulling at once.
-    if backpressure and ((committed :: Map).unresolved_count :: integer) < rp.max_unresolved then continues = true end
-    local rearm, rearm_err = rearm_after(round, continues, next_due,
-        (committed :: Map).unresolved_count :: integer)
+    local unresolved_count = (committed :: Map).unresolved_count :: integer
+    local has_capacity = unresolved_count < rp.max_unresolved
+    if backpressure and has_capacity then continues = true end
+    local rearm, rearm_err = rearm_after(round, continues, next_due, unresolved_count)
     if rearm_err then return nil, rearm_err end
-    return complete(ctx, rearm)
+    -- An item deadline schedules delivery without delaying newly arrived input.
+    local source_ready = has_capacity and acquiring and d.source_kind == drive.SOURCE_KIND.EVENT
+        and next_due == nil and not continues
+    return complete(ctx, { rearm = rearm, rearm_on_demand = rearm ~= nil and source_ready or nil })
 end
 
 -- new(deps) -> a round runner { run(input) } over explicit dependencies:

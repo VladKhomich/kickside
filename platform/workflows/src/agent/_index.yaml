@@ -15,6 +15,7 @@ entries:
     source: file://agent_tool.lua
     modules: [ctx]
     imports:
+      text_trim: kickside.contract:text_trim
       tool_result: kickside.contract:tool_result
       execution: kickside.workflows.execution:execution
       schema_validate: kickside.workflows.schema:schema_validate
@@ -56,6 +57,7 @@ entries:
     method: flow_run_handler
     modules: [ctx]
     imports:
+      text_trim: kickside.contract:text_trim
       tool_result: kickside.contract:tool_result
       execution: kickside.workflows.execution:execution
       schema_validate: kickside.workflows.schema:schema_validate
@@ -70,6 +72,7 @@ entries:
     method: build
     modules: [ctx]
     imports:
+      text_trim: kickside.contract:text_trim
       tool_result: kickside.contract:tool_result
       execution: kickside.workflows.execution:execution
       schema_validate: kickside.workflows.schema:schema_validate

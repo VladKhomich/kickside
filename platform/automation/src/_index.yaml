@@ -23,6 +23,8 @@ entries:
     meta:
       comment: Shared error carrier for typed runtime errors, returned envelopes, raised failures, and pullable/writable DataErrors.
     source: file://failure_classification.lua
+    imports:
+      text_trim: kickside.contract:text_trim
   - name: definition
     kind: ns.definition
     readme: file://README.md

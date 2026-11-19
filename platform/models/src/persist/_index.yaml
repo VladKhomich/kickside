@@ -58,13 +58,43 @@ entries:
 
   - name: reload_profiles
     kind: function.lua
-    source: file://profile_reload.lua
-    method: run
-    modules: [sql]
+    meta: {private: true}
+    source: file://repo.lua
+    method: reload_profiles
+    modules: [sql, uuid, funcs, process]
     imports:
-      models_repo: kickside.models.persist:repo
+      models_types: kickside.models:models_types
       models_cache: kickside.models.service:models_cache
       catalog_policy: kickside.models.catalog:policy
       catalog_card_policy: kickside.models.catalog:card_policy
     security:
+      policies:
+        - kickside.models.catalog:catalog_database
+        - kickside.models.persist:publish_profile_cache
+        - kickside.models.persist:decode_profiles_call
+
+  - name: decode_profiles
+    kind: function.lua
+    meta: {private: true}
+    source: file://profile_reload.lua
+    method: run
+    imports:
+      catalog_policy: kickside.models.catalog:policy
+    security:
       policies: [kickside.models:secret_key_access]
+
+  - name: decode_profiles_call
+    kind: security.policy
+    meta: {private: true}
+    policy:
+      resources: [kickside.models.persist:decode_profiles]
+      actions: [funcs.call, funcs.security]
+      effect: allow
+
+  - name: publish_profile_cache
+    kind: security.policy
+    meta: {private: true}
+    policy:
+      resources: [kickside.models:cache]
+      actions: [store.get, store.key.set]
+      effect: allow

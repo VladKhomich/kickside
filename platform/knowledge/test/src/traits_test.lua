@@ -239,14 +239,49 @@ local function define_tests()
             test.contains(tostring(high_err), "limit must be between 1 and 100")
         end)
 
-        test.it("reads kb_ids from the trait ctx and queries each", function()
-            -- The KB does not exist, so each per-id query yields nothing; the
-            -- point is the tool resolved kb_ids from ctx (not a positional arg)
-            -- and ran the search loop instead of bailing on configuration.
-            local out, err = executor({ kb_ids = { "missing-kb" } }):call(QUERY_TOOL, { query = "hello" })
+        test.it("gives members identical discovery guidance for unknown and unreadable KBs", function()
+            local scope = security.new_scope({ security.policy("app:limited_user") })
+            local owner = funcs.new():with_actor(security.new_actor("kb_query_owner", {})):with_scope(scope)
+            local member = funcs.new():with_actor(security.new_actor("kb_query_member", {})):with_scope(scope)
+            local title = "Private KB retrieval reference"
+            local kb, create_err = owner:call("kickside.knowledge.registry:kb_create", {
+                name = title, kb_type = "bound", embedding_model = "fixture-embedding",
+            })
+            test.is_nil(create_err)
+            test.not_nil(kb)
+            local id = kb.component_id
+
+            local found, find_err = owner:call("kickside.knowledge.traits:kb_find_tool", { q = title })
+            test.is_nil(find_err)
+            test.eq(found.knowledge_bases[1].kb_id, id)
+
+            local unknown, unknown_err = member:call(QUERY_TOOL, {
+                query = "reference", kb_id = "00000000-0000-4000-8000-000000000000",
+            })
+            local hidden, hidden_err = member:call(QUERY_TOOL, { query = "reference", kb_id = id })
+            local by_title, title_err = member:with_context({ kb_ids = { title } })
+                :call(QUERY_TOOL, { query = "reference" })
+            test.is_nil(unknown)
+            test.is_nil(hidden)
+            test.is_nil(by_title)
+            test.is_true(errors.is(unknown_err, errors.NOT_FOUND), tostring(unknown_err))
+            test.is_true(errors.is(hidden_err, errors.NOT_FOUND), tostring(hidden_err))
+            test.is_true(errors.is(title_err, errors.NOT_FOUND), tostring(title_err))
+            test.contains(tostring(unknown_err), "FindKnowledgeBases")
+            test.eq(tostring(hidden_err), tostring(unknown_err))
+            test.eq(tostring(title_err), tostring(unknown_err))
+
+            local _, delete_err = owner:call("kickside.knowledge.registry:kb_delete", { component_id = id })
+            test.is_nil(delete_err)
+        end)
+
+        test.it("does not treat a storage not-found as a missing KB", function()
+            local out, err = executor({ kb_ids = { "kb-1" }, storage_not_found = true })
+                :call(PRESENTATION_TOOL, { query = "reference" })
             test.is_nil(out)
-            test.not_nil(err)
-            test.contains(tostring(err), "knowledge query failed")
+            test.is_true(errors.is(err, errors.INTERNAL), tostring(err))
+            test.contains(tostring(err), "passages not found in store")
+            test.is_nil(string.find(tostring(err), "FindKnowledgeBases", 1, true))
         end)
     end)
 
@@ -281,6 +316,17 @@ local function define_tests()
             test.is_nil(out)
             test.not_nil(err)
             test.ok((tostring(err):find("kb_id not in configured knowledge bases")))
+        end)
+
+        test.it("rejects a conflicting ID and guides a single-bound write without exposing IDs", function()
+            local out, err = executor({ kb_ids = { "private-bound-kb" } })
+                :call(EMBED_TOOL, { content = "x", kb_id = "conflicting-kb" })
+            test.is_nil(out)
+            test.is_true(errors.is(err, errors.INVALID), tostring(err))
+            local message = tostring(err)
+            test.contains(message, "Omit kb_id to use the single configured knowledge base")
+            test.is_true(message:find("private-bound-kb", 1, true) == nil)
+            test.is_true(message:find("conflicting-kb", 1, true) == nil)
         end)
 
         test.it("requires kb_id for ambiguous writes", function()

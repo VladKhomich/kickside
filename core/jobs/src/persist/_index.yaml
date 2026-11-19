@@ -14,6 +14,7 @@ entries:
       comment: Claimed-job transitions, run history, cancellation, and enqueue API.
     source: file://lifecycle_transition.lua
     modules:
+      - logger
       - sql
       - time
       - uuid
@@ -26,14 +27,23 @@ entries:
       row_bytes: kickside.core.jobs.persist:row_bytes
       row_mutations: kickside.core.jobs.persist:row_mutations
       worker_marker: kickside.core.jobs.persist:worker_marker
-      lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
-      proc_supervisor: kickside.core.jobs:proc_supervisor
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
+
+  - name: dead_outcome
+    kind: library.lua
+    meta:
+      comment: The dead handler a worker declares (meta.job_dead) and the outcome job enqueued for it.
+    source: file://dead_outcome.lua
+    modules: [registry]
+    imports:
+      capacity: kickside.core.jobs:capacity
+      job_types: kickside.core.jobs:types
 
   - name: lifecycle_cancel
     kind: library.lua
     meta:
-      comment: Atomic cancellation and worker marker release.
+      comment: Atomic cancellation requests and worker marker release.
     source: file://lifecycle_cancel.lua
     modules: [sql]
     imports:
@@ -76,6 +86,7 @@ entries:
       - uuid
     imports:
       runtime_policy: kickside.core.jobs.policy:runtime
+      execution_policy: kickside.core.jobs.policy:execution
       clock: kickside.core.jobs:clock
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
@@ -86,6 +97,7 @@ entries:
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       capacity: kickside.core.jobs:capacity
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
 
   - name: thread_fence
     kind: library.lua
@@ -102,6 +114,7 @@ entries:
     modules: [sql, json]
     imports:
       thread_fence: kickside.core.jobs.persist:thread_fence
+      wake: kickside.core.jobs.persist:wake
       clock: kickside.core.jobs:clock
       config: kickside.core.jobs:config
       sql_boundary: kickside.core.jobs.persist:sql_boundary
@@ -125,7 +138,7 @@ entries:
     meta:
       comment: Lease ownership evidence and lost-lease classification.
     source: file://lease_status.lua
-    modules: [sql]
+    modules: [sql, time]
     imports:
       clock: kickside.core.jobs:clock
       job_types: kickside.core.jobs:types
@@ -153,6 +166,7 @@ entries:
       - time
     imports:
       runtime_policy: kickside.core.jobs.policy:runtime
+      execution_policy: kickside.core.jobs.policy:execution
       job_types: kickside.core.jobs:types
       config: kickside.core.jobs:config
       lifecycle: kickside.core.jobs.persist:lifecycle
@@ -225,6 +239,7 @@ entries:
       thread_teardown: kickside.core.jobs.persist:thread_teardown
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       thread_fence: kickside.core.jobs.persist:thread_fence
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
 
   - name: wake
     kind: library.lua

@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local http = require("http")
 local registry = require("registry")
 local templates = require("templates")
@@ -19,9 +20,10 @@ local function cookie_value(header: string?, name: string): string?
         return nil
     end
     for pair in header:gmatch("[^;]+") do
-        local key, value = pair:match("^%s*(.-)%s*=%s*(.*)$")
-        if key == name then
-            return value
+        local separator = pair:find("=", 1, true)
+        if separator and trim(pair:sub(1, separator - 1)) == name then
+            local first = pair:find("%S", separator + 1)
+            return first and pair:sub(first) or ""
         end
     end
     return nil

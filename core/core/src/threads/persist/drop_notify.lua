@@ -36,7 +36,8 @@ end
 -- hooks returns the drop hooks declared by the projections on thread_id, in
 -- projection id order.
 function M.hooks(db_or_tx: any, thread_id: string, limit: integer?): ({ Hook }?, error?)
-    local statement = "SELECT id, body FROM kickside_projection WHERE thread_id = $1 ORDER BY id"
+    local statement = [[SELECT id, body FROM kickside_projection
+        WHERE thread_id >= $1 AND thread_id <= $1 ORDER BY thread_id,id]]
     if limit then statement = statement .. " LIMIT " .. tostring(limit) end
     local rows, err = db_or_tx:query(statement, { thread_id })
     local read_err = rows_error(rows, err, "failed to read drop hooks", "hooks.rows")

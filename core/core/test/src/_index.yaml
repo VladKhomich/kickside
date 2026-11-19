@@ -12,6 +12,17 @@ entries:
     component: wippy/test
     version: "*"
 
+  - name: casefold_test
+    kind: function.lua
+    meta:
+      type: test
+      suite: kickside_core
+    source: file://casefold_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      casefold: kickside.core:casefold
+
   - name: dep.kickside.realtime
     kind: ns.dependency
     component: kickside/realtime
@@ -628,6 +639,8 @@ entries:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       autoinit: kickside.component:autoinit
+      jobs: kickside.core.jobs:jobs
+      threads_teardown: kickside.core.threads.persist:teardown
 
   - name: provision_user_call_deny
     kind: security.policy
@@ -758,6 +771,8 @@ entries:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       autoinit: kickside.component:autoinit
+      jobs: kickside.core.jobs:jobs
+      threads_teardown: kickside.core.threads.persist:teardown
 
   - name: dep.wippy.bootloader
     version: "*"
@@ -903,7 +918,12 @@ entries:
       retention_repo: kickside.core.retention.persist:repo
       core_db: kickside.core:db
       execution_identity: kickside.execution:execution_identity
-      proj_types: kickside.core.projections:types
+      thread_crud: kickside.core.threads.persist:thread_crud
+      proj_register: kickside.core.projections.persist:register
+      persisted_json: kickside.contract:persisted_json
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      component_lifecycle: kickside.core.lifecycle:component_lifecycle_impl
+      jobs_wake: kickside.core.jobs.persist:wake
       projections_writer: kickside.core.projections.persist:writer
       component_identity: kickside.core.threads:component_identity
 
@@ -1258,8 +1278,11 @@ entries:
   - name: projection_collision_writer
     kind: library.lua
     source: file://src_link/projections/persist/register.lua
-    modules: [sql, json]
+    modules: [sql, json, registry]
     imports:
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       uuid: app:projection_uuid_fixture
@@ -1556,6 +1579,7 @@ entries:
     source: file://thread_database_native_source.lua
     modules: [security]
     imports:
+      text_trim: kickside.contract:text_trim
       error_envelope: kickside.contract:error_envelope
       sql: app:thread_database_native_sql_adapter
       component_identity: kickside.core.threads:component_identity
@@ -2165,6 +2189,7 @@ entries:
     source: file://thread_audience_native_source.lua
     modules: [json, time, funcs]
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:thread_audience_native_sql_adapter
       process: app:thread_audience_native_process_adapter
       consts: kickside.core.threads:notify_consts
@@ -2512,6 +2537,7 @@ entries:
     kind: library.lua
     source: file://read_model_native_source.lua
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:read_model_native_sql_adapter
       json: app:read_model_native_json_adapter
       component: app:read_model_native_component_adapter
@@ -2565,6 +2591,7 @@ entries:
     kind: library.lua
     source: file://projection_reader_native_source.lua
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:projection_reader_native_sql_adapter
       types: kickside.core.projections:types
 
@@ -2601,14 +2628,16 @@ entries:
   - name: audit_publication_native_source
     kind: library.lua
     source: file://audit_publication_native_source.lua
-    modules: [uuid, process]
+    modules: [uuid, process, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       sql: app:audit_publication_native_sql_adapter
       autoinit: kickside.component:autoinit
       component_lifecycle_log: app:audit_publication_native_log_adapter
       proj_writer: kickside.core.projections.persist:writer
       jobs_wake: kickside.core.jobs.persist:wake
+      retention_notifier: kickside.core.retention:notifier
       threads_env: kickside.core.threads:env
       threads_thread_row: kickside.core.threads.persist:thread_row
       component_meta: kickside.component.persist:meta_ops
@@ -2738,7 +2767,12 @@ entries:
       component_identity: app:provision_native_identity_adapter
       execution_identity: app:provision_native_execution_adapter
       core_db: kickside.core:db
-      proj_types: kickside.core.projections:types
+      thread_crud: kickside.core.threads.persist:thread_crud
+      proj_register: kickside.core.projections.persist:register
+      persisted_json: kickside.contract:persisted_json
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      component_lifecycle: kickside.core.lifecycle:component_lifecycle_impl
+      jobs_wake: kickside.core.jobs.persist:wake
       projections_writer: app:provision_native_fixture
       component_envelope: kickside.component:envelope
       error_envelope: kickside.contract:error_envelope
@@ -2794,8 +2828,11 @@ entries:
   - name: projection_register_native_source
     kind: library.lua
     source: file://projection_register_native_source.lua
-    modules: [uuid]
+    modules: [uuid, registry]
     imports:
+      text_trim: kickside.contract:text_trim
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
       sql: app:projection_register_native_sql_adapter
       json: app:projection_register_native_json_adapter
       clock: kickside.core.jobs:clock
@@ -2887,6 +2924,7 @@ entries:
     source: file://projection_worker_native_source.lua
     modules: [process, time, security]
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:projection_worker_native_sql_adapter
       json: app:projection_worker_native_json_adapter
       funcs: app:projection_worker_native_funcs_adapter
@@ -2899,6 +2937,7 @@ entries:
       projection_policy: kickside.core.projections:policy_config
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
+      checkpoint_declaration: kickside.core.projections.persist:checkpoint_declaration
 
   - name: projection_worker_native_test
     kind: function.lua
@@ -3055,6 +3094,9 @@ entries:
       autoinit: kickside.component:autoinit
       threads_normalize: kickside.core.threads.persist:normalize
       natural_key: kickside.core.threads.persist:natural_key
+      jobs_cleanup: app:thread_row_native_fixture
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
 
   - name: thread_row_native_test
     kind: function.lua
@@ -3268,11 +3310,15 @@ entries:
     kind: library.lua
     source: file://thread_reader_native_source.lua
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:thread_reader_native_sql_adapter
       json: app:thread_reader_native_json_adapter
       threads_component: app:thread_reader_native_component_adapter
       subjects: app:thread_reader_native_subjects_adapter
       core_types: kickside.core:types
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      lifecycle_consts: kickside.core.lifecycle:consts
+      contract_common: kickside.core.threads:contract_common
 
   - name: thread_reader_native_test
     kind: function.lua
@@ -3389,6 +3435,12 @@ entries:
     imports:
       fixture: app:projection_apply_native_fixture
 
+  - name: projection_apply_native_lease_status_adapter
+    kind: library.lua
+    source: file://projection_apply_native_dependency_adapter.lua
+    imports:
+      fixture: app:projection_apply_native_fixture
+
   - name: projection_apply_native_source
     kind: library.lua
     source: file://projection_apply_native_source.lua
@@ -3405,6 +3457,11 @@ entries:
       retention_notifier: app:projection_apply_native_retention_notifier_adapter
       retention_pin: app:projection_apply_native_fixture
       execution_identity: app:projection_apply_native_execution_identity_adapter
+      committed_error: kickside.contract:committed_error
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
+      lease_status: app:projection_apply_native_lease_status_adapter
+      job_types: kickside.core.jobs:types
 
   - name: projection_apply_native_test
     kind: function.lua
@@ -3669,6 +3726,7 @@ entries:
     source: file://receipt_sql_native_source.lua
     modules: [json]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       sql: app:receipt_sql_native_sql
       core_db: kickside.core:db
@@ -4148,9 +4206,10 @@ entries:
     source: file://projection_transaction_source.lua
     modules: [sql]
     imports:
+      text_trim: kickside.contract:text_trim
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
-      job_lifecycle: kickside.core.jobs.persist:lifecycle
+      job_reclaim: kickside.core.jobs.persist:reclaim
       job_lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
       jobs_wake: kickside.core.jobs.persist:wake
       cursor_waiters: app:projection_transaction_fixture
@@ -4191,7 +4250,7 @@ entries:
     source: file://projection_postcommit_fixture.lua
     modules: [sql]
 
-  - name: projection_postcommit_job_lifecycle
+  - name: projection_postcommit_job_reclaim
     kind: library.lua
     source: file://projection_postcommit_adapter.lua
     imports:
@@ -4226,9 +4285,10 @@ entries:
     source: file://projection_postcommit_source.lua
     modules: [sql]
     imports:
+      text_trim: kickside.contract:text_trim
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
-      job_lifecycle: app:projection_postcommit_job_lifecycle
+      job_reclaim: app:projection_postcommit_job_reclaim
       job_lifecycle_cancel: app:projection_postcommit_job_lifecycle_cancel
       jobs_wake: app:projection_postcommit_jobs_wake
       cursor_waiters: app:projection_postcommit_cursor_waiters
@@ -4389,3 +4449,37 @@ entries:
     source: file://disabled_slots_migration.lua
     imports:
       migration: wippy.migration:core
+
+  - name: lifecycle_convergence_kind
+    kind: contract.binding
+    meta:
+      class: [test.lifecycle.converge]
+      projections:
+        - on: lifecycle
+          kind: test.lifecycle.converge
+          projection_key: custom
+          cursor_key: progress
+          worker_ref: func://app:test_count_worker
+          input_mode: prefetch_events
+          events:
+            input:
+              - {type: 'kickside.component.events:created'}
+              - {type: 'kickside.component.events:updated'}
+    contracts:
+      - contract: kickside.contract:component
+        methods:
+          get_status: kickside.core.threads:thread_status
+
+  - name: lifecycle_convergence_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_core}
+    source: file://lifecycle_convergence_test.lua
+    method: run
+    modules: [sql, uuid, json, security, contract, process, channel, time, events, funcs]
+    imports:
+      test: wippy.test:test
+      provision: kickside.core.threads:provision
+      lifecycle: kickside.core.threads.persist:lifecycle
+      register: kickside.core.projections.persist:register
+      prune: kickside.core.retention:prune
+      writer: kickside.core.projections.persist:writer

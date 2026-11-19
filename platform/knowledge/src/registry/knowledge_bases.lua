@@ -170,14 +170,6 @@ function M.create(args: any): (kb_types.CreateResult?, error?)
         return nil, errors.new({ kind = errors.INTERNAL, message = "register failed: " .. tostring(result and result.error or "unknown") })
     end
 
-    -- Create the per-component store through the engine's store contract. The
-    -- engine is the single source of truth for its config defaults: apply
-    -- engine.default_config (explicit values in args.config win). This is keyed off
-    -- the resolved engine, not a per-kb_type list here, so a new engine/kb_type
-    -- cannot silently ship without the config its own impl requires (e.g. the
-    -- contextual summary/chunk models kb10's embed_func mandates). The kb_type +
-    -- enrichment agent travel in opts, which engines that don't need them ignore.
-    local config: any = engines.apply_default_config(args.config, engine)
     local store, store_err = stores.open_engine_store(engine)
     if not store then
         svc:delete({ component_id = component_id })
@@ -186,7 +178,7 @@ function M.create(args: any): (kb_types.CreateResult?, error?)
     local _, ex_err = store:create_store({
         component_id = component_id,
         embedding_model = embedding_model,
-        config = config,
+        config = type(args.config) == "table" and args.config or {},
         opts = {
             kb_type = kb_type,
             enrichment_agent_id = enrichment_agent_id,
@@ -381,7 +373,7 @@ function M.list(args: any): ({ kb_types.ComponentRow }?, error?)
     local meta_filter: { [string]: string } = { class = KB_CLASS }
     if is_str(args.kb_type) then meta_filter.kb_type = args.kb_type :: string end
 
-    local result, err = svc:list({ filters = { meta = meta_filter } })
+    local result, err = svc:list({ filters = { meta = meta_filter, access_mask = component.ACCESS.READ } })
     if err then return nil, errors.wrap(err, "list_components") end
     if not result or not result.success then
         return nil, errors.new({ kind = errors.INTERNAL, message = "list_components returned " .. tostring(result and result.error or "no result") })

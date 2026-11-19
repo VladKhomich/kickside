@@ -30,27 +30,25 @@ local function has_fields(fields: any): boolean
     return type(fields) == "table" and next(fields :: { [any]: any }) ~= nil
 end
 
--- Build two independent JSON trees: the exact persisted snapshot used only for
--- compensation, and the desired config with descriptor defaults plus the patch.
--- Keeping this here makes the saga's rollback input impossible to mutate while
--- constructing or sending the forward write.
 function M.config_plan(current: any, patch: any, apply_defaults: any): (any?, string?)
     if type(patch) ~= "table" then return nil, "config patch must be a table" end
     if type(apply_defaults) ~= "function" then return nil, "default config merger is required" end
 
     local current_config: any = copy_json(current)
     if type(current_config) ~= "table" then current_config = {} end
-    local effective_config = apply_defaults(copy_json(current_config))
-    if type(effective_config) ~= "table" then
-        return nil, "default config merger must return a table"
-    end
-    local desired_config = copy_json(effective_config)
+    local desired_config = copy_json(current_config)
     for key, value in pairs(patch :: { [any]: any }) do
         desired_config[key] = copy_json(value)
+    end
+    local effective_config = apply_defaults(copy_json(current_config))
+    local effective_desired_config = apply_defaults(copy_json(desired_config))
+    if type(effective_config) ~= "table" or type(effective_desired_config) ~= "table" then
+        return nil, "default config merger must return a table"
     end
     return {
         current_config = current_config,
         effective_config = effective_config,
+        effective_desired_config = effective_desired_config,
         desired_config = desired_config,
     }, nil
 end
@@ -95,7 +93,7 @@ function M.apply(component_id: string, changes: any, collaborators: any): (boole
                 "failed to prepare knowledge base config", 500)
         end
         config_plan = plan
-        update_config = not util.same_value(plan.effective_config, plan.desired_config)
+        update_config = not util.same_value(plan.current_config, plan.desired_config)
     end
 
     if update_config then
@@ -123,7 +121,7 @@ function M.apply(component_id: string, changes: any, collaborators: any): (boole
         for _, method in ipairs(methods) do
             local changed = false
             for _, key in ipairs(config_plan.config_maintenance[method]) do
-                if not util.same_value(config_plan.effective_config[key], config_plan.desired_config[key]) then
+                if not util.same_value(config_plan.effective_config[key], config_plan.effective_desired_config[key]) then
                     changed = true
                     break
                 end

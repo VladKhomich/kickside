@@ -167,6 +167,38 @@ function M.read_node(tx: Executor, component_id: string, for_write: boolean?): (
     return rows[1] :: Node, nil
 end
 
+-- key_exists reports whether a component row holds component_id. On PostgreSQL
+-- it takes FOR KEY SHARE: a concurrent delete of the row settles first, while
+-- writers of the row's other columns proceed without a wait.
+function M.key_exists(tx: Executor, component_id: string): (boolean?, error?)
+    local query = sql.builder.select("component_id")
+        :from(component_types.TABLES.COMPONENTS)
+        :where("component_id = ?", component_id)
+    local dialect, dialect_err = (tx :: sql.Transaction):db_type()
+    if dialect_err then return nil, dialect_err end
+    if dialect == sql.type.POSTGRES then query = query:suffix("FOR KEY SHARE") end
+    local rows, err = query:run_with(tx):query()
+    if err then
+        return nil, errors.wrap(err, "placement key_exists failed")
+    end
+    return rows ~= nil and #rows > 0, nil
+end
+
+-- Teardown publishes the reservation in the transaction that deletes the
+-- component. Call after key_exists so a delete it waited for is visible.
+function M.pending_thread_reap(tx: Executor, component_id: string): (boolean?, error?)
+    local dialect, dialect_err = (tx :: sql.Transaction):db_type()
+    if dialect_err then return nil, dialect_err end
+    if dialect == sql.type.POSTGRES then component_id = string.lower(component_id) end
+    local rows, err = tx:query("SELECT component_id FROM kickside_component_thread_reap WHERE component_id=$1",
+        {component_id})
+    if err then return nil, errors.wrap(err, "component thread reap lookup failed") end
+    if type(rows) ~= "table" then
+        return nil, errors.new({kind = errors.INTERNAL, message = "component thread reap lookup returned no rows result"})
+    end
+    return #rows > 0, nil
+end
+
 -- Structural writers serialize before reading paths or ancestry. A row lock on
 -- the immediate parent alone cannot fence creation under a moving ancestor.
 -- SQLite already serializes transactions on its single connection.
