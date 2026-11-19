@@ -771,7 +771,8 @@ function claim.claim_batch(db: sql.DB, dbtype: string, requested: integer?, pref
                     return nil, boundary.rollback(tx, errors.new({message = "worker is not available for another claim",
                         kind = errors.CONFLICT, details = {reason = job_types.CLAIM_REFUSAL.WORKER_MARKER_OCCUPIED}}), "claim rollback failed")
                 end
-                local started_run, run_err = lifecycle.start_job_run(tx, dbtype, job, owner_id, leased.attempts)
+                -- This job comes from lock_candidates and remains locked through the insert.
+                local started_run, run_err = lifecycle.start_job_run(tx, dbtype, job, owner_id, leased.attempts, true)
                 if run_err then
                     if errors.is(run_err, errors.INTERNAL) then return nil, boundary.rollback(tx, run_err, "claim rollback failed") end
                     refusal = run_err
