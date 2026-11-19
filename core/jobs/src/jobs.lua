@@ -275,8 +275,7 @@ function jobs.retention_sweep(cursor: table?): (table?, error?)
     end, true)
 end
 
--- Thread teardown uses page ids persisted in the Core thread row. A Jobs page
--- commits independently and stores its exact result until Core acknowledges it.
+-- Standalone cleanup commits one Jobs page and preserves its exact result for replay.
 function jobs.cleanup_thread_page(thread_id: string, page_seq: integer): (table?, error?)
     return with_db(function(db: sql.DB, dbtype: string): (table?, error?)
         return thread_teardown.page(db, dbtype, thread_id, page_seq)
