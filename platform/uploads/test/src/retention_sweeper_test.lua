@@ -506,5 +506,47 @@ return test.run_cases(function()
             local _, missing_err = threads:prune_boundary({ thread_id = uuid.v4() })
             test.is_true(errors.is(missing_err, errors.NOT_FOUND), tostring(missing_err))
         end)
+
+        test.it("reports a missing upload thread and continues to the next checkpoint page", function()
+            local good_thread, good_owner = user_container()
+            local purged_owner = "purged-upload-thread-" .. uuid.v4()
+            local purged_thread = assert(upload_types.component_id_for_owner(purged_owner))
+            local prefix = "00000000-0000-4000-8000-"
+            local cursor = prefix .. "000000000000"
+            local blocked_upload = prefix .. "000000000001"
+            local good_upload = prefix .. "000000000502"
+            checkpoint(purged_thread, purged_owner, blocked_upload, uuid.v4(), "{}", "failed")
+            for i = 2, 501 do
+                local id = prefix .. string.format("%012d", i)
+                checkpoint(good_thread, good_owner, id, uuid.v4(), "{}", "completed")
+                exec("UPDATE kickside_upload_read_model SET status='completed' WHERE upload_id=$1", { id })
+            end
+            local good_job = uuid.v4()
+            checkpoint(good_thread, good_owner, good_upload, good_job, "{}")
+            test.eq(#query("SELECT id FROM kickside_thread WHERE id=$1", { purged_thread }), 0)
+            local ok, failure = pcall(function()
+                local first = assert(funcs.call("kickside.uploads:retention", { cursor = cursor }))
+                test.is_true(first.success, tostring(first.error))
+                test.eq(#first.blocked, 1)
+                test.eq(first.blocked[1].component_id, purged_thread)
+                test.is_true(errors.is(first.blocked[1].error, errors.NOT_FOUND))
+                test.is_true(first.needs_continue)
+                test.not_nil(first.cursor)
+
+                local count = 0
+                while first.cursor and count < 502 do
+                    first = assert(funcs.call("kickside.uploads:retention", { cursor = first.cursor }))
+                    test.is_true(first.success, tostring(first.error))
+                    count = count + 1
+                    if #terminal_events(good_thread, good_upload) > 0 then break end
+                end
+                local events = terminal_events(good_thread, good_upload)
+                test.eq(#events, 1)
+                test.eq(events[1].external_version, good_job)
+            end)
+            exec("DELETE FROM kickside_upload_read_model WHERE upload_id BETWEEN $1 AND $2", { blocked_upload, good_upload })
+            exec("DELETE FROM kickside_uploads WHERE uuid BETWEEN $1 AND $2", { blocked_upload, good_upload })
+            if not ok then error(failure) end
+        end)
     end)
 end)
