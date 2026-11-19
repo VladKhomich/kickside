@@ -69,8 +69,9 @@ return {
 					body, status, response = {filename = case.filename, size = 5, content_type = case.input}, nil, nil
 					handler()
 					test.eq(status, http.STATUS.OK, response and response.details)
-					test.is_true(response.success)
-					local saved = assert(uploads.get(response.upload_id))
+					local reply = assert(response :: any)
+					test.is_true(reply.success)
+					local saved = assert(uploads.get(reply.upload_id))
 					test.eq("app:uploads", saved.storage_id)
 					test.eq("s3://app:objects/" .. actor_id .. "/" .. saved.uuid .. "/" .. case.filename, saved.storage_path)
 					test.eq(saved.mime_type, case.stored)

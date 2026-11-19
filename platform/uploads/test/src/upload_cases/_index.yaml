@@ -166,7 +166,9 @@ entries:
   - base64
   - hash
   imports:
+    jobs: kickside.core.jobs:jobs
     jobs_claim: kickside.core.jobs.persist:claim
+    jobs_retention: kickside.core.jobs.persist:retention
     worker_dispatch: kickside.core.jobs.service:worker_dispatch
     jobs_lifecycle: kickside.core.jobs.persist:lifecycle
     test: wippy.test:test

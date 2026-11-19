@@ -16,7 +16,7 @@ class r extends a {
   static get vueConfig() {
     return {
       lazyConfig: p(
-        () => import("./lazy-mount-CX-Zxj0D.js").then((o) => o.mountConfig),
+        () => import("./lazy-mount-CSekvX1v.js").then((o) => o.mountConfig),
         "Could not load Uploads. Reload the page to try again.",
         e
       )

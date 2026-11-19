@@ -17,8 +17,12 @@ entries:
     modules: [time, contract]
     security:
       actor: { id: system:kickside.uploads.retention }
-      policies: [kickside.uploads.security:retention_db_access, kickside.uploads.security:retention_prune_boundary]
+      policies: [kickside.uploads.security:retention_db_access, kickside.uploads.security:retention_prune_boundary, kickside.uploads:token_call]
     imports:
+      process_job: kickside.uploads.service:process_dead
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      uploads_resources: kickside.uploads.binding:uploads_resources
+      upload_types: kickside.uploads:types
       uploads_retention_policy: kickside.uploads:retention_policy
       upload_read_model_retention: kickside.uploads.persist:read_model_retention
       artifact_cleanup_repo: kickside.uploads.persist:artifact_cleanup_repo
@@ -129,6 +133,8 @@ entries:
       - entry: kickside.uploads.migrations:04_create_artifact_tables
         path: .meta.target_db
       - entry: kickside.uploads.migrations:05_scope_archive_deduplication
+        path: .meta.target_db
+      - entry: kickside.uploads.migrations:06_index_terminal_checkpoints
         path: .meta.target_db
 
   - name: storage_id
@@ -396,6 +402,7 @@ entries:
       upload_tokens: kickside.uploads.persist:upload_tokens
       types: kickside.uploads:types
       execution_identity: kickside.execution:execution_identity
+      trace_context: kickside.execution:trace
       jobs: kickside.core.jobs:jobs
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
@@ -505,6 +512,8 @@ entries:
         in the caller process.'
     targets:
     - entry: kickside.uploads.service:process_job_proc
+      path: .imports.processing_hooks
+    - entry: kickside.uploads.service:process_dead
       path: .imports.processing_hooks
     - entry: kickside.uploads:retention
       path: .imports.processing_hooks

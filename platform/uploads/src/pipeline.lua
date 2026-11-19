@@ -4,6 +4,7 @@ local upload_tokens = require("upload_tokens")
 local upload_types = require("types")
 local logger = require("logger")
 local execution_identity = require("execution_identity")
+local trace_context = require("trace_context")
 local jobs = require("jobs")
 local hash = require("hash")
 local security = require("security")
@@ -297,30 +298,33 @@ local function has_primary_text(upload_id: any): boolean
     return (primary.content :: string):match("%S") ~= nil
 end
 
-local function callback_idempotency_key(upload: any, token: string, success: any): string
-    local digest = hash.sha256(token .. ":" .. callback_status(success))
-    return CALLBACK_JOB_TYPE .. ":" .. tostring(upload.uuid or "") .. ":" .. tostring(digest or "")
+local function callback_digest(token: string, success: any): string
+    return hash.sha256(token .. ":" .. callback_status(success))
 end
 
-local function enqueue_upload_token_once(upload, token: string, success, error_msg): (boolean, CallbackError?)
+local function enqueue_upload_token(upload, token: string, success, error_msg, tx, dbtype,
+        check_only: boolean?): (CallbackError?, boolean?)
     local payload, err = upload_tokens.unpack(token)
     if err then
+        -- A token can expire after an earlier worker committed terminal storage.
+        if check_only and err == "Token expired" then return nil, true end
         log:warn("upload token unpack failed", { upload_id = upload.uuid, error = err })
-        if type(err) == "userdata" then return false, err end
-        return false, errors.new({ message = "upload token unpack failed: " .. tostring(err),
+        if type(err) == "userdata" then return err end
+        return errors.new({ message = "upload token unpack failed: " .. tostring(err),
             kind = errors.INVALID, retryable = false, details = { error_kind = "declaration" } })
     end
 
     if payload.upload_id ~= upload.uuid then
-        return false, errors.new({ message = "upload callback token does not match upload", kind = errors.INVALID,
+        return errors.new({ message = "upload callback token does not match upload", kind = errors.INVALID,
             retryable = false, details = { error_kind = "declaration" } })
     end
 
-    if not success and payload.on_error_id == nil then return true, nil end
+    if not success and payload.on_error_id == nil then return nil end
 
-    local func_id = tostring(success and payload.function_id or payload.on_error_id)
-    if not func_id or func_id == "nil" then
-        return false, errors.new({ message = "upload callback function is required", kind = errors.INVALID,
+    local func_id = payload.on_error_id
+    if success then func_id = payload.function_id end
+    if type(func_id) ~= "string" or func_id == "" then
+        return errors.new({ message = "upload callback function is required", kind = errors.INVALID,
             retryable = false, details = { error_kind = "declaration" } })
     end
 
@@ -330,15 +334,20 @@ local function enqueue_upload_token_once(upload, token: string, success, error_m
     end
     local component_id = upload_types.component_id_for_owner(owner_actor_id)
     if not component_id then
-        return false, errors.new({ message = "upload actor has no uploads component id",
+        return errors.new({ message = "upload actor has no uploads component id",
             kind = errors.INVALID, retryable = false, details = { error_kind = "declaration" } })
     end
 
     local actor_id = type(payload.actor_id) == "string" and payload.actor_id or nil
     if not actor_id or actor_id == "" then
         log:warn("upload token missing actor_id", { upload_id = upload.uuid, function_id = func_id })
-        return false, errors.new({ message = "upload callback authorizer is required", kind = errors.INVALID,
+        return errors.new({ message = "upload callback authorizer is required", kind = errors.INVALID,
             retryable = false, details = { error_kind = "declaration" } })
+    end
+    if check_only then
+        local source_trace = type(payload.trace_context) == "table" and payload.trace_context or nil
+        local _, trace_err = trace_context.normalize(source_trace)
+        return trace_err, trace_err == nil
     end
 
     local job_payload = {
@@ -347,10 +356,10 @@ local function enqueue_upload_token_once(upload, token: string, success, error_m
         success = success == true,
         error = error_msg,
     }
-    local _, enqueue_err = jobs.enqueue({
+    local params = {
         namespace = "thread", scope = component_id,
         owner_locator = { kind = "user", id = owner_actor_id :: string },
-        key = callback_idempotency_key(upload, token, success),
+        key = CALLBACK_JOB_TYPE .. ":" .. tostring(upload.uuid or "") .. ":" .. callback_digest(token, success),
         thread_id = component_id,
         job_type = CALLBACK_JOB_TYPE,
         queue_tier = "live",
@@ -359,33 +368,39 @@ local function enqueue_upload_token_once(upload, token: string, success, error_m
         concurrency_key = "uploads:callback:" .. component_id,
         immutable_payload = job_payload,
         trace_context = payload.trace_context,
-    })
+    }
+    local _, enqueue_err
+    if tx then _, enqueue_err = jobs.enqueue_tx(tx, dbtype :: string, params)
+    else _, enqueue_err = jobs.enqueue(params) end
     if enqueue_err then
-        if type(enqueue_err) == "userdata" then return false, enqueue_err end
-        return false, errors.new({ message = "upload callback enqueue failed: " .. tostring(enqueue_err),
+        if type(enqueue_err) == "userdata" then return enqueue_err end
+        return errors.new({ message = "upload callback enqueue failed: " .. tostring(enqueue_err),
             kind = errors.UNAVAILABLE, retryable = true, details = { error_kind = "infrastructure" } })
     end
-    return true, nil
+    return nil
 end
 
--- Schedule upload completion token callback(s) as durable core jobs.
-function pipeline_lib.invoke_upload_token(upload, success, error_msg)
-    if not upload or not upload.metadata then return true, nil end
+local function callback_error(current: CallbackError?, failure: CallbackError): CallbackError
+    if current == nil or (type(current) == "userdata" and not current:retryable()
+            and (type(failure) ~= "userdata" or failure:retryable())) then
+        return failure
+    end
+    return current
+end
 
+-- Schedule durable callback jobs, or validate historical declarations without scheduling.
+function pipeline_lib.invoke_upload_token(upload, success, error_msg, tx: any?, dbtype: string?, check_only: boolean?)
     local first_err = nil
-    for _, token in ipairs(callback_tokens(upload.metadata)) do
-        local ok, err = enqueue_upload_token_once(upload, token, success, error_msg)
-        if not ok then
-            first_err = first_err or err or errors.new({ message = "failed to enqueue upload callback",
-                kind = errors.INTERNAL, retryable = true, details = { error_kind = "infrastructure" } })
-            log:warn("upload token callback enqueue failed", {
-                upload_id = upload.uuid,
-                error = tostring(err),
-            })
+    local has_callback = false
+    for _, token in ipairs(callback_tokens(upload and upload.metadata)) do
+        local err, configured = enqueue_upload_token(upload, token, success, error_msg, tx, dbtype, check_only)
+        has_callback = has_callback or configured == true
+        if err then
+            first_err = callback_error(first_err, err)
+            log:warn("upload token callback scheduling failed", { upload_id = upload.uuid, error = tostring(err) })
         end
     end
-    if first_err then return false, first_err end
-    return true, nil
+    return first_err == nil, first_err, has_callback
 end
 
 -- Process a single upload using funcs library. Execution authority lives in

@@ -9,6 +9,11 @@ local clock = require("clock")
 local thread_teardown = require("thread_teardown")
 local sql_boundary = require("sql_boundary")
 local thread_fence = require("thread_fence")
+local dead_outcome = require("dead_outcome")
+
+local no_live_outcome = [[ AND (status <> 'dead' OR (SELECT 1 FROM kickside_job outcome
+    WHERE outcome.status IN ('pending','running') AND outcome.job_identity=]]
+    .. dead_outcome.identity_sql("kickside_job.id") .. [[) IS NULL)]]
 
 local function bounded(limit: integer?, maximum: integer): integer
     return math.max(0, math.min(maximum, limit or maximum))
@@ -73,7 +78,8 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
     end
     params[#params + 1] = batch
     local limit_arg = "$" .. tostring(#params)
-    local no_runs = runs and "" or " AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)"
+    local unreferenced = runs and ""
+        or " AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)" .. no_live_outcome
     local cols = runs and "id,job_id,owner_kind,owner_id"
         or "id,owner_kind,owner_id,finished_at," .. key .. " AS retention_key"
     local source = table_name
@@ -155,7 +161,7 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
             selected = "rowid IN (SELECT rowid FROM " .. table_name .. " WHERE " .. selected .. ")"
         end
         local deleted, delete_err = tx:execute("DELETE FROM " .. delete_source .. " WHERE finished_at < $1"
-            .. " AND " .. settled .. " AND " .. selected .. no_runs, args)
+            .. " AND " .. settled .. " AND " .. selected .. unreferenced, args)
         if delete_err then return nil, sql_boundary.rollback(tx, errors.wrap(delete_err, "job prune delete"), "retention rollback failed") end
         local proof_err: error?
         total, proof_err = affected(deleted, "job prune delete", #ids)

@@ -90,7 +90,6 @@ local function run(input: any): (any, any?)
     if call_err then
         return nil, call_err
     end
-
     return { success = true, upload_id = upload.uuid, function_id = func_id }, nil
 end
 

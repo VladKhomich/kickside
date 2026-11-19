@@ -135,6 +135,33 @@ Heartbeats renew only matching, unexpired executions without a termination fence
 See [lease ownership and progress](../README.md#lease-ownership-and-progress) for
 heartbeat declaration, fencing, deadlines, and failure semantics.
 
+### Dead outcomes
+
+A worker entry names the function that receives its dead jobs:
+
+```yaml
+meta:
+  job_dead: app:process_dead
+```
+
+When a one-shot job ends `dead` (its final attempt failed for any reason,
+including a ceiling, heartbeat or crash termination by its supervisor, or a
+deterministic failure), the transaction that writes `dead` enqueues one outcome
+job for that function with the dead job's owner and thread, identity
+`(kickside.jobs.dead, <dead job id>, outcome)` and payload `{ job_id }`. The
+handler reads the dead job with `jobs.get_job` (status, `last_error`) and maps
+it to its own resource through the job id it recorded at enqueue. Delivery is at
+least once: the outcome runs on the ordinary claim, lease and retry machinery,
+infrastructure failures retry up to the largest attempt limit, and a
+deterministic handler failure ends the outcome job dead. Handlers are
+idempotent. A thread owner whose cleanup has started, or a worker entry removed
+from the registry, receives no outcome. Enqueue refuses a job whose worker
+declares an invalid `meta.job_dead`: the target must exist, be `function.lua`,
+and admit an outcome without a concurrency key. Outcome jobs never generate
+outcomes; a failed outcome is terminal and logged, including self-declarations
+and mutual handler cycles. A later declaration change that prevents admission is
+logged without undoing the original job's death.
+
 `jobs.health()` is a read-only operator diagnostic. It uses existing indexes and
 adds no schema, writes, claim checks or enqueue work. Each count reads at most
 1,001 index entries: exact through 1,000, then the lower bound 1,000 with its
