@@ -639,6 +639,8 @@ entries:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       autoinit: kickside.component:autoinit
+      jobs: kickside.core.jobs:jobs
+      threads_teardown: kickside.core.threads.persist:teardown
 
   - name: provision_user_call_deny
     kind: security.policy
@@ -769,6 +771,8 @@ entries:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       autoinit: kickside.component:autoinit
+      jobs: kickside.core.jobs:jobs
+      threads_teardown: kickside.core.threads.persist:teardown
 
   - name: dep.wippy.bootloader
     version: "*"
@@ -3090,6 +3094,9 @@ entries:
       autoinit: kickside.component:autoinit
       threads_normalize: kickside.core.threads.persist:normalize
       natural_key: kickside.core.threads.persist:natural_key
+      jobs_cleanup: app:thread_row_native_fixture
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
 
   - name: thread_row_native_test
     kind: function.lua
