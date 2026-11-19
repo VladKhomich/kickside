@@ -10,7 +10,7 @@
   "platform/channel": "0.2.15",
   "platform/connection": "0.5.10",
   "platform/dm": "0.1.32",
-  "platform/hub": "0.1.76",
+  "platform/hub": "0.1.77",
   "platform/identity": "0.1.46",
   "platform/inbox": "0.1.79",
   "platform/knowledge": "0.1.95",
