@@ -91,6 +91,7 @@ function M.create(args: any): (any?, error?)
     end
     local create_args: { [string]: any } = {}
     for key, value in pairs(args) do create_args[key] = value end
+    create_args.trusted_audit = nil
     create_args.id = component_id
     create_args.component_id = component_id
 
@@ -115,7 +116,7 @@ function M.create(args: any): (any?, error?)
 
     local thread = result.thread
     local thread_id = tostring(thread.id)
-    local emit_err = emit_update(thread_id, "kickside.threads:thread.created", { thread = thread })
+    local emit_err = emit_update(thread_id, "kickside.threads:thread.created", {thread = thread, binding = result.binding})
     if emit_err then return nil, committed_error.new(emit_err) end
 
     return {
@@ -171,7 +172,15 @@ local function converge_thread(args: any, convergence: boolean?): (any?, error?)
     if identity_load_err or not identity then
         return nil, sql_boundary.release(_db, identity_load_err, "release thread declaration identity connection")
     end
-    local decl_err = complete_declaration(_db, component_id, args, identity, is_maintenance_actor(), convergence)
+    local impl_id, kind_err = thread_crud.convergence_kind(component_id, args.impl_id)
+    if kind_err then return nil, sql_boundary.release(_db, kind_err, "release thread declaration connection") end
+    local indexes = convergence and args.projection_indexes or nil
+    if indexes and impl_id ~= args.impl_id then
+        local err = errors.new({kind = errors.CONFLICT, retryable = true, message = "thread declaration kind changed"})
+        return nil, sql_boundary.release(_db, err, "release thread declaration connection")
+    end
+    local decl_err = complete_declaration(_db, component_id,
+        {impl_id = impl_id, projection_indexes = indexes}, identity, is_maintenance_actor(), convergence)
     if decl_err then return nil, decl_err end
     return { thread = found, thread_id = component_id, created = false, rollback = nil }, nil
 end
@@ -214,6 +223,7 @@ ensure_thread = function(args: any, output_target: any?, convergence: boolean?):
 
     local create_args: { [string]: any } = {}
     for key, value in pairs(args) do create_args[key] = value end
+    create_args.trusted_audit = nil
     create_args.id = component_id
     create_args.component_id = component_id
 
@@ -342,7 +352,7 @@ ensure_thread = function(args: any, output_target: any?, convergence: boolean?):
 
     local thread = result.thread
     local thread_id = tostring(thread.id)
-    local emit_err = emit_update(thread_id, "kickside.threads:thread.created", { thread = thread })
+    local emit_err = emit_update(thread_id, "kickside.threads:thread.created", {thread = thread, binding = result.binding})
     if emit_err then return nil, committed_error.new(emit_err) end
     return {
         thread = thread,

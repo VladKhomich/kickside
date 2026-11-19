@@ -31,7 +31,8 @@ function M.open_db(): (any, error?)
         query = function(_self: any, query: string, args: table): (any, error?)
             local err = failure("progress_read")
             if err then return nil, err end
-            return {{last_seq = 1, status = "active"}}, nil
+            return {{last_seq = 1, status = "active", generation = M.stage == "changed_progress" and 2 or 1,
+                job_id = "job"}}, nil
         end,
     }, nil
 end
@@ -40,6 +41,7 @@ function M.gate_read(...: any): (any, error?)
     if err then return nil, err end
     return {event_count = 1}, nil
 end
+M.gate_projection_registration = M.gate_read
 function M.declared_identity(...: any): (any, error?)
     local err = failure("identity")
     if err then return nil, err end
@@ -70,20 +72,32 @@ function M.decode(...: any): (any, error?) return nil, nil end
 function M.response(thread: string, projections: table, cursors: table, ...: any): (any, error?)
     return {thread_id = thread, projections = projections, cursors = cursors, count = #projections}, nil
 end
-function M.list_projections(...: any): (any, error?, any)
-    return {{id = "projection"}}, failure("projections"), {}
+function M.list_projections(...: any): (any, error?, any, number?, boolean?)
+    if M.stage == "absent" then return nil, M.source, nil, nil, true end
+    return {{id = "projection"}}, failure("gate") or failure("projections"), {}, 1
 end
 function M.list_cursors(...: any): (any, error?, any)
     return {{id = "cursor"}}, failure("cursors"), {}
 end
 function M.find_projection_cursor(...: any): (any, error?)
-    return {id = "cursor", projection_id = "projection"}, failure("find")
+    return {id = "cursor", projection_id = "projection"}, failure("gate") or failure("find")
 end
-function M.select_projection_cursor(...: any): (any, error?)
-    return {id = "cursor", projection_id = "projection", job_id = "job", status = "active", last_seq = 0}, failure("select")
+function M.select_projection_cursor(...: any): (any, error?, number)
+    return {id = "cursor", projection_id = "projection", job_id = "job", status = "active", generation = 1, last_seq = 0},
+        failure("gate") or failure("select"), 1
 end
 function M.begin_wait(...: any): (any, error?) return {}, failure("begin_wait") end
 function M.close_wait(...: any): () M.closes = M.closes + 1 end
 function M.wait_until_reached(...: any): (any, boolean, error?) return true, false, failure("wait") end
 function M.wake_job(...: any): (any, error?) return true, failure("wake") end
+M.wake_catch_up = M.wake_job
+function M.catch_up_progress(db: any, _thread_id: string, selected: table, _authorize: table): (any, error?)
+    local rows, err = db:query("test progress", {selected.id})
+    if err then return nil, err end
+    local row = rows[1]
+    if row.generation ~= selected.generation or row.job_id ~= selected.job_id then
+        return nil, errors.new({kind = errors.CONFLICT, retryable = true, message = "projection catch-up cursor changed"})
+    end
+    return row, nil
+end
 return M

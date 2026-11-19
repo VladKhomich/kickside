@@ -29,4 +29,9 @@ function M.work(...): (any, error?)
     M.writes = M.writes + 1
     return nil, errors.new({kind = errors.INTERNAL, retryable = false, message = "access guard reaches unexpected work"})
 end
+function M.read_projection_page(db: any, thread_id: string): (any, error?)
+    local _, _, _, _, err = M.gate.gate_thread_access(db, thread_id, 1)
+    if err then return nil, err end
+    return M.work()
+end
 return M

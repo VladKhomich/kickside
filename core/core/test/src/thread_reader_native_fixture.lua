@@ -3,8 +3,10 @@ local json = require("json")
 local M: any = {}
 function M.reset(route: any, source: any)
     M.stage, M.fail_at, M.source = route.stage, route.fail_at or 1, source
-    M.queries, M.missing, M.proof = 0, false, nil
+    M.queries, M.missing, M.proof, M.last_statement = 0, false, nil, nil
     M.row = {id = "thread", component_id = "component", thread_class = "reader", attrs = "{}",
+        component_impl_id = "kickside.core:thread",
+        component_incarnation = "test-component", thread_incarnation = "test-thread", payload_allowed = 1,
         max_pruned_seq = 0, event_count = 1, seq = 1, subject_version = 1}
 end
 function M.outcome(stage: string, value: any): (any, error?)
@@ -23,9 +25,14 @@ function M.select(...: any): any
             return wrapper
         end
     end})
+    function wrapper:to_sql(): (string, table)
+        local statement, args = native:to_sql()
+        return statement, args
+    end
     function wrapper:run_with(_db: any): any
         return {query = function(_self: any): (any, error?)
             M.queries = M.queries + 1
+            M.last_statement = native:to_sql()
             if M.queries == M.fail_at then return M.outcome("query", {M.row}) end
             return {M.row}, nil
         end}
@@ -33,7 +40,15 @@ function M.select(...: any): any
     return wrapper
 end
 function M.database(): any
-    return {type = function(_self: any): (any, error?) return M.outcome("type", sql.type.SQLITE) end}
+    return {
+        type = function(_self: any): (any, error?) return M.outcome("type", sql.type.SQLITE) end,
+        query = function(_self: any, statement: string, _args: table): (any?, error?)
+            M.queries = M.queries + 1
+            M.last_statement = statement
+            if M.queries == M.fail_at then return M.outcome("query", {M.row}) end
+            return {M.row}, nil
+        end,
+    }
 end
 function M.decode(raw: any): (any, error?)
     if M.stage == "decode" then return M.outcome("decode", nil) end

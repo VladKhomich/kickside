@@ -8,7 +8,7 @@ entries:
       comment: Read-only access to materialized projection bodies. This contract has no history, cursor, replay, or catch-up operations.
     methods:
       - name: get
-        description: Return one committed materialized-view body after checking READ access to its owner.
+        description: Return one committed materialized-view body. Requires component READ, or ADMIN when the owner's kind declares events.read as admin.
         input_schemas:
           - format: application/schema+json
             definition: |

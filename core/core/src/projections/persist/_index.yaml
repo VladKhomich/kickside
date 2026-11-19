@@ -22,6 +22,7 @@ entries:
       - time
     imports:
       text_trim: kickside.contract:text_trim
+      event_access: kickside.core.threads:event_access
       types: kickside.core.projections:types
       execution_identity: kickside.execution:execution_identity
       trace_context: kickside.execution:trace
@@ -54,6 +55,7 @@ entries:
     imports:
       text_trim: kickside.contract:text_trim
       types: kickside.core.projections:types
+      event_access: kickside.core.threads:event_access
 
   - name: register
     kind: library.lua
@@ -65,6 +67,7 @@ entries:
       text_trim: kickside.contract:text_trim
       core_db: kickside.core:db
       jobs_config: kickside.core.jobs:config
+      event_access: kickside.core.threads:event_access
       clock: kickside.core.jobs:clock
       types: kickside.core.projections:types
       core_types: kickside.core:types
@@ -86,6 +89,8 @@ entries:
       - sql
     imports:
       text_trim: kickside.contract:text_trim
+      event_access: kickside.core.threads:event_access
+      reader: kickside.core.projections.persist:reader
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
       job_reclaim: kickside.core.jobs.persist:reclaim

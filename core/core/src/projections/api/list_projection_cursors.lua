@@ -1,8 +1,10 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- GET /threads/{id}/projections — list a thread's projections and their cursors.
 -- Response shape: { success, projections, cursors, count }.
 
 local http = require("http")
 local sql = require("sql")
+local uuid = require("uuid")
 
 local core_db = require("core_db")
 local http_params = require("http_params")
@@ -31,6 +33,10 @@ local function handler(): ()
         res:write_json({ success = false, error = "thread id is required" })
         return
     end
+    local function not_found(): error
+        return errors.new({kind = errors.NOT_FOUND, message = "thread not found", retryable = false,
+            details = {code = "thread_access_not_found"}})
+    end
 
     local limit, limit_err = http_params.query_int(req, "limit", 200, { min = 1, max = 500 })
     if limit_err then
@@ -55,16 +61,14 @@ local function handler(): ()
         return
     end
 
-    -- Gate the thread before reading: READ access required.
-    local allowed, _status, gate_msg, _component_id, gate_err = thread_access.gate_thread_access(db, thread_id, thread_access.READ)
-    if not allowed then
-        local status, payload = thread_access.failure_response(db, gate_err :: error, gate_msg)
-        res:set_status(status)
-        res:write_json(payload)
-        return
+    local authorize = {}
+    local projections, projections_err, projections_page
+    if uuid.validate(thread_id) then
+        projections, projections_err, projections_page =
+            reader.list_projections(db, thread_id, limit :: integer, projections_after, authorize)
+    else
+        projections_err = not_found()
     end
-
-    local projections, projections_err, projections_page = reader.list_projections(db, thread_id, limit :: integer, projections_after)
     if projections_err then
         local err = release_error(db, projections_err) :: error
         local status, payload = error_response(err, err == projections_err and tostring(projections_err) or nil)
@@ -72,7 +76,7 @@ local function handler(): ()
         return
     end
 
-    local cursors, cursors_err, cursors_page = reader.list_cursors(db, thread_id, limit :: integer, cursors_after)
+    local cursors, cursors_err, cursors_page = reader.list_cursors(db, thread_id, limit :: integer, cursors_after, authorize)
     local err = release_error(db, cursors_err)
     if err then
         local status, payload = error_response(err, err == cursors_err and tostring(cursors_err) or nil)

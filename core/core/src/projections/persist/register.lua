@@ -9,6 +9,7 @@
 
 local trim = require("text_trim").trim
 local sql = require("sql")
+local event_access = require("event_access")
 local json = require("json")
 local registry = require("registry")
 local uuid = require("uuid")
@@ -70,12 +71,7 @@ local now_string = clock.now
 -- that says how to run the projection, and the fold state produced by that
 -- worker. Keep the declaration vocabulary in one place so normal
 -- re-registration and destructive-storage rebuilds cannot drift apart.
-local DECLARATION_BODY_KEYS = {
-    "meta",
-    "worker_config",
-    "events",
-    "drop_notify",
-}
+local DECLARATION_BODY_KEYS = {"meta", "worker_config", "events", "drop_notify"}
 
 -- Select only the declaration JSON from each addressed row. Keep nested nulls
 -- and the shapes of JSON arrays and objects in the selected fields.
@@ -107,11 +103,11 @@ end
 local function same_declaration(a: any, b: any): boolean
     if type(a) ~= type(b) then return false end
     if type(a) ~= "table" then return a == b end
-    for key, value in pairs(a :: table) do
-        if not same_declaration(value, (b :: table)[key]) then return false end
+    for key, value in pairs(a) do
+        if not same_declaration(value, b[key]) then return false end
     end
-    for key in pairs(b :: table) do
-        if (a :: table)[key] == nil then return false end
+    for key in pairs(b) do
+        if a[key] == nil then return false end
     end
     return true
 end
@@ -355,8 +351,9 @@ end
 -- the caller begins and commits; on error the caller rolls back. Declaration
 -- convergence accepts only a declared compatible worker transition on an
 -- existing cursor. Lifecycle attachments start new cursors at the retained boundary.
+-- Component-backed registration supplies authorization for the locked thread read.
 function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table,
-    mode: string?, declaration_impl_id: string?): (RegisterResult?, error?)
+    mode: string?, declaration_impl_id: string?, source: table?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -414,17 +411,28 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         end
     end
 
-    local thread_query = sql.builder.select("id", "event_count", "max_pruned_seq", "component_id", "thread_class", "deleting_at")
-        :from("kickside_thread")
-        :where(sql.builder.eq({ id = thread_id }))
-    if lock ~= "" then
-        thread_query = thread_query:suffix(lock)
+    local thread_query = sql.builder.select("t.id", "t.event_count", "t.max_pruned_seq", "t.thread_class", "t.deleting_at")
+    local build_err: error?
+    if source then
+        thread_query, build_err = event_access.authorized_query(tx, thread_id, nil, thread_query, source)
+        if build_err then return nil, build_err end
+    else
+        thread_query = thread_query:columns("t.component_id"):from("kickside_thread t"):where("t.id = ?", thread_id)
     end
-    local thread_rows, thread_err = thread_query:run_with(tx):query()
+    if lock ~= "" then
+        thread_query = thread_query:suffix(lock .. " OF t")
+    end
+    local thread_rows, thread_err
+    if source then thread_rows, thread_err = event_access.execute(tx, thread_id, thread_query, source)
+    else thread_rows, thread_err = thread_query:run_with(tx):query() end
     thread_rows, thread_err = sql_boundary.bounded_rows(thread_rows, thread_err,
         "failed to load thread", "thread.rows", 0, 1, response_error)
     if thread_err then return nil, thread_err end
     if not thread_rows then return nil, response_error("thread.rows") end
+    if source then
+        local access_err = event_access.verify(source, thread_rows[1])
+        if access_err then return nil, access_err end
+    end
     if #thread_rows == 0 then
         return fail("thread not found", errors.NOT_FOUND)
     end
@@ -735,11 +743,11 @@ end
 -- committing its own transaction off db. On error it rolls back and returns
 -- the error. Delegates to register_projection_tx for the core SQL.
 function writer.register_projection(db: sql.DB, thread_id: string, params: table, mode: string?,
-    declaration_impl_id: string?): (RegisterResult?, error?)
+    declaration_impl_id: string?, source: table?): (RegisterResult?, error?)
     local dbtype, dbtype_err = sql_boundary.database_type(db, "failed to resolve db type", "database.type", response_error)
     if dbtype_err then return nil, dbtype_err end
     local result, err = sql_boundary.transaction(db, function(tx: sql.Transaction): (any?, error?)
-        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id)
+        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id, source)
     end, "projection registration", response_error)
     if err then return nil, err end
     if result and result.transitioned then return result, nil end

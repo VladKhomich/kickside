@@ -184,6 +184,21 @@ function M.key_exists(tx: Executor, component_id: string): (boolean?, error?)
     return rows ~= nil and #rows > 0, nil
 end
 
+-- Teardown publishes the reservation in the transaction that deletes the
+-- component. Call after key_exists so a delete it waited for is visible.
+function M.pending_thread_reap(tx: Executor, component_id: string): (boolean?, error?)
+    local dialect, dialect_err = (tx :: sql.Transaction):db_type()
+    if dialect_err then return nil, dialect_err end
+    if dialect == sql.type.POSTGRES then component_id = string.lower(component_id) end
+    local rows, err = tx:query("SELECT component_id FROM kickside_component_thread_reap WHERE component_id=$1",
+        {component_id})
+    if err then return nil, errors.wrap(err, "component thread reap lookup failed") end
+    if type(rows) ~= "table" then
+        return nil, errors.new({kind = errors.INTERNAL, message = "component thread reap lookup returned no rows result"})
+    end
+    return #rows > 0, nil
+end
+
 -- Structural writers serialize before reading paths or ancestry. A row lock on
 -- the immediate parent alone cannot fence creation under a moving ancestor.
 -- SQLite already serializes transactions on its single connection.

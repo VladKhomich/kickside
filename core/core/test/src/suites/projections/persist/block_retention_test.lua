@@ -31,7 +31,7 @@ end
 local function fixture(): (string, table)
     local db = assert(sql.get("app:db"))
     local thread = uuid.v7()
-    execute(db, "INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test',$2,3)", { thread, thread })
+    execute(db, "INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test','',3)", {thread})
     for seq = 1, 3 do
         execute(db, [[INSERT INTO kickside_event (id,thread_id,type,role,body,seq,created_at)
             VALUES ($1,$2,'test:event','user','{}',$3,'2000-01-01T00:00:00Z')]], { uuid.v7(), thread, seq })

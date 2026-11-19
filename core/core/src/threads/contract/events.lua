@@ -110,14 +110,14 @@ local function ensure_audit_thread(db: any, thread_id: string, spec: any): error
     local identity, identity_err = declared_identity(thread_id)
     if identity_err or not identity then return identity_err end
     local audit_args = {
-        component_id = thread_id, impl_id = components[1].impl_id, trusted_audit = true,
+        component_id = thread_id, impl_id = components[1].impl_id,
         thread_class = spec.thread_class, attrs = { audience_principals = { principal } },
     }
     if registered_framework_component then
-        local _, attach_err = thread_crud.attach(db, thread_id, audit_args, owner, identity)
+        local _, attach_err = thread_crud.attach(db, thread_id, audit_args, owner, identity, true)
         if attach_err then return attach_err end
     else
-        local _, create_err = thread_crud.create(db, audit_args, owner, identity, owner_principal)
+        local _, create_err = thread_crud.create_audit(db, audit_args, owner, identity, owner_principal)
         if create_err and (create_err :: error):kind() == errors.CONFLICT then return nil end
         if create_err then return create_err end
     end
@@ -363,7 +363,7 @@ function M.append_events(args: any): (any?, error?)
             return nil, release_append_database(_db, ensure_err, false)
         end
     end
-    local results, append_err = writer.ingest_multi(_db, writes, actor_id(), system_write)
+    local results, append_err = writer.ingest_multi(_db, writes, actor_id(), system_write, true)
     if not append_err then results, append_err = append_results(results, #writes) end
     append_err = release_append_database(_db, append_err, append_err == nil and results ~= nil)
     if append_err or not results then return nil, append_err end
@@ -381,7 +381,7 @@ function M.append_events(args: any): (any?, error?)
         }
         table.insert(appended, one)
         if ((result :: any).inserted or 0) > 0 then
-            local thread_emit_err = emit_update(tid, "events.appended", { data = one })
+            local thread_emit_err = emit_update(tid, "events.appended", {data = one, binding = result.binding})
             if thread_emit_err and not emit_err then emit_err = thread_emit_err end
         end
     end

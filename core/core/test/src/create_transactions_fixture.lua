@@ -3,18 +3,28 @@ local M = {}
 function M.reset(stage: string, source: error?, secondary: error?)
     M.stage, M.source, M.secondary, M.effect_id = stage, source, secondary, nil
     M.begins, M.inserts, M.rollbacks, M.commits, M.attachments = 0, 0, 0, 0, 0
+    M.impl_reads, M.system_reads, M.prepared_impl, M.stored_impl = 0, 0, nil, "guard:kind"
 end
-function M.prepare(...)
+function M.prepare(_params: table, impl_id: string, ...: any)
+    M.prepared_impl = impl_id
     return {thread_class = "guard_class", attrs = "{}"}, nil
 end
 function M.declared_class(...): string? return nil end
 function M.class_error(...): error? return nil end
-function M.insert(...): error?
+function M.insert(_tx: any, _dbtype: string, _id: string, _row: any): error?
     M.inserts = M.inserts + 1
     return (M.stage == "insert" or M.stage == "missing_rollback") and M.source or nil
 end
 function M.dbtype_of(...): (string?, error?) return "sqlite", nil end
-function M.impl_id(...): (string?, error?) return "guard:kind", nil end
+function M.impl_id(...): (string?, error?)
+    M.impl_reads = M.impl_reads + 1
+    return "guard:kind", nil
+end
+function M.list_system(...): (table?, error?)
+    M.system_reads = M.system_reads + 1
+    if M.stage == "kind" then return nil, M.source end
+    return {{impl_id = M.stored_impl}}, nil
+end
 local tx = {}
 function tx:rollback(): (boolean?, error?)
     M.rollbacks = M.rollbacks + 1
@@ -37,7 +47,7 @@ function tx:commit(): (boolean?, error?)
     return true, nil
 end
 function M.database(): any
-    return {begin = function()
+    return {type = function() return sql.type.SQLITE end, begin = function()
         M.begins = M.begins + 1
         if M.stage == "begin" then return nil, M.source end
         if M.stage == "missing_begin" then return nil, nil end

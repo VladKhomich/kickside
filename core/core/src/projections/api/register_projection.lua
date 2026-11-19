@@ -60,15 +60,17 @@ function M.register(thread_id: string, data: any): (integer, { [string]: any })
         return status, payload
     end
 
-    local allowed, _status, gate_msg, component_id, gate_err = thread_access.gate_thread_access(db, thread_id, thread_access.ADMIN, true)
-    if not allowed then
-        local status, payload = thread_access.failure_response(db, gate_err :: error, gate_msg)
+    local source, gate_err = thread_access.gate_projection_registration(db, thread_id)
+    if not gate_err then source, gate_err = error_envelope.binding(source, nil, nil, "authorize projection registration", "core_http_operation_response") end
+    if gate_err then
+        local status, payload = thread_access.failure_response(db, gate_err, tostring(gate_err))
         return status, payload
     end
+    local lifecycle_thread = source.lifecycle == true
     local identity
-    if component_id then
+    if not lifecycle_thread then
         local capture_err
-        identity, capture_err = execution_identity.capture({ component_id = component_id })
+        identity, capture_err = execution_identity.capture({ component_id = source.binding.component_id })
         if not capture_err then identity, capture_err = error_envelope.binding(identity, nil, nil, "capture projection identity", "core_http_operation_response") end
         if capture_err then
             local err = release_error(db, capture_err) :: error
@@ -86,12 +88,12 @@ function M.register(thread_id: string, data: any): (integer, { [string]: any })
         worker_ref = validated.worker_ref,
         worker_input_mode = data.worker_input_mode,
         execution_identity = identity,
-        system_identity = component_id == nil,
+        system_identity = lifecycle_thread,
         worker_config = data.worker_config,
         events = data.events,
         debounce_idle_ms = data.debounce_idle_ms,
         debounce_max_ms = data.debounce_max_ms,
-    })
+    }, nil, nil, not lifecycle_thread and source or nil)
     if not register_err then result, register_err = error_envelope.binding(result, nil, nil, "register projection", "core_http_operation_response") end
     local err = release_error(db, register_err, register_err == nil)
     if err then
