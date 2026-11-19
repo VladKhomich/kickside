@@ -56,8 +56,9 @@ release-check` builds the untracked main page, verifies its complete asset
 manifest and font references, and performs a dry-run pack.
 
 For releases of the KickSide repository itself, Release Please creates the GitHub
-tags and release records. Publish the staged native packages from a clean
-checkout at the exact tagged commit with the evidence directory produced by
+tags and release records. After the qualified release PR is squash-merged,
+publish the staged native packages from a clean checkout at its exact tagged
+commit with the evidence directory produced by
 the internal two-engine release gate. Authenticate with `wippy auth login`
 before publishing.
 

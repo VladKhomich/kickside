@@ -111,7 +111,7 @@ def verified_release(repository, evidence):
     return modules, proofs
 
 
-def publish_archive(repository, module, wippy, artifact, expected):
+def published_archive_matches(module, wippy, expected):
     name, version = module['name'], module['version']
     filename = module['module'] + '-' + version + '.wapp'
     try:
@@ -119,19 +119,25 @@ def publish_archive(repository, module, wippy, artifact, expected):
             published = vendor / module['organization'] / filename
             if not published.is_file() or digest(published) != expected:
                 raise ValueError('Published artifact differs from the verified release: ' + name + '@' + version)
-            print('Already published with matching digest: ' + name + '@' + version, flush=True)
-            return
+            return True
     except subprocess.CalledProcessError as error:
         missing = 'failed to download module: ' + name + '@' + version + ': module not found'
         if missing not in (error.stdout or '') + (error.stderr or ''):
             raise
+        return False
+
+
+def publish_archive(repository, module, wippy, artifact, expected):
+    name, version = module['name'], module['version']
+    if published_archive_matches(module, wippy, expected):
+        print('Already published with matching digest: ' + name + '@' + version, flush=True)
+        return
     args = [wippy, 'publish', '--config', str(repository / module['path']), '--version', version,
             '--module-type', module['type'], '--wapp', str(artifact),
             '--create', '--module-visibility', module['visibility']]
     subprocess.run(args, cwd=repository, check=True)
-    with installed_artifacts([module], wippy) as vendor:
-        if digest(vendor / module['organization'] / filename) != expected:
-            raise ValueError('Published artifact digest differs: ' + name + '@' + version)
+    if not published_archive_matches(module, wippy, expected):
+        raise ValueError('Published artifact is unavailable: ' + name + '@' + version)
     print('Verified ' + name + '@' + version, flush=True)
 
 
@@ -155,7 +161,14 @@ def publish(repository, evidence, wippy, *, verify_only=False):
             print(f'Checked {name}@{module["version"]} sha256:{proof["sha256"]}', flush=True)
         if verify_only:
             return
+        missing = []
         for module in ordered:
+            name = module['name']
+            if published_archive_matches(module, wippy, proofs[name]['sha256']):
+                print(f'Already published with matching digest: {name}@{module["version"]}', flush=True)
+            else:
+                missing.append(module)
+        for module in missing:
             name = module['name']
             publish_archive(repository, module, wippy, staged[name], proofs[name]['sha256'])
 

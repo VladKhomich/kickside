@@ -201,8 +201,8 @@ class ReleasePublication(unittest.TestCase):
             self.run_publication()
         self.assertEqual([event['name'] for event in self.events() if event['step'] == 'publish'], ['fixture/first'])
 
-    def test_different_existing_artifact_is_not_overwritten(self):
-        occupied = self.state / 'fixture-first-1.2.3'
+    def test_later_existing_conflict_prevents_all_uploads(self):
+        occupied = self.state / 'fixture-page-1.2.3'
         occupied.write_bytes(b'previously published bytes')
         with self.assertRaisesRegex(ValueError, 'differs from the verified release'):
             self.run_publication()
@@ -217,7 +217,7 @@ class ReleasePublication(unittest.TestCase):
 
     def test_changed_uploaded_bytes_fail_verification(self):
         with patch.dict(os.environ, {'RELEASE_TEST_CORRUPT_UPLOAD': '1'}):
-            with self.assertRaisesRegex(ValueError, 'Published artifact digest differs'):
+            with self.assertRaisesRegex(ValueError, 'Published artifact differs from the verified release'):
                 self.run_publication()
 
     def test_source_changes_prevent_entire_cohort(self):
