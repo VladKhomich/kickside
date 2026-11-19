@@ -242,9 +242,13 @@ function jobs.heartbeat(id: string, lease: table): (boolean?, error?)
     local active, active_err = jobs.lease_valid(id, lease)
     if active_err then return nil, active_err end
     if not active then return false, nil end
-    local _, notify_err = proc_supervisor.notify(id, lease.token, lease.execution_seq,
+    local sent, notify_err = proc_supervisor.notify(id, lease.token, lease.execution_seq,
         "heartbeat", nil)
     if notify_err then return nil, notify_err end
+    if not sent then
+        return nil, (errors.new({message = "job execution supervisor did not receive heartbeat",
+            kind = errors.UNAVAILABLE, retryable = true}) :: error)
+    end
     return true, nil
 end
 

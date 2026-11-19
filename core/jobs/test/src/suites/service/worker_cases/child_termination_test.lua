@@ -234,14 +234,32 @@ local function define_tests()
             test.contains(tostring(child_err), worker_child.PROC_TIMEOUT_MARKER)
         end)
 
-        test.it("refuses a heartbeat for a lease the execution no longer holds", function()
+        test.it("requires a live lease and supervisor for a read-only heartbeat", function()
             local db = assert(sql.get("app:db"))
             local dbtype = tostring(db:type())
             local job = enqueue_proc_and_claim(db, dbtype, make_thread(db), {})
             local before = assert(db:query("SELECT heartbeat_at,lease_until,updated_at FROM kickside_job WHERE id=$1", {job.id}))[1]
-            local alive, heartbeat_err = jobs.heartbeat(job.id, { token = job.lease_token, execution_seq = job.execution_seq })
-            test.is_nil(heartbeat_err)
-            test.is_true(alive)
+            local fence = { token = job.lease_token, execution_seq = job.execution_seq }
+            local alive, heartbeat_err = jobs.heartbeat(job.id, fence)
+            test.is_nil(alive, "a missing supervisor cannot acknowledge progress")
+            test.is_true(errors.is(heartbeat_err, errors.UNAVAILABLE))
+            test.is_true(heartbeat_err:retryable())
+
+            local topic = process.listen(proc_supervisor.CONTROL_TOPIC)
+            local name = proc_supervisor.execution_name(job.id, job.lease_token)
+            local registered, register_err = process.registry.register(name, nil, process.registry.CONSISTENT)
+            test.is_true(registered, tostring(register_err))
+            for _ = 1, 10 do
+                local reported, report_err = jobs.heartbeat(job.id, fence)
+                test.is_nil(report_err)
+                test.is_true(reported)
+                local signal = channel.select({ topic:case_receive(), time.after("1s"):case_receive() })
+                test.eq(signal.channel, topic)
+                test.eq(signal.value.kind, "heartbeat")
+                test.eq(signal.value.execution_seq, job.execution_seq)
+            end
+            process.registry.unregister(name, process.registry.CONSISTENT)
+            process.unlisten(topic)
             local renewed = assert(db:query("SELECT heartbeat_at FROM kickside_job WHERE id=$1", { job.id }))[1]
             test.eq(renewed.heartbeat_at, before.heartbeat_at, "progress does not write ownership state")
             local after = assert(db:query("SELECT lease_until,updated_at FROM kickside_job WHERE id=$1", {job.id}))[1]
