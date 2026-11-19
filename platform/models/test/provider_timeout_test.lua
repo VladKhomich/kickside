@@ -32,16 +32,16 @@ end
 
 local function define_tests()
     test.describe("provider profile timeout", function()
-        test.it("keeps the LLM dependency independent of profile number validation", function()
+        test.it("requires the LLM transport version that parses discovery timeout requirements", function()
             local dependency = assert(registry.get("kickside.models:dep.wippy.llm"))
-            test.eq(dependency.data.version, "*")
+            test.eq(dependency.data.version, ">=0.5.14")
         end)
 
         test.it("rejects invalid timeouts on create and update", function()
             local id = "provider-timeout-validation"
             local profile
             local ok, failure = pcall(function()
-                for _, timeout in ipairs({0, false, -1, "0", "0s", "2s", "30 seconds", "30", 0/0, math.huge}) do
+                for _, timeout in ipairs({0, false, -1, "0", "0s", "2s", "30 seconds", "30", "invalid", 0/0, math.huge}) do
                     local created, err = repo.create_profile({
                         id = id, name = id, provider_id = provider, config = {timeout = timeout},
                     })
@@ -103,10 +103,12 @@ local function define_tests()
                 {id = "false", value = false},
                 {id = "negative", value = -1},
                 {id = "text", value = "30 seconds"},
-                {id = "duration", value = "30s"},
+                {id = "duration", value = "2.5s"},
+                {id = "empty", value = ""},
                 {id = "numeric-text", value = "30"},
                 {id = "nan-text", value = "NaN"},
                 {id = "positive", value = 1, stored = 1, expected = "1000ms"},
+                {id = "positive-fraction", value = 2.5, stored = 2.5, expected = "2500ms"},
                 {id = "unset"},
             }
             local client = plain_generate._client
@@ -155,7 +157,8 @@ local function define_tests()
                     local retry_profile = assert(repo.get_profile(fixture.id .. "-retry"))
                     test.eq(retry_profile.config.retry.attempts, fixture.stored)
                     test.eq(retry_profile.config.retry.backoff_ms, 250)
-                    local edited = assert(repo.update_profile(fixture.id, {enabled = false}))
+                    local edited = assert(repo.update_profile(fixture.id, {name = "Renamed profile", enabled = false}))
+                    test.eq(edited.name, "Renamed profile")
                     test.is_false(edited.enabled)
                     test.eq(edited.config.timeout, fixture.stored)
                 end
