@@ -103,9 +103,12 @@ When answers are disabled or no model is assigned to the default `class:fast`, A
 the query results with `mode: "query"` and a short explanation in `answer`.
 MCP AskKB includes that explanation and numbered passages in its `answer` text
 and returns the same source records in `sources`.
+Ask reports that no answer was found if retrieval returns no passages and no
+agent will run. An agentic query can continue retrieving when its initial search
+is empty.
 Generated synthesis answers cite these passages with one-based references such
 as `[1]`; the reference identifies `results[0]` in the JSON response. The API
 does not declare a separate top-level `citations` field.
-An agentic or synthesis error is returned to the caller; an agentic failure does
-not invoke a second answering driver. Configuration reads and retrieval errors
-are propagated before generation.
+Ask returns generation errors to the caller, including blank provider responses.
+An agentic failure does not invoke a second answering driver. Configuration reads
+and retrieval errors are propagated before generation.
