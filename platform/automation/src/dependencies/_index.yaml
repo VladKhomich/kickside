@@ -29,10 +29,10 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '>=0.3.1'
+    version: '>=0.3.9'
     kind: ns.dependency
     meta:
-      comment: Provides the Trigger lifecycle, delivery, and acquisition-control contracts.
+      comment: Provides Trigger contracts and text normalization.
     component: kickside/contract
 
   - name: dep.kickside.core
