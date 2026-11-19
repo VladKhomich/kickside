@@ -28,10 +28,10 @@ entries:
     component: kickside/contract
 
   - name: dep.kickside.jobs
-    version: '>=0.1.61'
+    version: '>=0.1.87'
     kind: ns.dependency
     meta:
-      comment: Durable leased-job engine; projection completion requires ordered wake and completing-job locks from 0.1.61.
+      comment: Durable leased-job engine, including transaction-scoped lease checks for projection checkpoints.
     component: kickside/jobs
 
   - name: dep.wippy.migration
