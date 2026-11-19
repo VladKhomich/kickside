@@ -3,11 +3,14 @@ local test = require("test")
 local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
+local process = require("process")
+local channel = require("channel")
 local config = require("config")
 local retention = require("retention")
 local schedule = require("retention_schedule")
 local job_fixture = require("job_fixture")
 local heartbeat = require("worker_heartbeat")
+local clock = require("clock")
 local retention_order_migration = require("retention_order_migration")
 
 local function required(value: any, err: error?): any
@@ -45,6 +48,35 @@ local function drain(db: any, instant: any): (table, integer)
         test.is_true(passes < 10000, "retention never reaches its idle interval")
     until driver.deadline() > instant:unix_nano()
     return totals, passes
+end
+
+local function with_policy(changes: table, fn: () -> ())
+    local policy = required(config.policy())
+    for key, value in pairs(changes) do policy[key] = value end
+    local original = config.policy
+    config.policy = function() return policy, nil end
+    local ok, err = pcall(fn)
+    config.policy = original
+    if not ok then error(err) end
+end
+
+local function seen(db: any, worker_id: string, seconds_ago: integer)
+    local stamp = clock.format(time.now():add(-seconds_ago * time.SECOND), tostring(db:type()))
+    required(db:execute("UPDATE kickside_job_worker SET last_seen_at=$1 WHERE id=$2", {stamp, worker_id}))
+    required(db:execute("UPDATE kickside_job_worker_pulse SET last_seen_at=$1 WHERE worker_id=$2", {stamp, worker_id}))
+end
+
+local function running_worker(db: any): (string, string)
+    local dbtype = tostring(db:type())
+    local worker_id = uuid.v7()
+    test.is_nil(heartbeat.mark(db, dbtype, worker_id, "v1"))
+    local job_id = uuid.v7()
+    required(db:execute([[INSERT INTO kickside_job
+        (id,owner_kind,owner_id,job_type,status,job_identity,lease_token,lease_until)
+        VALUES ($1,'test',$2,'test.retention','running',$2,'token',$3)]],
+        {job_id, job_id, clock.format(time.now():add(time.HOUR), dbtype)}))
+    required(db:execute("UPDATE kickside_job_worker SET current_job_id=$1 WHERE id=$2", {job_id, worker_id}))
+    return worker_id, job_id
 end
 
 local function define_tests()
@@ -608,6 +640,102 @@ local function define_tests()
             test.eq(rows[1].worker_id, "current")
             rows = required(db:query("SELECT id FROM kickside_job_worker WHERE id='current'"))
             test.eq(#rows, 1, "a current pulse preserves a long-lived worker")
+            db:release()
+        end)
+
+        test.it("keeps a live worker with a running job under a job retention shorter than its heartbeat", function()
+            local db = open_queue()
+            local dbtype = tostring(db:type())
+            with_policy({retention_jobs_ms = 1000, retention_job_runs_ms = 1000}, function()
+                local lease_seconds = required(config.policy()).lease_timeout_seconds
+                test.is_true(lease_seconds > 3)
+                local worker_id, job_id = running_worker(db)
+                seen(db, worker_id, 3)
+                for _ = 1, 3 do drain(db, time.now()) end
+                local workers = required(db:query("SELECT current_job_id FROM kickside_job_worker WHERE id=$1", {worker_id}))
+                test.eq(#workers, 1, "a worker inside the lease timeout keeps its registration")
+                test.eq(workers[1].current_job_id, job_id)
+                test.is_nil(heartbeat.pulse(db, dbtype, worker_id, "v1"), "the next heartbeat finds its registration")
+                local jobs = required(db:query("SELECT status FROM kickside_job WHERE id=$1", {job_id}))
+                test.eq(jobs[1].status, "running")
+            end)
+            db:release()
+        end)
+
+        test.it("keeps a heartbeating worker for the minimum lease timeout", function()
+            local db = open_queue()
+            with_policy({lease_timeout_seconds = 1, lease_heartbeat_ms = 250,
+                    retention_jobs_ms = 1, retention_job_runs_ms = 1}, function()
+                local worker_id, job_id = running_worker(db)
+                local initial = required(db:query("SELECT last_seen_at FROM kickside_job_worker_pulse WHERE worker_id=$1", {worker_id}))[1].last_seen_at
+                local lifecycle = process.events()
+                local pid, spawn_err = process.spawn_linked_monitored("app:retention_heartbeat", config.process_host(),
+                    {worker_id = worker_id, registry_version = "v1"})
+                test.is_nil(spawn_err)
+                test.not_nil(pid)
+                local ok, err = pcall(function()
+                    local function pulse(): string
+                        local rows = required(db:query("SELECT last_seen_at FROM kickside_job_worker_pulse WHERE worker_id=$1", {worker_id}))
+                        test.eq(#rows, 1, "retention preserves the live pulse")
+                        return rows[1].last_seen_at
+                    end
+                    local ready = time.now():add(500 * time.MILLISECOND)
+                    repeat
+                        time.sleep("10ms")
+                    until pulse() ~= initial or time.now():after(ready)
+                    local first = pulse()
+                    test.is_true(first ~= initial, "the heartbeat process starts pulsing")
+                    local deadline = time.now():add(800 * time.MILLISECOND)
+                    repeat
+                        drain(db, time.now())
+                        time.sleep("25ms")
+                    until pulse() ~= first or time.now():after(deadline)
+                    test.is_true(pulse() ~= first, "worker pulses leave scheduling margin inside the minimum lease")
+                    local finish = time.now():add(2 * time.SECOND)
+                    repeat
+                        drain(db, time.now())
+                        local workers = required(db:query("SELECT current_job_id FROM kickside_job_worker WHERE id=$1", {worker_id}))
+                        test.eq(#workers, 1)
+                        test.eq(workers[1].current_job_id, job_id)
+                        time.sleep("25ms")
+                    until time.now():after(finish)
+                    test.eq(required(db:query("SELECT status FROM kickside_job WHERE id=$1", {job_id}))[1].status, "running")
+                end)
+                local stop_err = heartbeat.stop(tostring(pid))
+                test.is_nil(stop_err)
+                local stopped = time.after("5s")
+                while true do
+                    local selected = channel.select({lifecycle:case_receive(), stopped:case_receive()})
+                    test.is_true(selected.channel == lifecycle, "the owned heartbeat exits")
+                    local event = selected.value
+                    if type(event) == "table" and event.kind == process.event.EXIT and tostring(event.from) == tostring(pid) then
+                        test.is_nil(event.result.error)
+                        break
+                    end
+                end
+                if not ok then error(err) end
+                seen(db, worker_id, 2)
+                drain(db, time.now())
+                test.eq(#required(db:query("SELECT id FROM kickside_job_worker WHERE id=$1", {worker_id})), 0,
+                    "a stopped worker expires at the minimum lease timeout")
+                test.eq(#required(db:query("SELECT worker_id FROM kickside_job_worker_pulse WHERE worker_id=$1", {worker_id})), 0)
+            end)
+            db:release()
+        end)
+
+        test.it("prunes a worker whose heartbeat is older than the lease timeout under a long job retention", function()
+            local db = open_queue()
+            with_policy({retention_jobs_ms = 30 * 86400000}, function()
+                local lease_seconds = required(config.policy()).lease_timeout_seconds
+                local worker_id = uuid.v7()
+                test.is_nil(heartbeat.mark(db, tostring(db:type()), worker_id, "v1"))
+                seen(db, worker_id, lease_seconds + 60)
+                drain(db, time.now())
+                local workers = required(db:query("SELECT id FROM kickside_job_worker WHERE id=$1", {worker_id}))
+                test.eq(#workers, 0, "a worker past the lease timeout is no longer live")
+                local pulses = required(db:query("SELECT worker_id FROM kickside_job_worker_pulse WHERE worker_id=$1", {worker_id}))
+                test.eq(#pulses, 0)
+            end)
             db:release()
         end)
 

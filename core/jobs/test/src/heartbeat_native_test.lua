@@ -5,8 +5,8 @@ local sql = require("sql")
 local function invoke(operation)
     if operation == "mark" then return nil, heartbeat.mark(fixture.database(), fixture.dialect, "worker", "version") end
     if operation == "pulse" then return nil, heartbeat.pulse(fixture.database(), fixture.dialect, "worker", "version") end
-    if operation == "start" then return heartbeat.start("worker", "version", "1s") end
-    local ok, err = pcall(heartbeat.main, {worker_id = "worker", registry_version = "version", interval = "1s"})
+    if operation == "start" then return heartbeat.start("worker", "version") end
+    local ok, err = pcall(heartbeat.main, {worker_id = "worker", registry_version = "version"})
     test.is_false(ok)
     return nil, err
 end
@@ -21,7 +21,7 @@ local function preserves(err: error?, source: error)
 end
 local paths = {{operation = "mark", stages = {"begin", "worker", "registration", "commit"}},
     {operation = "pulse", stages = {"update"}}, {operation = "start", stages = {"spawn"}},
-    {operation = "main", stages = {"database", "dialect", "update"}}}
+    {operation = "main", stages = {"database", "dialect", "policy", "update"}}}
 return {run = test.run_cases(function()
     test.describe("native worker heartbeat failures", function()
         for _, dialect in ipairs({sql.type.SQLITE, sql.type.POSTGRES}) do
@@ -80,7 +80,8 @@ return {run = test.run_cases(function()
             {operation = "pulse", stage = "update", field = "pulse.rows_affected"},
             {operation = "start", stage = "spawn", field = "process.id"},
             {operation = "main", stage = "database", field = "database"},
-            {operation = "main", stage = "dialect", field = "database.type"}}) do
+            {operation = "main", stage = "dialect", field = "database.type"},
+            {operation = "main", stage = "policy", field = "policy"}}) do
             test.it(case.operation .. "/" .. case.stage .. "/missing", function()
                 fixture.reset(case.operation, case.stage, nil, sql.type.SQLITE)
                 fixture.missing = true
@@ -118,6 +119,13 @@ return {run = test.run_cases(function()
             test.is_true(errors.is(err, errors.INVALID))
             test.is_false(err:retryable())
         end)
+        test.it("preserves an explicit heartbeat interval", function()
+            fixture.reset("start", nil, nil, sql.type.SQLITE)
+            local pid, err = heartbeat.start("worker", "version", "250ms")
+            test.is_nil(err)
+            test.eq(pid, "heartbeat-process")
+            test.eq(fixture.spawn_args.interval, "250ms")
+        end)
         for _, operation in ipairs({"mark", "pulse", "start", "main"}) do
             test.it("successful boundary/" .. operation, function()
                 fixture.reset(operation, nil, nil, sql.type.SQLITE)
@@ -127,7 +135,10 @@ return {run = test.run_cases(function()
                 else
                     local value, err = invoke(operation)
                     test.is_nil(err)
-                    if operation == "start" then test.eq(value, "heartbeat-process") end
+                    if operation == "start" then
+                        test.eq(value, "heartbeat-process")
+                        test.is_nil(fixture.spawn_args.interval, "default startup lets the heartbeat derive its cadence from the lease")
+                    end
                     if operation == "mark" then test.eq(fixture.commits, 1); test.eq(fixture.rollbacks, 0) end
                 end
             end)

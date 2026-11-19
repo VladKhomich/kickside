@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
 local time = require("time")
 local channel = require("channel")
@@ -59,7 +60,7 @@ function heartbeat.start(worker_id, registry_version, interval): (string?, error
     local pid, err = process.spawn_linked_monitored(PROCESS_ID, cfg.process_host(), {
         worker_id = worker_id,
         registry_version = registry_version,
-        interval = interval or "1s",
+        interval = interval,
     })
     if err then return nil, errors.wrap(err, "worker heartbeat spawn failed") end
     if not pid then return nil, response_error("process.id") end
@@ -91,7 +92,15 @@ function heartbeat.main(args: table): ()
         error(sql_boundary.release(db, response_error("database.type"), "worker heartbeat db release failed"))
     end
     local dbtype = raw_type :: string
-    local interval = type(args.interval) == "string" and args.interval or "1s"
+    local interval = args.interval
+    if type(interval) ~= "string" then
+        local policy, policy_err = cfg.policy()
+        if policy_err or not policy then
+            error(sql_boundary.release(db, policy_err or response_error("policy"), "worker heartbeat db release failed"))
+        end
+        local _, interval_ms = cfg.worker_liveness(policy)
+        interval = tostring(interval_ms) .. "ms"
+    end
     local events_ch = process.events()
     while true do
         local err = heartbeat.pulse(db, dbtype, worker_id, registry_version)
