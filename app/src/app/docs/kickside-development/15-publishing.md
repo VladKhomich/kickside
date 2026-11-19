@@ -58,7 +58,7 @@ manifest and font references, and performs a dry-run pack.
 For the KickSide repository, Release Please creates GitHub tags and release
 records. The hosted workflow builds and publishes ordinary releases to the Hub.
 
-To publish a qualified release using the archives tested on SQLite and PostgreSQL,
+To publish a qualified release using the exact archives recorded by the SQLite and PostgreSQL gates,
 retain the full evidence directory from the internal release gate. Run
 `sha256sum "$RELEASE_EVIDENCE/artifacts.json"` and add one Git trailer of the
 form `Hub-Artifact-Manifest-SHA256: <digest>` to the release PR's squash commit
@@ -78,7 +78,9 @@ python3 scripts/publish-release-modules.py --repository . --evidence "$RELEASE_E
 
 The publisher checks the tagged commit's parent and source tree against the
 verified release, verifies the manifest digest, and checks every archive against
-both engines' evidence before publishing. It uploads the staged archives in
+both engines' evidence before publishing. Both engines must have exercised an
+application archive. A companion marked `packed-only` has archive verification
+but no runtime coverage from that gate. The publisher uploads the archives in
 dependency order and publishes the application last when included. If publication
 stops partway through, rerun with the same tag and evidence. Matching Hub releases
 are reused and a digest conflict stops publication. Publish a new version to
