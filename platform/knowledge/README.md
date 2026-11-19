@@ -55,6 +55,24 @@ commit regenerated tracked assets with the source.
 
 Create a knowledge base with an installed engine, ingest content, and inspect processing state before querying it. Select the base on an agent capability and share it with the execution principal. The engine owns document, graph, and embedding storage; Knowledge owns the base lifecycle and engine-neutral interfaces.
 
+### Recover a document from its original upload
+
+After indexing resumes, compare the expected upload IDs with the documents in the
+knowledge base. For a document still missing from search, the original uploader
+can request re-ingestion if they have write access to that knowledge base.
+
+Send `POST /api/v1/knowledge/{id}/ingest-upload` with an `Idempotency-Key` header
+and a JSON body such as `{"upload_id":"<upload-id>","reingest":true}`. For a batch,
+send `upload_ids` with up to 50 IDs. Reuse the same key when retrying the same
+request. Check each entry in `results`, then verify that each accepted document
+finishes indexing and appears in search. A batch can return HTTP 200 with individual
+failures.
+
+Re-ingestion requires the retained upload and its matching source event. A newer
+deletion, a superseding source version, or a changed artifact produces a conflict.
+If the upload never reached the knowledge base, the ordinary ingest request uses
+the same endpoint with `upload_id` and no `reingest` flag.
+
 ## Reference
 
 - [Module reference](src/README.md)
