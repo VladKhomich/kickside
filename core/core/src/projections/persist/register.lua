@@ -341,6 +341,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local projection_id: string
     local created_projection = false
     local declaration_changed = false
+    local worker_changed = false
     local checkpoint = start_seq
     local projection_rows, projection_query_err = sql.builder.select("id", "body", "last_event_seq")
         :from("kickside_projection")
@@ -367,10 +368,12 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         -- reset is the explicit rebuild: it replaces the whole body and rewinds the
         -- cursor so the fold reconstructs the read-model from start_seq.
         local body_to_write = body_json
+        local stored, decode_err = persisted_json.decode_table(projection_rows[1].body, "kickside_projection.body")
+        local stored_meta = stored and stored.meta
+        worker_changed = type(stored_meta) ~= "table" or stored_meta.worker_ref ~= worker_ref
         if not reset then
-            local merged, decode_err = persisted_json.decode_table(projection_rows[1].body, "kickside_projection.body")
             if decode_err then return nil, errors.wrap(decode_err, "failed to decode existing projection body") end
-            declaration_changed = not writer.declaration_matches(merged :: table, body)
+            declaration_changed = not writer.declaration_matches(stored :: table, body)
             if convergence and declaration_changed then
                 -- One body is shared by every cursor at this projection address.
                 local existing, existing_err = sql.builder.select("id"):from("kickside_projection_cursor")
@@ -382,13 +385,15 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                     return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
                 end
             end
-            apply_declaration_fields(merged :: table, body)
-            local merged_json, merged_err = json.encode(merged)
+            apply_declaration_fields(stored :: table, body)
+            local merged_json, merged_err = json.encode(stored)
             if merged_err then return nil, errors.wrap(merged_err, "failed to encode merged projection body") end
             if not merged_json then
                 return nil, response_error("merged_body", "merged projection body encoder returns no result")
             end
             body_to_write = merged_json :: string
+        else
+            declaration_changed = worker_changed
         end
         if params.ensure ~= true or declaration_changed then
             local projection_update = sql.builder.update("kickside_projection")
@@ -445,8 +450,10 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     end
 
     if declaration_changed and not convergence then
-        local fenced, fence_err = sql.builder.update("kickside_projection_cursor")
+        local fence = sql.builder.update("kickside_projection_cursor")
             :set("generation", sql.builder.expr("generation + 1")):set("updated_at", now)
+        if worker_changed then fence = fence:set("continuation", "") end
+        local fenced, fence_err = fence
             :where(sql.builder.eq({ projection_id = projection_id })):run_with(tx):exec()
         if fence_err then return nil, errors.wrap(fence_err, "failed to fence refreshed projection") end
         local _, proof_err = sql_boundary.number_value(type(fenced) == "table" and fenced.rows_affected or nil,
@@ -488,13 +495,15 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                 if release_err then return nil, release_err end
             end
             generation = prior_generation + (declaration_changed and 0 or 1)
-            local updated, update_err = sql.builder.update("kickside_projection_cursor")
+            local update = sql.builder.update("kickside_projection_cursor")
                 :set("last_seq", cursor_head):set("status", "active")
                 :set("generation", generation):set("last_error", nil)
                 :set("actor_id", actor_id_col)
                 :set("execution_identity_json", actor_context_col)
                 :set("debounce_idle_ms", debounce_idle_ms):set("debounce_max_ms", debounce_max_ms)
                 :set("updated_at", now)
+            if reset then update = update:set("continuation", "") end
+            local updated, update_err = update
                 :where(sql.builder.eq({ id = cursor_id })):run_with(tx):exec()
             local _, proof_err = sql_boundary.exact_row_count(updated, update_err,
                 "failed to update cursor", "cursor.update", 1, response_error)
