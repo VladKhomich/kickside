@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import subprocess
 
+from release_artifacts import approved_manifest
+
 
 def released_commit(repository, outputs):
     paths = json.loads(outputs['paths_released'])
@@ -27,7 +29,14 @@ def released_commit(repository, outputs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', type=Path, required=True)
+    parser.add_argument('--require-hosted', action='store_true', help='guard manual publication from this checkout')
     args = parser.parse_args()
+    if args.require_hosted:
+        if approved_manifest(args.repository, 'HEAD'):
+            parser.exit(1, 'This release requires qualified publication with --evidence\n')
+        parser.exit()
     commit = released_commit(args.repository, json.loads(os.environ['RELEASE_OUTPUTS_JSON']))
+    publication = 'qualified' if approved_manifest(args.repository, commit) else 'hosted'
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         output.write('released_commit=' + commit + '\n')
+        output.write('publication=' + publication + '\n')

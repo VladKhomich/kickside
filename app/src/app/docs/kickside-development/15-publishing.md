@@ -55,12 +55,21 @@ commands directly in a Wippy repository. For the application, `make -C app
 release-check` builds the untracked main page, verifies its complete asset
 manifest and font references, and performs a dry-run pack.
 
-For releases of the KickSide repository itself, Release Please creates the GitHub
-tags and release records. After the qualified release PR is squash-merged,
-publish the staged native packages from a clean checkout at its exact tagged
-commit with the evidence directory produced by
-the internal two-engine release gate. Authenticate with `wippy auth login`
-before publishing.
+For the KickSide repository, Release Please creates GitHub tags and release
+records. The hosted workflow builds and publishes ordinary releases to the Hub.
+
+To publish a qualified release using the archives tested on SQLite and PostgreSQL,
+retain the full evidence directory from the internal release gate. Run
+`sha256sum "$RELEASE_EVIDENCE/artifacts.json"` and add one Git trailer of the
+form `Hub-Artifact-Manifest-SHA256: <digest>` to the release PR's squash commit
+message. Use all 64 lowercase hexadecimal characters. For a CLI merge, supply
+the message body with `gh pr merge --squash --match-head-commit ... --body-file ...`.
+The release workflow reads the trailer from the exact tagged commit and skips
+hosted Hub publication for the whole cohort.
+
+From a clean checkout at that tag, verify the staged archives with the original
+evidence directory. Authenticate to the Hub with `wippy auth login` before running
+the publish command.
 
 ```bash
 python3 scripts/publish-release-modules.py --repository . --evidence "$RELEASE_EVIDENCE" --verify-only
@@ -68,10 +77,12 @@ python3 scripts/publish-release-modules.py --repository . --evidence "$RELEASE_E
 ```
 
 The publisher checks the tagged commit's parent and source tree against the
-verified release, then checks every module version and both engines' archive
-proof. It uploads the staged archives in dependency order followed by the
-application when included. Existing releases with matching bytes can be reused
-when resuming publication. Publish a new version to change a released archive.
+verified release, verifies the manifest digest, and checks every archive against
+both engines' evidence before publishing. It uploads the staged archives in
+dependency order and publishes the application last when included. If publication
+stops partway through, rerun with the same tag and evidence. Matching Hub releases
+are reused and a digest conflict stops publication. Publish a new version to
+change a released archive.
 
 
 ## Install and update through KickSide Hub

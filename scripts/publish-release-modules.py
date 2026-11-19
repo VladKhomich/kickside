@@ -6,6 +6,7 @@ from graphlib import CycleError, TopologicalSorter
 import hashlib
 from heapq import heapify, heappop, heappush
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -13,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 
-from release_artifacts import companion_modules, declared_dependencies, installed_artifacts
+from release_artifacts import approved_manifest, companion_modules, declared_dependencies, installed_artifacts, prepared_artifact
 
 
 def git(repository, *args):
@@ -21,7 +22,11 @@ def git(repository, *args):
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    hasher = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            hasher.update(block)
+    return hasher.hexdigest()
 
 
 def publication_order(repository, modules, wippy):
@@ -60,7 +65,7 @@ def publication_order(repository, modules, wippy):
     return ordered
 
 
-def verified_release(repository, evidence):
+def verified_release(repository, evidence, *, verify_only):
     release = json.loads((evidence / 'release.json').read_text())
     base, candidate, tree = (release[field] for field in ('base', 'head', 'source_tree'))
     if release['repository'] != 'kickside' or not all(
@@ -85,7 +90,13 @@ def verified_release(repository, evidence):
         modules.append(dict(app, path='app', version=versions['app'],
                             name=app['organization'] + '/' + app['module']))
     packages = json.loads((repository / 'release-please-config.json').read_text())['packages']
-    proofs = json.loads((evidence / 'artifacts.json').read_text())
+    manifest = (evidence / 'artifacts.json').read_bytes()
+    approved = approved_manifest(repository, head)
+    if approved is None and not verify_only:
+        raise ValueError('Qualified publication requires a Hub-Artifact-Manifest-SHA256 trailer')
+    if approved is not None and approved != hashlib.sha256(manifest).hexdigest():
+        raise ValueError('Evidence manifest differs from the tagged Hub-Artifact-Manifest-SHA256')
+    proofs = json.loads(manifest)
     engines = [json.loads((evidence / engine / 'artifacts.json').read_text())
                for engine in ('sqlite', 'postgres')]
     names = {module['name'] for module in modules}
@@ -129,20 +140,22 @@ def published_archive_matches(module, wippy, expected):
 
 def publish_archive(repository, module, wippy, artifact, expected):
     name, version = module['name'], module['version']
-    if published_archive_matches(module, wippy, expected):
-        print('Already published with matching digest: ' + name + '@' + version, flush=True)
-        return
     args = [wippy, 'publish', '--config', str(repository / module['path']), '--version', version,
             '--module-type', module['type'], '--wapp', str(artifact),
             '--create', '--module-visibility', module['visibility']]
-    subprocess.run(args, cwd=repository, check=True)
+    try:
+        subprocess.run(args, cwd=repository, check=True)
+    except subprocess.CalledProcessError:
+        if published_archive_matches(module, wippy, expected):
+            return
+        raise
     if not published_archive_matches(module, wippy, expected):
         raise ValueError('Published artifact is unavailable: ' + name + '@' + version)
     print('Verified ' + name + '@' + version, flush=True)
 
 
-def publish(repository, evidence, wippy, *, verify_only=False):
-    modules, proofs = verified_release(repository, evidence)
+def publish_verified(repository, evidence, wippy, *, verify_only=False):
+    modules, proofs = verified_release(repository, evidence, verify_only=verify_only)
     companion = [module for module in modules if module['path'] != 'app']
     app = [module for module in modules if module['path'] == 'app']
     ordered = publication_order(repository, companion, wippy) + app
@@ -173,15 +186,46 @@ def publish(repository, evidence, wippy, *, verify_only=False):
             publish_archive(repository, module, wippy, staged[name], proofs[name]['sha256'])
 
 
+def publish(repository, paths, wippy):
+    modules = companion_modules(repository, paths)
+    packages = json.loads((repository / 'release-please-config.json').read_text())['packages']
+    head = git(repository, 'rev-parse', 'HEAD')
+    if approved_manifest(repository, head):
+        raise ValueError('This release requires qualified publication with --evidence')
+    if modules and git(repository, 'status', '--porcelain', '--untracked-files=all'):
+        raise ValueError('Release must have a clean checkout before building')
+    # Validate the entire cohort before starting a build or publication.
+    for module in modules:
+        tag = packages[module['path']]['component'] + '-v' + module['version']
+        if git(repository, 'rev-parse', tag + '^{commit}') != head:
+            raise ValueError('Publish from the exact release tag: ' + tag)
+    for module in publication_order(repository, modules, wippy):
+        name, version = module['name'], module['version']
+        print('Preparing ' + name + '@' + version, flush=True)
+        if 'build' in module['targets']:
+            subprocess.run(['make', '-C', str(repository / module['path']), 'build'], check=True)
+        with prepared_artifact(repository, module, wippy) as artifact:
+            expected = digest(artifact)
+            if published_archive_matches(module, wippy, expected):
+                print(f'Already published with matching digest: {name}@{version}', flush=True)
+            else:
+                publish_archive(repository, module, wippy, artifact, expected)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', type=Path, required=True)
-    parser.add_argument('--evidence', type=Path, required=True)
+    parser.add_argument('--evidence', type=Path)
     parser.add_argument('--wippy', default='wippy')
     parser.add_argument('--verify-only', action='store_true')
     args = parser.parse_args()
     try:
-        publish(args.repository.resolve(), args.evidence.resolve(), args.wippy, verify_only=args.verify_only)
+        if args.evidence:
+            publish_verified(args.repository.resolve(), args.evidence.resolve(), args.wippy, verify_only=args.verify_only)
+        elif args.verify_only:
+            parser.error('--verify-only requires --evidence')
+        else:
+            publish(args.repository.resolve(), json.loads(os.environ['RELEASE_PATHS_JSON']), args.wippy)
     except subprocess.CalledProcessError as error:
         print(error.stdout or '', file=sys.stderr)
         print(error.stderr or '', file=sys.stderr)
