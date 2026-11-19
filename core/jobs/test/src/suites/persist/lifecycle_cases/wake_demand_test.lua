@@ -67,6 +67,47 @@ end
 
 local function define_tests()
     test.describe("jobs wake demand", function()
+        for _, operation in ipairs({ "complete", "keyed wake", "direct wake", "control wake" }) do
+            test.it("accepts ordinary " .. operation .. " before migration 29", function()
+                with_db(function(db: sql.DB)
+                    local dbtype = tostring(db:type())
+                    local key = "thread:" .. uuid.v7()
+                    local params = {
+                        owner_locator = { kind = "test", id = "pre_migration" },
+                        job_identity = { namespace = "test", scope = uuid.v7(), key = "live-upgrade" },
+                        job_type = "test.watcher", wake_key = key, parked = operation ~= "complete",
+                    }
+                    local id = assert(lifecycle.enqueue_job(db, dbtype, params))
+                    local job = operation == "complete" and assert(job_fixture.lease_own(db, dbtype, id)) or nil
+                    -- Keeper may publish the new registry before the database is
+                    -- migrated. Roll back the schema change with each probe.
+                    for _, before in ipairs({ false, true }) do
+                        local tx = assert(db:begin())
+                        if before then
+                            local _, ddl_err = tx:execute("ALTER TABLE kickside_job DROP COLUMN rearm_on_demand")
+                            if ddl_err then
+                                tx:rollback()
+                                error(ddl_err)
+                            end
+                        end
+                        local result, err
+                        if job then
+                            result, err = jobs.complete_tx(tx, id, {
+                                token = job.lease_token, execution_seq = tonumber(job.execution_seq)
+                            }, {})
+                        elseif operation == "keyed wake" then
+                            result, err = jobs.wake_tx(tx, key)
+                        else
+                            result, err = wake.wake_job(tx, id, { control = operation == "control wake" }, dbtype)
+                        end
+                        local _, rollback_err = tx:rollback()
+                        test.is_nil(rollback_err)
+                        test.is_nil(err, (before and "pre-migration: " or "control: ") .. tostring(err))
+                        test.not_nil(result)
+                    end
+                end)
+            end)
+        end
         test.it("drains bounded fan-out and acknowledges a newer demand after continuation", function()
             with_db(function(db: sql.DB)
                 local dbtype = tostring(db:type())
@@ -233,6 +274,62 @@ local function define_tests()
                 test.is_nil(gone.scheduled_at)
             end)
         end)
+
+        for _, addressed in ipairs({ false, true }) do
+            test.it("advances a successful rearm but preserves failure backoff on "
+                .. (addressed and "addressed" or "keyed") .. " wake", function()
+                with_db(function(db: sql.DB)
+                    local dbtype = tostring(db:type())
+                    local function leased_slot()
+                        return assert(job_fixture.enqueue_leased(db, dbtype, {
+                            job_type = "test.event.rearm", slot = true, wake_key = "thread:" .. uuid.v7(),
+                            job_identity = { namespace = "test", scope = uuid.v7(), key = "event-rearm" },
+                        }))
+                    end
+                    local job = leased_slot()
+
+                    local function publish_demand()
+                        if addressed then
+                            test.is_true(assert(wake.wake_job(db, job.id, nil, dbtype)).woken)
+                        else
+                            test.eq(assert(job_fixture.wake_key(db, dbtype, job.wake_key)).touched_count, 1)
+                        end
+                    end
+
+                    local function schedule()
+                        return assert(db:query("SELECT scheduled_at FROM kickside_job WHERE id = $1", { job.id }))[1].scheduled_at
+                    end
+
+                    local function rearm(options)
+                        local lease = { token = job.lease_token, execution_seq = tonumber(job.execution_seq) }
+                        options.rearm = lifecycle.future_string(dbtype, 3600)
+                        assert(jobs.complete(job.id, lease, options))
+                    end
+
+                    rearm({ defer_demand = true })
+                    local debounce = schedule()
+                    publish_demand()
+                    test.eq(schedule(), debounce)
+
+                    job = leased_slot()
+                    rearm({ rearm_on_demand = true })
+                    local rearmed = schedule()
+                    publish_demand()
+                    local due = assert(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE id = $1"
+                        .. " AND scheduled_at <= $2 AND rearm_on_demand IS NULL",
+                        { job.id, lifecycle.now_string(dbtype) }))
+                    test.eq(tonumber(due[1].n), 1)
+                    test.neq(schedule(), rearmed)
+
+                    job = assert(job_fixture.lease_own(db, dbtype, job.id))
+                    test.is_nil(lifecycle.fail_job(db, job, dbtype, "provider unavailable", "infrastructure",
+                        { retry_after_ms = 900000 }))
+                    local backoff = schedule()
+                    publish_demand()
+                    test.eq(schedule(), backoff)
+                end)
+            end)
+        end
     end)
 end
 local run_cases = test.run_cases(define_tests)
