@@ -19,7 +19,7 @@ end
 
 -- A name already registered to this process is claimed: an in-place upgrade
 -- keeps the PID, and with it every name the previous code registered.
-function M.claim_or_owner(name: string, dependencies: any?): (boolean, string?, error?)
+local function claim_or_owner(name: string, dependencies: any?, monitor_miss: error?): (boolean, string?, error?)
     local deps = dependencies or {}
     local proc = deps.process or process
     local names = deps.registry or proc.registry
@@ -37,33 +37,48 @@ function M.claim_or_owner(name: string, dependencies: any?): (boolean, string?, 
             if tostring(owner) == tostring(proc.pid()) then return true, nil, nil end
             return false, tostring(owner), nil
         end
+        if monitor_miss then return false, nil, monitor_miss end
     end
+end
+
+function M.claim_or_owner(name: string, dependencies: any?): (boolean, string?, error?)
+    return claim_or_owner(name, dependencies)
 end
 
 function M.claim_singleton(name: string, events_ch: any, dependencies: any?): (boolean, boolean, error?, string?)
     local deps = dependencies or {}
     local proc = deps.process or process
     local select = deps.channel or channel
+    local monitor_miss: error? = nil
     while true do
-        local claimed, owner, claim_err = M.claim_or_owner(name, deps)
+        local claimed, owner, claim_err = claim_or_owner(name, deps, monitor_miss)
         if claim_err then return false, false, claim_err end
         if claimed then return true, false, nil end
         if owner then
             local monitored, monitor_err = proc.monitor(tostring(owner))
-            if monitor_err then return false, false, monitor_err end
-            if not monitored then
-                return false, false, (errors.new({ kind = errors.UNAVAILABLE, retryable = true,
-                    message = "singleton owner monitor returns no acknowledgement: " .. name }) :: error)
-            end
-            while true do
-                local selected = select.select({ events_ch:case_receive() })
-                local event = selected.value
-                if selected.ok == false then return false, true, nil, nil end
-                if type(event) == "table" and (event.kind == proc.event.CANCEL or event.kind == proc.event.OUTDATED) then
-                    return false, true, nil, event.kind :: string
+            if monitor_err then
+                if monitor_miss or not errors.is(monitor_err, errors.NOT_FOUND) then
+                    return false, false, monitor_err
                 end
-                if type(event) == "table" and tostring(event.from) == tostring(owner)
-                    and (event.kind == proc.event.EXIT or event.kind == proc.event.LINK_DOWN) then break end
+                -- An owner can exit before monitor admission. Allow one immediate
+                -- claim after that gap, then require a monitored exit to try again.
+                monitor_miss = monitor_err
+            else
+                if not monitored then
+                    return false, false, (errors.new({ kind = errors.UNAVAILABLE, retryable = true,
+                        message = "singleton owner monitor returns no acknowledgement: " .. name }) :: error)
+                end
+                while true do
+                    local selected = select.select({ events_ch:case_receive() })
+                    local event = selected.value
+                    if selected.ok == false then return false, true, nil, nil end
+                    if type(event) == "table" and (event.kind == proc.event.CANCEL or event.kind == proc.event.OUTDATED) then
+                        return false, true, nil, event.kind :: string
+                    end
+                    if type(event) == "table" and tostring(event.from) == tostring(owner)
+                        and (event.kind == proc.event.EXIT or event.kind == proc.event.LINK_DOWN) then break end
+                end
+                monitor_miss = nil
             end
         end
     end
