@@ -193,10 +193,13 @@ return test.run_cases(function()
             exec([[INSERT INTO kickside_uploads
                 (uuid,actor_id,mime_type,size,storage_id,storage_path,type_id,storage_state,metadata)
                 VALUES ($1,$2,'text/plain',1,'app:uploads',$1,'text','completed','{}')]], { stored_only, owner })
-            local fixtures = { {}, { pruned = true }, { invalid = true } }
+            local fixtures = {
+                { upload_id = uuid.v4(), job_id = uuid.v4() },
+                { upload_id = uuid.v4(), job_id = uuid.v4(), pruned = true },
+                { upload_id = uuid.v4(), job_id = uuid.v4(), invalid = true },
+            }
             for _, fixture in ipairs(fixtures) do
-                local upload_id, job_id = uuid.v4(), uuid.v4()
-                fixture.upload_id, fixture.job_id = upload_id, job_id
+                local upload_id, job_id = fixture.upload_id, fixture.job_id
                 exec([[INSERT INTO kickside_job
                     (id,thread_id,job_type,payload,job_identity,owner_kind,owner_id,status,finished_at)
                     VALUES ($1,$2,'kickside.uploads.service:process_job_proc',$3,$4,'user',$5,'dead',$6)]],
