@@ -1,5 +1,6 @@
 organization: kickside
 module: execution
+version: 0.2.9 # x-release-please-version
 type: library
 description: KickSide execution identity — the one principal codec, delegation encoding and live run-as path
 license: LicenseRef-KickSide-Community-1.0

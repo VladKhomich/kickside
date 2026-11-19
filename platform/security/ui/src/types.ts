@@ -1,7 +1,6 @@
 export interface ComponentProps {}
 
-// A grant the admin can compose into a scope. Mirrors the backend PolicySummary;
-// only public policies (meta.private != true) are returned by /security/policies.
+// A permission summary from the assignable catalog or an existing role.
 export interface Policy {
   id: string
   title?: string
@@ -12,6 +11,7 @@ export interface Policy {
   actions?: unknown
   resources?: unknown
   private?: boolean
+  available?: boolean
 }
 
 // A scope/role in the catalog. Built-in (implicit group), registry security.scope,
@@ -27,21 +27,18 @@ export interface Scope {
   enabled: boolean
   policies: Policy[]
   // For a built-in/registry scope an admin has extended via an overlay.
+  base_policies?: Policy[]
   overlay_slug?: string
   overlay_policies?: Policy[]
 }
 
-// Draft state while creating/editing a scope. For a custom scope, target is ''
-// and policies is the full set. For an OVERLAY of a built-in/registry scope,
-// target is the base scope id, base holds its (locked) base policies, and
-// policies holds only the admin's added extensions.
+// An extension's target is the original role, and its policy IDs are the added grants.
 export interface ScopeDraft {
   slug: string
   label: string
   description: string
-  policies: string[]
+  policyIds: string[]
   enabled: boolean
   isNew: boolean
   target: string
-  base: Policy[]
 }

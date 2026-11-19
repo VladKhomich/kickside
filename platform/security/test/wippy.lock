@@ -5,9 +5,9 @@ modules:
     - name: kickside/component
       version: 0.3.4
     - name: kickside/contract
-      version: 0.0.0
+      version: 0.3.10
     - name: kickside/execution
-      version: 0.0.0
+      version: 0.2.9
     - name: kickside/jobs
       version: 0.1.78
     - name: kickside/realtime-dispatch

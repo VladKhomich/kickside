@@ -7,8 +7,10 @@ import Pill from './shared/Pill.vue'
 const props = defineProps<{ policy: Policy, mode: 'palette' | 'selected' | 'locked' }>()
 const emit = defineEmits<{ add: []; remove: [] }>()
 
-const title = computed(() => props.policy.title && props.policy.title !== props.policy.id
-  ? props.policy.title : 'Unnamed permission')
+const title = computed(() => {
+  if (props.policy.available === false) return props.policy.id
+  return props.policy.title && props.policy.title !== props.policy.id ? props.policy.title : 'Unnamed permission'
+})
 
 function onDragStart(e: DragEvent) {
   if (props.mode === 'locked' || !e.dataTransfer) return
@@ -33,7 +35,8 @@ function onDragStart(e: DragEvent) {
           <Pill v-if="policy.effect === 'allow' || policy.effect === 'deny'" :severity="policy.effect === 'allow' ? 'success' : 'danger'">{{ policy.effect === 'deny' ? 'Blocks' : 'Allows' }}</Pill>
           <span class="ks-pcard-title" :title="title">{{ title }}</span>
         </div>
-        <div v-if="policy.comment" class="ks-pcard-comment">{{ policy.comment }}</div>
+        <div v-if="policy.available === false" class="ks-pcard-comment">No longer available</div>
+        <div v-else-if="policy.comment" class="ks-pcard-comment">{{ policy.comment }}</div>
       </div>
       <button v-if="mode === 'palette'" class="ks-pcard-act add" :aria-label="`Add permission ${title}`" @click.stop="emit('add')">
         <Icon icon="tabler:plus" aria-hidden="true" />
