@@ -5,6 +5,7 @@ local time = require("time")
 local logger = require("logger")
 local log = logger:named("uploads.storage")
 local storage_location = require("storage_location")
+local binding_errors = require("binding_errors")
 
 local M = {}
 local SIGNED_URL_EXPIRATION = 15 * 60
@@ -53,9 +54,15 @@ local function cloud_open(storage: any, key: string, volume: any, mode: string?)
     return handle, nil
 end
 
+local function acquisition_error(err: any): any
+    if not errors.is(err, errors.NOT_FOUND) then return err end
+    return binding_errors.new(errors.UNAVAILABLE, "Storage resource is unavailable", "storage_unavailable",
+        err:retryable(), err)
+end
+
 function M.get(storage_id: string, _db_id: string, _staging_id: string, _cloud_id: string?, _query_db: any?): (any?, any?)
     local volume, volume_err = fs.get(storage_id)
-    if volume_err then return nil, volume_err end
+    if volume_err then return nil, acquisition_error(volume_err) end
     local adapter: any = {}
     local function resolve(path: string): (any?, string?, string?, any?)
         local location, location_err = storage_location.parse(storage_id, path)
@@ -63,16 +70,18 @@ function M.get(storage_id: string, _db_id: string, _staging_id: string, _cloud_i
         if path == location.key then return volume, location.key, location.scheme, nil end
         if location.scheme == "fs" then
             local storage, err = fs.get(location.authority)
-            return storage, location.key, location.scheme, err
+            if err then return nil, nil, nil, acquisition_error(err) end
+            return storage, location.key, location.scheme, nil
         end
         -- Remove after wippyai/runtime#1018 returns acquisition errors.
         local ok, storage, err = pcall(cloudstorage.get, location.authority)
         if not ok then
-            if type(storage) == "userdata" then return nil, nil, nil, storage end
+            if type(storage) == "userdata" then return nil, nil, nil, acquisition_error(storage) end
             return nil, nil, nil, errors.new({message = tostring(storage), kind = errors.PERMISSION_DENIED, retryable = false,
                 details = {code = "storage_access_denied"}})
         end
-        return storage, location.key, location.scheme, err
+        if err then return nil, nil, nil, acquisition_error(err) end
+        return storage, location.key, location.scheme, nil
     end
     function adapter:signed_url(path: string, options: any?): (string?, number?, any?)
         local storage, key, scheme, err = resolve(path)

@@ -264,6 +264,7 @@ entries:
       http_errors: kickside.contract:http_errors
       component: kickside.component:component
       api_errors: kickside.automation.api:errors
+      text_trim: kickside.contract:text_trim
     method: handler
 
   - name: update_meta.endpoint

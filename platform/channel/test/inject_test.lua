@@ -67,6 +67,18 @@ local function define_tests()
             test.eq(call2.inbound.external_username, "Watcher")
         end)
 
+        test.it("routes injected text with long internal whitespace unchanged", function()
+            test_state.add_thread(attrs())
+            test_state.add_receive_target("kickside.dm:receive")
+            local text = "\nbefore" .. string.rep(" ", 512 * 1024) .. "after\t"
+
+            local result = inject.inject({ thread_id = "thread-1", text = text })
+
+            test.eq(result.status, "routed")
+            test.eq(#test_state.state.receive_calls, 1)
+            test.eq(test_state.state.receive_calls[1].inbound.text, text)
+        end)
+
         test.it("consumes attrs as a table -- a JSON string is not routable", function()
             -- inject no longer decodes attrs; a single-thread read hydrates it to a
             -- table, so a raw string carries no routing fields.
@@ -109,6 +121,7 @@ local function define_tests()
         test.it("requires thread_id and text", function()
             test.eq(inject.inject({ text = "x" }).error, "thread_id is required")
             test.eq(inject.inject({ thread_id = "thread-1" }).error, "text is required")
+            test.eq(inject.inject({ thread_id = "thread-1", text = " \v\f\t\r\n" }).error, "text is required")
         end)
     end)
 end

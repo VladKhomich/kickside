@@ -18,7 +18,9 @@ end
 local function shallow_copy(input: any): { [string]: any }
     local out: { [string]: any } = {}
     if type(input) == "table" then
-        for key, value in pairs(input) do out[key] = value end
+        for key, value in pairs(input) do
+            if value ~= json.null then out[key] = value end
+        end
     end
     return out
 end
@@ -72,7 +74,7 @@ local function handler()
     local raw = req:body()
     local body: { [string]: any } = {}
     if type(raw) == "string" and trim(raw) ~= "" then
-        local decoded, body_err = json.decode(raw)
+        local decoded, body_err = json.decode_with_nulls(raw)
         if body_err or type(decoded) ~= "table" then
             res:set_status(http.STATUS.BAD_REQUEST)
             res:write_json({ success = false, error = "invalid json" })
@@ -87,6 +89,7 @@ local function handler()
     local external_version = body_or_query(req, body, "external_version")
 
     local metadata = shallow_copy(body.metadata)
+    if type(body.metadata) == "table" then metadata.node_id = body.metadata.node_id end
     metadata.source = metadata.source or "api.delete_content"
     if upload_id ~= "" then metadata.upload_id = upload_id end
     if source_url ~= "" then metadata.source_url = source_url end
@@ -96,6 +99,9 @@ local function handler()
     if upload_id == "" then upload_id = trim(source_ref.upload_id) end
     if source_url == "" then source_url = trim(source_ref.source_url or source_ref.url) end
     if external_version == "" then external_version = trim(source_ref.external_version) end
+    if metadata.node_id ~= nil then
+        external_version, metadata.external_version, source_ref.external_version = "", nil, nil
+    end
     if external_id ~= "" then metadata.external_id = external_id end
     if external_version ~= "" then metadata.external_version = external_version end
     if upload_id ~= "" then metadata.upload_id = upload_id end

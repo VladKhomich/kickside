@@ -29,7 +29,7 @@ local function build_agent_payload(component_id: string, comp_result: any, priva
         prompt = private_context.prompt or "",
         model = private_context.model or "",
         temperature = private_context.temperature ~= false and private_context.temperature or nil,
-        max_tokens = private_context.max_tokens or agent_types.DEFAULT_MAX_TOKENS,
+        max_tokens = private_context.max_tokens,
         traits = private_context.traits or {},
         trait_contexts = private_context.trait_contexts or {},
         trait_agent_options = private_context.trait_agent_options or {},
