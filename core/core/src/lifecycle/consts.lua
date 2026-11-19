@@ -34,6 +34,17 @@ function M.system_ready_name(boot_name: string): string
     return boot_name .. ".ready"
 end
 
+function M.system_failure_name(boot_name: string): string
+    return boot_name .. ".failed"
+end
+
+function M.system_waiter_name(boot_name: string, pid: string): string
+    return boot_name .. ".waiter:" .. pid
+end
+
+M.SYSTEM_FAILURE_REQUEST = "kickside.core.lifecycle.system_failure.request"
+M.SYSTEM_FAILURE_REPLY = "kickside.core.lifecycle.system_failure.reply"
+
 -- Migration namespaces that own the tables boot convergence reads, followed
 -- through every convergence path: core (threads, projections, retention),
 -- component (components and their meta, read through the component query),
