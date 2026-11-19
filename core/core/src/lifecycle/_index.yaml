@@ -313,7 +313,7 @@ entries:
       comment: Waits for the resident provisioner to materialize system components and their declared grants.
     source: file://system_ready.lua
     method: run
-    modules: [process, channel]
+    modules: [process, channel, time]
     imports:
       lifecycle_consts: kickside.core.lifecycle:consts
 

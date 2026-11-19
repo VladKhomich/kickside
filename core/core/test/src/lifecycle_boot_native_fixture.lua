@@ -3,7 +3,7 @@ local channel = require("channel")
 local M = {event = process.event, registry = {CONSISTENT = process.registry.CONSISTENT, EVENTUAL = process.registry.EVENTUAL}}
 function M.reset(stage: string, source: error?, override: any?, pending: boolean?): ()
     M.stage, M.source, M.override, M.pending = stage, source, override, pending == true
-    M.calls, M.ledger, M.events_ch, M.pages = {}, nil, nil, nil
+    M.calls, M.ledger, M.events_ch, M.pages, M.initial_provision_error = {}, nil, nil, nil, nil
 end
 -- Scripts successive ledger reads ("unavailable", "pending", "applied") and
 -- keeps the events channel open until a convergence closes it.
@@ -16,7 +16,15 @@ local function response(name: string, value: any): (any, error?)
 end
 function M.new_actor(...): any hit("actor"); return {} end
 function M.named_scope(...): (any, error?) return response("scope", {}) end
-function M.ensure_system(...): (any, error?) return response("provision", {"system"}) end
+function M.ensure_system(...): (any, error?)
+    local initial = M.initial_provision_error
+    if initial then
+        M.initial_provision_error = nil
+        hit("provision")
+        return nil, initial
+    end
+    return response("provision", {"system"})
+end
 function M.converge(_actor: any, _scope: any, continuation: table?): (any, error?)
     local pages: any = M.pages
     if pages then
@@ -54,8 +62,13 @@ function M.setup(_database_id: string): any
             {id = "app.other.migrations:pending", applied = false}}, nil
     end}
 end
-function M.listen(_topic: string): (any, error?) hit("listen"); return channel.new(), nil end
-function M.registry.register(_name: string, _pid: any, scope: any): (boolean?, error?)
-    return response(scope == M.registry.EVENTUAL and "system_ready" or "register", true)
+function M.listen(_topic: string, opts: {message: boolean}?): (any, error?)
+    hit(opts and opts.message and "failure_listener" or "listen")
+    return channel.new(), nil
+end
+function M.registry.lookup(_name: string, _scope: any): string? return nil end
+function M.registry.register(name: string, _pid: any, scope: any): (boolean?, error?)
+    if scope ~= M.registry.EVENTUAL then return response("register", true) end
+    return response(name:sub(-7) == ".failed" and "system_failed" or "system_ready", true)
 end
 return M
