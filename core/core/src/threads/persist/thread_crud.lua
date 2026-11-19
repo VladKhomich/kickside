@@ -64,7 +64,8 @@ local function declaration_response(field: string): error
 end
 
 -- identity: { row?, system?, error? } from the contract's declared_identity.
-local function register_declared_projection(db: DB, thread_id: string, p: table, identity: { [string]: any }): error?
+local function register_declared_projection(db: DB, thread_id: string, p: table, identity: { [string]: any },
+    transition_impl_id: string?): error?
     local params = {
         kind = p.kind,
         worker_ref = p.worker_ref,
@@ -92,7 +93,7 @@ local function register_declared_projection(db: DB, thread_id: string, p: table,
     for _, row in ipairs(rows :: table[]) do
         if type(row.id) ~= "string" or row.id == "" then return declaration_response("cursor id") end
     end
-    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, "convergence")
+    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, "convergence", transition_impl_id)
     if proj_err then return errors.wrap(proj_err, "register declared projection") end
     if type(projection) ~= "table" then return declaration_response("registration") end
     return nil
@@ -111,7 +112,7 @@ local function declared_identity_error(identity: { [string]: any }): error?
 end
 
 function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_id: string?,
-    identity: { [string]: any }, indexes: table?): error?
+    identity: { [string]: any }, indexes: table?, allow_transition: boolean?): error?
     local impl_id = trim(declaration_impl_id)
     if impl_id == "" then return nil end
     if has_thread_projections(impl_id) then
@@ -121,7 +122,7 @@ function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_
     for index, p in ipairs(autoinit.projections_for_impl(impl_id)) do
         if (not indexes or indexes[tostring(index)])
             and (p.on == nil or p.on == "" or p.on == autoinit.PROJECTION_ON.THREAD) then
-            local proj_err = register_declared_projection(db, thread_id, p :: table, identity)
+            local proj_err = register_declared_projection(db, thread_id, p :: table, identity, allow_transition and impl_id or nil)
             if proj_err then return proj_err end
         end
     end
