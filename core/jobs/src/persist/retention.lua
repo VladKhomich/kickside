@@ -163,8 +163,9 @@ function M.prune_jobs(db: any, thread_id: string?, cutoff: string, limit: intege
     return prune_owned(db, thread_id, cutoff, false, limit, all_threads, cursor)
 end
 
--- Worker identities are process-local; an absent heartbeat older than the
--- default jobs window cannot resume. The existing last_seen_at index bounds
+-- Worker identities are process-local; a worker whose heartbeat is older than
+-- the lease timeout is not live (the window jobs.health reports) and cannot
+-- resume. The existing last_seen_at index bounds
 -- candidate selection even after many process restarts.
 local function prune_worker_pulses(db: any, cutoff: string, limit: integer?): (integer?, error?)
     local policy, policy_err = cfg.policy()
@@ -249,7 +250,7 @@ function M.prune_wake_fanout(db: any, limit: integer?): (integer?, error?)
     return affected(result, "orphan wake rows", batch)
 end
 
-local function days_before(dbtype: string, duration_ms: integer): string
+local function before(dbtype: string, duration_ms: integer): string
     return clock.format(time.now():add(-duration_ms * time.MILLISECOND), dbtype)
 end
 
@@ -320,12 +321,14 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
     local batch = (policy :: any).retention_batch :: integer
-    local job_cutoff = days_before(dbtype, (policy :: any).retention_jobs_ms)
-    local run_cutoff = days_before(dbtype, (policy :: any).retention_job_runs_ms)
+    local job_cutoff = before(dbtype, (policy :: any).retention_jobs_ms)
+    local run_cutoff = before(dbtype, (policy :: any).retention_job_runs_ms)
     -- Jobs retain their runs, so skip the index range still protected by
     -- either window before checking for remaining runs.
     local job_candidate_cutoff = job_cutoff < run_cutoff and job_cutoff or run_cutoff
-    local receipt_cutoff = days_before(dbtype, (policy :: any).retention_thread_cleanup_receipts_ms)
+    local receipt_cutoff = before(dbtype, (policy :: any).retention_thread_cleanup_receipts_ms)
+    local liveness_seconds = cfg.worker_liveness(policy)
+    local liveness_cutoff = before(dbtype, liveness_seconds * 1000)
     local runs: integer? = 0
     if not cursor then
         local runs_err: error?
@@ -346,9 +349,9 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
         runs, runs_err = M.prune_runs(db, nil, run_cutoff, batch, true)
         if runs_err then return nil, runs_err end
     end
-    local workers, workers_err = M.prune_workers(db, job_cutoff, batch)
+    local workers, workers_err = M.prune_workers(db, liveness_cutoff, batch)
     if workers_err then return nil, workers_err end
-    local pulses, pulses_err = prune_worker_pulses(db, job_cutoff, batch)
+    local pulses, pulses_err = prune_worker_pulses(db, liveness_cutoff, batch)
     if pulses_err then return nil, pulses_err end
     local wake_rows, wake_err = M.prune_wake_fanout(db, batch)
     if wake_err then return nil, wake_err end

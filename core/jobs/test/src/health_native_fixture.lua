@@ -1,5 +1,6 @@
 local sql = require("sql")
-local M: any = {}
+local config = require("config")
+local M: any = {worker_liveness = config.worker_liveness}
 local phases = {"workers", "fresh", "pending", "running", "dead", "expired", "due", "overdue", "age", "stranded"}
 function M.reset(stage, source)
     M.stage, M.source = stage, source
