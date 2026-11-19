@@ -250,7 +250,10 @@ return {run = test.run_cases(function()
             check(value.error, errors.NOT_FOUND, "artifact_read_failed")
             test.eq(value.error:message(), "extracted text is not available: primary content artifact not found")
             test.is_nil(value.error:retryable())
-            test.eq(value.error:details().cause.details.code, "primary_artifact_missing")
+            local cause = value.error:details().cause
+            test.eq(cause.details.code, "primary_artifact_missing")
+            test.eq(cause.details.upload_id, uploads.normal)
+            test.is_nil(cause.details.artifact_id)
         end)
         test.it("keeps native database errors when artifact queries fail", function()
             local id = uploads.normal
@@ -389,10 +392,8 @@ return {run = test.run_cases(function()
 
                 test.it("extracted-only content preserves storage acquisition errors", function()
                     for _, fixture in ipairs({
-                        {storage = "app.upload_errors:unavailable_storage", code = "upload_test_storage_unavailable",
-                            message = "upload test storage unavailable"},
-                        {storage = "app.upload_errors:legacy_storage", code = "storage_unavailable",
-                            message = "upload test legacy storage failure"},
+                        {storage = "app.upload_errors:unavailable_storage", code = "artifact_read_failed"},
+                        {storage = "app.upload_errors:legacy_storage", code = "storage_unavailable"},
                     }) do
                         set_location(fixture.storage, path)
                         local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
@@ -401,7 +402,15 @@ return {run = test.run_cases(function()
                         test.eq(value.state, "unreadable")
                         check(value.error, errors.UNAVAILABLE, fixture.code)
                         test.is_true(value.error:retryable())
-                        test.eq(value.error:message(), "extracted text is not available: " .. fixture.message)
+                        test.eq(value.error:message(), "extracted text is not available")
+                        local cause = value.error:details().cause
+                        test.eq(cause.kind, errors.UNAVAILABLE)
+                        test.is_true(cause.retryable)
+                        test.eq(cause.message, value.error:message())
+                        test.eq(cause.details.upload_id, id)
+                        test.eq(cause.details.artifact_id, artifact.artifact_id)
+                        test.is_nil(value.error:details().operation)
+                        test.is_nil(cause.details.cause)
                     end
                 end)
 
@@ -410,9 +419,8 @@ return {run = test.run_cases(function()
                         cause_code = "invalid_storage_path", diagnostic = "Packed storage path requires an entry id and path"},
                     {name = "missing backing bytes", kind = errors.NOT_FOUND, path = "private/missing.txt",
                         diagnostic = "private/missing.txt"},
-                    {name = "unavailable storage", kind = errors.UNAVAILABLE, path = "private/unavailable.txt", retryable = true,
-                        storage_id = "app.upload_errors:unreadable_storage", cause_code = "upload_test_storage_unavailable",
-                        diagnostic = "private/unavailable.txt"},
+                    {name = "unavailable storage", kind = errors.UNAVAILABLE, path = "s3://private/unavailable.txt?token=fixture-secret",
+                        retryable = true, storage_id = "app.upload_errors:unreadable_storage", diagnostic = "fixture-secret"},
                 }) do
                     test.it("extracted-only content preserves the public error for " .. fixture.name, function()
                         set_location(fixture.storage_id or "app:uploads", fixture.path)
@@ -422,13 +430,21 @@ return {run = test.run_cases(function()
                         test.eq(value.state, "unreadable")
                         check(value.error, fixture.kind, "artifact_read_failed")
                         local target = backing == "blob" and "blob" or "bytes"
-                        test.eq(value.error:message(), "extracted text is not available: failed to read artifact " .. target)
+                        local public_message = "failed to read artifact " .. target
+                        test.eq(value.error:message(), "extracted text is not available: " .. public_message)
                         test.eq(value.error:retryable(), fixture.retryable)
                         local native = value.error:details().cause
                         test.eq(native.kind, fixture.kind)
                         test.eq(native.retryable, fixture.retryable)
-                        if fixture.cause_code then test.eq(native.details.code, fixture.cause_code) end
-                        test.contains(native.message, fixture.diagnostic)
+                        test.is_nil(native.message:find(fixture.diagnostic, 1, true))
+                        test.eq(native.message, public_message)
+                        local public_details = {
+                            code = fixture.cause_code,
+                            upload_id = id,
+                            artifact_id = artifact.artifact_id,
+                        }
+                        for key, expected in pairs(public_details) do test.eq(native.details[key], expected) end
+                        for key, actual in pairs(native.details) do test.eq(actual, public_details[key], key) end
                         test.is_nil(value.error:details().operation)
                     end)
                 end

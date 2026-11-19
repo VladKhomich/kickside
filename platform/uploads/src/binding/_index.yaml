@@ -28,10 +28,9 @@ entries:
     meta:
       comment: Implements kickside.contract:content_provider.get_content for uploads.
     source: file://get_content_func.lua
-    modules: [security, ctx]
+    modules: [security, ctx, logger]
     imports:
       binding_errors: kickside.uploads.binding:binding_errors
-      error_envelope: kickside.contract:error_envelope
       component: kickside.component:component
       types: kickside.uploads:types
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo
