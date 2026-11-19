@@ -10,6 +10,26 @@ local cases = {
 }
 return {run = test.run_cases(function()
     test.describe("native retention process dependencies", function()
+        test.it("runs an elapsed deadline before a ready scoped wake", function()
+            fixture.reset("scoped_wake", nil)
+            fixture.responses.recover = {value = {deadline_ms = 1}}
+            local result, err = source.main()
+            test.is_nil(result)
+            test.is_nil(err)
+            test.eq(fixture.deadlines, 1)
+            test.eq(fixture.wakes, 1)
+            test.eq(fixture.deadlines_at_wake, 1)
+        end)
+        test.it("keeps a future deadline when a scoped wake has no deadline of its own", function()
+            fixture.reset("scoped_wake", nil)
+            fixture.responses.recover = {value = {deadline_ms = 4102444800000}}
+            local result, err = source.main()
+            test.is_nil(result)
+            test.is_nil(err)
+            test.eq(fixture.wakes, 1)
+            test.eq(fixture.deadlines, 0)
+            test.is_true(fixture.timer_retained)
+        end)
         for _, case in ipairs(cases) do
             for _, kind in ipairs({errors.NOT_FOUND, errors.ALREADY_EXISTS, errors.INVALID,
                 errors.PERMISSION_DENIED, errors.UNAVAILABLE, errors.INTERNAL, errors.CANCELED,
