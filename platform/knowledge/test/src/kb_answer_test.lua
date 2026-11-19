@@ -5,6 +5,9 @@
 -- fake llm seam, so the regression cannot return.
 local test = require("test")
 local kb_answer = require("kb_answer")
+local analysis_model = require("analysis_model")
+local funcs = require("funcs")
+local security = require("security")
 
 local function with_llm(fake: any, fn: any)
     local prev = kb_answer._llm
@@ -18,6 +21,18 @@ local function items(n: number): any
     local out = {}
     for i = 1, n do out[i] = { content = "passage " .. tostring(i) } end
     return out
+end
+
+local function with_default_model(fn: any)
+    local models = require("models_repo")
+    local name = "ask-answer-model"
+    local _, create_err = models.upsert_card({ name = name, class = { "fast" },
+        capabilities = { "generate" }, max_tokens = 4096, output_tokens = 1024 })
+    test.is_nil(create_err, tostring(create_err))
+    local ok, err = pcall(fn)
+    local _, delete_err = models.delete_card(name)
+    test.is_nil(delete_err, tostring(delete_err))
+    if not ok then error(err) end
 end
 
 local function define_tests()
@@ -133,6 +148,28 @@ local function define_tests()
     end)
 
     test.describe("kb_answer query mode", function()
+        test.it("resolves the default model in a member scope without catalog permissions", function()
+            local scope = assert(security.new_scope({
+                assert(security.policy("kickside.knowledge.retrieval:member_ask_call")),
+                assert(security.policy("kickside.knowledge.retrieval:member_model_binding")),
+                assert(security.policy("kickside.models.security:model_resolution")),
+                assert(security.policy("kickside.models.security:model_resolution_call")),
+            }))
+            local actor = security.new_actor("ask-member", {})
+            test.eq(scope:evaluate(actor, "registry.get", "kickside.models.catalog:model_catalog"), "undefined")
+            test.eq(scope:evaluate(actor, "store.get", "kickside.models:cache"), "undefined")
+            test.eq(scope:evaluate(actor, "funcs.call", "kickside.models.persist:reload_profiles"), "undefined")
+            test.eq(scope:evaluate(actor, "funcs.security", "kickside.models.persist:reload_profiles"), "undefined")
+            with_default_model(function()
+                local result, err = funcs.new():with_actor(actor):with_scope(scope)
+                    :call("kickside.knowledge.retrieval:member_ask_probe", {})
+                test.is_nil(err, tostring(err))
+                test.eq(result.answer, "cited answer [1]")
+                test.is_nil(result.mode)
+                test.eq(result.results[1].content, "passage 1")
+            end)
+        end)
+
         test.it("reports an unavailable analysis class even without passages for either answer driver", function()
             for _, driver in ipairs({ "single", "agentic" }) do
                 for _, passages in ipairs({ {}, items(1) }) do
@@ -158,15 +195,63 @@ local function define_tests()
             end
         end)
 
-        test.it("keeps summarization independent of the answer model", function()
-            test.is_nil(kb_answer._resolve_answer_model({ summary_model = "class:fast" }))
+        test.it("answers with the selected model or Fast unless answers are off", function()
+            with_default_model(function()
+                for _, case in ipairs({
+                    { expected = "class:fast" },
+                    { setting = "", expected = "class:fast" },
+                    { setting = false, notice = "Answers are disabled. Returning query results." },
+                    { setting = true, notice = "No answer model is available. Returning query results." },
+                    { setting = "configured-model", expected = "configured-model" },
+                }) do
+                    local config = { analysis_model = case.setting, summary_model = "summary-only" }
+                    for _, driver in ipairs({ "single", "agentic" }) do
+                        config.query_driver = driver
+                        local previous_search = kb_answer._kb_search
+                        local previous_funcs = kb_answer._funcs
+                        local previous_llm = kb_answer._llm
+                        kb_answer._kb_search = {
+                            config = function() return config, {} end,
+                            query = function() return { items = items(1) }, nil end,
+                        }
+                        kb_answer._funcs = { call = function(_, args)
+                            test.eq(args.config.analysis_model, case.expected)
+                            return { answer = "cited answer [1]" }, nil
+                        end }
+                        kb_answer._llm = { generate = function(_, opts)
+                            test.eq(opts.model, case.expected)
+                            return { result = "cited answer [1]" }, nil
+                        end }
+
+                        local configured = config.analysis_model
+                        local ok, result, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
+                        kb_answer._kb_search = previous_search
+                        kb_answer._funcs = previous_funcs
+                        kb_answer._llm = previous_llm
+                        if not ok then error(result) end
+                        test.is_nil(err)
+                        if case.notice then
+                            test.eq(result.mode, "query")
+                            test.eq(result.answer, case.notice)
+                        else
+                            test.is_nil(result.mode)
+                            test.eq(result.answer, "cited answer [1]")
+                        end
+                        test.eq(result.results[1].content, "passage 1")
+                        test.eq(config.analysis_model, configured)
+                    end
+                end
+            end)
         end)
 
-        test.it("treats explicit false as passages-only despite a summary model", function()
-            test.is_nil(kb_answer._resolve_answer_model({
-                analysis_model = false,
-                summary_model = "class:fast"
-            }))
+        test.it("keeps search analysis off without a named model", function()
+            for _, config in ipairs({
+                { summary_model = "class:fast" },
+                { analysis_model = "", summary_model = "class:fast" },
+                { analysis_model = false, summary_model = "class:fast" },
+            }) do
+                test.is_nil(analysis_model.configured(config))
+            end
         end)
 
         test.it("propagates config failure before querying", function()
@@ -203,14 +288,23 @@ local function define_tests()
             test.contains(tostring(err), "agent model is not registered")
         end)
 
-        test.it("does not invoke agentic or synthesis generation in passages-only mode", function()
+        test.it("does not invoke generation when Search analysis is off and Fast is unassigned", function()
+            local models = require("models_repo")
+            local fixture_model = "app.models:gpt-4.1-mini"
+            local disabled, disable_err = models.upsert_card({ name = fixture_model, enabled = false })
+            test.is_nil(disable_err, tostring(disable_err))
+            test.eq(disabled.enabled, false)
+            local resolver = assert(assert(require("contract").get("wippy.llm:model_resolver")):open())
+            local card, resolve_err = resolver:resolve({ model = "class:fast" })
+            test.is_nil(card, card and card.name)
+            test.is_true(errors.is(resolve_err, errors.NOT_FOUND), tostring(resolve_err))
             local prev_search = kb_answer._kb_search
             local prev_funcs = kb_answer._funcs
             local prev_llm = kb_answer._llm
             kb_answer._kb_search = {
                 config = function(): (any, any)
                     return {
-                        analysis_model = false,
+                        analysis_model = "",
                         summary_model = "class:fast",
                         query_driver = "agentic"
                     }, { is_graph = true }
@@ -230,15 +324,48 @@ local function define_tests()
             kb_answer._kb_search = prev_search
             kb_answer._funcs = prev_funcs
             kb_answer._llm = prev_llm
+            local _, cleanup_err = models.delete_card(fixture_model)
+            test.is_nil(cleanup_err, tostring(cleanup_err))
             if not ok then error(result) end
 
             test.is_nil(err)
-            test.is_nil(result.answer)
+            test.eq(result.mode, "query")
+            test.eq(result.answer, "No answer model is available. Returning query results.")
             test.eq(result.count, 1)
             test.eq(result.results[1].content, "grounded passage")
+        end)
+
+        test.it("returns query results when the default answer class has no models", function()
+            local previous = kb_answer._kb_search
+            kb_answer._kb_search = {
+                config = function() return { analysis_model = "class:fast" }, {} end,
+                query = function() return { items = items(1), retrieval = { strategy = "plain", analysis = {
+                    status = "unavailable", reason = "no_models_for_class", model = "class:fast",
+                } } }, nil end,
+            }
+            local ok, result, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
+            kb_answer._kb_search = previous
+            if not ok then error(result) end
+            test.is_nil(err)
+            test.eq(result.mode, "query")
+            test.eq(result.answer, "No answer model is available. Returning query results.")
+            test.eq(result.results[1].content, "passage 1")
         end)
     end)
 end
 
 local run_cases = test.run_cases(define_tests)
-return { run = function(options) return run_cases(options) end }
+return {
+    run = function(options) return run_cases(options) end,
+    member_ask = function()
+        kb_answer._kb_search = {
+            config = function() return { analysis_model = "" }, {} end,
+            query = function() return { items = items(1) }, nil end,
+        }
+        kb_answer._llm = { generate = function(_, opts)
+            test.eq(opts.model, "class:fast")
+            return { result = "cited answer [1]" }, nil
+        end }
+        return kb_answer.ask("kb-id", { query = "question" })
+    end,
+}

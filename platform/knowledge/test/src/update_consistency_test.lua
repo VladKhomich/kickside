@@ -21,6 +21,7 @@ local function collaborators(overrides: any?): any
             return {
                 current_config = { chunk_size = 100, retained = true },
                 effective_config = { chunk_size = 100, retained = true },
+                effective_desired_config = { chunk_size = 500, retained = true },
                 desired_config = { chunk_size = 500, retained = true },
             }, nil
         end,
@@ -39,6 +40,30 @@ end
 
 local function define_tests()
     test.describe("knowledge update compensated consistency", function()
+        test.it("persists only explicit settings while comparing effective maintenance values", function()
+            local current = { chunk_enrichment_model = false, nested = { keep = true } }
+            local plan, err = consistency.config_plan(current, { extra_prompt = "Find citations", summary_model = "class:fast" },
+                function(config: any): any
+                    if config.analysis_model == nil then config.analysis_model = "class:fast" end
+                    if config.summary_model == nil then config.summary_model = "class:fast" end
+                    return config
+                end)
+            test.is_nil(err)
+            local c = collaborators({ prepare_config = function() return plan, nil end })
+            plan.config_maintenance = { schedule_resummarize = { "summary_model" } }
+            c.request_maintenance = function() error("an unchanged effective summary model schedules maintenance") end
+            local ok, apply_err = consistency.apply("kb-1", { config_patch = { extra_prompt = "Find citations" } }, c)
+            test.is_nil(apply_err, tostring(apply_err))
+            test.is_true(ok)
+            local saved = c.calls[#c.calls].config
+            test.eq(saved.extra_prompt, "Find citations")
+            test.eq(saved.summary_model, "class:fast")
+            test.is_nil(saved.analysis_model)
+            test.is_false(saved.chunk_enrichment_model)
+            test.is_true(saved.nested.keep)
+            test.is_nil(current.extra_prompt)
+        end)
+
         test.it("compares maintenance edits with descriptor defaults before scheduling", function()
             local plan, err = consistency.config_plan({}, { summary_prompt = "" }, function(config: any): any
                 config.summary_prompt = ""
@@ -55,7 +80,7 @@ local function define_tests()
             test.is_true(ok)
         end)
 
-        test.it("writes only changed effective config and metadata on repeated updates", function()
+        test.it("writes explicit config once and skips identical updates", function()
             local current = {}
             local meta = { comment = "Before", icon = "book" }
             local config_writes, meta_writes = 0, 0
@@ -86,24 +111,27 @@ local function define_tests()
                 test.is_true(ok)
             end
             apply({ comment = "Before", icon = "book" }, { enabled = false })
-            test.eq(config_writes, 0, "effective defaults cause no store write")
+            test.eq(config_writes, 1, "an explicitly submitted default is stored")
+            test.is_false(current.enabled)
             test.eq(meta_writes, 0, "matching metadata causes no write")
+            apply(nil, { enabled = false })
+            test.eq(config_writes, 1, "an identical explicit default causes no second write")
             local fields = { comment = "After", icon = "" }
             local patch = { enabled = true, nested = { labels = { "one", "two" } } }
             apply(fields, patch)
-            test.eq(config_writes, 1)
+            test.eq(config_writes, 2)
             test.eq(meta_writes, 1)
             apply(fields, { nested = { labels = { "one", "two" } }, enabled = true })
-            test.eq(config_writes, 1, "identical config causes no second write")
+            test.eq(config_writes, 2, "identical config causes no additional write")
             test.eq(meta_writes, 1, "identical metadata causes no second write")
             apply({ comment = "", icon = "" }, { enabled = true })
-            test.eq(config_writes, 1, "a partial matching config causes no write")
+            test.eq(config_writes, 2, "a partial matching config causes no write")
             test.eq(meta_writes, 2)
             test.is_nil(last_meta.icon, "only changed metadata fields are written")
             test.eq(meta.comment, "")
             test.eq(meta.icon, "")
             apply(nil, { enabled = false })
-            test.eq(config_writes, 2, "false remains a change from true")
+            test.eq(config_writes, 3, "false remains a change from true")
             test.eq(meta_writes, 2)
         end)
 
@@ -111,6 +139,7 @@ local function define_tests()
             test.it("schedules maintenance after saving a changed " .. key, function()
                 local c = collaborators({ prepare_config = function()
                     return { current_config = {}, effective_config = { [key] = "old" },
+                        effective_desired_config = { [key] = "new" },
                         desired_config = { [key] = "new" },
                         config_maintenance = { schedule_resummarize = { key } } }, nil
                 end })
@@ -132,6 +161,7 @@ local function define_tests()
         test.it("restores configuration after a refused summary maintenance request", function()
             local c = collaborators({ prepare_config = function()
                 return { current_config = {}, effective_config = { summary_prompt = "old" },
+                    effective_desired_config = { summary_prompt = "new" },
                     desired_config = { summary_prompt = "new" },
                     config_maintenance = { schedule_resummarize = { "summary_prompt" } } }, nil
             end })
@@ -149,6 +179,7 @@ local function define_tests()
             local scheduled = 0
             local c = collaborators({ prepare_config = function()
                 return { current_config = { outline_style = "old" }, effective_config = { outline_style = "old" },
+                    effective_desired_config = { outline_style = "new" },
                     desired_config = { outline_style = "new" },
                     config_maintenance = { schedule_resummarize = { "outline_style" } } }, nil
             end })
@@ -168,6 +199,7 @@ local function define_tests()
         test.it("restores config and leaves metadata untouched when declared maintenance refuses scheduling", function()
             local c = collaborators({ prepare_config = function()
                 return { current_config = { outline_style = "old" }, effective_config = { outline_style = "old" },
+                    effective_desired_config = { outline_style = "new" },
                     desired_config = { outline_style = "new" },
                     config_maintenance = { schedule_resummarize = { "outline_style" } } }, nil
             end })
@@ -192,7 +224,8 @@ local function define_tests()
             test.eq(plan.current_config.nested.keep, "old")
             test.is_nil(plan.current_config.defaulted)
             test.eq(plan.desired_config.nested.keep, "new")
-            test.is_true(plan.desired_config.defaulted == true)
+            test.is_nil(plan.desired_config.defaulted)
+            test.is_true(plan.effective_desired_config.defaulted)
 
             patch.nested.keep = "mutated later"
             plan.desired_config.nested.keep = "mutated during write"

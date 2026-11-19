@@ -4,7 +4,7 @@ namespace: kickside.knowledge
 entries:
 
   - name: dep.kickside.models
-    version: '*'
+    version: '>=0.1.83'
     kind: ns.dependency
     component: kickside/models
 
