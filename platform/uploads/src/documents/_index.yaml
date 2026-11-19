@@ -69,7 +69,18 @@ entries:
       comment: PDF, Word, PowerPoint, Excel, RTF, text/Markdown, and SPSS files converted to Markdown via Doc2MD.
     type_key: documents
     priority: 90
-    extensions: [pdf, docx, doc, dot, pptx, ppt, pps, xlsx, xlsm, xlsb, xls, rtf, txt, md, markdown, sav]
+    extensions: [dot, pps, xlsm, xlsb, markdown, sav]
+    extension_mime_types:
+      txt: text/plain
+      md: text/markdown
+      pdf: application/pdf
+      docx: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      doc: application/msword
+      pptx: application/vnd.openxmlformats-officedocument.presentationml.presentation
+      ppt: application/vnd.ms-powerpoint
+      xlsx: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      xls: application/vnd.ms-excel
+      rtf: application/rtf
     mime_types:
       - application/pdf
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document

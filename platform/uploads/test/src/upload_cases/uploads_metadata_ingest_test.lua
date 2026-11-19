@@ -305,6 +305,56 @@ local function define_tests()
             test.is_nil(public_meta.trace_context)
         end)
 
+        test.it("stores a binary-labelled TSV as readable primary text", function()
+            local user_id = "tabular-upload-" .. uuid_v4()
+            local filename = "inventory.TSV"
+            local bytes = "item\tquantity\nPencils\t12\n"
+            local upload, upload_err = upload_as(
+                user_id, bytes, filename, #bytes, "application/octet-stream", "app:uploads", client_metadata(filename)
+            )
+            test.is_nil(upload_err)
+            test.not_nil(upload)
+
+            local stored, stored_err = upload_query_repo.get(upload.uuid)
+            test.is_nil(stored_err)
+            test.not_nil(stored)
+            local processed, processing_err = pipeline_lib.process_upload(stored)
+            test.is_nil(processing_err)
+            test.is_true(processed)
+
+            local primary, primary_err = artifact_parts_repo.read_primary_content(upload.uuid)
+            test.is_nil(primary_err, "stored MIME type: " .. stored.mime_type .. "; " .. tostring(primary_err))
+            test.not_nil(primary)
+            test.eq(stored.mime_type, "text/tab-separated-values")
+            test.eq(primary.mime_type, stored.mime_type)
+            test.eq(primary.artifact.kind, "table")
+            test.eq(primary.metadata.delimiter, "tab")
+            test.eq(primary.content, bytes)
+        end)
+
+        for extension, mime in pairs({
+            sh = "text/x-shellscript", bat = "text/x-msdos-batch", ps1 = "text/x-powershell",
+            yml = "text/yaml", yaml = "text/yaml", toml = "text/x-toml",
+        }) do
+            test.it("stores a binary-labelled " .. extension .. " upload as inline text", function()
+                local user_id = "source-upload-" .. uuid_v4()
+                local filename = "notes." .. extension
+                local bytes = "# Sample source\n"
+                local upload, upload_err = upload_as(
+                    user_id, bytes, filename, #bytes, "application/octet-stream", "app:uploads", client_metadata(filename)
+                )
+                test.is_nil(upload_err, tostring(upload_err))
+                local stored = assert(upload_query_repo.get(upload.uuid))
+                test.eq(stored.mime_type, mime)
+                test.eq(stored.type_id, "kickside.uploads:types.text")
+                test.is_true(assert(pipeline_lib.process_upload(stored)))
+                local primary = assert(artifact_parts_repo.read_primary_content(upload.uuid))
+                test.eq(primary.mime_type, mime)
+                test.eq(primary.artifact.kind, "text")
+                test.eq(primary.content, bytes)
+            end)
+        end
+
         test.it("stores workflow trace context on the upload record, not metadata", function()
             local user_id = "trace-upload-user-" .. uuid_v4()
             local bytes = "traceable upload " .. uuid_v4()

@@ -9,6 +9,7 @@ export interface UploadsMeta {
 
 export interface Upload {
   raw_url?: string | null
+  content_description?: ContentDescription
   view_url?: string | null
   uuid: string
   filename: string
@@ -21,6 +22,15 @@ export interface Upload {
   meta?: Record<string, unknown>
 }
 
+export interface ContentDescription {
+  kind: string
+  mime_type: string
+  text_available: boolean
+  inline: boolean
+  text_preview?: string
+  preview_truncated?: boolean
+}
+
 export interface UploadArtifact {
   artifact_id: string
   upload_id: string
@@ -28,6 +38,7 @@ export interface UploadArtifact {
   kind: string
   role?: string | null
   mime_type: string
+  content_description?: ContentDescription
   label?: string | null
   ordinal?: number
   checksum?: string | null
@@ -44,6 +55,7 @@ export interface ArtifactState {
   loaded: boolean
   loading: boolean
   error: string
+  source?: ContentDescription
   primary: UploadArtifact | null
   parts: UploadArtifact[]
   total: number
@@ -52,6 +64,9 @@ export interface ArtifactState {
 
 export interface PreviewSource {
   contentType: string
+  textAvailable?: boolean
   sourceUrl: string
+  previewText?: string
+  previewTruncated?: boolean
   filename: string
 }

@@ -4,7 +4,7 @@ local sql = require("sql")
 local uuid = require("uuid")
 local json = require("json")
 local http_client = require("http_client")
-local system = require("system")
+local gateway = require("test_gateway")
 local session = require("session")
 local groups = require("groups")
 local fixture = require("fixture")
@@ -32,10 +32,7 @@ end
 
 local function create(owner: string, body: any): any
     local token = assert(session.mint(assert(groups.get_user_with_groups(owner)))).token
-    local gateway, gateway_err = system.supervisor.state("app:gateway")
-    test.is_nil(gateway_err, tostring(gateway_err))
-    local port = assert(gateway.details:match(":(%d+)$"))
-    local response, err = http_client.request("POST", "http://127.0.0.1:" .. port .. "/api/knowledge/create", {
+    local response, err = http_client.request("POST", gateway.url() .. "/api/knowledge/create", {
         headers = { Authorization = "Bearer " .. token, ["Content-Type"] = "application/json" },
         body = assert(json.encode(body)),
     })

@@ -3,12 +3,28 @@ import { api } from '@wippy-fe/proxy'
 import type { ArtifactState, PreviewSource, Upload, UploadArtifact } from './uploads.types.ts'
 import {
   artifactLabel,
-  isPrimaryMarkdown,
-  isRawRenderable,
   uploadLabel,
 } from './uploads.format.ts'
 
 const PARTS_PER_PAGE = 30
+const TABLE_PREVIEW_LIMIT = 64 * 1024
+const RASTER_MIME_TYPES = new Set([
+  'image/apng', 'image/avif', 'image/bmp', 'image/gif', 'image/jpeg', 'image/png', 'image/tiff',
+  'image/vnd.microsoft.icon', 'image/webp', 'image/x-icon',
+])
+
+function baseMime(value: string) {
+  return value.toLowerCase().split(';', 1)[0].trim()
+}
+
+function inertOpenType(source: PreviewSource, responseType: string) {
+  const mime = baseMime(source.contentType || responseType)
+  if (source.textAvailable || mime.startsWith('text/') || mime === 'application/xml' || mime.endsWith('+xml')) {
+    return 'text/plain'
+  }
+  if (mime === 'application/pdf' || RASTER_MIME_TYPES.has(mime) || /^(audio|video)\//.test(mime)) return mime
+  return 'application/octet-stream'
+}
 
 export function useUploadArtifacts(error: Ref<string>) {
   // Preview opens as a right-side overlay drawer; artifactView selects which file
@@ -39,45 +55,45 @@ export function useUploadArtifacts(error: Ref<string>) {
     return artifact.role === 'source' || artifact.locator?.type === 'upload.original'
   }
 
-  function primaryMarkdownFor(uploadId: string): UploadArtifact | null {
+  function primaryArtifact(uploadId: string): UploadArtifact | null {
     const primary = artifactStateFor(uploadId).primary
-    return primary && isPrimaryMarkdown(primary) && !!primary.raw_url ? primary : null
+    return primary?.raw_url ? primary : null
   }
 
   function maybeSelectDefaultArtifact(upload: Upload) {
-    if (preview.value?.uuid !== upload.uuid || artifactView.value || isRawRenderable(upload.mime_type)) return
-    const markdown = primaryMarkdownFor(upload.uuid)
-    if (markdown) artifactView.value = markdown
-  }
-
-  function previewView(upload: Upload): PreviewSource {
-    return { contentType: upload.mime_type, sourceUrl: upload.raw_url || '', filename: uploadLabel(upload) }
+    if (preview.value?.uuid !== upload.uuid || artifactView.value) return
+    if ((artifactStateFor(upload.uuid).source ?? upload.content_description)?.inline === false) {
+      artifactView.value = primaryArtifact(upload.uuid)
+    }
   }
 
   function activePreviewSource(upload: Upload): PreviewSource {
-    if (artifactView.value?.raw_url) {
-      return {
-        contentType: artifactView.value.mime_type || 'application/octet-stream',
-        sourceUrl: artifactView.value.raw_url,
-        filename: artifactLabel(artifactView.value),
-      }
+    const state = artifactStateFor(upload.uuid)
+    const artifact = artifactView.value
+    const description = artifact ? artifact.content_description : state.source ?? upload.content_description
+    const contentType = description?.mime_type || ''
+    const table = description?.kind === 'table'
+    const storedPreview = table ? description.text_preview : undefined
+    const previewLength = storedPreview === undefined ? 0
+      : new TextEncoder().encodeInto(storedPreview, new Uint8Array(TABLE_PREVIEW_LIMIT)).read
+    const previewText = storedPreview?.slice(0, previewLength)
+    const size = artifact ? artifact.size : upload.size
+    const canReadWhole = !table || (typeof size === 'number' && size >= 0 && size <= TABLE_PREVIEW_LIMIT)
+    const rawUrl = artifact ? artifact.raw_url : upload.raw_url
+    return {
+      contentType,
+      textAvailable: description?.text_available,
+      sourceUrl: description?.inline && previewText === undefined && canReadWhole ? rawUrl || '' : '',
+      previewText,
+      previewTruncated: storedPreview !== undefined && (description?.preview_truncated === true || previewLength < storedPreview.length),
+      filename: artifact ? artifactLabel(artifact) : uploadLabel(upload),
     }
-    if (!isRawRenderable(upload.mime_type)) {
-      const markdown = primaryMarkdownFor(upload.uuid)
-      if (markdown?.raw_url) {
-        return {
-          contentType: markdown.mime_type || 'text/markdown',
-          sourceUrl: markdown.raw_url,
-          filename: artifactLabel(markdown),
-        }
-      }
-    }
-    return previewView(upload)
   }
 
   function openPreview(upload: Upload) {
     if (artifactView.value && preview.value?.uuid !== upload.uuid) artifactView.value = null
     preview.value = upload
+    maybeSelectDefaultArtifact(upload)
     // Load the extracted parts up front so their chips appear alongside the file;
     // clicking a chip swaps the viewer (no hidden tab).
     void loadArtifacts(upload)
@@ -93,7 +109,7 @@ export function useUploadArtifacts(error: Ref<string>) {
   }
 
   function viewPrimary() {
-    const primary = preview.value ? primaryMarkdownFor(preview.value.uuid) : null
+    const primary = preview.value ? primaryArtifact(preview.value.uuid) : null
     if (primary) artifactView.value = primary
   }
 
@@ -110,7 +126,9 @@ export function useUploadArtifacts(error: Ref<string>) {
   const partsPages = computed(() => Math.max(1, Math.ceil(partsTotal.value / PARTS_PER_PAGE)))
   const partsRangeStart = computed(() => partsTotal.value ? (partsPage.value - 1) * PARTS_PER_PAGE + 1 : 0)
   const partsRangeEnd = computed(() => Math.min(partsTotal.value, (partsPage.value - 1) * PARTS_PER_PAGE + currentArtifacts.value.length))
-  const hasPrimary = computed(() => !!(preview.value && primaryMarkdownFor(preview.value.uuid)))
+  const currentPrimary = computed(() => preview.value ? primaryArtifact(preview.value.uuid) : null)
+  const hasPrimary = computed(() => !!currentPrimary.value && !isSourceArtifact(currentPrimary.value))
+  const primaryKind = computed(() => currentPrimary.value?.content_description?.kind)
   const artifactsLoading = computed(() => !!(preview.value && artifactStateFor(preview.value.uuid).loading))
 
   function gotoPartsPage(page: number) {
@@ -121,29 +139,21 @@ export function useUploadArtifacts(error: Ref<string>) {
   }
 
   function activeRawUrl(): string {
-    if (artifactView.value?.raw_url) return artifactView.value.raw_url
-    if (preview.value && !isRawRenderable(preview.value.mime_type)) {
-      const markdown = primaryMarkdownFor(preview.value.uuid)
-      if (markdown?.raw_url) return markdown.raw_url
-    }
-    return preview.value?.raw_url || ''
+    return (artifactView.value ? artifactView.value.raw_url : preview.value?.raw_url) || ''
   }
 
   function activeName(): string {
     if (artifactView.value) return artifactView.value.label || artifactView.value.artifact_id
-    if (preview.value && !isRawRenderable(preview.value.mime_type)) {
-      const markdown = primaryMarkdownFor(preview.value.uuid)
-      if (markdown) return markdown.label || markdown.artifact_id
-    }
     return preview.value ? uploadLabel(preview.value) : 'download'
   }
 
   // Blob URLs let downloads use the record's filename across storage origins.
-  async function fetchBlobUrl(url: string): Promise<string | null> {
+  async function fetchBlobUrl(url: string, openSource?: PreviewSource): Promise<string | null> {
     if (!url) return null
     try {
       const response = await api.get<Blob>(url, { responseType: 'blob' })
-      return URL.createObjectURL(response.data)
+      const blob = response.data
+      return URL.createObjectURL(openSource ? blob.slice(0, blob.size, inertOpenType(openSource, blob.type)) : blob)
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : 'failed to fetch file'
       return null
@@ -163,10 +173,10 @@ export function useUploadArtifacts(error: Ref<string>) {
   }
 
   async function openActive() {
-    if (busyAction.value) return
+    if (busyAction.value || !preview.value) return
     busyAction.value = true
     try {
-      const url = await fetchBlobUrl(activeRawUrl())
+      const url = await fetchBlobUrl(activeRawUrl(), activePreviewSource(preview.value))
       if (url) {
         window.open(url, '_blank', 'noopener')
         setTimeout(() => URL.revokeObjectURL(url), 60000)
@@ -182,17 +192,15 @@ export function useUploadArtifacts(error: Ref<string>) {
       const offset = (toPage - 1) * PARTS_PER_PAGE
       const { data } = await api.get(`/api/v1/uploads/${upload.uuid}/artifacts`, { params: { limit: PARTS_PER_PAGE, offset } })
       if (!data.success) {
-        setArtifactState(upload.uuid, { ...current, loaded: true, loading: false, error: data.error || 'failed to load artifacts', primary: null, parts: [], total: 0, page: toPage })
+        setArtifactState(upload.uuid, { ...current, loaded: false, loading: false, error: data.error || 'failed to load artifacts' })
         return
       }
-      // The backend returns the primary separately and the page of parts already
-      // excludes source/primary; stay defensive and filter/derive client-side so a
-      // full-list response still renders correctly.
       const raw: UploadArtifact[] = data.artifacts || []
-      const primary = data.primary || raw.find((artifact) => isPrimaryMarkdown(artifact) && !!artifact.raw_url) || null
-      const parts = raw.filter((artifact) => !isSourceArtifact(artifact) && !isPrimaryMarkdown(artifact))
+      const primary = data.primary || raw.find((artifact) => artifact.role === 'primary' && !!artifact.raw_url) || null
+      const parts = raw.filter((artifact) => !isSourceArtifact(artifact) && artifact.role !== 'primary')
       setArtifactState(upload.uuid, {
         loaded: true, loading: false, error: '',
+        source: data.content_description,
         primary,
         parts,
         total: Number(data.meta?.total ?? parts.length),
@@ -200,15 +208,15 @@ export function useUploadArtifacts(error: Ref<string>) {
       })
       if (toPage === 1) maybeSelectDefaultArtifact(upload)
     } catch (cause) {
-      setArtifactState(upload.uuid, { ...current, loaded: true, loading: false, error: cause instanceof Error ? cause.message : 'failed to load artifacts' })
+      setArtifactState(upload.uuid, { ...current, loaded: false, loading: false, error: cause instanceof Error ? cause.message : 'failed to load artifacts' })
     }
   }
 
   return {
     preview, artifactView, artifactsByUpload, partsExpanded, busyAction,
-    artifactStateFor, isSourceArtifact, primaryMarkdownFor, activePreviewSource,
+    artifactStateFor, isSourceArtifact, activePreviewSource,
     openPreview, closePreview, viewOriginal, viewPrimary, viewArtifact,
     currentArtifacts, partsTotal, partsPage, partsPages, partsRangeStart, partsRangeEnd,
-    hasPrimary, artifactsLoading, gotoPartsPage, downloadActive, openActive,
+    hasPrimary, primaryKind, artifactsLoading, gotoPartsPage, downloadActive, openActive,
   }
 }

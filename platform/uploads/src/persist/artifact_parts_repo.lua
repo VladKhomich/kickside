@@ -7,6 +7,8 @@ local errors = require("errors")
 local resources = require("uploads_resources")
 local artifact_schema = require("artifact_schema")
 local artifact_content_repo = require("artifact_content_repo")
+local upload_query_repo = require("upload_query_repo")
+local upload_mime = require("upload_mime")
 
 local artifact_parts_repo = {}
 local PRIMARY_ARTIFACT_MISSING = "primary_artifact_missing"
@@ -49,19 +51,6 @@ local function load_artifact_by_id(db, artifact_id)
     if err then return nil, "failed to load artifact: " .. err end
     if #rows == 0 then return nil, typed(errors.NOT_FOUND, "artifact not found") end
     return artifact_content_repo.normalize_artifact_row(rows[1])
-end
-
-local function is_primary_text_artifact(artifact)
-    if not artifact or artifact.role ~= "primary" then return false end
-    local kind = tostring(artifact.kind or "")
-    local mime_type = tostring(artifact.mime_type or ""):lower()
-    if kind == "markdown" or kind == "text" then return true end
-    if mime_type == "text/markdown" or mime_type:match("^text/") then return true end
-    return mime_type == "application/json"
-        or mime_type == "application/xml"
-        or mime_type == "application/javascript"
-        or mime_type == "application/sql"
-        or mime_type == "application/xhtml+xml"
 end
 
 local function prefix_upper_bound(prefix)
@@ -320,7 +309,12 @@ function artifact_parts_repo.find_artifact_parts(upload_id, opts)
     return slice_rows(rows, limit, 0)
 end
 
-function artifact_parts_repo.get_primary_content_artifact(upload_id)
+local function missing_primary_artifact()
+    return errors.new({kind = errors.NOT_FOUND, message = "primary content artifact not found",
+        details = {code = PRIMARY_ARTIFACT_MISSING}})
+end
+
+function artifact_parts_repo.get_primary_content_artifact(upload_id, opts)
     if not upload_id or upload_id == "" then return nil, "upload_id is required" end
     local db, err = resources.get_db()
     if err then return nil, err end
@@ -340,32 +334,45 @@ function artifact_parts_repo.get_primary_content_artifact(upload_id)
 
     db:release()
     if query_err then return nil, errors.wrap(query_err, "failed to get primary content artifact") end
-    for _, row in ipairs(rows) do
-        local _, decode_err = artifact_content_repo.normalize_artifact_row(row)
-        if decode_err then return nil, decode_err end
+    if #rows == 0 then return nil, missing_primary_artifact() end
+    local upload = opts and opts.upload
+    if not upload then
+        local lookup_err
+        upload, lookup_err = upload_query_repo.get(upload_id)
+        if lookup_err then return nil, lookup_err end
     end
     for _, artifact in ipairs(rows) do
-        if is_primary_text_artifact(artifact) then
-            return artifact
-        end
+        local _, decode_err = artifact_content_repo.normalize_artifact_row(artifact)
+        if decode_err then return nil, decode_err end
     end
-    return nil, errors.new({kind = errors.NOT_FOUND, message = "primary content artifact not found",
-        details = {code = PRIMARY_ARTIFACT_MISSING}})
+    local filename = (upload.metadata or {}).filename
+    -- Keep the existing text preference and retain a declared file for general content reads.
+    local first_artifact, first_description
+    for _, artifact in ipairs(rows) do
+        local description, describe_err = upload_mime.describe(upload.mime_type, filename, artifact)
+        if describe_err then return nil, describe_err end
+        if description.text_available then return artifact, nil, description end
+        if not first_artifact then first_artifact, first_description = artifact, description end
+    end
+    if opts and opts.include_files then return first_artifact, nil, first_description end
+    return nil, missing_primary_artifact()
 end
 
 function artifact_parts_repo.is_primary_artifact_missing(err)
     return errors.is(err, errors.NOT_FOUND) and (err:details() or {}).code == PRIMARY_ARTIFACT_MISSING
 end
 
-function artifact_parts_repo.read_primary_content(upload_id)
-    local artifact, artifact_err = artifact_parts_repo.get_primary_content_artifact(upload_id)
+function artifact_parts_repo.read_primary_content(upload_id, limit, opts)
+    local artifact, artifact_err, description = artifact_parts_repo.get_primary_content_artifact(upload_id, opts)
     if artifact_err then return nil, artifact_err end
 
-    local content, content_err, blob = artifact_content_repo.read_artifact_content(upload_id, artifact.artifact_id)
+    local content, content_err, blob = artifact_content_repo.read_artifact_content(upload_id, artifact.artifact_id, limit)
     if content_err then return nil, content_err, artifact.artifact_id end
     return {
         content = content,
-        mime_type = artifact.mime_type,
+        mime_type = description.mime_type,
+        content_description = description,
+        total_size = limit and blob.size or #content,
         metadata = artifact.metadata or {},
         artifact = artifact,
         blob = blob,

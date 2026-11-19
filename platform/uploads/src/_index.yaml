@@ -59,7 +59,36 @@ entries:
       comment: Any file with no specialised processor; stored as-is and exposed to universal stages.
     type_key: generic
     priority: 0
-    extensions: []
+    extension_mime_types:
+      odt: application/vnd.oasis.opendocument.text
+      ods: application/vnd.oasis.opendocument.spreadsheet
+      odp: application/vnd.oasis.opendocument.presentation
+      mp3: audio/mpeg
+      wav: audio/wav
+      ogg: audio/ogg
+      flac: audio/flac
+      aac: audio/aac
+      m4a: audio/mp4
+      mp4: video/mp4
+      avi: video/x-msvideo
+      mov: video/quicktime
+      wmv: video/x-ms-wmv
+      mkv: video/x-matroska
+      webm: video/webm
+      flv: video/x-flv
+      rar: application/x-rar-compressed
+      7z: application/x-7z-compressed
+      tar: application/x-tar
+      gz: application/gzip
+      ttf: font/ttf
+      otf: font/otf
+      woff: font/woff
+      woff2: font/woff2
+      eml: message/rfc822
+      exe: application/octet-stream
+      bin: application/octet-stream
+      dmg: application/x-apple-diskimage
+      iso: application/x-iso9660-image
     mime_types:
       - ".*"
     pipeline: []
@@ -416,8 +445,10 @@ entries:
     meta:
       comment: Upload filename and MIME classification.
     source: file://uploads_mime.lua
+    modules: [registry]
     imports:
       upload_type: kickside.uploads:upload_type
+      artifact_schema: kickside.uploads.persist:artifact_schema
 
   - name: uploads_tokens
     kind: library.lua
@@ -436,6 +467,8 @@ entries:
     meta:
       comment: Presigned object upload lifecycle attached to the uploads library.
     source: file://uploads_presigned.lua
+    imports:
+      upload_mime: kickside.uploads:uploads_mime
 
   - name: types
     kind: library.lua

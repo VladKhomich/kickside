@@ -10,6 +10,7 @@ local provision = require("provision")
 local types = require("types")
 local artifacts = require("artifacts")
 local artifact_parts = require("artifact_parts")
+local reader = require("reader")
 
 local owner, stranger, delete_owner, corrupt_owner, cleanup_owner
 local owner_component, delete_component, corrupt_component, cleanup_component
@@ -115,7 +116,9 @@ return {run = test.run_cases(function()
         end)
         test.after_all(function()
             if not volume then return end
-            if uploads.normal then volume:remove(uploads.normal) end
+            for _, name in ipairs({"normal", "legacy_table", "large_table"}) do
+                if uploads[name] then assert(volume:remove(uploads[name])) end
+            end
             local db = assert(sql.get("app:db"))
             for _, id in ipairs(seeded) do
                 local _, err = db:execute("DELETE FROM kickside_uploads WHERE uuid=$1", {id})
@@ -242,6 +245,19 @@ return {run = test.run_cases(function()
             test.is_false(err:retryable())
             test.eq(err:details().field, "kickside_uploads.metadata")
         end)
+        for _, raw in ipairs({false, true}) do
+            test.it("honors a byte limit on the " .. (raw and "raw" or "default") .. " original read", function()
+                local value, err = invoke("get_content", {upload_id = uploads.normal}, nil,
+                    {format = raw and "raw" or nil, max_size = 3})
+                test.is_nil(err, tostring(err))
+                test.is_true(value.success)
+                test.eq(value.content, "byt")
+                test.eq(value.size, 3)
+                test.eq(value.total_size, 5)
+                test.is_true(value.truncated)
+            end)
+        end
+
         test.it("content reports absent extracted artifacts", function()
             local value, err = invoke("get_content", {upload_id = uploads.normal}, nil, {extracted_only = true})
             test.is_nil(err, tostring(err))
@@ -476,6 +492,79 @@ return {run = test.run_cases(function()
                 end
             end)
         end
+        test.it("reads an existing binary-labelled table as extracted text", function()
+            seed("legacy_table")
+            local id = uploads.legacy_table
+            local mime = "application/octet-stream"
+            local bytes = "item\tquantity\nPencils\t12\n"
+            update(id, "mime_type", mime)
+            update(id, "metadata", '{"filename":"inventory.tsv"}')
+            assert(volume:writefile(id, bytes))
+            local artifact = assert(artifacts.create_artifact({
+                upload_id = id, kind = "table", role = "primary", mime_type = mime,
+                locator = {type = "upload.original"}, metadata = {delimiter = "tab"},
+            }))
+
+            local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true})
+            test.is_nil(err, tostring(err))
+            test.eq(value.state, "ready")
+            test.eq(value.content, bytes)
+            test.eq(value.artifact_id, artifact.artifact_id)
+            test.eq(value.content_type, "text/tab-separated-values")
+            local info = assert(invoke("get_info", {upload_id = id}))
+            test.eq(info.content_type, value.content_type)
+        end)
+        test.it("reads only a bounded prefix of a 100 MiB legacy table", function()
+            seed("large_table")
+            local id = uploads.large_table
+            local mime = "application/octet-stream"
+            local block = ("a\tb\n"):rep(256 * 1024)
+            local size = #block * 100
+            update(id, "mime_type", mime)
+            update(id, "metadata", '{"filename":"large.tsv"}')
+            update(id, "size", size)
+            local file = assert(volume:open(id, "w"))
+            for _ = 1, 100 do assert(file:write(block)) end
+            assert(file:close())
+            assert(artifacts.create_artifact({
+                upload_id = id, kind = "table", role = "primary", mime_type = mime,
+                locator = {type = "upload.original"},
+            }))
+
+            local value, err = invoke("get_content", {upload_id = id}, nil, {extracted_only = true, limit = size})
+            test.is_nil(err, tostring(err))
+            test.is_true(value.success, tostring(value.error))
+            test.eq(value.content, block:sub(1, 24 * 1024))
+            test.eq(value.total_size, size)
+            test.is_true(value.content_truncated)
+            local trusted, trusted_err = reader.primary_text(id, 4096)
+            test.is_nil(trusted_err, tostring(trusted_err))
+            test.eq(trusted.text, block:sub(1, 4096))
+            test.eq(trusted.chars, size)
+            test.is_true(trusted.truncated)
+            for _, options in ipairs({{max_size = 32}, {format = "raw", max_size = 32}}) do
+                local content = assert(invoke("get_content", {upload_id = id}, nil, options))
+                test.eq(content.content, block:sub(1, 32))
+                test.eq(content.size, 32)
+                test.eq(content.total_size, size)
+                test.is_true(content.truncated)
+            end
+        end)
+        test.it("keeps original binary bytes out of extracted text when the linked artifact is labelled text", function()
+            seed("original_binary")
+            local id = uploads.original_binary
+            update(id, "mime_type", "image/png")
+            assert(artifacts.create_artifact({
+                upload_id = id, kind = "markdown", role = "primary", mime_type = "text/markdown",
+                locator = {type = "upload.original"},
+            }))
+            local info = assert(invoke("get_info", {upload_id = id}))
+            test.eq(info.content_type, "image/png")
+            test.is_false(info.content_description.text_available)
+            local content = assert(invoke("get_content", {upload_id = id}, nil, {extracted_only = true}))
+            test.is_false(content.success)
+            test.eq(content.state, "unreadable")
+        end)
         for _, fixture in ipairs({
             { name = "blob", content = "derived bytes", metadata = {size = 101, original_size = 102, file_size = 103} },
             { name = "empty blob", content = "", metadata = {size = 101} },
@@ -488,7 +577,7 @@ return {run = test.run_cases(function()
                 seed(fixture.name)
                 local id = uploads[fixture.name]
                 assert(volume:writefile(id, "bytes"))
-                update(id, "mime_type", "application/pdf")
+                update(id, "mime_type", fixture.content ~= nil and "application/pdf" or "text/plain")
                 fixture.metadata.mime_type = "image/png"
                 fixture.metadata.checksum = string.rep("0", 64)
                 local artifact = assert(artifacts.create_artifact({

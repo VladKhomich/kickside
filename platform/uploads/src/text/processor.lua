@@ -2,6 +2,7 @@ local uploads_resources = require("uploads_resources")
 local hash = require("hash")
 local artifact_content_repo = require("artifact_content_repo")
 local trim = require("text_trim").trim
+local upload_mime = require("upload_mime")
 
 -- Memory cap for formats that must be read whole to extract text (plain text,
 -- markdown, code, json). Tabular files (csv/tsv) are handled by a bounded streaming
@@ -16,13 +17,6 @@ local PREVIEW_MAX_BYTES = 64 * 1024
 local PREVIEW_MAX_ROWS = 50
 local STREAM_MAX_BYTES = 512 * 1024 * 1024 -- 512 MB streaming ceiling for row count
 local MAX_COLUMNS = 1024
-
-local TABULAR_MIME: { [string]: boolean } = {
-    ["text/csv"] = true,
-    ["application/csv"] = true,
-    ["text/tab-separated-values"] = true,
-    ["text/tsv"] = true,
-}
 
 local CANONICAL_METADATA_FIELDS = {
     "source",
@@ -67,13 +61,6 @@ local function checksum_for(content: string): string
     return checksum
 end
 
-local function artifact_kind(mime_type: string?): string
-    if mime_type == "text/markdown" or mime_type == "text/x-markdown" then
-        return "markdown"
-    end
-    return "text"
-end
-
 local function human_mb(bytes: number): string
     return string.format("%.1f MB", bytes / (1024 * 1024))
 end
@@ -85,15 +72,15 @@ local function permanent_failure(message: string): any
     return { success = false, retriable = false, error = message }
 end
 
-local function extension_of(name: any): string?
-    if type(name) ~= "string" then return nil end
-    return name:lower():match("%.([%a%d]+)$")
+local function describe_input(mime_type: any, filename: any, storage_path: any): any
+    local name = upload_mime.get_file_extension(filename) ~= "" and filename or storage_path
+    local description, err = upload_mime.describe(mime_type, name)
+    if err then error(tostring(err)) end
+    return description
 end
 
 local function is_tabular(mime_type: any, filename: any, storage_path: any): boolean
-    if type(mime_type) == "string" and TABULAR_MIME[mime_type:lower()] then return true end
-    local ext = extension_of(filename) or extension_of(storage_path)
-    return ext == "csv" or ext == "tsv"
+    return describe_input(mime_type, filename, storage_path).kind == "table"
 end
 
 local function count_char(s: string, ch: string): integer
@@ -285,7 +272,7 @@ end
 -- Whole-file processing for non-tabular text (plain text, markdown, code, json). The
 -- file is read into memory for extraction, so an oversize file is a permanent,
 -- non-retriable failure with a truthful reason rather than a looping error.
-local function process_text(params: any, storage: any): any
+local function process_text(params: any, storage: any, kind: string): any
     if params.size and tonumber(params.size) and (tonumber(params.size) :: number) > MAX_FILE_SIZE then
         return permanent_failure("File too large for text extraction (" .. human_mb(tonumber(params.size) :: number)
             .. " > " .. human_mb(MAX_FILE_SIZE) .. " limit); no preview stored.")
@@ -305,7 +292,7 @@ local function process_text(params: any, storage: any): any
     local artifact, artifact_err = artifact_content_repo.upsert_artifact({
         upload_id = params.upload_id,
         cancel_ref = params.cancel_ref,
-        kind = artifact_kind(params.mime_type),
+        kind = kind,
         role = "primary",
         mime_type = params.mime_type or "text/plain",
         label = metadata.filename or metadata.original_filename or params.storage_path,
@@ -357,10 +344,11 @@ local function process(params)
     end
 
     local filename = type(params.metadata) == "table" and params.metadata.filename or nil
-    if is_tabular(params.mime_type, filename, params.storage_path) then
+    local description = describe_input(params.mime_type, filename, params.storage_path)
+    if description.kind == "table" then
         return process_tabular(params, storage)
     end
-    return process_text(params, storage)
+    return process_text(params, storage, description.kind == "markdown" and "markdown" or "text")
 end
 
 return { process = process, content_metadata = content_metadata, is_tabular = is_tabular }

@@ -5,10 +5,12 @@ local security = require("security")
 local upload_query_repo = require("upload_query_repo")
 local artifact_content_repo = require("artifact_content_repo")
 local artifact_parts_repo = require("artifact_parts_repo")
+local artifact_schema = require("artifact_schema")
 local metadata_sanitizer = require("metadata_sanitizer")
 local upload_tokens = require("upload_tokens")
 local original_read = require("original_read")
 local http_errors = require("http_errors")
+local upload_mime = require("upload_mime")
 local binding_errors = require("binding_errors")
 local log = require("logger"):named("kickside.uploads.api.artifacts")
 
@@ -109,10 +111,10 @@ end
 local function has_readable_bytes(artifact: any): boolean
     if type(artifact.blob_id) == "string" and artifact.blob_id ~= "" then return true end
     local locator = type(artifact.locator) == "table" and artifact.locator or {}
-    return type(locator.storage_id) == "string"
+    return artifact_schema.references_original(artifact) or (type(locator.storage_id) == "string"
         and locator.storage_id ~= ""
         and type(locator.storage_path) == "string"
-        and locator.storage_path ~= ""
+        and locator.storage_path ~= "")
 end
 
 local function raw_url(upload_id: string, artifact: any): (string?, any?)
@@ -123,11 +125,15 @@ local function raw_url(upload_id: string, artifact: any): (string?, any?)
         upload_response.raw_path(upload_id, tostring(artifact.artifact_id)))
 end
 
-local function public_artifact(upload_id: string, artifact: any): (any?, any?)
+local function public_artifact(upload_id: string, artifact: any, description: any): (any?, any?)
     local artifact_id = tostring(artifact.artifact_id or "")
     local url, url_err = raw_url(upload_id, artifact)
     if url_err then return nil, url_err end
     local metadata = metadata_sanitizer.public(artifact.metadata)
+    if description.kind == "table" and type(metadata.text_preview) == "string" then
+        description.text_preview = metadata.text_preview
+        description.preview_truncated = metadata.preview_truncated
+    end
     return {
         artifact_id = artifact_id,
         upload_id = artifact.upload_id,
@@ -135,6 +141,7 @@ local function public_artifact(upload_id: string, artifact: any): (any?, any?)
         kind = artifact.kind,
         role = artifact.role,
         mime_type = artifact.mime_type,
+        content_description = description,
         label = artifact.label,
         ordinal = artifact.ordinal,
         checksum = artifact.checksum,
@@ -176,7 +183,7 @@ local function artifacts_handler()
     local upload = require_owned_upload(req, res)
     if not upload then return end
     local upload_id = tostring(upload.uuid or "")
-
+    local filename = (upload.metadata or {}).filename
     local limit = clamp_int(req:query("limit"), DEFAULT_PARTS_LIMIT, 1, MAX_PARTS_LIMIT)
     local offset = clamp_int(req:query("offset"), 0, 0, 1000000000)
 
@@ -194,7 +201,12 @@ local function artifacts_handler()
 
     local public_artifacts = {}
     for i, artifact in ipairs(parts or {}) do
-        local public, delivery_err = public_artifact(upload_id, artifact)
+        local description, part_err = upload_mime.describe(upload.mime_type, filename, artifact)
+        if part_err then
+            json_error(res, http_errors.classify(part_err), "Failed to describe upload artifact", part_err)
+            return
+        end
+        local public, delivery_err = public_artifact(upload_id, artifact, description)
         if delivery_err then
             json_error(res, http_errors.classify(delivery_err), "Failed to obtain artifact delivery URL")
             return
@@ -202,14 +214,27 @@ local function artifacts_handler()
         public_artifacts[i] = public
     end
 
-    -- The primary content artifact is optional (raw-renderable uploads have none).
     local primary_public: { [string]: any }? = nil
-    local primary = artifact_parts_repo.get_primary_content_artifact(upload.uuid)
+    local primary, primary_err, description = artifact_parts_repo.get_primary_content_artifact(upload.uuid, { upload = upload, include_files = true })
+    if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
+        json_error(res, http_errors.classify(primary_err), "Failed to get primary upload artifact", primary_err)
+        return
+    end
     if primary then
         local delivery_err
-        primary_public, delivery_err = public_artifact(upload_id, primary)
+        primary_public, delivery_err = public_artifact(upload_id, primary, description)
         if delivery_err then
             json_error(res, http_errors.classify(delivery_err), "Failed to obtain artifact delivery URL")
+            return
+        end
+    end
+
+    local source = artifact_schema.references_original(primary) and description or nil
+    if not source then
+        local describe_err
+        source, describe_err = upload_mime.describe(upload.mime_type, filename)
+        if describe_err then
+            json_error(res, http_errors.classify(describe_err), "Failed to describe upload content", describe_err)
             return
         end
     end
@@ -218,6 +243,7 @@ local function artifacts_handler()
     res:write_json({
         success = true,
         upload_id = upload.uuid,
+        content_description = source,
         primary = primary_public,
         artifacts = public_artifacts,
         meta = {
