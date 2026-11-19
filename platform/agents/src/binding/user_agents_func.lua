@@ -40,7 +40,7 @@ local function clamp(value, default, min, max)
     local n = tonumber(value)
     if not n then return default end
     if n < min then return min end
-    if n > max then return max end
+    if max ~= nil and n > max then return max end
     return n
 end
 user_agents.clamp = clamp
@@ -221,7 +221,7 @@ local function create(args: table, get_service: any): (any?, error?)
             prompt = args.prompt or "",
             model = model,
             temperature = type(args.temperature) == "number" and clamp(args.temperature, agent_types.DEFAULT_TEMPERATURE, 0, 2) or nil,
-            max_tokens = clamp(args.max_tokens, agent_types.DEFAULT_MAX_TOKENS, 1, 128000),
+            max_tokens = clamp(args.max_tokens, nil, 1),
             thinking_effort = args.thinking_effort,
             traits = traits,
             trait_contexts = args.trait_contexts or {},
@@ -304,7 +304,7 @@ local function update(component_id: string, args: table, get_service: any): (any
             if type(wanted) ~= "number" then return nil end
             return clamp(wanted, agent_types.DEFAULT_TEMPERATURE, 0, 2)
         end)(),
-        max_tokens = clamp(args.max_tokens ~= nil and args.max_tokens or existing_ctx.max_tokens, agent_types.DEFAULT_MAX_TOKENS, 1, 128000),
+        max_tokens = clamp(args.max_tokens ~= nil and args.max_tokens or existing_ctx.max_tokens, nil, 1),
         traits = args.traits ~= nil and args.traits or existing_ctx.traits or {},
         trait_contexts = args.trait_contexts ~= nil and args.trait_contexts or existing_ctx.trait_contexts or {},
         trait_agent_options = args.trait_agent_options ~= nil and args.trait_agent_options or existing_ctx.trait_agent_options or {},

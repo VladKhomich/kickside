@@ -56,3 +56,35 @@ it('derives the new agent budget from the model catalog and preserves a user-ent
     wrapper.unmount()
   }
 })
+
+it('leaves the response budget unset when the selected model declares no ceiling', async () => {
+  vi.mocked(api.post).mockClear().mockResolvedValue({ data: { success: true, component_id: 'agent' } } as never)
+  const wrapper = mount(AgentForm, {
+    props: {
+      open: true, embedded: true, agentId: null, traits: [], tools: [], agents: [],
+      models: [{ name: 'unbounded-output' }],
+    },
+    global: { plugins: [PrimeVuePlugin] },
+  })
+  try {
+    await wrapper.get('[aria-label="Agent name"]').setValue('Workshop assistant')
+    const modelTab = wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'Model')
+    await modelTab!.trigger('click')
+    const tokens = wrapper.get<HTMLInputElement>('input[type="number"]')
+    const save = wrapper.get<HTMLButtonElement>('[data-testid="agent-form-save"]')
+    expect(tokens.element.value).toBe('')
+    expect(tokens.attributes('max')).toBeUndefined()
+    expect(save.element.disabled).toBe(false)
+    await save.trigger('click')
+    await flushPromises()
+    expect(vi.mocked(api.post).mock.calls[0]?.[1]).not.toHaveProperty('max_tokens')
+
+    await tokens.setValue('128001')
+    expect(save.element.disabled).toBe(false)
+    await save.trigger('click')
+    await flushPromises()
+    expect(vi.mocked(api.post).mock.calls[1]?.[1]).toHaveProperty('max_tokens', 128001)
+  } finally {
+    wrapper.unmount()
+  }
+})

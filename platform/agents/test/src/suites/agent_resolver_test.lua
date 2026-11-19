@@ -293,6 +293,15 @@ local function define_tests()
             test.eq(43000, resolved.agent_options.checkpoint.token_threshold)
         end)
 
+        test.it("leaves the response budget unset when the agent declares no cap", function()
+            local cid = register_agent({ model = "unspecified-limits-model" }, "Resolver Model Budget Agent")
+            local resolved, err = new_executor(owner):call(RESOLVER, { agent_id = cid })
+
+            test.is_nil(err)
+            test.not_nil(resolved)
+            test.is_nil(resolved.max_tokens)
+        end)
+
         test.it("preserves trait-owned runtime options on the trait spec", function()
             local cid = register_agent({
                 prompt = "Trait runtime options prompt.",

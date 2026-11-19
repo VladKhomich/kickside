@@ -290,7 +290,7 @@ local function resolve(input)
         -- Temperature is opt-in: modern models reject it, so nothing is sent
         -- unless the agent explicitly stores a number (false = explicit off).
         temperature = private_ctx.temperature ~= false and private_ctx.temperature or nil,
-        max_tokens = private_ctx.max_tokens or agent_types.DEFAULT_MAX_TOKENS,
+        max_tokens = private_ctx.max_tokens,
         thinking_effort = private_ctx.thinking_effort ~= false and private_ctx.thinking_effort or nil,
         traits = traits,
         agent_options = private_ctx.agent_options or {},
