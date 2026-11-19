@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- Implementation of the kickside.models.cards:cards contract.
 local card_service = require("card_service")
+local policy = require("policy")
 
 local M = {}
 
@@ -20,7 +21,8 @@ end
 
 local function respond(card: any?, err: any?): any
     if not card then return { success = false, error = tostring(err) } end
-    return { success = true, model = card }
+    local public = policy.split_config(card)
+    return { success = true, model = public }
 end
 
 -- upsert_card(card) -> { success, model?, error? }. Idempotent by card name.

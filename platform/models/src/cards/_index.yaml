@@ -91,6 +91,7 @@ entries:
     method: upsert_card
     imports:
       card_service: kickside.models.catalog:card_service
+      policy: kickside.models.catalog:policy
     security:
       policies:
         - kickside.models.cards:card_writer_runtime
@@ -104,6 +105,7 @@ entries:
     method: disable_card
     imports:
       card_service: kickside.models.catalog:card_service
+      policy: kickside.models.catalog:policy
     security:
       policies:
         - kickside.models.cards:card_writer_runtime

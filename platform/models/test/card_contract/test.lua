@@ -49,6 +49,12 @@ local function call(id: string, args: any): any
     return result
 end
 
+local function registrar(): any
+    local scope = assert(security.new_scope({ assert(security.policy("kickside.models.security:card_registrar")) }))
+    return assert(assert(contract.get(CONTRACT))
+        :with_actor(security.new_actor("module-registrar", {})):with_scope(scope):open())
+end
+
 local function overlay_count(name: string): number
     local overlays, err = models_repo.list_card_overlays()
     test.is_nil(err)
@@ -194,16 +200,55 @@ local function define_tests()
     end)
 
     test.describe("card_registrar policy", function()
+        test.it("persists retirement while the provider is paused", function()
+            with_existing_provider(function(profile)
+                assert(models_repo.update_profile(profile.id, { enabled = false }))
+                local cards = registrar()
+                local result, call_err = cards:disable_card({ name = "cc-existing-card" })
+                test.is_nil(call_err, tostring(call_err))
+                test.eq(result.success, true, tostring(result.error))
+
+                assert(models_repo.update_profile(profile.id, { enabled = true }))
+                test.is_true(model_catalog.get_by_name("cc-existing-card") == nil,
+                    "retired card returned after re-enabling its provider")
+                test.eq(overlay_count("cc-existing-card"), 1)
+            end)
+        end)
+
         for _, action in ipairs({ "upsert_card", "disable_card" }) do
+            test.it(action .. " removes legacy pricing credentials from the reply", function()
+                with_existing_provider(function()
+                    local marker = "synthetic-legacy-pricing-credential"
+                    local db = assert(sql.get("app:db"))
+                    local _, write_err = db:execute("UPDATE kickside_model_cards SET pricing_json = $1 WHERE name = $2",
+                        { assert(json.encode({ prompt = 1, vendor = { api_key = marker, token_count = 7 } })),
+                            "cc-existing-card" })
+                    db:release()
+                    test.is_nil(write_err)
+                    assert(models_repo.reload())
+
+                    local cards = registrar()
+                    local result, call_err
+                    if action == "upsert_card" then
+                        result, call_err = cards:upsert_card({ name = "cc-existing-card", priority = 42 })
+                    else
+                        result, call_err = cards:disable_card({ name = "cc-existing-card" })
+                    end
+                    test.is_nil(call_err, tostring(call_err))
+                    test.eq(result.success, true, tostring(result.error))
+                    test.is_nil((assert(json.encode(result)):find(marker, 1, true)), "legacy pricing credential returned")
+                    test.eq(result.model.pricing.prompt, 1)
+                    test.eq(result.model.pricing.vendor.token_count, 7)
+                end)
+            end)
+
             for _, cold in ipairs({ false, true }) do
                 test.it(action .. " preserves existing encrypted providers with a " .. (cold and "cold" or "warm") .. " cache", function()
                     with_existing_provider(function(profile)
                         assert(card_service.save(card_body()))
                         local before = stored_profile(profile.id)
                         if cold then models_cache.clear() end
-                        local scope = assert(security.new_scope({ assert(security.policy("kickside.models.security:card_registrar")) }))
-                        local cards = assert(assert(contract.get(CONTRACT))
-                            :with_actor(security.new_actor("module-registrar", {})):with_scope(scope):open())
+                        local cards = registrar()
                         local result, call_err
                         if action == "upsert_card" then
                             result, call_err = (cards :: any):upsert_card(card_body({ priority = 42 }))

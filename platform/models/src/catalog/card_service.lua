@@ -26,7 +26,7 @@ function M.disable(name: any): (any?, any?)
     if err then return nil, err end
     for _, item in ipairs(snapshot.cards) do
         if item.name == name then
-            if item.enabled == false then return card_policy.public_card(item) end
+            if item.configured_enabled == false then return card_policy.public_card(item) end
             return models_repo.upsert_card({ name = name, enabled = false }, item)
         end
     end
