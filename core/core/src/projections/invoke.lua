@@ -58,9 +58,10 @@ end
 local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?, error?)
     local rows, err = db:query([[SELECT c.id,c.projection_id,c.thread_id,c.cursor_key,c.last_seq,
         c.generation,c.status,c.job_id,c.last_error,c.debounce_idle_ms,c.debounce_max_ms,c.continuation,
-        c.actor_id,c.execution_identity_json,p.kind,p.body,t.event_count,t.deleting_at
+        c.actor_id,c.execution_identity_json,p.kind,p.projection_key,p.body,
+        t.component_id,t.thread_class,t.event_count,t.deleting_at
         FROM kickside_projection_cursor c
-        JOIN kickside_projection p ON p.id=c.projection_id
+        JOIN kickside_projection p ON p.id=c.projection_id AND p.thread_id=c.thread_id
         JOIN kickside_thread t ON t.id=c.thread_id
         WHERE c.id=$1]], { cursor_id })
     if err then return nil, errors.wrap(err, "projection snapshot failed") end
@@ -227,7 +228,12 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         if type(parsed) ~= "table" then return nil, release(db, response_error("worker.reference")) end
         local system_identity = current.actor_id == nil and current.execution_identity_json == nil
         local binding, binding_err = worker.validate(parsed, system_identity)
-        if binding_err then return nil, release(db, binding_err) end
+        local needs_declaration = binding_err and worker.requires_checkpoint_declaration(binding_err)
+        if binding_err and not needs_declaration then return nil, release(db, binding_err) end
+        if needs_declaration then
+            binding = parsed
+            binding.checkpointed_apply = true
+        end
         if type(binding) ~= "table" then return nil, release(db, response_error("worker.binding")) end
         binding.actor_id = current.actor_id
         binding.actor_context = current.execution_identity_json
@@ -286,6 +292,11 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             -- before invoking either a function or a monitored process.
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
+            if needs_declaration then
+                local admitted, declaration_err = worker.admit_declared_checkpoint(binding, current)
+                if not admitted then return nil, declaration_err or response_error("worker.declaration") end
+                binding = admitted
+            end
             if binding.worker_runtime == "proc" then
                 local host, host_err = apply.process_host()
                 if host_err then return nil, host_err end
