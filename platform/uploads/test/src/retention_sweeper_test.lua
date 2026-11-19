@@ -322,9 +322,10 @@ return test.run_cases(function()
                 query = function(_, statement, params)
                     local plan = assert(db:query((postgres and "EXPLAIN (ANALYZE, BUFFERS) " or "EXPLAIN QUERY PLAN ")
                         .. statement, params))
-                    local seek = false
+                    local seek, candidate_index = false, false
                     for _, row in ipairs(plan) do
                         local detail = tostring(postgres and row["QUERY PLAN"] or row.detail)
+                        candidate_index = candidate_index or detail:find("idx_upload_checkpoint_candidates", 1, true) ~= nil
                         if postgres then
                             local rows, loops = detail:match("actual time=[^ ]+ rows=(%d+) loops=(%d+)")
                             if rows and loops then
@@ -339,6 +340,7 @@ return test.run_cases(function()
                         end
                     end
                     test.is_true(seek, "candidate discovery advances by an indexed seek")
+                    test.is_true(candidate_index, "the page reads the partial checkpoint index")
                     local rows, err = db:query(statement, params)
                     if rows then examined = examined + #rows end
                     return rows, err

@@ -191,14 +191,23 @@ function upload_query_repo.list_checkpoints(limit: integer, cursor: string?, db:
     if cursor then after, limit_arg, params = " AND u.uuid > $1", "$2", { cursor, limit } end
     local dbtype, type_err = db:type()
     if type_err then return nil, type_err end
-    local index = dbtype == sql.type.SQLITE and " INDEXED BY idx_upload_checkpoint_candidates" or ""
-    local rows, err = db:query("SELECT u.*, (u.processing_job_id IS NOT NULL OR ("
+    local publication = "SELECT u.*, (u.processing_job_id IS NOT NULL OR ("
         .. upload_query_repo.intentless_checkpoint_sql("u.uuid") .. ")) AND NOT " .. checkpoint_published
-        .. " AS unpublished FROM kickside_uploads u"
-        .. index .. [[
+        .. " AS unpublished FROM "
+    local page = [[
         WHERE u.storage_state IN ('completed', 'failed')
           AND ((u.processing_intent_state = 'acknowledged' AND u.processing_job_id IS NOT NULL)
-            OR (]] .. INTENTLESS_SQL .. "))" .. after .. " ORDER BY u.uuid LIMIT " .. limit_arg, params)
+            OR (]] .. INTENTLESS_SQL .. "))" .. after .. " ORDER BY u.uuid LIMIT " .. limit_arg
+    local statement = publication .. "kickside_uploads u INDEXED BY idx_upload_checkpoint_candidates" .. page
+    if dbtype == sql.type.POSTGRES then
+        -- Page the partial index before fetching the wide rows or checking their events.
+        -- The lateral limit keeps hydration to one primary-key lookup per candidate.
+        statement = "WITH candidates AS MATERIALIZED (SELECT u.uuid FROM kickside_uploads u" .. page .. ") "
+            .. publication .. [[candidates c
+            CROSS JOIN LATERAL (SELECT * FROM kickside_uploads WHERE uuid = c.uuid LIMIT 1) u
+            ORDER BY c.uuid]]
+    end
+    local rows, err = db:query(statement, params)
     if err then return nil, err end
     local checkpoints = {}
     for _, row in ipairs(rows) do
