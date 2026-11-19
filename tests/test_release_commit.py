@@ -102,18 +102,13 @@ class ReleaseCommit(unittest.TestCase):
 
 
 class ReleaseWorkflow(unittest.TestCase):
-    def test_publishers_check_out_the_resolved_release_commit(self):
+    def test_release_please_runs_without_automatic_hub_publication(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
-        jobs = dict(re.findall(r'(?ms)^  ([\w-]+):\n(.*?)(?=^  [\w-]+:|\Z)', workflow))
-        for name in ('publish-modules', 'publish-app'):
-            with self.subTest(job=name):
-                checkout = re.search(r'uses: actions/checkout@[^\n]+\n(.*?)(?=\n    -|\Z)', jobs[name], re.DOTALL)
-                self.assertIsNotNone(checkout)
-                self.assertIn('ref: ${{ needs.release-please.outputs.released_commit }}', checkout[1])
-        self.assertIn('released_commit: ${{ steps.release-commit.outputs.released_commit }}', jobs['release-please'])
-        self.assertIn('RELEASE_OUTPUTS_JSON: ${{ toJSON(steps.release.outputs) }}', jobs['release-please'])
-        self.assertIn('fetch-depth: 0', jobs['release-please'])
-        self.assertIn('python3 scripts/resolve-release-commit.py --repository .', jobs['release-please'])
+        jobs = dict(re.findall(r'(?ms)^  ([\w-]+):\n(.*?)(?=^  [\w-]+:|\Z)', workflow.split('jobs:\n', 1)[1]))
+        self.assertEqual(set(jobs), {'release-please'})
+        self.assertIn('googleapis/release-please-action@', jobs['release-please'])
+        self.assertNotIn('WIPPY_HUB_TOKEN', workflow)
+        self.assertNotIn('wippy publish', workflow)
 
 
 if __name__ == '__main__':

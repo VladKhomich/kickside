@@ -53,12 +53,25 @@ GitHub and Hub credentials before releasing. Use the module's checked-in
 Makefile for its exact targets; never call package-manager or Vite build
 commands directly in a Wippy repository. For the application, `make -C app
 release-check` builds the untracked main page, verifies its complete asset
-manifest and font references, and performs a dry-run pack. Application release
-publication uses `release-publish` from the exact Release Please tag and repeats
-the build and asset checks before uploading. The Release workflow runs this
-path with the encrypted `WIPPY_HUB_TOKEN` Actions secret. Publish dependencies first so Hub
-can resolve the module's graph. A release cannot be edited after publication;
-publish a new version for changes.
+manifest and font references, and performs a dry-run pack.
+
+For releases of the KickSide repository itself, Release Please creates the GitHub
+tags and release records. Publish the staged native packages from a clean
+checkout at the exact tagged commit with the evidence directory produced by
+the internal two-engine release gate. Authenticate with `wippy auth login`
+before publishing.
+
+```bash
+python3 scripts/publish-release-modules.py --repository . --evidence "$RELEASE_EVIDENCE" --verify-only
+python3 scripts/publish-release-modules.py --repository . --evidence "$RELEASE_EVIDENCE"
+```
+
+The publisher checks the tagged commit's parent and source tree against the
+verified release, then checks every module version and both engines' archive
+proof. It uploads the staged archives in dependency order followed by the
+application when included. Existing releases with matching bytes can be reused
+when resuming publication. Publish a new version to change a released archive.
+
 
 ## Install and update through KickSide Hub
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 """Exercise release failure/recovery with real subprocesses and a fixture registry."""
+from hashlib import sha256
 import importlib.util
 import json
 import os
@@ -53,15 +54,7 @@ if 'install' in args:
   output=pathlib.Path(cfg['registry']['dependency_vendor_dir'])/organization/(module+'-'+version+'.wapp')
   output.parent.mkdir(parents=True,exist_ok=True); output.write_bytes(stored.read_bytes())
  record({'step':'install'}); sys.exit(0)
-if 'pack' in args:
- cfg=json.loads(pathlib.Path(option('--config')).read_text())
- name=option('--module'); directory=pathlib.Path(cfg['workspace']['replacements'][name])
- item=json.loads((directory/'module.json').read_text())
- if item['build'] and not (directory/'built').exists(): raise RuntimeError('frontend was not built')
- lock=json.loads(pathlib.Path(option('--lock-file')).read_text())
- payload=json.dumps({'name':name,'version':lock['modules'][0]['version'],'envelope':'module-pack'}).encode()
- pathlib.Path(args[-1]).write_bytes(payload)
- record({'step':'pack','name':item['name']}); sys.exit(0)
+if 'pack' in args: raise RuntimeError('publication must reuse the verified archive')
 if '--wapp' not in args: raise RuntimeError('publication must use the prepared artifact')
 payload=pathlib.Path(option('--wapp')).read_bytes()
 item=json.loads(payload)
@@ -77,7 +70,10 @@ class ReleasePublication(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name)
+        self.root = Path(self.directory.name) / 'repo'
+        self.root.mkdir()
+        self.evidence = self.root.parent / 'evidence'
+        self.evidence.mkdir()
         self.state = self.root / 'registry'
         self.state.mkdir()
         self.wippy = self.root / 'fixture-wippy'
@@ -88,6 +84,8 @@ class ReleasePublication(unittest.TestCase):
         self.addCleanup(self.env.stop)
         (self.root / '.gitignore').write_text('registry/\nfixture-wippy\n')
         self.modules = {
+            'app': {'path': 'app', 'organization': 'fixture', 'module': 'app',
+                    'type': 'application', 'visibility': 'public', 'embed': [], 'targets': ['build']},
             'platform/first': {'path': 'platform/first', 'organization': 'fixture', 'module': 'first',
                                'type': 'library', 'visibility': 'public', 'embed': [], 'targets': []},
             'platform/page': {'path': 'platform/page', 'organization': 'fixture', 'module': 'page',
@@ -99,7 +97,7 @@ class ReleasePublication(unittest.TestCase):
         }
         (self.root / '.github').mkdir()
         (self.root / '.github/modules.json').write_text(json.dumps({'modules': self.modules}))
-        (self.root / '.release-please-manifest.json').write_text(json.dumps({path: '1.2.3' for path in self.modules}))
+        (self.root / '.release-please-manifest.json').write_text(json.dumps({path: '1.2.2' for path in self.modules}))
         (self.root / 'release-please-config.json').write_text(json.dumps({'packages': {
             path: {'component': module['module']} for path, module in self.modules.items()}}))
         (self.root / 'Makefile').write_text('release-build-inputs:\n\t@if [ "$(MOD)" = page ]; then echo build-inputs/src; fi\n')
@@ -111,20 +109,39 @@ class ReleasePublication(unittest.TestCase):
             directory.mkdir(parents=True)
             (directory / 'module.json').write_text(json.dumps({'name': 'fixture/' + module['module'],
                                                                'build': 'build' in module['targets']}))
-            if 'build' in module['targets']:
-                (directory / '.gitignore').write_text('built\n')
-                (directory / 'Makefile').write_text(
-                    'build:\n\t@test "$$RELEASE_TEST_BUILD_ERROR" != 1\n'
-                    '\t@test -z "$$RELEASE_TEST_BUILD_INPUT" || test "$(notdir $(CURDIR))" != page '
-                    '|| test -f "$$RELEASE_TEST_STATE/$$RELEASE_TEST_BUILD_INPUT"\n\t@echo built > built\n')
         self.git('init', '-q')
-        self.tag_release()
+        self.commit('base fixture')
+        self.base = self.git('rev-parse', 'HEAD').strip()
+        self.tag_release(['platform/page', 'platform/first'])
 
-    def tag_release(self):
+    def commit(self, message, *options):
         self.git('add', '.')
-        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'release fixture')
-        for module in self.modules.values():
-            self.git('tag', '-f', module['module'] + '-v1.2.3')
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', message, *options)
+
+    def tag_release(self, paths):
+        self.git('reset', '--soft', self.base)
+        versions = {path: '1.2.3' if path in paths else '1.2.2' for path in self.modules}
+        (self.root / '.release-please-manifest.json').write_text(json.dumps(versions))
+        self.commit('release fixture')
+        for path in paths:
+            self.git('tag', '-f', self.modules[path]['module'] + '-v1.2.3')
+        release = {'repository': 'kickside', 'base': self.base, 'head': self.git('rev-parse', 'HEAD').strip(),
+                   'source_tree': self.git('rev-parse', 'HEAD^{tree}').strip(), 'changed_public_paths': sorted(paths)}
+        (self.evidence / 'release.json').write_text(json.dumps(release))
+        proofs = {}
+        for path in paths:
+            name = 'fixture/' + self.modules[path]['module']
+            filename = name.replace('/', '_') + '-1.2.3.wapp'
+            archive = json.dumps({'name': name, 'version': '1.2.3', 'envelope': 'tested-package'}).encode()
+            (self.evidence / filename).write_bytes(archive)
+            proofs[name] = {'path': path, 'version': '1.2.3', 'artifact': filename,
+                            'sha256': sha256(archive).hexdigest()}
+        (self.evidence / 'artifacts.json').write_text(json.dumps(proofs))
+        for engine in ('sqlite', 'postgres'):
+            root = self.evidence / engine
+            root.mkdir(exist_ok=True)
+            (root / 'artifacts.json').write_text(json.dumps({name: dict(row, state='exercised')
+                                                           for name, row in proofs.items()}))
 
     def set_dependencies(self, path, dependencies):
         declaration = self.root / path / 'module.json'
@@ -135,73 +152,73 @@ class ReleasePublication(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', *args], cwd=self.root, text=True)
 
-    def run_publication(self, paths=None):
-        publisher.publish(self.root, paths if paths is not None else ['platform/first', 'platform/page'], str(self.wippy))
+    def run_publication(self, *, verify_only=False):
+        publisher.publish(self.root, self.evidence, str(self.wippy), verify_only=verify_only)
 
     def events(self):
         path = self.state / 'events'
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
-    def test_build_publish_verify_and_resume_without_overwriting(self):
-        self.run_publication(['app', 'platform/page', 'platform/first'])
-        first = self.events()
-        self.assertEqual([event['name'] for event in first if event['step'] == 'publish'], ['fixture/first', 'fixture/page'])
-        self.assertTrue((self.root / 'platform/page/built').is_file())
+    def test_publishes_exact_companions_then_app_and_resumes_without_overwriting(self):
+        self.tag_release(['app', 'platform/page', 'platform/first'])
         self.run_publication()
-        self.assertEqual(sum(event['step'] == 'publish' for event in self.events()), 2)
+        first = self.events()
+        self.assertEqual([event['name'] for event in first if event['step'] == 'publish'],
+                         ['fixture/first', 'fixture/page', 'fixture/app'])
+        self.run_publication()
+        self.assertEqual(sum(event['step'] == 'publish' for event in self.events()), 3)
 
     def test_partial_publication_resumes_at_missing_artifact(self):
-        self.run_publication(['platform/first'])
+        first = self.state / 'fixture-first-1.2.3'
+        first.write_bytes((self.evidence / 'fixture_first-1.2.3.wapp').read_bytes())
         self.run_publication()
-        self.assertEqual([event['name'] for event in self.events() if event['step'] == 'publish'], ['fixture/first', 'fixture/page'])
+        self.assertEqual([event['name'] for event in self.events() if event['step'] == 'publish'], ['fixture/page'])
 
     def test_runtime_and_build_dependencies_precede_their_consumers(self):
         self.set_dependencies('platform/first', ['fixture/runtime', 'external/library'])
-        self.tag_release()
-        with patch.dict(os.environ, {'RELEASE_TEST_BUILD_INPUT': 'fixture-tool-1.2.3'}):
-            self.run_publication(list(reversed(self.modules)))
+        self.tag_release(list(reversed(self.modules)))
+        self.run_publication()
         self.assertEqual([event['name'] for event in self.events() if event['step'] == 'publish'],
-                         ['fixture/runtime', 'fixture/first', 'fixture/tool', 'fixture/page'])
+                         ['fixture/runtime', 'fixture/first', 'fixture/tool', 'fixture/page', 'fixture/app'])
 
-    def test_dependency_cycle_prevents_all_builds_and_publication(self):
+    def test_dependency_cycle_prevents_all_publication(self):
         self.set_dependencies('platform/first', ['fixture/page'])
         self.set_dependencies('platform/tool', ['fixture/first'])
-        self.tag_release()
+        self.tag_release(list(self.modules))
         with self.assertRaisesRegex(ValueError, 'Companion publication dependency cycle'):
-            self.run_publication(list(self.modules))
+            self.run_publication()
         self.assertEqual(self.events(), [])
-        self.assertFalse((self.root / 'platform/page/built').exists())
-        self.assertFalse((self.root / 'platform/tool/built').exists())
 
-    def test_dependency_inspection_failure_prevents_all_builds_and_publication(self):
+    def test_dependency_inspection_failure_prevents_all_publication(self):
         with patch.dict(os.environ, {'RELEASE_TEST_REGISTRY_ERROR': '1'}):
             with self.assertRaises(subprocess.CalledProcessError):
                 self.run_publication()
         self.assertEqual(self.events(), [])
 
     def test_single_module_does_not_need_cohort_inspection(self):
+        self.tag_release(['platform/first'])
         with patch.dict(os.environ, {'RELEASE_TEST_REGISTRY_ERROR': '1'}):
-            self.run_publication(['platform/first'])
+            self.run_publication()
         self.assertEqual([event['name'] for event in self.events() if event['step'] == 'publish'], ['fixture/first'])
 
     def test_different_existing_artifact_is_not_overwritten(self):
         occupied = self.state / 'fixture-first-1.2.3'
         occupied.write_bytes(b'previously published bytes')
-        with self.assertRaisesRegex(ValueError, 'differs from the prepared release'):
+        with self.assertRaisesRegex(ValueError, 'differs from the verified release'):
             self.run_publication()
         self.assertEqual(occupied.read_bytes(), b'previously published bytes')
         self.assertFalse(any(event['step'] == 'publish' for event in self.events()))
 
-    def test_build_failure_prevents_that_publication(self):
-        with patch.dict(os.environ, {'RELEASE_TEST_BUILD_ERROR': '1'}):
-            with self.assertRaises(subprocess.CalledProcessError):
-                self.run_publication(['platform/page'])
+    def test_changed_later_archive_prevents_entire_cohort(self):
+        (self.evidence / 'fixture_page-1.2.3.wapp').write_bytes(b'changed after smoke')
+        with self.assertRaisesRegex(ValueError, 'Archive bytes differ'):
+            self.run_publication()
         self.assertEqual(self.events(), [])
 
     def test_changed_uploaded_bytes_fail_verification(self):
         with patch.dict(os.environ, {'RELEASE_TEST_CORRUPT_UPLOAD': '1'}):
             with self.assertRaisesRegex(ValueError, 'Published artifact digest differs'):
-                self.run_publication(['platform/first'])
+                self.run_publication()
 
     def test_source_changes_prevent_entire_cohort(self):
         (self.root / 'platform/page/module.json').write_text('{}')
@@ -222,21 +239,41 @@ class ReleasePublication(unittest.TestCase):
         self.assertFalse(any(event['step'] == 'publish' for event in self.events()))
 
     def test_mismatched_release_tag_prevents_entire_cohort(self):
-        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '--allow-empty', '-qm', 'new head')
+        self.git('tag', '-f', 'page-v1.2.3', self.base)
         with self.assertRaisesRegex(ValueError, 'exact release tag'):
             self.run_publication()
         self.assertEqual(self.events(), [])
 
-    def test_app_only_release_is_left_to_its_own_publisher(self):
-        self.run_publication(['app'])
+    def test_app_only_release_still_requires_both_runtime_proofs(self):
+        self.tag_release(['app'])
+        path = self.evidence / 'postgres/artifacts.json'
+        rows = json.loads(path.read_text())
+        rows['fixture/app']['state'] = 'packed-only'
+        path.write_text(json.dumps(rows))
+        with self.assertRaisesRegex(ValueError, 'Smoke evidence differs'):
+            self.run_publication()
         self.assertEqual(self.events(), [])
 
-    def test_invalid_release_paths_do_not_publish(self):
-        for paths in ([], None, 'platform/first', [42]):
-            with self.assertRaises(ValueError):
-                publisher.publish(self.root, paths, str(self.wippy))
-        with self.assertRaises(KeyError):
-            self.run_publication(['../unknown'])
+    def test_raced_release_tree_and_parent_refuse_publication(self):
+        path = self.evidence / 'release.json'
+        receipt = json.loads(path.read_text())
+        for field in ('base', 'source_tree'):
+            with self.subTest(field=field):
+                path.write_text(json.dumps(dict(receipt, **{field: 'a' * 40})))
+                with self.assertRaisesRegex(ValueError, 'Tagged release .* differs'):
+                    self.run_publication()
+        self.assertEqual(self.events(), [])
+
+    def test_tagged_tree_and_selected_cohort_match_smoke(self):
+        path = self.evidence / 'release.json'
+        receipt = json.loads(path.read_text())
+        path.write_text(json.dumps(dict(receipt, changed_public_paths=['platform/first'])))
+        with self.assertRaisesRegex(ValueError, 'manifest changes differ'):
+            self.run_publication()
+        self.assertEqual(self.events(), [])
+
+    def test_verify_only_checks_archives_without_hub_operations(self):
+        self.run_publication(verify_only=True)
         self.assertEqual(self.events(), [])
 
 
