@@ -36,7 +36,11 @@ local function with_db(fn: (sql.DB, string) -> (any?, error?)): (any?, error?)
     return result, err
 end
 
-local function commit(tx: sql.Transaction): error?
+local function commit(tx: sql.Transaction, unused_owner: string?): error?
+    if unused_owner then
+        local fence_err = thread_fence.remove_unused(tx, unused_owner)
+        if fence_err then return sql_boundary.rollback(tx, fence_err, "slot purge rollback failed") end
+    end
     local _, err = tx:commit()
     if err then return errors.wrap(err, "slot owner purge commit failed") end
     return nil
@@ -111,6 +115,7 @@ function M.purge_slot(params: table): (integer?, error?)
                 kind = errors.PERMISSION_DENIED, retryable = false}), "slot purge rollback failed")
         end
         local job_id = rows[1].id
+        local unused_owner: string? = nil
         if rows[1].owner_kind == "thread" then
             -- Use the same fence-before-job order as enqueue, claim and thread
             -- cleanup. A purge must not remove a page's discovered rows.
@@ -123,12 +128,15 @@ function M.purge_slot(params: table): (integer?, error?)
             if type(fence) ~= "table" then
                 return nil, sql_boundary.rollback(tx, response_error("fence"), "slot purge rollback failed")
             end
+            if fence.started == false and tonumber(fence.next_page_seq) == 0 and fence.completed_at == nil then
+                unused_owner = owner_id
+            end
         end
         local locked, job_lock_err = tx:query("SELECT id,status FROM kickside_job WHERE id=$1" .. lock, { job_id })
         local lock_err = rows_error(locked, job_lock_err, "slot owner purge job lock failed", "job.rows")
         if lock_err then return nil, sql_boundary.rollback(tx, lock_err, "slot purge rollback failed") end
         if #locked == 0 then
-            local commit_err = commit(tx)
+            local commit_err = commit(tx, unused_owner)
             if commit_err then return nil, commit_err end
             return 0, nil
         end
@@ -173,7 +181,7 @@ function M.purge_slot(params: table): (integer?, error?)
             "SELECT id FROM kickside_job WHERE job_identity=$1 AND slot LIMIT 1", { identity })
         local next_read_err = rows_error(next_slot, next_err, "slot owner continuation read failed", "next.rows")
         if next_read_err then return nil, sql_boundary.rollback(tx, next_read_err, "slot purge rollback failed") end
-        local commit_err = commit(tx)
+        local commit_err = commit(tx, #next_slot == 0 and unused_owner or nil)
         if commit_err then return nil, commit_err end
         if #next_slot > 0 then
             return nil, (errors.new({ message = "slot owner cleanup has another bounded page",
