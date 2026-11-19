@@ -20,6 +20,7 @@ entries:
       fs: app:packed_fs_fake
       cloudstorage: app:packed_cloud_fake
       storage_location: app:packed_storage_location
+      binding_errors: kickside.uploads.binding:binding_errors
   - name: packed_cloud_test
     kind: function.lua
     meta: {type: test, suite: packed_storage}

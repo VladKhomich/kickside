@@ -37,4 +37,23 @@ function M.with_message(err: error, message: string): error
         retryable = native:retryable(), details = native:details()})
 end
 
+local PUBLIC_CAUSE_CODES = table.freeze({
+    artifact_reference_not_found = true,
+    invalid_storage_path = true,
+    primary_artifact_missing = true,
+    storage_access_denied = true,
+    storage_unavailable = true,
+})
+
+function M.artifact_diagnostic(err: any, upload_id: string, artifact_id: string?): {[string]: any}
+    local native = type(err) == "userdata" and (err :: error)
+    local details = native and native:details() or {}
+    return {
+        kind = native and native:kind() or errors.INTERNAL,
+        code = PUBLIC_CAUSE_CODES[details.code] and details.code or nil,
+        upload_id = upload_id,
+        artifact_id = artifact_id,
+    }
+end
+
 return M
