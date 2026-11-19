@@ -25,11 +25,13 @@ entries:
     source: file://upload_http_dedup_test.lua
     method: run
     meta: { type: test, suite: upload_http_dedup }
-    modules: [uuid, security, funcs, sql]
+    modules: [uuid, security, funcs, sql, fs, registry, http_client, json, env]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       types: kickside.uploads:types
+      secret_cipher: kickside.contract:secret_cipher
+      upload_tokens: kickside.uploads.persist:upload_tokens
 
   - name: upload_app_policy_test
     kind: function.lua
@@ -1153,6 +1155,13 @@ entries:
     method: GET
     path: /uploads/{uuid}/raw
     func: kickside.uploads.api:raw_handler
+
+  - name: reference_create_upload.endpoint
+    kind: http.endpoint
+    meta: {router: reference_api}
+    method: POST
+    path: /uploads
+    func: kickside.uploads.api:upload_handler
 
   - name: reference_artifacts.endpoint
     kind: http.endpoint

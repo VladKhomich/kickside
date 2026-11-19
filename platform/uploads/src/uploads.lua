@@ -219,10 +219,21 @@ end
 
 local token_flow = require("uploads_tokens")
 
-local function persist_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, processing: boolean)
+local function persist_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, processing: boolean, multipart_token: string?)
     metadata = type(metadata) == "table" and metadata or {}
-    local bound_id, bound_err = token_flow.bound_token_upload_id(metadata)
-    if bound_err then return nil, bound_err end
+    local bound_id, multipart_payload
+    if multipart_token ~= nil then
+        multipart_payload = upload_tokens.unpack(multipart_token)
+        if not multipart_payload then
+            return nil, failure("Invalid or expired upload token", errors.INVALID, "declaration")
+        end
+        bound_id = multipart_payload.upload_id
+        metadata.__upload_token = multipart_token
+    else
+        local bound_err
+        bound_id, bound_err = token_flow.bound_token_upload_id(metadata)
+        if bound_err then return nil, bound_err end
+    end
     local upload_uuid = parent_upload_id and uuid.v4() or (bound_id or uuid.v4())
     if parent_upload_id then
         local rebind_err = token_flow.rebind_child_tokens(metadata, upload_uuid)
@@ -249,7 +260,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
     end
 
     metadata.filename = filename
-    local trace_context, trace_err = token_flow.take_trace_context(metadata)
+    local trace_context, trace_err = token_flow.take_trace_context(metadata, multipart_payload)
     if trace_err then return nil, typed(trace_err, errors.INVALID, "declaration", "") end
 
     -- Freeze the uploader's execution identity so the durable job can run pipeline
@@ -402,8 +413,8 @@ function upload_lib.store_file(actor_id: string, file_data: string | stream.Stre
     return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, false)
 end
 
-function upload_lib.upload_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?)
-    return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, true)
+function upload_lib.upload_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, multipart_token: string?)
+    return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, true, multipart_token)
 end
 
 -- Run the processing of a failed upload again on its stored bytes.
