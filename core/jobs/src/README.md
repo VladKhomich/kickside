@@ -40,12 +40,14 @@ at the same PID. If a rollback removes the shutdown cleanup process before
 a concurrent stop can hand off an assignment, the existing lease recovery
 handles any release still pending when the root exits.
 
-The pool reads its next pending and lease deadlines in one query. Each branch
-seeks the first timestamp after the dispatch snapshot through the existing
-deadline index and stops after one row. SQLite explicitly selects the partial
-lease index, as Jobs health does, so this bound also holds without statistics.
-Equal deadlines prefer lease reclamation; a deadline that became due after the
-dispatch snapshot arms an immediate timer.
+The pool reads its next pending and lease deadlines in one query. The pending
+branch seeks the first timestamp after the dispatch snapshot. The lease branch
+reads the earliest non-null deadline of any running job, including expired
+leases that still need reclamation. Each branch takes one row from its existing
+index. SQLite explicitly selects the partial lease index, as Jobs health does,
+so this bound also holds without statistics. Equal deadlines prefer lease
+reclamation. An expired lease is ready for a reclaim pass even if a wake or
+idle report was selected first.
 
 A job carries no execution identity: a `worker_ref` target runs under the worker frame and
 resolves the identity held by its own owner record.
