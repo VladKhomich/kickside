@@ -5,6 +5,9 @@ local thread_ingest = require("thread_ingest")
 local ingest_upload = require("ingest_upload")
 local uploads = require("upload_read_model")
 local writable = require("writable_sink")
+local component = require("component")
+local funcs = require("funcs")
+local registry = require("registry")
 local security = require("security")
 local uuid = require("uuid")
 
@@ -27,9 +30,9 @@ local function refuse(err: any): any
 end
 
 local function find(exec: any, kb_id: string, event_type: string, external_id: string,
-        version: string?): (any?, any?)
+        version: string?, source: string?): (any?, any?)
     local found, err = exec:find_event_by_external({
-        thread_id = kb_id, event_type = event_type, external_source = base.EXTERNAL_SOURCE,
+        thread_id = kb_id, event_type = event_type, external_source = source or base.EXTERNAL_SOURCE,
         external_id = external_id, external_version = version, latest = version == nil and true or nil,
     })
     if err then return nil, err end
@@ -44,6 +47,20 @@ local function retired(message: string): error
     return errors.new({kind = errors.NOT_FOUND, retryable = false, message = message})
 end
 
+local function publication_matcher(kb_id: string): (string?, any?)
+    local access_err, kb = base.validate_kb_access(kb_id, component.ACCESS.WRITE)
+    if access_err then return nil, refuse(access_err) end
+    local binding, binding_err = registry.get(kb.impl_id)
+    if binding_err then return nil, refuse(binding_err) end
+    local meta = binding and binding.meta
+    local target = type(meta) == "table" and trim(meta.upload_publication_match) or ""
+    if target == "" then
+        return nil, fail("Upgrade the destination Knowledge engine to support versioned upload removal.",
+            "invalid_config", false, "flow")
+    end
+    return target, nil
+end
+
 local function prior_delivery(exec: any, kb_id: string, delivery: any, upload_id: string): (any?, any?)
     local event, err = find(exec, kb_id, base.EVENT_CONTENT_UPSERTED,
         delivery.external_id, delivery.external_version)
@@ -52,7 +69,8 @@ local function prior_delivery(exec: any, kb_id: string, delivery: any, upload_id
     local body, body_err = base.decode_object(event.body or event.body_json)
     if body_err then return nil, body_err end
     if type(body.source_ref) ~= "table" or body.source_ref.upload_id ~= upload_id
-        or trim(body.source_ref.artifact_id) == "" then
+        or trim(body.source_ref.artifact_id) == "" or type(event.id) ~= "string" or not uuid.validate(event.id)
+        or type(body.metadata) ~= "table" or body.metadata.upload_publication_id ~= event.id then
         return nil, conflict("Committed delivery does not name this upload artifact")
     end
     return event, nil
@@ -66,7 +84,7 @@ local function publication(exec: any, kb_id: string, delivery: any, upload_id: s
     if thread_err then return nil, thread_err end
     local head = thread and math.tointeger(thread.event_count) or nil
     if not head then return nil, retired("Upload delivery has no retained Knowledge thread") end
-    local deleted, delete_err = find(exec, kb_id, base.EVENT_CONTENT_DELETED, delivery.external_id, nil)
+    local deleted, delete_err = base.latest_content_delete(exec, kb_id, delivery.external_id)
     if delete_err then return nil, delete_err end
     local upsert, upsert_err = find(exec, kb_id, base.EVENT_CONTENT_UPSERTED, delivery.external_id, nil)
     if upsert_err then return nil, upsert_err end
@@ -96,8 +114,8 @@ local function publication(exec: any, kb_id: string, delivery: any, upload_id: s
 end
 
 local function receipt(req: any, kb_id: string, external_id: string, version: string,
-        result: string, subject_version: integer?): any
-    local ref = { kb_id = kb_id, external_id = external_id, subject_version = subject_version }
+        result: string, publication_id: string?): any
+    local ref = { kb_id = kb_id, external_id = external_id, publication_id = publication_id }
     local slot = trim(req.map_slot)
     return { success = true, result = result, dest_ref = ref, dest_version = version,
         dest_refs = { [slot ~= "" and slot or "default"] = {dest_ref = ref, dest_version = version} } }
@@ -106,27 +124,46 @@ end
 local function delete_document(req: any, kb_id: string, external_id: string, key: string): any
     local previous = trim(req.dest_version)
     local ref = req.dest_ref
-    local expected = type(ref) == "table" and math.tointeger(ref.subject_version) or nil
-    if previous == "" or not expected or expected < 1 or ref.kb_id ~= kb_id or ref.external_id ~= external_id then
+    local expected = type(ref) == "table" and trim(ref.publication_id) or ""
+    if previous == "" or not uuid.validate(expected) or ref.kb_id ~= kb_id or ref.external_id ~= external_id then
         return fail("Upload deletion requires its current Knowledge destination receipt")
     end
+    local matcher, engine_failure = publication_matcher(kb_id)
+    if not matcher then return engine_failure end
     local _, claim_err = thread_ingest.claim_delivery(kb_id, key, "", {
-        operation = "upload.delete", external_id = external_id, dest_version = previous, subject_version = expected,
+        operation = "upload.delete", external_id = external_id, publication_id = expected, dest_version = previous,
     })
     if claim_err then return refuse(claim_err) end
+    local exec, exec_err = base.current_executor()
+    if not exec then return refuse(exec_err) end
+    local thread, thread_err = status.find_primary_thread(exec, kb_id)
+    if thread_err then return refuse(thread_err) end
+    local head = thread and math.tointeger(thread.event_count) or nil
+    if not head then return refuse(retired("Upload deletion has no retained Knowledge thread")) end
     local version = "delete:" .. key
-    -- The subject version survives event pruning and is checked in the append
-    -- transaction. A stale receipt can settle only its own destination version.
+    local deleted, delete_err = find(exec, kb_id, base.EVENT_CONTENT_DELETED, external_id, version, base.UPLOAD_DELETE_SOURCE)
+    if delete_err then return refuse(delete_err) end
+    if deleted then return receipt(req, kb_id, external_id, version, "deleted") end
+    local latest, latest_err = find(exec, kb_id, base.EVENT_CONTENT_UPSERTED, external_id, nil)
+    if latest_err then return refuse(latest_err) end
+    local current = latest and latest.external_version == previous and latest.id == expected
+    if not latest then
+        local observed, observe_err = funcs.call(matcher, {kb_id = kb_id, external_id = external_id, publication_id = expected})
+        if observe_err then return refuse(observe_err) end
+        if type(observed) ~= "table" or type(observed.current) ~= "boolean" then
+            return refuse("Knowledge engine did not identify the current publication")
+        end
+        current = observed.current
+    end
+    if not current then
+        return receipt(req, kb_id, external_id, version, "deleted")
+    end
+    -- The materializer checks the immutable publication again under its store
+    -- lock. Reading it here only avoids appending already obsolete deletes.
     local appended, append_err = thread_ingest.delete_content(kb_id, {
         external_id = external_id, external_version = version, trace_context = req.trace_context,
-    }, expected)
-    if not appended then
-        local details = errors.is(append_err, errors.CONFLICT) and append_err:details() or nil
-        if type(details) ~= "table" or details.reason ~= "version_mismatch"
-            or (tonumber(details.version) or 0) <= expected then
-            return refuse(append_err)
-        end
-    end
+    }, head, expected)
+    if append_err or not appended then return refuse(append_err) end
     return receipt(req, kb_id, external_id, version, "deleted")
 end
 
@@ -160,6 +197,10 @@ function M.write(request: any): any
         return fail("This upload is still processing. Upgrade Automation to resume pending effects.",
             "invalid_config", false, "flow")
     end
+    if req.resume_effect ~= true or record.status == "completed" then
+        local matcher, failure = publication_matcher(kb_id)
+        if not matcher then return failure end
+    end
 
     local _, claim_err, claim = thread_ingest.claim_delivery(kb_id, key, "", {
         operation = "upload", origin = origin, external_id = external_id, upload_id = upload_id,
@@ -188,9 +229,8 @@ function M.write(request: any): any
         if receipt_err or not committed then return refuse(receipt_err) end
     end
 
-    local subject_version = math.tointeger(committed.subject_version)
-    if not subject_version or subject_version < 1 then return refuse("Upload publication has no document subject version") end
-    return receipt(req, kb_id, external_id, delivery.external_version, guard.committed and "noop" or "created", subject_version)
+    return receipt(req, kb_id, external_id, delivery.external_version,
+        guard.committed and "noop" or "created", committed.id)
 end
 
 return M

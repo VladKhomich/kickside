@@ -365,6 +365,9 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
 
     local metadata = shallow_copy(params.metadata)
     strip_private_upload_locators(metadata)
+    -- Only the fenced upload sink assigns this immutable publication identity.
+    local publication_id = expect_head ~= nil and uuid.v7() or nil
+    metadata.upload_publication_id = publication_id
     metadata.kb_id = kb_id
     metadata.source = trim(metadata.source) ~= "" and metadata.source or "manual"
 
@@ -380,8 +383,6 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
 
     local external_id = external_id_for(params, metadata)
     local external_version = external_version_for(params, metadata, content)
-    local subject, subject_err = base.content_subject(external_id)
-    if subject_err then return nil, subject_err end
     metadata.external_source = EXTERNAL_SOURCE
     metadata.external_id = external_id
     metadata.external_version = external_version
@@ -423,9 +424,9 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
         body.has_text = false
     end
     local event = {
+        id = publication_id,
         type = M.EVENT_CONTENT_UPSERTED,
         role = "system",
-        subject = subject,
         body = body,
         external = {
             external_source = EXTERNAL_SOURCE,
@@ -435,8 +436,10 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
         trace_context = event_trace,
     }
     local function append(): (any?, any?)
-        local expect = expect_head ~= nil and {head = expect_head} or nil
-        return call_threads(exec, "append_event", {thread_id = kb_id, event = event, expect = expect})
+        if expect_head ~= nil then
+            return call_threads(exec, "append_event", {thread_id = kb_id, event = event, expect = {head = expect_head}})
+        end
+        return emit_event(exec, kb_id, event)
     end
     local appended, append_err
     if reingest_key then
@@ -479,7 +482,7 @@ function M.append_content(kb_id, params, reingest_key, expect_head)
     }, nil
 end
 
-function M.delete_content(kb_id, params, expect_version: integer?)
+function M.delete_content(kb_id, params, expect_head: integer?, expected_publication_id: string?)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end
     params = type(params) == "table" and params or {}
@@ -500,8 +503,6 @@ function M.delete_content(kb_id, params, expect_version: integer?)
     if not external_id or external_id == "" then
         return nil, "external_id, upload_id, source_url, or reference source_ref is required for delete"
     end
-    local subject, subject_err = base.content_subject(external_id)
-    if subject_err then return nil, subject_err end
     metadata.external_source = EXTERNAL_SOURCE
     metadata.external_id = external_id
     local event_trace, trace_err = trace_for("kb.delete", kb_id, external_id, params.trace_context)
@@ -537,22 +538,28 @@ function M.delete_content(kb_id, params, expect_version: integer?)
     local event = {
         type = M.EVENT_CONTENT_DELETED,
         role = "system",
-        subject = subject,
         body = {
             kb_id = kb_id,
             metadata = metadata,
             source_ref = source_ref,
             actor_id = actor_id,
+            expected_publication_id = expected_publication_id,
         },
         external = {
-            external_source = EXTERNAL_SOURCE,
+            external_source = expected_publication_id and base.UPLOAD_DELETE_SOURCE or EXTERNAL_SOURCE,
             external_id = external_id,
             external_version = external_version,
         },
         trace_context = event_trace,
     }
-    local expect = expect_version and {subject = subject, version = expect_version} or nil
-    local appended, append_err = call_threads(exec, "append_event", {thread_id = kb_id, event = event, expect = expect})
+    local appended, append_err
+    if expect_head ~= nil then
+        appended, append_err = call_threads(exec, "append_event", {
+            thread_id = kb_id, event = event, expect = {head = expect_head},
+        })
+    else
+        appended, append_err = emit_event(exec, kb_id, event)
+    end
     if append_err then return nil, append_err end
 
     local cursor = projection_cursor(projection)

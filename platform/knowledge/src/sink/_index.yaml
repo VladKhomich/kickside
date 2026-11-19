@@ -11,7 +11,7 @@ entries:
     kind: function.lua
     source: file://kb_upload_sink.lua
     method: write
-    modules: [security, uuid]
+    modules: [security, uuid, registry, funcs]
     security:
       policies:
         - kickside.knowledge.security:sink_output_publish
@@ -23,6 +23,7 @@ entries:
       ingest_upload: kickside.knowledge.api:ingest_upload
       upload_read_model: kickside.uploads.persist:upload_read_model
       writable_sink: kickside.data:writable_sink
+      component: kickside.component:component
 
   - name: kb_upload_sink
     kind: contract.binding

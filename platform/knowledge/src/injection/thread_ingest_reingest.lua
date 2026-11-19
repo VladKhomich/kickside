@@ -43,7 +43,7 @@ local function prepare(exec: any, kb_id: string, event: any): (table?, any?)
     local external = event.external
     -- Read deletes first. A concurrent prefix prune cannot remove a newer
     -- delete while leaving the earlier source visible to the subsequent read.
-    local deleted, delete_err = latest(exec, kb_id, base.EVENT_CONTENT_DELETED, external.external_id)
+    local deleted, delete_err = base.latest_content_delete(exec, kb_id, external.external_id)
     if delete_err then return nil, delete_err end
     local upsert, upsert_err = latest(exec, kb_id, base.EVENT_CONTENT_UPSERTED, external.external_id)
     if upsert_err then return nil, upsert_err end
@@ -57,6 +57,7 @@ local function prepare(exec: any, kb_id: string, event: any): (table?, any?)
     local previous, body_err = base.decode_object(upsert.body or upsert.body_json)
     if body_err then return nil, body_err end
     local body = base.shallow_copy(event.body)
+    body.metadata.upload_publication_id = type(previous.metadata) == "table" and previous.metadata.upload_publication_id or nil
     local source = body.source_ref
     local old_source = previous.source_ref
     if upsert.external_version ~= external.external_version or type(old_source) ~= "table"
@@ -86,8 +87,6 @@ function M.append(exec: any, kb_id: string, event: any, key: string): (any?, any
     local delivery = base.shallow_copy(event)
     delivery.id = id
     delivery.external = nil
-    -- Rebuilding the retained document does not replace its source version.
-    delivery.subject = nil
     local append_err
     for _ = 1, 3 do
         local guard, guard_err = prepare(exec, kb_id, event)
