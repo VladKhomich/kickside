@@ -131,6 +131,48 @@ local function define_tests()
             test.eq(reads, 2)
         end)
 
+        test.it("rechecks the completed fence before reclaiming jobs after candidate discovery", function()
+            local db = open_db()
+            local dbtype = tostring(db:type())
+            local thread_id, stale_id = uuid.v7(), uuid.v7()
+            test.is_true(assert(jobs.cleanup_thread_page(thread_id, 0)).done)
+            assert(jobs.ack_thread_cleanup_page(thread_id, 0, true))
+            assert(db:execute([[INSERT INTO kickside_job
+                (id,job_type,job_identity,owner_kind,owner_id,status)
+                VALUES ($1,'test.cleanup',$2,'thread',$3,'done')]], { stale_id, stale_id, thread_id }))
+            local replacement_job = ""
+            local observed: any = {
+                query = function(_, statement: string, args: { any })
+                    local rows = assert(db:query(statement, args))
+                    local found = false
+                    for _, row in ipairs(rows) do
+                        if row.thread_id == thread_id then found = true end
+                    end
+                    test.is_true(found)
+
+                    -- Another sweep and a successful replacement commit before the old
+                    -- candidate takes its lock.
+                    test.is_true(assert(thread_teardown.reclaim_completed(db, dbtype, 100)) >= 1)
+                    local tx = assert(db:begin())
+                    assert(tx:execute([[INSERT INTO kickside_thread
+                        (id,thread_class,component_id,event_count) VALUES ($1,'jobs-cleanup',$2,0)]],
+                        { thread_id, thread_id }))
+                    test.eq(assert(thread_teardown.prepare_replacement_tx(tx, dbtype, thread_id)), 1)
+                    assert(tx:commit())
+                    replacement_job = assert(jobs.enqueue({
+                        namespace = "thread", scope = thread_id, key = "replacement",
+                        owner_locator = { kind = "thread", id = thread_id }, job_type = "test.cleanup",
+                        immutable_payload = {},
+                    })).id
+                    return { { thread_id = thread_id } }, nil
+                end,
+                begin = function() return db:begin() end,
+            }
+            test.eq(assert(thread_teardown.reclaim_completed(observed, dbtype, 100)), 0)
+            test.eq(#assert(db:query("SELECT id FROM kickside_job WHERE id=$1", { replacement_job })), 1)
+            db:release()
+        end)
+
         test.it("commits a truthful retained-row receipt when a competing detach follows discovery", function()
             local db = open_db()
             local dbtype, type_err = db:type()

@@ -51,6 +51,21 @@ function M.lock(tx: sql.Transaction, thread_id: string): (table?, error?)
     return states[thread_id], nil
 end
 
+-- Lock a retained fence without materializing an empty fence for a new owner.
+function M.lock_existing(tx: sql.Transaction, dbtype: string, thread_id: string): (table?, error?)
+    local columns = "started,next_page_seq,completed_at"
+    local predicate = " WHERE thread_id=$1"
+    local statement = dbtype == sql.type.POSTGRES
+        and ("SELECT " .. columns .. " FROM " .. M.TABLE .. predicate .. " FOR UPDATE")
+        or ("UPDATE " .. M.TABLE .. " SET thread_id=thread_id" .. predicate .. " RETURNING " .. columns)
+    local rows, err = tx:query(statement, { thread_id })
+    if err then return nil, errors.wrap(err, "thread cleanup fence lookup failed") end
+    if type(rows) ~= "table" or #rows > 1 then return nil, invalid_response("rows", thread_id) end
+    local row = rows[1]
+    if not row then return nil, nil end
+    return { started = flag(row.started), next_page_seq = row.next_page_seq, completed_at = row.completed_at }, nil
+end
+
 -- Linked producers can append a Core event later in the same transaction.
 -- A nonblocking lock avoids waiting on them with Core thread rows held.
 function M.lock_link(tx: sql.Transaction, dbtype: string, thread_id: string, cleanup: boolean): error?
