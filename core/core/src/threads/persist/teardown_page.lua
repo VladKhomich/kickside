@@ -1,5 +1,6 @@
 -- Core and Jobs commit each bounded teardown page together.
 local json = require("json")
+local sql = require("sql")
 local writer = require("threads_writer")
 local drop_notify = require("threads_drop_notify")
 local jobs_cleanup = require("jobs_cleanup")
@@ -39,12 +40,13 @@ local function pending(discarded: any): error
         details = { cleanup_pending = true, needs_continue = true, discarded = discarded } }) :: error)
 end
 
-local function page(tx: any, spec: { string }, id: string, limit: integer): ({ any }?, error?)
+local function page(tx: any, spec: { string }, id: string, limit: integer, sqlite: boolean): ({ any }?, error?)
     local status = UNRESOLVED_STATUS[spec[1]] and
         ("," .. (STATUS_COLUMN[spec[1]] or "status") .. " AS status") or ""
     -- Keep the scope leading the index order, even where its two bounds coincide.
     local scope = spec[3]
-    local rows, err = tx:query("SELECT " .. spec[2] .. " AS row_key" .. status
+    local storage_id = sqlite and ",rowid AS storage_id" or ""
+    local rows, err = tx:query("SELECT " .. spec[2] .. " AS row_key" .. status .. storage_id
         .. " FROM " .. spec[1] .. " WHERE " .. scope .. ">=$1 AND " .. scope .. "<=$1"
         .. " ORDER BY " .. scope .. spec[4] .. " LIMIT $2",
         { id, limit })
@@ -55,15 +57,18 @@ local function page(tx: any, spec: { string }, id: string, limit: integer): ({ a
 end
 
 local function erase(tx: any, spec: { string }, id: string, rows: { any },
-        count: integer): error?
+        count: integer, sqlite: boolean): error?
     local params: { any } = { id }
     local marks: { string } = {}
     for i = 1, count do
-        params[#params + 1] = rows[i].row_key
+        params[#params + 1] = sqlite and rows[i].storage_id or rows[i].row_key
         marks[i] = "$" .. tostring(i + 1)
     end
-    local result, err = tx:execute("DELETE FROM " .. spec[1] .. " WHERE "
-        .. spec[3] .. "=$1 AND " .. spec[2] .. " IN (" .. table.concat(marks, ",") .. ")", params)
+    -- SQLite can scan a dense endpoint index even with a bounded key list.
+    local target = sqlite and (spec[1] .. " NOT INDEXED") or spec[1]
+    local key = sqlite and "rowid" or spec[2]
+    local result, err = tx:execute("DELETE FROM " .. target .. " WHERE "
+        .. spec[3] .. "=$1 AND " .. key .. " IN (" .. table.concat(marks, ",") .. ")", params)
     if err or not result or tonumber(result.rows_affected) ~= count then
         return internal("thread " .. spec[1] .. " page delete failed", err or "missing row proof")
     end
@@ -119,10 +124,11 @@ local function body(tx: any, dbtype: string, id: string, locked: { [string]: boo
     if type(counts.unresolved) ~= "table" then return nil, internal("thread unresolved count corrupt", id) end
 
     local remaining = PAGE
+    local sqlite = dbtype == sql.type.SQLITE
     local notified: { string } = {}
     local removed_cursors: { string } = {}
     for _, spec in ipairs(SPECS) do
-        local rows, read_err = page(tx, spec, id, remaining + 1)
+        local rows, read_err = page(tx, spec, id, remaining + 1, sqlite)
         if read_err then return nil, read_err end
         local selected = rows :: { any }
         local size = math.min(#selected, remaining)
@@ -140,7 +146,7 @@ local function body(tx: any, dbtype: string, id: string, locked: { [string]: boo
                 if notify_err then return nil, notify_err end
                 for _, target in ipairs(targets :: { string }) do notified[#notified + 1] = target end
             end
-            local delete_err = erase(tx, spec, id, selected, size)
+            local delete_err = erase(tx, spec, id, selected, size, sqlite)
             if delete_err then return nil, delete_err end
             if spec[1] == "kickside_projection_cursor" then
                 for i = 1, size do removed_cursors[#removed_cursors + 1] = tostring(selected[i].row_key) end

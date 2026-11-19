@@ -25,6 +25,8 @@ The host wires these `ns.requirement`s via `ns.dependency`:
 
 - `target_db` — required SQL database for all `kickside_*` tables and
   all runtime persistence, routed through the module's injected `db_config`.
+  Bind Core and Jobs to the same SQL database and schema. Thread appends and
+  teardown pass the open Core transaction to Jobs.
 
 Child slices declare their own required process-host, router, and security-scope
 requirements where needed.

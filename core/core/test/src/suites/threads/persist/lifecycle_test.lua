@@ -12,6 +12,7 @@ local fence = require("teardown_fence")
 local sweeper = require("sweeper")
 local jobs = require("jobs")
 local drop_notify = require("drop_notify")
+local teardown_page = require("teardown_page")
 
 local DB = "app:db"
 
@@ -433,6 +434,71 @@ local function define_tests()
             test.eq(#hooks, 0)
             test.is_true(tostring(plan):find("idx_projection_thread_id", 1, true) ~= nil, tostring(plan))
             d:release()
+        end)
+
+        test.it("deletes the selected incoming edges by their row keys within one bounded page", function()
+            local d = db()
+            local doomed = seed_purge_thread(d)
+            local postgres = d:type() == sql.type.POSTGRES
+            local sources = postgres and [[INSERT INTO kickside_thread (id,thread_class)
+                SELECT ('00000000-0000-4200-8000-' || lpad(n::text,12,'0'))::uuid,'gc'
+                FROM generate_series(1,500) AS n]]
+                or [[WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<500)
+                INSERT INTO kickside_thread (id,thread_class)
+                SELECT '00000000-0000-4200-8000-' || printf('%012d',n),'gc' FROM rows]]
+            assert(d:execute(sources))
+            local seed = postgres and [[INSERT INTO kickside_thread_edge (id,from_thread_id,to_thread_id,edge_type)
+                SELECT ('00000000-0000-4100-8000-' || lpad(n::text,12,'0'))::uuid,
+                    ('00000000-0000-4200-8000-' || lpad((1+(n % 500))::text,12,'0'))::uuid,$1,n::text
+                FROM generate_series(1,100000) AS n]]
+                or [[WITH RECURSIVE rows(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM rows WHERE n<100000)
+                INSERT INTO kickside_thread_edge (id,from_thread_id,to_thread_id,edge_type)
+                SELECT '00000000-0000-4100-8000-' || printf('%012d',n),
+                    '00000000-0000-4200-8000-' || printf('%012d',1+(n % 500)),$1,CAST(n AS TEXT) FROM rows]]
+            local seeded = assert(d:execute(seed, { doomed }))
+            test.eq(tonumber(seeded.rows_affected), 100000)
+            assert(d:execute([[INSERT INTO kickside_thread_edge (id,from_thread_id,to_thread_id,edge_type)
+                SELECT id,id,id,'loop' FROM kickside_thread WHERE CAST(id AS TEXT) LIKE '00000000-0000-4200-8000-%']]))
+            assert(d:execute("ANALYZE kickside_thread_edge"))
+            test.is_nil(fence.mark(d, doomed))
+            test.is_true((assert(fence.fence_page(d, doomed))))
+
+            local details: { string } = {}
+            local proxy = {
+                type = function() return d:type() end,
+                query = function(_, statement, args) return d:query(statement, args) end,
+                begin = function()
+                    local tx = assert(d:begin())
+                    return {
+                        query = function(_, statement, args) return tx:query(statement, args) end,
+                        execute = function(_, statement, args)
+                            if statement:find("DELETE FROM kickside_thread_edge", 1, true) == 1 then
+                                local explain = postgres and "EXPLAIN " or "EXPLAIN QUERY PLAN "
+                                for _, row in ipairs(assert(tx:query(explain .. statement, args))) do
+                                    details[#details + 1] = tostring(row.detail or row["QUERY PLAN"])
+                                end
+                            end
+                            return tx:execute(statement, args)
+                        end,
+                        commit = function() return tx:commit() end,
+                        rollback = function() return tx:rollback() end,
+                    }
+                end,
+            }
+            local page, page_err = teardown_page.run(proxy, doomed)
+            local remaining_edges = count(d, "kickside_thread_edge", "to_thread_id", doomed)
+            local plan = table.concat(details, "\n")
+            assert(d:execute("DELETE FROM kickside_thread_edge WHERE to_thread_id=$1", { doomed }))
+            assert(teardown.purge_thread(d, doomed, nil))
+            assert(d:execute([[DELETE FROM kickside_thread WHERE CAST(id AS TEXT) LIKE '00000000-0000-4200-8000-%']]))
+            d:release()
+
+            test.is_nil(page)
+            test.not_nil(page_err)
+            test.is_true(page_err:details().cleanup_pending)
+            test.eq(remaining_edges, 99900)
+            local key_lookup = postgres and "kickside_thread_edge_pkey" or "INTEGER PRIMARY KEY (rowid=?)"
+            test.is_true(plan:find(key_lookup, 1, true) ~= nil, plan)
         end)
 
         test.it("rolls back Jobs work and Core rows when the final thread delete fails", function()

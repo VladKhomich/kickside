@@ -160,7 +160,7 @@ entries:
     meta:
       comment: Atomic Core and Jobs thread cleanup page.
     source: file://teardown_page.lua
-    modules: [json]
+    modules: [json, sql]
     imports:
       threads_writer: kickside.core.threads.persist:writer
       threads_drop_notify: kickside.core.threads.persist:drop_notify
