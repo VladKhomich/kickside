@@ -71,7 +71,7 @@ class PublicHarnessTests(unittest.TestCase):
             shutil.copy(ROOT / 'Makefile', root)
             (root / 'scripts').mkdir()
             shutil.copy(ROOT / 'scripts/wire-ui-kit.mjs', root / 'scripts')
-            consumer = root / 'platform/widgets/ui'
+            consumer = root / 'app/frontend/applications/main'
             consumer.mkdir(parents=True)
             (consumer / 'package.json').write_text(json.dumps({
                 'workspaces': ['./.wippy/npm/@*/*'], 'dependencies': {'@kickside/ui-kit': '*'},
@@ -105,14 +105,16 @@ class PublicHarnessTests(unittest.TestCase):
                                'esac\nexec "$UI_KIT_TEST_WIPPY" "$@"\n')
             wrapper.chmod(0o755)
             npm = root / 'npm'
-            npm.write_text('#!/bin/sh\nexit 0\n')
+            npm.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "$UI_KIT_TEST_NPM_TRACE"\n')
             npm.chmod(0o755)
             trace = root / 'materialized'
+            npm_trace = root / 'npm-commands'
             env = {**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
-                   'UI_KIT_TEST_TRACE': str(trace), 'UI_KIT_TEST_WIPPY': wippy}
+                   'UI_KIT_TEST_TRACE': str(trace), 'UI_KIT_TEST_WIPPY': wippy,
+                   'UI_KIT_TEST_NPM_TRACE': str(npm_trace)}
 
             def materialize(override='', *, fail_install=False):
-                return subprocess.run(['make', 'ui-kit', 'MOD=widgets', f'WIPPY_BIN={wrapper}',
+                return subprocess.run(['make', 'ui-kit', 'MOD=app-main', f'WIPPY_BIN={wrapper}',
                                        f'UI_KIT_WAPP={override}'], cwd=root,
                                       env={**env, 'UI_KIT_TEST_FAIL_INSTALL': '1' if fail_install else ''},
                                       text=True, capture_output=True, timeout=30)
@@ -129,6 +131,30 @@ class PublicHarnessTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(installed.read_text())['version'], '1.7.9')
             self.assertEqual(trace.read_text().splitlines(), ['resolved', 'resolved'])
+
+            package_lock = consumer / 'package-lock.json'
+            workspace = '.wippy/npm/@kickside/ui-kit'
+            package_lock.write_text(json.dumps({'packages': {workspace: {'version': '1.7.10'}}}))
+            snapshots = {file: file.read_bytes() for file in (lock, package_lock)}
+            release = ['make', 'release-build-app-main', f'WIPPY_BIN={wrapper}', f'UI_KIT_WAPP={stale}']
+            result = subprocess.run(release, cwd=root, env=env, text=True, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(installed.read_text())['version'], '1.7.10')
+            self.assertEqual(trace.read_text().splitlines(), ['resolved', 'resolved'])
+            self.assertEqual(npm_trace.read_text().splitlines(), ['install', 'install', 'ci', 'run'])
+            self.assertEqual({file: file.read_bytes() for file in snapshots}, snapshots)
+
+            package_lock.write_text(json.dumps({'packages': {workspace: {'version': '1.7.9'}}}))
+            result = subprocess.run(release, cwd=root, env=env, text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('must match package-lock.json', result.stderr)
+            self.assertEqual(npm_trace.read_text().splitlines(), ['install', 'install', 'ci', 'run'])
+
+            lock.unlink()
+            result = subprocess.run(release, cwd=root, env=env, text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Application release requires build-inputs/wippy.lock', result.stderr)
+            self.assertFalse(lock.exists())
 
     def test_release_extra_files_resolve_within_their_module(self):
         config = json.loads((ROOT / 'release-please-config.json').read_text())
