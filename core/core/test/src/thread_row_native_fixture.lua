@@ -25,6 +25,9 @@ local function builder(method: string, ...: any): any
     return wrapper
 end
 function M.insert(...: any): any return builder("insert", ...) end
+function M.prepare_replacement_tx(_tx: any, _dbtype: string, _thread_id: string): (integer, error?)
+    return 0, nil
+end
 function M.decode(value: string): (any, error?)
     if M.stage == "decode" then return nil, M.source end
     return json.decode(value)

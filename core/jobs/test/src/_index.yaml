@@ -2538,6 +2538,7 @@ entries:
       completion: app:scope_native_completion
       retention: app:scope_native_retention
       thread_teardown: app:scope_native_thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: app:scope_native_api_scope
       lease_release: app:scope_native_lease_release
       claim: app:scope_native_claim
@@ -2835,6 +2836,7 @@ entries:
       lease_status: app:transaction_native_lease_status
       retention: app:transaction_native_retention
       thread_teardown: app:transaction_native_thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: app:transaction_native_api_scope
       lease_release: app:transaction_native_lease_release
       claim: app:transaction_native_claim
@@ -3016,6 +3018,7 @@ entries:
       lease_status: app:health_native_lease_status
       retention: app:health_native_retention
       thread_teardown: app:health_native_thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: app:health_native_api_scope
       lease_release: app:health_native_lease_release
       claim: app:health_native_claim
@@ -4455,6 +4458,7 @@ entries:
       completion: kickside.core.jobs.persist:completion
       retention: kickside.core.jobs.persist:retention
       thread_teardown: kickside.core.jobs.persist:thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: kickside.core.jobs.api:scope
       lease_release: kickside.core.jobs:lease_release
       claim: kickside.core.jobs.persist:claim
@@ -4560,6 +4564,7 @@ entries:
       completion: kickside.core.jobs.persist:completion
       retention: kickside.core.jobs.persist:retention
       thread_teardown: kickside.core.jobs.persist:thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: kickside.core.jobs.api:scope
       lease_release: kickside.core.jobs:lease_release
       claim: kickside.core.jobs.persist:claim
