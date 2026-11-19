@@ -12,6 +12,7 @@ function M.reset()
     M.before_candidate, M.before_select, M.continuation = nil, nil, nil
     M.at, M.delay, M.event_deadline_queries = nil, nil, 0
     M.before_owner, M.before_commit, M.isolated_ids, M.receipt_sink = nil, nil, nil, nil
+    M.isolate_review_threads = nil
 end
 
 M.MILLISECOND, M.RFC3339, M.utc, M.parse = time.MILLISECOND, time.RFC3339, time.utc, time.parse
@@ -39,22 +40,26 @@ function M.get(id: string): (any, error?)
                 if err then return nil, err end
             end
         end
-        if candidate and M.isolated_ids then
+        if candidate and (M.isolate_review_threads or M.isolated_ids) then
             local schema = tostring(db:type()) == "postgres" and "public" or "main"
-            local placeholders = {}
-            params = params or {}
-            for _, id in ipairs(M.isolated_ids) do
-                params[#params + 1] = id
-                placeholders[#placeholders + 1] = "$" .. tostring(#params)
-            end
-            -- SQLite binds numbered names in order of appearance.
-            if schema == "main" then
-                for index = #M.isolated_ids, 1, -1 do
-                    table.insert(params, 1, table.remove(params, #params - #M.isolated_ids + index))
+            local predicate = "thread_class='review_retention'"
+            if M.isolated_ids then
+                local placeholders = {}
+                params = params or {}
+                for _, id in ipairs(M.isolated_ids) do
+                    params[#params + 1] = id
+                    placeholders[#placeholders + 1] = "$" .. tostring(#params)
                 end
+                -- SQLite binds numbered names in order of appearance.
+                if schema == "main" then
+                    for index = #M.isolated_ids, 1, -1 do
+                        table.insert(params, 1, table.remove(params, #params - #M.isolated_ids + index))
+                    end
+                end
+                predicate = "id IN (" .. table.concat(placeholders, ",") .. ")"
             end
-            statement = "WITH kickside_thread AS (SELECT * FROM " .. schema .. ".kickside_thread WHERE id IN ("
-                .. table.concat(placeholders, ",") .. ")) " .. statement
+            statement = "WITH kickside_thread AS (SELECT * FROM " .. schema .. ".kickside_thread WHERE "
+                .. predicate .. ") " .. statement
         end
         if M.receipt_sink and statement:find("SELECT completed_at FROM kickside_write_receipt", 1, true) then
             statement = statement:gsub("WHERE status=", "WHERE sink_id=$1 AND status=", 1)

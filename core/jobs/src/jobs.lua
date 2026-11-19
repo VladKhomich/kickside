@@ -12,12 +12,14 @@ local completion = require("completion")
 local lease_status = require("lease_status")
 local retention = require("retention")
 local thread_teardown = require("thread_teardown")
+local thread_fence = require("thread_fence")
 local api_scope = require("api_scope")
 local lease_release = require("lease_release")
 local claim = require("claim")
 local error_envelope = require("error_envelope")
 local committed_error = require("committed_error")
 local sql_boundary = require("sql_boundary")
+local proc_supervisor = require("proc_supervisor")
 
 local runtime_policy = require("runtime_policy")
 local jobs = {}
@@ -126,6 +128,7 @@ local function prepare_enqueue_params(params: table?): (lifecycle.EnqueueParams?
         queue_tier = opt_string(p.queue_tier),
         priority = opt_integer(p.priority),
         max_attempts = opt_integer(p.max_attempts),
+        progress_timeout_ms = p.progress_timeout_ms,
         idempotency_key = p.namespace == "thread" and p.key or nil,
         scheduled_at = opt_string(p.scheduled_at),
         trace_context = trace,
@@ -145,6 +148,13 @@ local function enqueue_result(params: lifecycle.EnqueueParams, id: string, inser
 end
 
 local function enqueue_tx(tx: sql.Transaction, dbtype: string, job_params: lifecycle.EnqueueParams): (table?, error?)
+    local thread_id = job_params.thread_id
+    local owner = job_params.owner_locator :: table
+    if thread_id and (owner.kind ~= "thread" or owner.id ~= thread_id) then
+        local link, link_err = thread_fence.admit_link(tx, dbtype, thread_id)
+        if link_err then return nil, link_err end
+        job_params.thread_id = link
+    end
     local id, enqueue_err, inserted, replaced_job_id = lifecycle.enqueue_job(tx, dbtype, job_params)
     if enqueue_err or not id then return nil, enqueue_err end
     if job_params.demand then
@@ -228,6 +238,28 @@ function jobs.lease_valid(id: string, lease: table): (boolean?, error?)
     end)
 end
 
+-- heartbeat(id, lease) reports progress under the existing ownership fence.
+-- Automatic renewals keep the lease alive; progress only moves the supervisor's
+-- heartbeat deadline. False confirms lease loss; reporting errors propagate.
+function jobs.heartbeat(id: string, lease: table): (boolean?, error?)
+    if type(lease) == "table" and type(lease.execution_seq) == "number"
+        and (lease.execution_seq < 1 or lease.execution_seq == math.huge
+            or lease.execution_seq ~= math.floor(lease.execution_seq)) then
+        return nil, (errors.new({message = "heartbeat requires an integer execution sequence", kind = errors.INVALID}) :: error)
+    end
+    local active, active_err = jobs.lease_valid(id, lease)
+    if active_err then return nil, active_err end
+    if not active then return false, nil end
+    local sent, notify_err = proc_supervisor.notify(id, lease.token, lease.execution_seq,
+        "heartbeat", nil)
+    if notify_err then return nil, notify_err end
+    if not sent then
+        return nil, (errors.new({message = "job execution supervisor did not receive heartbeat",
+            kind = errors.UNAVAILABLE, retryable = true}) :: error)
+    end
+    return true, nil
+end
+
 function jobs.wake_tx(tx: sql.Transaction, key: string, dbtype: string?): (table?, error?)
     return wake.wake_tx(tx, key, dbtype)
 end
@@ -269,9 +301,9 @@ function jobs.complete(id: string, lease: table, options: table): (table?, error
 end
 
 -- Jobs-owned, bounded retention entry point consumed by the maintenance slot.
-function jobs.retention_sweep(cursor: table?): (table?, error?)
+function jobs.retention_sweep(cursor: table?, completed_fence_cursor: table | boolean | nil): (table?, error?)
     return with_db(function(db: sql.DB, dbtype: string): (table?, error?)
-        return retention.sweep(db, dbtype, cursor)
+        return retention.sweep(db, dbtype, cursor, completed_fence_cursor)
     end, true)
 end
 

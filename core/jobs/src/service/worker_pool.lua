@@ -182,7 +182,7 @@ type Shutdown = {
     requested: () -> boolean,
     planned: () -> boolean,
     preserve_assignment: ((string) -> ())?,
-    cancel_new_slot: ((string) -> ())?,
+    cancel_slot: ((string) -> ())?,
 }
 
 local function slot_state(handover: any?): Slots
@@ -265,7 +265,9 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
     local retention_driver = pool_retention_schedule.new({
         policy = policy_read,
         now = pool_time.now,
-        sweep = function(cursor) return pool_jobs.retention_sweep(cursor) end,
+        sweep = function(cursor, completed_fence_cursor)
+            return pool_jobs.retention_sweep(cursor, completed_fence_cursor)
+        end,
         logger = logger,
         fallback_retry_ms = function() return dispatch_retry_delay_ms end,
     })
@@ -313,7 +315,13 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
             or type(epoch) ~= "number" or epoch % 1 ~= 0
             or epoch ~= assignment_epoch[worker_id] then return false end
         if value.kind == "idle" then
+            local was_assigned = assigned[worker_id] ~= nil
             assigned[worker_id] = nil
+            if shutdown.planned() then
+                -- The shutdown snapshot spared this slot while it was busy.
+                if was_assigned and shutdown.cancel_slot then shutdown.cancel_slot(worker_id) end
+                return false
+            end
             if type(value.version) == "string" and value.version ~= "" then
                 idle[worker_id] = value.version
             end
@@ -619,6 +627,8 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
             local selected = pool_channel.select(cases)
             if deadline and selected.channel == deadline then
                 return unavailable("job worker pool drain timed out", nil)
+            elseif selected.channel == idle_ch and shutdown.planned() then
+                accept_idle(selected.value)
             elseif selected.channel == events_ch then
                 local event = selected.value
                 if type(event) == "table" and event.kind == pool_process.event.EXIT then
@@ -653,7 +663,7 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
         assignment_epoch[tostring(child_pid)] = 0
         started_ns[slot] = now
         due_ns[slot] = nil
-        if shutdown.requested() and shutdown.cancel_new_slot then shutdown.cancel_new_slot(tostring(child_pid)) end
+        if shutdown.requested() and shutdown.cancel_slot then shutdown.cancel_slot(tostring(child_pid)) end
     end
 
     refresh_size = function(now: number, candidate: table?): error?
@@ -1007,7 +1017,7 @@ function pool.main(handover: any?): (any?, error?)
             requested = function() return shutdown_at ~= nil end,
             planned = function() return planned end,
             preserve_assignment = preserve_assignment,
-            cancel_new_slot = stop_slot,
+            cancel_slot = stop_slot,
         })
         finished:send(true)
     end)

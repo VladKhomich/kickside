@@ -23,8 +23,8 @@ function M.get(id)
         assert(options.if_match == '"version"')
         local bytes = objects[key]
         if options.range then
-            local last = assert(options.range:match("^bytes=0%-(%d+)$"))
-            bytes = bytes:sub(1, tonumber(last) + 1)
+            local last = assert(tonumber(options.range:match("^bytes=0%-(%d+)$")))
+            bytes = bytes:sub(1, last + 1)
         end
         return writer:write(bytes)
     end

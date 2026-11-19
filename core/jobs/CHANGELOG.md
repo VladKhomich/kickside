@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.1.93](https://github.com/kicksideai/kickside/compare/jobs-v0.1.92...jobs-v0.1.93) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound completed fence retention inspection ([#637](https://github.com/kicksideai/kickside/issues/637)) ([9819572](https://github.com/kicksideai/kickside/commit/9819572532af56cd5d4fb70ab6cbd11af9822635))
+
+## [0.1.92](https://github.com/kicksideai/kickside/compare/jobs-v0.1.91...jobs-v0.1.92) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** detach independent links during thread cleanup ([#628](https://github.com/kicksideai/kickside/issues/628)) ([b44ab06](https://github.com/kicksideai/kickside/commit/b44ab064611734492311c4cda63f29cf20668321))
+
+## [0.1.91](https://github.com/kicksideai/kickside/compare/jobs-v0.1.90...jobs-v0.1.91) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** guard replacement thread cleanup sequences ([#624](https://github.com/kicksideai/kickside/issues/624)) ([8e715ed](https://github.com/kicksideai/kickside/commit/8e715ede1a265bab118732f658719c146871e0d3))
+
+## [0.1.90](https://github.com/kicksideai/kickside/compare/jobs-v0.1.89...jobs-v0.1.90) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** deliver terminal outcomes and preserve upload retry ([#474](https://github.com/kicksideai/kickside/issues/474)) ([d1e19d1](https://github.com/kicksideai/kickside/commit/d1e19d1666c659f61779c87e2e02f5a65782106d))
+
+## [0.1.89](https://github.com/kicksideai/kickside/compare/jobs-v0.1.88...jobs-v0.1.89) (2026-11-19)
+
+
+### Features
+
+* **jobs:** enforce opt-in execution progress deadlines ([#596](https://github.com/kicksideai/kickside/issues/596)) ([7f8f7fa](https://github.com/kicksideai/kickside/commit/7f8f7fa8eeb10a1fe0bc2c797efb1eb56c4a0074))
+
 ## [0.1.88](https://github.com/kicksideai/kickside/compare/jobs-v0.1.87...jobs-v0.1.88) (2026-11-19)
 
 

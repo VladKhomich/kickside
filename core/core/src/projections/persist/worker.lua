@@ -22,6 +22,7 @@ local proc_supervisor = require("proc_supervisor")
 local projection_policy = require("projection_policy")
 local error_envelope = require("error_envelope")
 local job_types = require("job_types")
+local checkpoint_declaration = require("checkpoint_declaration")
 
 local worker = {}
 
@@ -34,6 +35,8 @@ worker.WORKER_FAILED = "worker_failed"
 -- slot, and the cursor records it as its last_error.
 local PROC_TIMEOUT_MARKER = "projection worker exceeded max_execution_ms"
 worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
+
+local CHECKPOINT_DECLARATION_REQUIRED = "projection_private_checkpoint_requires_declaration"
 
 -- A parsed, optionally validated worker reference.
 type Binding = {
@@ -138,7 +141,7 @@ end
 -- A projection retains its stored principal. A declared worker may add only
 -- service-only policies; member scopes and actor overrides remain inadmissible.
 -- Admission is immutable within a registry revision.
-local function validate_declaration(binding: table, system_identity: boolean?): (Binding?, error?)
+local function validate_declaration(binding: table, system_identity: boolean?, owner_checkpoint: boolean): (Binding?, error?)
     local target_id = tostring(binding.target_id)
     local declared_runtime = tostring(binding.worker_runtime)
     local entry, entry_err = registry.get(target_id)
@@ -189,15 +192,17 @@ local function validate_declaration(binding: table, system_identity: boolean?): 
             end
         end
     end
-    if (meta.private == true and system_identity ~= true) or scoped then
+    local checkpointed = meta.checkpointed_apply == true
+    local private_checkpoint = checkpointed and expected == types.WORKER_RUNTIME.PROC
+    if scoped or (meta.private == true and system_identity ~= true and not (owner_checkpoint and private_checkpoint)) then
+        local details = not scoped and private_checkpoint and {code = CHECKPOINT_DECLARATION_REQUIRED} or nil
         return nil, (errors.new({ message = "private or scoped projection worker is not allowed: " .. target_id,
-            kind = errors.PERMISSION_DENIED }) :: error)
+            kind = errors.PERMISSION_DENIED, details = details }) :: error)
     end
     if expected == types.WORKER_RUNTIME.PROC and PROC_BLOCKED[target_id] then
         return nil, (errors.new({ message = PROC_BLOCKED[target_id], kind = errors.INVALID }) :: error)
     end
 
-    local checkpointed = meta.checkpointed_apply == true
     if checkpointed and expected ~= types.WORKER_RUNTIME.PROC then
         return nil, errors.new({kind = errors.INVALID, message = "checkpointed apply requires a supervised process worker"})
     end
@@ -207,29 +212,74 @@ end
 
 local admitted_version: string? = nil
 local admitted_bindings: {[string]: table} = {}
+-- Keep the owner check local to the admitted binding for this dispatch. The
+-- cursor body and public register options carry no authority to set it.
+local declared_checkpoints: {[table]: table} = setmetatable({}, {__mode = "k"})
 
-function worker.validate(binding: table, system_identity: boolean?): (Binding?, error?)
+local function registry_revision(): (string?, error?)
     local version, version_err = registry.current_version()
     if version_err then return nil, version_err end
     if not version then
         return nil, errors.new({kind = errors.INTERNAL, message = "projection registry version unavailable",
             retryable = false})
     end
-    local revision = tostring(version:id())
+    return tostring(version:id()), nil
+end
+
+local function validate(binding: table, system_identity: boolean?, owner_revision: string?): (Binding?, error?)
+    local revision, err = registry_revision()
+    if not revision then return nil, err end
+    if owner_revision and owner_revision ~= revision then
+        return nil, errors.new({kind = errors.CONFLICT, retryable = true,
+            message = "projection declaration changed before dispatch"})
+    end
     if admitted_version ~= revision then
         admitted_version, admitted_bindings = revision, {}
     end
     local key = tostring(binding.worker_runtime) .. "://" .. tostring(binding.target_id)
-        .. (system_identity == true and "/system" or "/member")
+        .. (system_identity == true and "/system" or (owner_revision and "/declared-checkpoint" or "/member"))
     local admitted = admitted_bindings[key]
     if not admitted then
-        local value, err = validate_declaration(binding, system_identity)
-        if err or not value then return nil, err end
+        local value, validation_err = validate_declaration(binding, system_identity, owner_revision ~= nil)
+        if validation_err or not value then return nil, validation_err end
         admitted = value
         admitted_bindings[key] = admitted
     end
     return {worker_ref = admitted.worker_ref, worker_runtime = admitted.worker_runtime,
         target_id = admitted.target_id, checkpointed_apply = admitted.checkpointed_apply}, nil
+end
+
+function worker.validate(binding: table, system_identity: boolean?): (Binding?, error?)
+    return validate(binding, system_identity)
+end
+
+function worker.requires_checkpoint_declaration(err: error): boolean
+    local details = err:details()
+    return type(details) == "table" and details.code == CHECKPOINT_DECLARATION_REQUIRED
+end
+
+function worker.admit_declared_checkpoint(binding: table, cursor: table): (Binding?, error?)
+    local revision, registry_err = registry_revision()
+    if not revision then return nil, registry_err end
+    local meta = cursor.body and cursor.body.meta
+    if type(meta) ~= "table" or meta.worker_ref ~= binding.worker_ref then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "private checkpoint worker does not match its cursor"})
+    end
+    local err = checkpoint_declaration.check(cursor, revision)
+    if err then return nil, err end
+    local admitted, admit_err = validate(binding, false, revision)
+    if not admitted then return nil, admit_err end
+    if not admitted.checkpointed_apply or admitted.worker_ref ~= meta.worker_ref then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "projection worker does not support the checkpoint declaration"})
+    end
+    local actor_binding = admitted :: table
+    actor_binding.actor_id = cursor.actor_id
+    actor_binding.actor_context = cursor.execution_identity_json
+    declared_checkpoints[actor_binding] = {revision = revision, worker_ref = admitted.worker_ref,
+        actor_id = actor_binding.actor_id, actor_context = actor_binding.actor_context}
+    return admitted, nil
 end
 
 -- Optional notification worker is declared on the fold worker, never supplied
@@ -472,7 +522,14 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if tostring(binding.worker_runtime) ~= types.WORKER_RUNTIME.PROC then
         return nil, (errors.new({ message = "run_proc_supervised requires a proc:// binding (" .. worker_ref .. ")", kind = errors.INVALID }) :: error)
     end
-    local validated, validate_err = worker.validate(binding, binding.system_identity == true)
+    local proof = declared_checkpoints[binding]
+    if proof and (binding.system_identity == true or proof.worker_ref ~= worker_ref
+        or worker_ref ~= scheme_for(types.WORKER_RUNTIME.PROC) .. tostring(binding.target_id)
+        or proof.actor_id ~= binding.actor_id or proof.actor_context ~= binding.actor_context) then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "private checkpoint binding changed after admission"})
+    end
+    local validated, validate_err = validate(binding, binding.system_identity == true, proof and proof.revision)
     if validate_err or not validated then return nil, validate_err end
     local target_id = tostring(binding.target_id)
     local host = trim(options.proc_host)

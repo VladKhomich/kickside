@@ -284,3 +284,36 @@ errors (a string or a message-only envelope) map to retryable
 An uncached PDF read invokes the adapter once. The current PDF API parses during
 `open()` for page count and again during `render()`; removing those two parses
 requires a converter API change. Uploads adds no separate count call to a read.
+
+### Processing limits
+
+The default hard ceiling `process_max_execution_ms` is 600000 ms (ten minutes).
+`process_heartbeat_timeout_ms` defaults to 600000 ms (ten minutes). A processor
+entry declares `meta.reports_progress: true` when it calls `jobs.heartbeat` through
+the supplied `cancel_ref` between useful batches. A pipeline stage can declare
+`reports_progress` directly; an explicit stage value overrides the processor.
+Pipelines whose every stage declares progress support receive the job-wide
+progress deadline and a default hard ceiling of 7200000 ms (two hours).
+
+An existing explicit hard-ceiling override keeps its effective behavior. Setting
+an explicit progress timeout opts that installation into progress deadlines for
+compatible pipelines. Jobs already queued retain their captured limits; manual
+retry captures current settings. A saved ceiling that differs from the current
+setting also retains its original policy.
+
+### Interrupted processing
+
+A processing job that ends dead delivers its declared outcome and settles the
+upload as failed. For uploads stranded by earlier releases, use Retry in the
+processing preview. Retry preserves stored bytes and queues processing once when
+the previous job is terminal or absent; pending or running work cannot restart.
+This also supports earlier records without processing intents or job pointers.
+A permanent failure to prepare a failure callback is recorded separately as
+`callback_error` on the failure event; it does not undo the failed upload.
+
+New attempts record terminal state, callback jobs, and the outcome event in
+one transaction. Earlier workers could commit terminal storage separately.
+Recovery can restore a provably unpublished outcome event from that storage.
+If an earlier worker could have called an external integration, the recovered
+event records the unverified delivery as `callback_error`. Already-published
+outcomes keep their event and projection.

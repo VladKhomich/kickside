@@ -9,6 +9,11 @@ local clock = require("clock")
 local thread_teardown = require("thread_teardown")
 local sql_boundary = require("sql_boundary")
 local thread_fence = require("thread_fence")
+local dead_outcome = require("dead_outcome")
+
+local no_live_outcome = [[ AND (status <> 'dead' OR (SELECT 1 FROM kickside_job outcome
+    WHERE outcome.status IN ('pending','running') AND outcome.job_identity=]]
+    .. dead_outcome.identity_sql("kickside_job.id") .. [[) IS NULL)]]
 
 local function bounded(limit: integer?, maximum: integer): integer
     return math.max(0, math.min(maximum, limit or maximum))
@@ -73,7 +78,8 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
     end
     params[#params + 1] = batch
     local limit_arg = "$" .. tostring(#params)
-    local no_runs = runs and "" or " AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)"
+    local unreferenced = runs and ""
+        or " AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)" .. no_live_outcome
     local cols = runs and "id,job_id,owner_kind,owner_id"
         or "id,owner_kind,owner_id,finished_at," .. key .. " AS retention_key"
     local source = table_name
@@ -155,7 +161,7 @@ local function prune_owned(db: any, thread_id: string?, cutoff: string, runs: bo
             selected = "rowid IN (SELECT rowid FROM " .. table_name .. " WHERE " .. selected .. ")"
         end
         local deleted, delete_err = tx:execute("DELETE FROM " .. delete_source .. " WHERE finished_at < $1"
-            .. " AND " .. settled .. " AND " .. selected .. no_runs, args)
+            .. " AND " .. settled .. " AND " .. selected .. unreferenced, args)
         if delete_err then return nil, sql_boundary.rollback(tx, errors.wrap(delete_err, "job prune delete"), "retention rollback failed") end
         local proof_err: error?
         total, proof_err = affected(deleted, "job prune delete", #ids)
@@ -416,7 +422,7 @@ end
 
 -- One bounded pass over each Jobs-owned retained table. Full batch counts
 -- keep the worker pool retention deadline due until the backlog drains.
-function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
+function M.sweep(db: any, dbtype: string, cursor: table?, completed_fence_cursor: table | boolean | nil): (table?, error?)
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
     local batch = (policy :: any).retention_batch :: integer
@@ -463,8 +469,14 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
     if wake_err then return nil, wake_err end
     local cleanup_receipts, receipts_err = prune_thread_cleanup_receipts(db, receipt_cutoff, batch, dbtype)
     if receipts_err then return nil, receipts_err end
-    local leftovers, leftovers_err = thread_teardown.reclaim_completed(db, dbtype, (policy :: any).thread_cleanup_batch)
-    if leftovers_err then return nil, leftovers_err end
+    local leftovers: integer? = 0
+    local next_completed_fence_cursor: table? = nil
+    if completed_fence_cursor ~= false then
+        local leftovers_err: error?
+        leftovers, leftovers_err, next_completed_fence_cursor = thread_teardown.reclaim_completed(
+            db, dbtype, (policy :: any).thread_cleanup_batch, completed_fence_cursor :: table?)
+        if leftovers_err then return nil, leftovers_err end
+    end
     local cleanup_fences, fences_err = prune_completed_thread_fences(db, receipt_cutoff, batch, dbtype)
     if fences_err then return nil, fences_err end
     return {
@@ -473,6 +485,7 @@ function M.sweep(db: any, dbtype: string, cursor: table?): (table?, error?)
         thread_cleanup_receipts = cleanup_receipts :: integer,
         thread_cleanup_fences = cleanup_fences :: integer,
         thread_cleanup_leftovers = leftovers :: integer,
+        completed_fence_cursor = next_completed_fence_cursor,
     }, nil
 end
 

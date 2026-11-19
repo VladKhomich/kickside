@@ -115,6 +115,8 @@ concurrency keys from its claimable backlog.
 
 `jobs.enqueue` and `jobs.enqueue_tx` accept optional `demand = true` with `slot = true`. Enrollment and control demand commit together: parked work becomes due, and a running attempt retains a follow-up. Reusing an active one-shot identity with demand returns a conflict. Omitting demand retains the existing enqueue behavior.
 
+An independent job's optional `thread_id` is omitted when a retained fence shows that thread cleanup has started. The job retains its own owner, canonical identity, and payload. A write that overlaps an in-progress cleanup transaction can return a retryable conflict before admission.
+
 `jobs.enqueue` and `jobs.enqueue_tx` accept optional boolean `replace`. Identical
 immutable inputs return the existing job. With `replace = true`, different inputs
 for a pending job owned by the same owner cancel the predecessor and insert its
@@ -129,6 +131,38 @@ Lease expiry fences the prior execution before requesting revocation. Recovery
 makes the job claimable only after its registered execution child has ended.
 A gone child recovers in the same pass; a live child retains the termination fence.
 Heartbeats renew only matching, unexpired executions without a termination fence.
+
+### Lease ownership and progress
+
+See [lease ownership and progress](../README.md#lease-ownership-and-progress) for
+heartbeat declaration, fencing, deadlines, and failure semantics.
+
+### Dead outcomes
+
+A worker entry names the function that receives its dead jobs:
+
+```yaml
+meta:
+  job_dead: app:process_dead
+```
+
+When a one-shot job ends `dead` (its final attempt failed for any reason,
+including a ceiling, heartbeat or crash termination by its supervisor, or a
+deterministic failure), the transaction that writes `dead` enqueues one outcome
+job for that function with the dead job's owner and thread, identity
+`(kickside.jobs.dead, <dead job id>, outcome)` and payload `{ job_id }`. The
+handler reads the dead job with `jobs.get_job` (status, `last_error`) and maps
+it to its own resource through the job id it recorded at enqueue. Delivery is at
+least once: the outcome runs on the ordinary claim, lease and retry machinery,
+infrastructure failures retry up to the largest attempt limit, and a
+deterministic handler failure ends the outcome job dead. Handlers are
+idempotent. A thread owner whose cleanup has started, or a worker entry removed
+from the registry, receives no outcome. Enqueue refuses a job whose worker
+declares an invalid `meta.job_dead`: the target must exist, be `function.lua`,
+and admit an outcome without a concurrency key. Outcome jobs never generate
+outcomes; a failed outcome is terminal and logged, including self-declarations
+and mutual handler cycles. A later declaration change that prevents admission is
+logged without undoing the original job's death.
 
 `jobs.health()` is a read-only operator diagnostic. It uses existing indexes and
 adds no schema, writes, claim checks or enqueue work. Each count reads at most

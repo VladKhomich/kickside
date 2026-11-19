@@ -4,6 +4,11 @@ local M: any = {}
 function M.reset(route, stage, source)
     M.route, M.stage, M.source, M.missing, M.primary = route, stage, source, false, nil
     M.value, M.queries, M.inserts, M.rollbacks, M.commits = nil, 0, 0, 0, 0
+    M.registry_reads, M.entries = {}, {}
+end
+function M.get(id)
+    M.registry_reads[#M.registry_reads + 1] = id
+    return M.entries[id], nil
 end
 function M.result(stage, value)
     if M.stage == stage then

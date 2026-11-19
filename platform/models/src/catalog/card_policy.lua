@@ -29,11 +29,38 @@ local function effective_capabilities(inferred: any, overrides: any): { string }
     return out
 end
 
+-- Ownership in the stored shape, as an export document carries it.
+local function supplied_ownership(value: any): (any?, string?)
+    if type(value) ~= "table" then return nil, "capability_ownership must be an object" end
+    local inferred = value.inferred
+    if inferred ~= nil then
+        if type(inferred) ~= "table" then return nil, "capability_ownership.inferred must be a list" end
+        inferred = policy.explicit_list(inferred, {})
+    end
+    if type(value.overrides) ~= "table" then return nil, "capability_ownership.overrides must be an object" end
+    local overrides = {}
+    for capability, enabled in pairs(value.overrides) do
+        if type(capability) ~= "string" or type(enabled) ~= "boolean" then
+            return nil, "capability_ownership.overrides must map capabilities to true or false"
+        end
+        overrides[capability] = enabled
+    end
+    return { inferred = inferred, overrides = overrides }
+end
+
 -- A card's capabilities are its last inferred set with administrator overrides
 -- applied. Discovery replaces the inferred set; a save records the membership
 -- change it makes as overrides; a reset returns capabilities to discovery.
+-- Supplied ownership takes the place of the saved ownership the save is
+-- recorded against.
 local function capability_ownership(input: any, base: any?, inferred: any?): (any?, any?, string?)
     local saved = base and base.capability_ownership or { inferred = {}, overrides = {} }
+    local supplied = input.capability_ownership ~= nil
+    if supplied then
+        local ownership, ownership_err = supplied_ownership(input.capability_ownership)
+        if not ownership then return nil, nil, ownership_err end
+        saved = ownership
+    end
     local ownership = { inferred = inferred or saved.inferred, overrides = {} }
     for capability, enabled in pairs(saved.overrides) do ownership.overrides[capability] = enabled end
     if inferred ~= nil and saved.inferred == nil then
@@ -43,7 +70,8 @@ local function capability_ownership(input: any, base: any?, inferred: any?): (an
     end
     if inferred == nil then
         local current = effective_capabilities(saved.inferred, saved.overrides)
-        local target = policy.explicit_list(input.capabilities, base and base.capabilities or { "generate" })
+        local target = policy.explicit_list(input.capabilities,
+            supplied and current or (base and base.capabilities or { "generate" }))
         for _, capability in ipairs(current) do
             if not policy.table_has(target, capability) then ownership.overrides[capability] = false end
         end
@@ -108,6 +136,7 @@ local function build_card(row: any, profile: any?): (any?, any?)
         source = row.source or models_types.SOURCE_MANUAL,
         provider_profile_id = row.provider_profile_id,
         enabled = enabled and not (profile and (profile.error or profile.enabled == false)),
+        configured_enabled = enabled,
         class_load_failed = enabled and profile and profile.configured_enabled == true and profile.error ~= nil or nil,
         error = profile and profile.error or nil,
         metadata = metadata,
@@ -137,6 +166,18 @@ local function public_card(card: any): any
         error = card.error,
         metadata = policy.scrub_sensitive(card.metadata or {}),
     }
+end
+
+-- Carry the saved limits. The receiving catalog derives absent values from
+-- discovery metadata in the same way as the source catalog.
+local function export_card(card: any): any
+    local exported = public_card(card)
+    exported.enabled = card.configured_enabled
+    exported.max_tokens = card.stored_limits.max_tokens
+    exported.output_tokens = card.stored_limits.output_tokens
+    exported.dimensions = card.stored_limits.dimensions
+    local public = policy.split_config(exported)
+    return public
 end
 
 local function card_limit(input: any, stored: any?, field: string): number?
@@ -175,6 +216,8 @@ local function clean_card_input(input: any, base: any?, inferred: any?): (any?, 
     local enabled: boolean
     if input.enabled ~= nil then
         enabled = input.enabled == true
+    elseif base ~= nil and base.configured_enabled ~= nil then
+        enabled = base.configured_enabled
     elseif base ~= nil then
         enabled = base.enabled ~= false
     else
@@ -209,6 +252,7 @@ end
 
 M.build_card = build_card
 M.public_card = public_card
+M.export_card = export_card
 M.clean_card_input = clean_card_input
 
 return M

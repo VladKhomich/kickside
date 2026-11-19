@@ -4,6 +4,7 @@ local sql = require("sql")
 local errors = require("errors")
 
 local resources = require("uploads_resources")
+local upload_query_repo = require("upload_query_repo")
 local persisted_json = require("persisted_json")
 local artifact_content_repo = require("artifact_content_repo")
 
@@ -319,8 +320,39 @@ function upload_record_repo.mark_storage_failed(uuid)
     return mark_storage_state(uuid, "failed")
 end
 
+-- Lock the owned checkpoint before reading its publication and callback receipts.
+function upload_record_repo.lock_settlement_tx(tx, upload: any, job_id: string?, recovering: boolean)
+    local query = sql.builder.update("kickside_uploads")
+        :set("storage_state", sql.builder.expr("storage_state"))
+        :where("uuid = ? AND storage_state IN ('uploaded', 'completed', 'failed')", upload.uuid)
+    if recovering then
+        query = query:where("storage_state = ?", upload.storage_state)
+        if job_id then
+            query = query:where("processing_intent_state = 'acknowledged' AND processing_job_id = ?", job_id)
+        else
+            query = query:where(upload_query_repo.intentless_checkpoint_sql("kickside_uploads.uuid"))
+        end
+    else
+        query = query:where(upload_query_repo.processing_job_owner_sql(), job_id)
+    end
+    local statement, params, build_err = query:placeholder_format(sql.builder.dollar):to_sql()
+    if build_err then return nil, build_err end
+    local rows, err = tx:query(statement .. " RETURNING storage_state", params)
+    if err or #rows == 0 then return nil, err end
+    return rows[1], nil
+end
+
+function upload_record_repo.publish_storage_tx(tx, uuid: string, storage_state: string): any?
+    local _, err = sql.builder.update("kickside_uploads")
+        :set("storage_state", storage_state):set("updated_at", now_rfc3339())
+        :where("uuid = ?", uuid):run_with(tx):exec()
+    return err
+end
+
 -- Return a failed upload to the uploaded state so its processing runs again.
--- Only a failed upload changes, so a concurrent retry or a live job is not reset.
+-- A processing upload can retry once its recorded job is terminal or pruned.
+-- Legacy uploads without an intent use the existing active job identity index.
+-- The primary-key job check and upload update fence live work and concurrent retries.
 function upload_record_repo.mark_failed_for_retry(uuid, processing_max_execution_ms: integer)
     if not uuid or uuid == "" then
         return nil, "Upload ID is required"
@@ -336,7 +368,16 @@ function upload_record_repo.mark_failed_for_retry(uuid, processing_max_execution
         :set("processing_intent_state", "pending")
         :set("processing_max_execution_ms", processing_max_execution_ms)
         :set("updated_at", now_rfc3339())
-        :where("uuid = ? AND storage_state = ?", uuid, "failed")
+        :where("uuid = ?", uuid)
+        :where("(storage_state='failed' OR (storage_state='uploaded' AND ("
+            .. "(processing_intent_state='acknowledged' AND processing_job_id IS NOT NULL"
+            .. " AND NOT EXISTS (SELECT 1 FROM kickside_job j WHERE j.id="
+            .. (tostring(db:type()) == sql.type.POSTGRES and "CAST(NULLIF(processing_job_id,'') AS UUID)" or "processing_job_id")
+            .. " AND j.status IN ('pending','running'))) OR "
+            .. "(processing_intent_state IS NULL AND processing_job_id IS NULL"
+            .. " AND NOT EXISTS (SELECT 1 FROM kickside_job j WHERE j.job_identity="
+            .. upload_query_repo.processing_job_identity_sql("")
+            .. " AND j.status IN ('pending','running'))))))")
         :run_with(db)
         :exec()
 

@@ -242,6 +242,7 @@ entries:
       proj_register: kickside.core.projections.persist:register
       persisted_json: kickside.contract:persisted_json
       projections_writer: kickside.core.projections.persist:writer
+      thread_crud: kickside.core.threads.persist:thread_crud
       component_identity: kickside.core.threads:component_identity
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
       component_lifecycle: kickside.core.lifecycle:component_lifecycle_impl

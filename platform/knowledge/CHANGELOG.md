@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.95](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.94...knowledge-v0.1.95) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** use the single bound target for document ingestion ([#641](https://github.com/kicksideai/kickside/issues/641)) ([5792715](https://github.com/kicksideai/kickside/commit/5792715483f232da2e95f8cabafce790cb82be96))
+
+## [0.1.94](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.93...knowledge-v0.1.94) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** direct attachment ingestion to Knowledge Base Writer ([#631](https://github.com/kicksideai/kickside/issues/631)) ([dcaaad2](https://github.com/kicksideai/kickside/commit/dcaaad2b5ffda849cfa057643c1e7cce6d9f0c98))
+* **knowledge:** read authoritative catalog statistics ([#633](https://github.com/kicksideai/kickside/issues/633)) ([8183725](https://github.com/kicksideai/kickside/commit/8183725a89bfdbbcd8910187f2231d9e29e7d3f3))
+
+## [0.1.93](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.92...knowledge-v0.1.93) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** re-ingest retained uploads explicitly ([#612](https://github.com/kicksideai/kickside/issues/612)) ([1cf0053](https://github.com/kicksideai/kickside/commit/1cf0053c1df2ccec55fd28c6a8f7de7af3059e4d))
+
 ## [0.1.92](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.91...knowledge-v0.1.92) (2026-11-19)
 
 

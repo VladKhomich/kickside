@@ -184,9 +184,9 @@ local function attach(upload_lib, deps)
             return nil, failure("Upload is in invalid storage state: " .. tostring(upload.storage_state), errors.CONFLICT, "declaration")
         end
 
-        local submitted, submit_err = process_worker.enqueue_upload_job(upload, true, function(tx, dbtype)
+        local submitted, submit_err = process_worker.enqueue_upload_job(upload, true, function(tx, dbtype, ceiling)
             return deps.upload_record_repo.finalize_tx(tx, dbtype, upload_id, metadata_updates,
-                etag, key, trace_context, deps.processing_max_execution_ms())
+                etag, key, trace_context, ceiling or deps.processing_max_execution_ms())
         end)
         if submit_err then return nil, submit_err end
         return submitted.upload

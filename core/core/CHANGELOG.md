@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.32](https://github.com/kicksideai/kickside/compare/core-v0.3.31...core-v0.3.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** reprovision threads after completed cleanup ([#625](https://github.com/kicksideai/kickside/issues/625)) ([8d50a1f](https://github.com/kicksideai/kickside/commit/8d50a1f0e173191c078eab4007da2fbbdf857d3e))
+
+## [0.3.31](https://github.com/kicksideai/kickside/compare/core-v0.3.30...core-v0.3.31) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** deliver terminal outcomes and preserve upload retry ([#474](https://github.com/kicksideai/kickside/issues/474)) ([d1e19d1](https://github.com/kicksideai/kickside/commit/d1e19d1666c659f61779c87e2e02f5a65782106d))
+
+## [0.3.30](https://github.com/kicksideai/kickside/compare/core-v0.3.29...core-v0.3.30) (2026-11-19)
+
+
+### Features
+
+* **core:** converge settled projection workers in place ([#615](https://github.com/kicksideai/kickside/issues/615)) ([b6ebc09](https://github.com/kicksideai/kickside/commit/b6ebc09a1a4885e65da978ddeb79e350b974365a))
+
+## [0.3.29](https://github.com/kicksideai/kickside/compare/core-v0.3.28...core-v0.3.29) (2026-11-19)
+
+
+### Features
+
+* **core:** look up the latest retained external event ([#611](https://github.com/kicksideai/kickside/issues/611)) ([679d4bc](https://github.com/kicksideai/kickside/commit/679d4bcb90bdf4c062e97c7c4c3df25e0eed1e4b))
+
+## [0.3.28](https://github.com/kicksideai/kickside/compare/core-v0.3.27...core-v0.3.28) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** admit private checkpoints from their installed declarations ([#606](https://github.com/kicksideai/kickside/issues/606)) ([e541a15](https://github.com/kicksideai/kickside/commit/e541a1586a0f60f2706d2d4e901d6169c70a62e8))
+
+
+### Performance Improvements
+
+* **core:** index private checkpoint declarations by owner ([#607](https://github.com/kicksideai/kickside/issues/607)) ([c70b0fd](https://github.com/kicksideai/kickside/commit/c70b0fdfc668f246c70cea32c0c3f848e25bd804))
+
 ## [0.3.27](https://github.com/kicksideai/kickside/compare/core-v0.3.26...core-v0.3.27) (2026-11-19)
 
 

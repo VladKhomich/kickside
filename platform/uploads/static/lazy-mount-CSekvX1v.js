@@ -2,7 +2,7 @@ import { B as pe, s as J, f as wt, a as Me, p as In, M as Lt, l as Tt, b as lt, 
 import { openBlock as s, createElementBlock as p, mergeProps as k, createBlock as $, resolveDynamicComponent as X, createCommentVNode as C, renderSlot as O, createElementVNode as y, toDisplayString as L, resolveComponent as K, createVNode as w, normalizeStyle as Un, normalizeClass as T, toHandlers as qe, resolveDirective as Pe, withDirectives as fe, createSlots as zt, withCtx as D, Fragment as Z, renderList as ue, createTextVNode as ke, normalizeProps as Vn, Transition as zn, defineComponent as Kt, computed as _, unref as l, vShow as Kn, ref as R, watch as Ze, onMounted as Wn, onBeforeUnmount as Gn, withModifiers as Dt, withKeys as Bt, isRef as Jn } from "vue";
 import { Icon as A } from "@iconify/vue";
 import { s as Wt, a as Gt, b as Hn, c as kt, d as U } from "./index-D-sSYkIL.js";
-import { on as qn, api as ce, loadByTagName as Zn, host as Yn } from "@wippy-fe/proxy";
+import { on as qn, api as de, loadByTagName as Zn, host as Yn } from "@wippy-fe/proxy";
 var Qn = `
     .p-tag {
         display: inline-flex;
@@ -258,7 +258,7 @@ var sr = `
   name: "inputgroup",
   style: sr,
   classes: lr
-}), dr = {
+}), cr = {
   name: "BaseInputGroup",
   extends: J,
   style: ur,
@@ -270,15 +270,15 @@ var sr = `
   }
 }, Ht = {
   name: "InputGroup",
-  extends: dr,
+  extends: cr,
   inheritAttrs: !1
 };
-function cr(e, t, n, r, i, a) {
+function dr(e, t, n, r, i, a) {
   return s(), p("div", k({
     class: e.cx("root")
   }, e.ptmi("root")), [O(e.$slots, "default")], 16);
 }
-Ht.render = cr;
+Ht.render = dr;
 var pr = {
   root: "p-inputgroupaddon"
 }, fr = pe.extend({
@@ -498,18 +498,18 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
 }
 function Cr(e, t) {
   if (e) {
-    if (typeof e == "string") return dt(e, t);
+    if (typeof e == "string") return ct(e, t);
     var n = {}.toString.call(e).slice(8, -1);
-    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? dt(e, t) : void 0;
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? ct(e, t) : void 0;
   }
 }
 function $r(e) {
   if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
 function Sr(e) {
-  if (Array.isArray(e)) return dt(e);
+  if (Array.isArray(e)) return ct(e);
 }
-function dt(e, t) {
+function ct(e, t) {
   (t == null || t > e.length) && (t = e.length);
   for (var n = 0, r = Array(t); n < t; n++) r[n] = e[n];
   return r;
@@ -542,18 +542,18 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
 }
 function Ar(e, t) {
   if (e) {
-    if (typeof e == "string") return ct(e, t);
+    if (typeof e == "string") return dt(e, t);
     var n = {}.toString.call(e).slice(8, -1);
-    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? ct(e, t) : void 0;
+    return n === "Object" && e.constructor && (n = e.constructor.name), n === "Map" || n === "Set" ? Array.from(e) : n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n) ? dt(e, t) : void 0;
   }
 }
 function Dr(e) {
   if (typeof Symbol < "u" && e[Symbol.iterator] != null || e["@@iterator"] != null) return Array.from(e);
 }
 function Br(e) {
-  if (Array.isArray(e)) return ct(e);
+  if (Array.isArray(e)) return dt(e);
 }
-function ct(e, t) {
+function dt(e, t) {
   (t == null || t > e.length) && (t = e.length);
   for (var n = 0, r = Array(t); n < t; n++) r[n] = e[n];
   return r;
@@ -1337,12 +1337,12 @@ var Qt = {
           case "Backspace": {
             if (t.preventDefault(), n === r) {
               n >= a.length && this.suffixChar !== null && (n = a.length - this.suffixChar.length, this.$refs.input.$el.setSelectionRange(n, n));
-              var d = a.charAt(n - 1), P = this.getDecimalCharIndexes(a), v = P.decimalCharIndex, x = P.decimalCharIndexWithoutPrefix;
-              if (this.isNumeralChar(d)) {
+              var c = a.charAt(n - 1), P = this.getDecimalCharIndexes(a), v = P.decimalCharIndex, x = P.decimalCharIndexWithoutPrefix;
+              if (this.isNumeralChar(c)) {
                 var B = this.getDecimalLength(a);
-                if (this._group.test(d))
+                if (this._group.test(c))
                   this._group.lastIndex = 0, o = a.slice(0, n - 2) + a.slice(n - 1);
-                else if (this._decimal.test(d))
+                else if (this._decimal.test(c))
                   this._decimal.lastIndex = 0, B ? this.$refs.input.$el.setSelectionRange(n - 1, n - 1) : o = a.slice(0, n - 1) + a.slice(n);
                 else if (v > 0 && n > v) {
                   var j = this.isDecimalMode() && (this.minFractionDigits || 0) < B ? "" : "0";
@@ -1446,9 +1446,9 @@ var Qt = {
         isMinusSign: !1
       }, i = n.search(this._minusSign);
       if (this._minusSign.lastIndex = 0, !(!this.allowMinusSign() && i !== -1)) {
-        var a = this.$refs.input.$el.selectionStart, o = this.$refs.input.$el.selectionEnd, u = this.$refs.input.$el.value.trim(), h = this.getCharIndexes(u), g = h.decimalCharIndex, d = h.minusCharIndex, P = h.suffixCharIndex, v = h.currencyCharIndex, x;
+        var a = this.$refs.input.$el.selectionStart, o = this.$refs.input.$el.selectionEnd, u = this.$refs.input.$el.value.trim(), h = this.getCharIndexes(u), g = h.decimalCharIndex, c = h.minusCharIndex, P = h.suffixCharIndex, v = h.currencyCharIndex, x;
         if (r.isMinusSign) {
-          var B = d === -1;
+          var B = c === -1;
           (a === 0 || a === v + 1) && (x = u, (B || o !== 0) && (x = this.insertText(u, n, 0, o)), this.updateValue(t, x, n, "insert"));
         } else if (r.isDecimalSign)
           g > 0 && a === g ? this.updateValue(t, u, n, "insert") : g > a && g < o ? (x = this.insertText(u, n, a, o), this.updateValue(t, x, n, "insert")) : g === -1 && this.maxFractionDigits && (x = this.insertText(u, n, a, o), this.updateValue(t, x, n, "insert"));
@@ -1545,8 +1545,8 @@ var Qt = {
       var o = this.$refs.input.$el.value, u = this.formatValue(t), h = o.length;
       if (u !== i && (u = this.concatValues(u, i)), h === 0) {
         this.$refs.input.$el.value = u, this.$refs.input.$el.setSelectionRange(0, 0);
-        var g = this.initCursor(), d = g + n.length;
-        this.$refs.input.$el.setSelectionRange(d, d);
+        var g = this.initCursor(), c = g + n.length;
+        this.$refs.input.$el.setSelectionRange(c, c);
       } else {
         var P = this.$refs.input.$el.selectionStart, v = this.$refs.input.$el.selectionEnd;
         this.$refs.input.$el.value = u;
@@ -1854,10 +1854,10 @@ var en = {
   name: "AngleLeftIcon",
   extends: Me
 };
-function da(e) {
-  return ma(e) || fa(e) || pa(e) || ca();
+function ca(e) {
+  return ma(e) || fa(e) || pa(e) || da();
 }
-function ca() {
+function da() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
@@ -1886,7 +1886,7 @@ function ga(e, t, n, r, i, a) {
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, e.pti()), da(t[0] || (t[0] = [y("path", {
+  }, e.pti()), ca(t[0] || (t[0] = [y("path", {
     d: "M8.75 11.185C8.65146 11.1854 8.55381 11.1662 8.4628 11.1284C8.37179 11.0906 8.28924 11.0351 8.22 10.965L4.72 7.46496C4.57955 7.32433 4.50066 7.13371 4.50066 6.93496C4.50066 6.73621 4.57955 6.54558 4.72 6.40496L8.22 2.93496C8.36095 2.84357 8.52851 2.80215 8.69582 2.81733C8.86312 2.83252 9.02048 2.90344 9.14268 3.01872C9.26487 3.134 9.34483 3.28696 9.36973 3.4531C9.39463 3.61924 9.36303 3.78892 9.28 3.93496L6.28 6.93496L9.28 9.93496C9.42045 10.0756 9.49934 10.2662 9.49934 10.465C9.49934 10.6637 9.42045 10.8543 9.28 10.995C9.13526 11.1257 8.9448 11.1939 8.75 11.185Z",
     fill: "currentColor"
   }, null, -1)])), 16);
@@ -2298,7 +2298,7 @@ function $a(e, t, n, r, i, a) {
   }, a.getPTOptions("prevIcon")), null, 16, ["class"]))], 16)), [[o]]);
 }
 un.render = $a;
-var dn = {
+var cn = {
   name: "RowsPerPageDropdown",
   hostName: "Paginator",
   extends: J,
@@ -2357,7 +2357,7 @@ function Sa(e, t, n, r, i, a) {
     key: "0"
   } : void 0]), 1032, ["modelValue", "options", "class", "disabled", "unstyled", "pt"]);
 }
-dn.render = Sa;
+cn.render = Sa;
 function bt(e) {
   "@babel/helpers - typeof";
   return bt = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(t) {
@@ -2394,8 +2394,8 @@ function Ta(e, t) {
         if (Object(n) !== n) return;
         h = !1;
       } else for (; !(h = (r = a.call(n)).done) && (u.push(r.value), u.length !== t); h = !0) ;
-    } catch (d) {
-      g = !0, i = d;
+    } catch (c) {
+      g = !0, i = c;
     } finally {
       try {
         if (!h && n.return != null && (o = n.return(), Object(o) !== o)) return;
@@ -2409,7 +2409,7 @@ function Ta(e, t) {
 function Aa(e) {
   if (Array.isArray(e)) return e;
 }
-var cn = {
+var dn = {
   name: "Paginator",
   extends: ha,
   inheritAttrs: !1,
@@ -2478,7 +2478,7 @@ var cn = {
           a[B] = t.template[B];
         });
         for (var o = 0, u = Object.entries(Object.entries(a)); o < u.length; o++) {
-          var h = Ft(u[o], 2), g = h[0], d = Ft(h[1], 1), P = d[0], v = void 0, x = void 0;
+          var h = Ft(u[o], 2), g = h[0], c = Ft(h[1], 1), P = c[0], v = void 0, x = void 0;
           P !== "default" && typeof Object.keys(a)[g - 1] == "string" ? x = Number(Object.keys(a)[g - 1].slice(0, -2)) + 1 + "px" : x = Object.keys(a)[g - 1], v = Object.entries(a)[g - 1] ? "and (min-width:".concat(x, ")") : "", P === "default" ? r += `
                             @media screen `.concat(v, ` {
                                 .p-paginator[`).concat(this.$attrSelector, `],
@@ -2570,13 +2570,13 @@ var cn = {
     NextPageLink: sn,
     PageLinks: ln,
     PrevPageLink: un,
-    RowsPerPageDropdown: dn,
+    RowsPerPageDropdown: cn,
     JumpToPageDropdown: rn,
     JumpToPageInput: an
   }
 };
 function Da(e, t, n, r, i, a) {
-  var o = K("FirstPageLink"), u = K("PrevPageLink"), h = K("NextPageLink"), g = K("LastPageLink"), d = K("PageLinks"), P = K("CurrentPageReport"), v = K("RowsPerPageDropdown"), x = K("JumpToPageDropdown"), B = K("JumpToPageInput");
+  var o = K("FirstPageLink"), u = K("PrevPageLink"), h = K("NextPageLink"), g = K("LastPageLink"), c = K("PageLinks"), P = K("CurrentPageReport"), v = K("RowsPerPageDropdown"), x = K("JumpToPageDropdown"), B = K("JumpToPageInput");
   return e.alwaysShow || a.pageLinks && a.pageLinks.length > 1 ? (s(), p("nav", Vn(k({
     key: 0
   }, e.ptmi("paginatorContainer"))), [(s(!0), p(Z, null, ue(a.templateItems, function(j, M) {
@@ -2660,7 +2660,7 @@ function Da(e, t, n, r, i, a) {
         disabled: a.isLastPage || a.empty,
         unstyled: e.unstyled,
         pt: e.pt
-      }, null, 8, ["aria-label", "template", "disabled", "unstyled", "pt"])) : I === "PageLinks" ? (s(), $(d, {
+      }, null, 8, ["aria-label", "template", "disabled", "unstyled", "pt"])) : I === "PageLinks" ? (s(), $(c, {
         key: 4,
         "aria-label": a.getAriaLabel("pageLabel"),
         value: a.pageLinks,
@@ -2726,7 +2726,7 @@ function Da(e, t, n, r, i, a) {
     })], 16)) : C("", !0)], 64))], 16);
   }), 128))], 16)) : C("", !0);
 }
-cn.render = Da;
+dn.render = Da;
 function Le(e) {
   return !!e && typeof e == "object" && !Array.isArray(e);
 }
@@ -2887,8 +2887,8 @@ var Va = Ma.extend("focustrap", {
       });
     },
     autoElementFocus: function(t, n) {
-      var r = n.value || {}, i = r.autoFocusSelector, a = i === void 0 ? "" : i, o = r.firstFocusableSelector, u = o === void 0 ? "" : o, h = r.autoFocus, g = h === void 0 ? !1 : h, d = Ie(t, "[autofocus]".concat(this.getComputedSelector(a)));
-      g && !d && (d = Ie(t, this.getComputedSelector(u))), De(d);
+      var r = n.value || {}, i = r.autoFocusSelector, a = i === void 0 ? "" : i, o = r.firstFocusableSelector, u = o === void 0 ? "" : o, h = r.autoFocus, g = h === void 0 ? !1 : h, c = Ie(t, "[autofocus]".concat(this.getComputedSelector(a)));
+      g && !c && (c = Ie(t, this.getComputedSelector(u))), De(c);
     },
     onFirstHiddenElementFocus: function(t) {
       var n, r = t.currentTarget, i = t.relatedTarget, a = i === r.$_pfocustrap_lasthiddenfocusableelement || !((n = this.$el) !== null && n !== void 0 && n.contains(i)) ? Ie(r.parentElement, this.getComputedSelector(r.$_pfocustrap_focusableselector)) : r.$_pfocustrap_lasthiddenfocusableelement;
@@ -2899,7 +2899,7 @@ var Va = Ma.extend("focustrap", {
       De(a);
     },
     createHiddenFocusableElements: function(t, n) {
-      var r = this, i = n.value || {}, a = i.tabIndex, o = a === void 0 ? 0 : a, u = i.firstFocusableSelector, h = u === void 0 ? "" : u, g = i.lastFocusableSelector, d = g === void 0 ? "" : g, P = function(j) {
+      var r = this, i = n.value || {}, a = i.tabIndex, o = a === void 0 ? 0 : a, u = i.firstFocusableSelector, h = u === void 0 ? "" : u, g = i.lastFocusableSelector, c = g === void 0 ? "" : g, P = function(j) {
         return Bn("span", {
           class: "p-hidden-accessible p-hidden-focusable",
           tabIndex: o,
@@ -2910,7 +2910,7 @@ var Va = Ma.extend("focustrap", {
           onFocus: j?.bind(r)
         });
       }, v = P(this.onFirstHiddenElementFocus), x = P(this.onLastHiddenElementFocus);
-      v.$_pfocustrap_lasthiddenfocusableelement = x, v.$_pfocustrap_focusableselector = h, v.setAttribute("data-pc-section", "firstfocusableelement"), x.$_pfocustrap_firsthiddenfocusableelement = v, x.$_pfocustrap_focusableselector = d, x.setAttribute("data-pc-section", "lastfocusableelement"), t.prepend(v), t.append(x);
+      v.$_pfocustrap_lasthiddenfocusableelement = x, v.$_pfocustrap_focusableselector = h, v.setAttribute("data-pc-section", "firstfocusableelement"), x.$_pfocustrap_firsthiddenfocusableelement = v, x.$_pfocustrap_focusableselector = c, x.setAttribute("data-pc-section", "lastfocusableelement"), t.prepend(v), t.append(x);
     }
   }
 });
@@ -3567,10 +3567,10 @@ function si(e) {
 }
 function li(e) {
   const t = me(e.status);
-  return t === "completed" || t === "error";
+  return t === "completed" || t === "error" || t === "processing";
 }
 const ui = /* @__PURE__ */ new Set(["completed", "error"]);
-function di(e) {
+function ci(e) {
   return !ui.has(me(e.status));
 }
 function hn(e) {
@@ -3579,7 +3579,7 @@ function hn(e) {
 function bn(e) {
   return hn(e) ? "Markdown" : e.role === "extracted-image" ? e.label || "Image" : e.label || e.role || e.kind || e.artifact_id;
 }
-function ci(e) {
+function di(e) {
   const t = typeof e.metadata?.width == "number" && typeof e.metadata?.height == "number" ? `${e.metadata.width}×${e.metadata.height}` : null;
   return [
     hn(e) ? "Converted markdown" : e.role === "extracted-image" ? "Extracted image" : e.kind,
@@ -3633,7 +3633,7 @@ const pi = {
   },
   emits: ["update:partsExpanded"],
   setup(e, { emit: t }) {
-    const n = e, r = _(() => n.preview ? n.activePreviewSource(n.preview) : null), i = _(() => n.artifactView?.role === "primary"), a = _(() => n.preview ? si(n.preview) : null), o = _(() => n.preview ? [gn(n.preview), _e(n.preview.size), pn(n.preview.created_at)].filter(Boolean).join(" · ") : ""), u = t;
+    const n = e, r = _(() => n.preview ? n.activePreviewSource(n.preview) : null), i = _(() => n.artifactView?.role === "primary"), a = _(() => n.preview ? si(n.preview) || (n.preview.status === "processing" ? { tone: "info", text: "Processing. Retry is available if the job has stopped." } : null) : null), o = _(() => n.preview ? [gn(n.preview), _e(n.preview.size), pn(n.preview.created_at)].filter(Boolean).join(" · ") : ""), u = t;
     return (h, g) => (s(), $(l(fn), {
       visible: !!e.preview,
       position: "right",
@@ -3644,8 +3644,8 @@ const pi = {
       class: "kx-side-drawer",
       pt: { root: { style: "width: min(1400px, 82vw)" }, content: { class: "kx-side-drawer-content" } },
       "aria-label": "File preview",
-      "onUpdate:visible": g[4] || (g[4] = (d) => {
-        d || e.closePreview();
+      "onUpdate:visible": g[4] || (g[4] = (c) => {
+        c || e.closePreview();
       })
     }, {
       default: D(() => [
@@ -3674,10 +3674,10 @@ const pi = {
               "aria-label": "Download",
               onClick: e.downloadActive
             }, {
-              icon: D(({ class: d }) => [
+              icon: D(({ class: c }) => [
                 w(l(A), {
                   icon: e.busyAction ? "tabler:loader-2" : "tabler:download",
-                  class: T([d, e.busyAction && "spin"]),
+                  class: T([c, e.busyAction && "spin"]),
                   "aria-hidden": "true"
                 }, null, 8, ["icon", "class"])
               ]),
@@ -3693,10 +3693,10 @@ const pi = {
               "aria-label": "Open in new tab",
               onClick: e.openActive
             }, {
-              icon: D(({ class: d }) => [
+              icon: D(({ class: c }) => [
                 w(l(A), {
                   icon: "tabler:external-link",
-                  class: T(d),
+                  class: T(c),
                   "aria-hidden": "true"
                 }, null, 8, ["class"])
               ]),
@@ -3711,22 +3711,22 @@ const pi = {
               "aria-label": "Close preview",
               onClick: e.closePreview
             }, {
-              icon: D(({ class: d }) => [
+              icon: D(({ class: c }) => [
                 w(l(A), {
                   icon: "tabler:x",
-                  class: T(d),
+                  class: T(c),
                   "aria-hidden": "true"
                 }, null, 8, ["class"])
               ]),
               _: 1
             }, 8, ["onClick"])
           ]),
-          (s(!0), p(Z, null, ue(e.requestErrors, (d, P) => (s(), p("div", {
+          (s(!0), p(Z, null, ue(e.requestErrors, (c, P) => (s(), p("div", {
             key: P,
             class: "kx-pv-fail",
             role: "alert"
           }, [
-            y("span", null, L(d), 1)
+            y("span", null, L(c), 1)
           ]))), 128)),
           a.value ? (s(), p("div", {
             key: 0,
@@ -3739,28 +3739,28 @@ const pi = {
               "aria-hidden": "true"
             }, null, 8, ["icon"]),
             y("span", null, L(a.value.text), 1),
-            a.value.tone === "error" ? (s(), $(l(U), {
+            a.value.tone === "error" || e.preview.status === "processing" ? (s(), $(l(U), {
               key: 0,
               type: "button",
               class: "kx-pv-retry",
               size: "small",
-              severity: "danger",
+              severity: a.value.tone === "error" ? "danger" : "secondary",
               outlined: "",
               label: "Retry",
               "data-testid": "uploads-preview-retry",
               loading: e.retrying,
               disabled: e.retrying,
-              onClick: g[0] || (g[0] = (d) => e.retryUpload(e.preview))
+              onClick: g[0] || (g[0] = (c) => e.retryUpload(e.preview))
             }, {
-              icon: D(({ class: d }) => [
+              icon: D(({ class: c }) => [
                 w(l(A), {
                   icon: "tabler:refresh",
-                  class: T(d),
+                  class: T(c),
                   "aria-hidden": "true"
                 }, null, 8, ["class"])
               ]),
               _: 1
-            }, 8, ["loading", "disabled"])) : C("", !0)
+            }, 8, ["severity", "loading", "disabled"])) : C("", !0)
           ], 10, vi)) : C("", !0),
           y("div", yi, [
             w(l(U), {
@@ -3775,10 +3775,10 @@ const pi = {
               pt: { label: { class: "kx-part-label" } },
               onClick: e.viewOriginal
             }, {
-              icon: D(({ class: d }) => [
+              icon: D(({ class: c }) => [
                 w(l(A), {
                   icon: "tabler:file",
-                  class: T(d),
+                  class: T(c),
                   "aria-hidden": "true"
                 }, null, 8, ["class"])
               ]),
@@ -3797,10 +3797,10 @@ const pi = {
               pt: { label: { class: "kx-part-label" } },
               onClick: e.viewPrimary
             }, {
-              icon: D(({ class: d }) => [
+              icon: D(({ class: c }) => [
                 w(l(A), {
                   icon: e.primaryKind === "markdown" ? "tabler:markdown" : "tabler:file-text",
-                  class: T(d),
+                  class: T(c),
                   "aria-hidden": "true"
                 }, null, 8, ["icon", "class"])
               ]),
@@ -3837,12 +3837,12 @@ const pi = {
                 "data-testid": "uploads-parts-toggle",
                 "aria-expanded": e.partsExpanded,
                 "aria-controls": "uploads-extracted-parts",
-                onClick: g[1] || (g[1] = (d) => u("update:partsExpanded", !e.partsExpanded))
+                onClick: g[1] || (g[1] = (c) => u("update:partsExpanded", !e.partsExpanded))
               }, {
-                icon: D(({ class: d }) => [
+                icon: D(({ class: c }) => [
                   w(l(A), {
                     icon: e.partsExpanded ? "tabler:chevron-down" : "tabler:chevron-right",
-                    class: T(d),
+                    class: T(c),
                     "aria-hidden": "true"
                   }, null, 8, ["icon", "class"])
                 ]),
@@ -3859,12 +3859,12 @@ const pi = {
                     "data-testid": "uploads-parts-previous",
                     disabled: e.partsPage <= 1,
                     "aria-label": "Previous parts",
-                    onClick: g[2] || (g[2] = (d) => e.gotoPartsPage(e.partsPage - 1))
+                    onClick: g[2] || (g[2] = (c) => e.gotoPartsPage(e.partsPage - 1))
                   }, {
-                    icon: D(({ class: d }) => [
+                    icon: D(({ class: c }) => [
                       w(l(A), {
                         icon: "tabler:chevron-left",
-                        class: T(d),
+                        class: T(c),
                         "aria-hidden": "true"
                       }, null, 8, ["class"])
                     ]),
@@ -3879,12 +3879,12 @@ const pi = {
                     "data-testid": "uploads-parts-next",
                     disabled: e.partsPage >= e.partsPages,
                     "aria-label": "Next parts",
-                    onClick: g[3] || (g[3] = (d) => e.gotoPartsPage(e.partsPage + 1))
+                    onClick: g[3] || (g[3] = (c) => e.gotoPartsPage(e.partsPage + 1))
                   }, {
-                    icon: D(({ class: d }) => [
+                    icon: D(({ class: c }) => [
                       w(l(A), {
                         icon: "tabler:chevron-right",
-                        class: T(d),
+                        class: T(c),
                         "aria-hidden": "true"
                       }, null, 8, ["class"])
                     ]),
@@ -3894,25 +3894,25 @@ const pi = {
               ], 64)) : C("", !0)
             ]),
             fe(y("div", Ii, [
-              (s(!0), p(Z, null, ue(e.currentArtifacts, (d) => (s(), $(l(U), {
-                key: d.artifact_id,
+              (s(!0), p(Z, null, ue(e.currentArtifacts, (c) => (s(), $(l(U), {
+                key: c.artifact_id,
                 type: "button",
                 class: "kx-part",
                 size: "small",
                 rounded: "",
-                outlined: e.artifactView?.artifact_id !== d.artifact_id,
-                label: l(bn)(d),
-                disabled: !d.raw_url,
-                title: l(ci)(d),
+                outlined: e.artifactView?.artifact_id !== c.artifact_id,
+                label: l(bn)(c),
+                disabled: !c.raw_url,
+                title: l(di)(c),
                 "data-testid": "uploads-view-artifact",
-                "data-artifact-id": d.artifact_id,
-                "aria-pressed": e.artifactView?.artifact_id === d.artifact_id,
+                "data-artifact-id": c.artifact_id,
+                "aria-pressed": e.artifactView?.artifact_id === c.artifact_id,
                 pt: { label: { class: "kx-part-label" } },
-                onClick: (P) => e.viewArtifact(d)
+                onClick: (P) => e.viewArtifact(c)
               }, {
                 icon: D(({ class: P }) => [
                   w(l(A), {
-                    icon: l(vt)(d.mime_type),
+                    icon: l(vt)(c.mime_type),
                     class: T(P),
                     "aria-hidden": "true"
                   }, null, 8, ["icon", "class"])
@@ -3977,22 +3977,22 @@ function Ei(e) {
     const N = o(b).primary;
     return N?.raw_url ? N : null;
   }
-  function d(b) {
+  function c(b) {
     t.value?.uuid !== b.uuid || n.value || (o(b.uuid).source ?? b.content_description)?.inline === !1 && (n.value = g(b.uuid));
   }
   function P(b) {
-    const N = o(b.uuid), F = n.value, V = F ? F.content_description : N.source ?? b.content_description, te = V?.mime_type || "", z = V?.kind === "table", q = z ? V.text_preview : void 0, de = q === void 0 ? 0 : new TextEncoder().encodeInto(q, new Uint8Array(Ut)).read, be = q?.slice(0, de), re = F ? F.size : b.size, ae = !z || typeof re == "number" && re >= 0 && re <= Ut, et = F ? F.raw_url : b.raw_url;
+    const N = o(b.uuid), F = n.value, V = F ? F.content_description : N.source ?? b.content_description, te = V?.mime_type || "", z = V?.kind === "table", q = z ? V.text_preview : void 0, ce = q === void 0 ? 0 : new TextEncoder().encodeInto(q, new Uint8Array(Ut)).read, be = q?.slice(0, ce), re = F ? F.size : b.size, ae = !z || typeof re == "number" && re >= 0 && re <= Ut, et = F ? F.raw_url : b.raw_url;
     return {
       contentType: te,
       textAvailable: V?.text_available,
       sourceUrl: V?.inline && be === void 0 && ae && et || "",
       previewText: be,
-      previewTruncated: q !== void 0 && (V?.preview_truncated === !0 || de < q.length),
+      previewTruncated: q !== void 0 && (V?.preview_truncated === !0 || ce < q.length),
       filename: F ? bn(F) : Q(b)
     };
   }
   function v(b) {
-    t.value?.uuid !== b.uuid && (n.value = null, e.value = ""), t.value = b, d(b), We(b);
+    t.value?.uuid !== b.uuid && (n.value = null, e.value = ""), t.value = b, c(b), We(b);
   }
   function x() {
     t.value = null, n.value = null, e.value = "";
@@ -4024,7 +4024,7 @@ function Ei(e) {
     if (!b || !V) return null;
     e.value = "";
     try {
-      const z = (await ce.get(b, { responseType: "blob" })).data;
+      const z = (await de.get(b, { responseType: "blob" })).data;
       return URL.createObjectURL(F ? z.slice(0, z.size, Bi(F, z.type)) : z);
     } catch (te) {
       const z = await le(N, te, "Failed to fetch file");
@@ -4060,9 +4060,9 @@ function Ei(e) {
     if (!(V.loading || V.loaded && !N)) {
       u(b.uuid, { ...V, loading: !0, error: "" });
       try {
-        const te = (F - 1) * Te, z = await ce.get(`/api/v1/uploads/${b.uuid}/artifacts`, { params: { limit: Te, offset: te } }), { data: q } = z;
+        const te = (F - 1) * Te, z = await de.get(`/api/v1/uploads/${b.uuid}/artifacts`, { params: { limit: Te, offset: te } }), { data: q } = z;
         if (!q.success) throw { response: z };
-        const de = q.artifacts || [], be = q.primary || de.find((ae) => ae.role === "primary" && !!ae.raw_url) || null, re = de.filter((ae) => !h(ae) && ae.role !== "primary");
+        const ce = q.artifacts || [], be = q.primary || ce.find((ae) => ae.role === "primary" && !!ae.raw_url) || null, re = ce.filter((ae) => !h(ae) && ae.role !== "primary");
         u(b.uuid, {
           loaded: !0,
           loading: !1,
@@ -4072,7 +4072,7 @@ function Ei(e) {
           parts: re,
           total: Number(q.meta?.total ?? re.length),
           page: F
-        }), F === 1 && d(b);
+        }), F === 1 && c(b);
       } catch (te) {
         const z = await le(Q(b), te, "Failed to load artifacts");
         u(b.uuid, { ...V, loaded: !1, loading: !1, error: z });
@@ -4161,7 +4161,7 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
       { label: "Processing", value: "processing" },
       { label: "Completed", value: "completed" },
       { label: "Error", value: "error" }
-    ], r = R([]), i = R(0), a = R(!1), o = R(""), u = R(""), h = R([]), g = R(!1), d = R(0), P = R(""), v = R("all"), x = R(1), B = R({}), j = _(() => Object.entries(B.value).filter(([m]) => !r.value.some((f) => f.uuid === m)));
+    ], r = R([]), i = R(0), a = R(!1), o = R(""), u = R(""), h = R([]), g = R(!1), c = R(0), P = R(""), v = R("all"), x = R(1), B = R({}), j = _(() => Object.entries(B.value).filter(([m]) => !r.value.some((f) => f.uuid === m)));
     let M = null, I = !1, S = !1;
     const W = R(!1), H = R(null), {
       preview: Y,
@@ -4185,7 +4185,7 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
       artifactsLoading: te,
       artifactsError: z,
       gotoPartsPage: q,
-      downloadActive: de,
+      downloadActive: ce,
       openActive: be
     } = Ei(u), re = _(() => {
       const m = H.value;
@@ -4204,13 +4204,13 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
     Ze(() => et.value.route, async (m) => {
       const f = String(m ?? "").replace(/^\/+|\/+$/g, "");
       if (Ge !== null && f !== Ge || (Ge = null, f === Y.value?.uuid)) return;
-      const c = ++ne;
+      const d = ++ne;
       if (ve.value = "", ye.value = !1, Ue(), !f) return;
       ye.value = !0;
       let E;
       try {
-        const G = await ce.get(`/api/v1/uploads/${encodeURIComponent(f)}`);
-        if (c !== ne) return;
+        const G = await de.get(`/api/v1/uploads/${encodeURIComponent(f)}`);
+        if (d !== ne) return;
         if (G.data.success && G.data.upload) {
           const nt = G.data.upload;
           je({ ...nt, filename: nt.filename || String(nt.meta?.filename || "") });
@@ -4220,11 +4220,11 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
       } catch (G) {
         E = G;
       } finally {
-        c === ne && (ye.value = !1);
+        d === ne && (ye.value = !1);
       }
-      if (c !== ne) return;
+      if (d !== ne) return;
       const se = r.value.find((G) => G.uuid === f), we = await le(se && Q(se), E, "Failed to load upload");
-      c === ne && (ve.value = we);
+      d === ne && (ve.value = we);
     }, { immediate: !0 });
     const tt = R(""), Je = R({});
     let ie = null, He = "";
@@ -4234,12 +4234,12 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
         try {
           for (; I && !S; ) {
             I = !1;
-            const m = x.value, f = P.value.trim(), c = v.value, E = () => !S && m === x.value && f === P.value.trim() && c === v.value;
+            const m = x.value, f = P.value.trim(), d = v.value, E = () => !S && m === x.value && f === P.value.trim() && d === v.value;
             o.value = "";
             try {
               const se = { limit: Ae, offset: (m - 1) * Ae };
-              f && (se.q = f), c !== "all" && (se.status = c);
-              const we = await ce.get("/api/v1/uploads/list", { params: se });
+              f && (se.q = f), d !== "all" && (se.status = d);
+              const we = await de.get("/api/v1/uploads/list", { params: se });
               if (!E()) continue;
               const { data: G } = we;
               if (!G.success) throw { response: we };
@@ -4280,24 +4280,24 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
     async function kn(m) {
       const f = new FormData();
       f.append("file", m), f.append("metadata", JSON.stringify({ target_parent_id: "", filename: m.name }));
-      let c;
+      let d;
       try {
-        const E = await ce.post("/api/v1/uploads", f, { headers: { "Content-Type": "multipart/form-data" } });
+        const E = await de.post("/api/v1/uploads", f, { headers: { "Content-Type": "multipart/form-data" } });
         if (E.data.success) return;
-        c = { response: E };
+        d = { response: E };
       } catch (E) {
-        c = E;
+        d = E;
       }
-      h.value.push(await le(m.name, c, "Upload failed"));
+      h.value.push(await le(m.name, d, "Upload failed"));
     }
     async function St(m) {
       const f = Array.from(m);
       if (f.length) {
-        d.value === 0 && (h.value = []), d.value += f.length;
+        c.value === 0 && (h.value = []), c.value += f.length;
         try {
-          for (const c of f) await kn(c);
+          for (const d of f) await kn(d);
         } finally {
-          d.value = Math.max(0, d.value - f.length), x.value = 1, await oe();
+          c.value = Math.max(0, c.value - f.length), x.value = 1, await oe();
         }
       }
     }
@@ -4324,14 +4324,14 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
       delete B.value[m.uuid];
       let f;
       try {
-        const c = await ce.delete(`/api/v1/uploads/${m.uuid}`);
-        if (c.data.success) {
+        const d = await de.delete(`/api/v1/uploads/${m.uuid}`);
+        if (d.data.success) {
           Y.value?.uuid === m.uuid && Ce(), r.value.length === 1 && x.value > 1 && (x.value -= 1), await oe();
           return;
         }
-        f = { response: c };
-      } catch (c) {
-        f = c;
+        f = { response: d };
+      } catch (d) {
+        f = d;
       }
       B.value[m.uuid] = await le(Q(m), f, "Failed to delete upload");
     }
@@ -4340,11 +4340,11 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
       const f = ne;
       W.value = !0, H.value = null;
       try {
-        const c = await ce.post(`/api/v1/uploads/${m.uuid}/retry`);
-        if (!c.data.success) throw { response: c };
+        const d = await de.post(`/api/v1/uploads/${m.uuid}/retry`);
+        if (!d.data.success) throw { response: d };
         f === ne && Ce(), await oe();
-      } catch (c) {
-        const E = await le(Q(m), c, "Failed to retry upload");
+      } catch (d) {
+        const E = await le(Q(m), d, "Failed to retry upload");
         H.value = { uploadId: m.uuid, message: E };
       } finally {
         W.value = !1;
@@ -4400,7 +4400,7 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
               }),
               w(l(Gt), {
                 modelValue: P.value,
-                "onUpdate:modelValue": f[0] || (f[0] = (c) => P.value = c),
+                "onUpdate:modelValue": f[0] || (f[0] = (d) => P.value = d),
                 placeholder: "Search files…",
                 "aria-label": "Search files",
                 "data-testid": "uploads-search-input"
@@ -4414,12 +4414,12 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
                     size: "small",
                     "aria-label": "Clear search",
                     "data-testid": "uploads-search-clear",
-                    onClick: f[1] || (f[1] = (c) => P.value = "")
+                    onClick: f[1] || (f[1] = (d) => P.value = "")
                   }, {
-                    icon: D(({ class: c }) => [
+                    icon: D(({ class: d }) => [
                       w(l(A), {
                         icon: "tabler:x",
-                        class: T(c),
+                        class: T(d),
                         "aria-hidden": "true"
                       }, null, 8, ["class"])
                     ]),
@@ -4433,7 +4433,7 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
           }),
           w(l(kt), {
             modelValue: v.value,
-            "onUpdate:modelValue": f[2] || (f[2] = (c) => v.value = c),
+            "onUpdate:modelValue": f[2] || (f[2] = (d) => v.value = d),
             class: "kx-select",
             options: n,
             "option-label": "label",
@@ -4443,15 +4443,15 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
           w(l(U), {
             type: "button",
             "data-testid": "uploads-header-upload",
-            label: d.value > 0 ? "Uploading…" : "Upload",
-            loading: d.value > 0,
-            disabled: d.value > 0,
+            label: c.value > 0 ? "Uploading…" : "Upload",
+            loading: c.value > 0,
+            disabled: c.value > 0,
             onClick: Se
           }, {
-            icon: D(({ class: c }) => [
+            icon: D(({ class: d }) => [
               w(l(A), {
                 icon: "tabler:upload",
-                class: T(c),
+                class: T(d),
                 "aria-hidden": "true"
               }, null, 8, ["class"])
             ]),
@@ -4461,8 +4461,8 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
       ]),
       o.value ? (s(), p("div", Vi, L(o.value), 1)) : C("", !0),
       H.value && !re.value ? (s(), p("div", zi, L(H.value.message), 1)) : C("", !0),
-      (s(!0), p(Z, null, ue(j.value, ([c, E]) => (s(), p("div", {
-        key: c,
+      (s(!0), p(Z, null, ue(j.value, ([d, E]) => (s(), p("div", {
+        key: d,
         class: "kx-err",
         role: "alert"
       }, L(E), 1))), 128)),
@@ -4479,30 +4479,30 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
       y("div", Gi, [
         y("div", Ji, [
           y("div", {
-            class: T(["kx-drop", { dragover: g.value, busy: d.value > 0 }]),
+            class: T(["kx-drop", { dragover: g.value, busy: c.value > 0 }]),
             role: "button",
             tabindex: "0",
             "aria-label": "Upload files",
-            onClick: f[3] || (f[3] = (c) => d.value === 0 && Se()),
+            onClick: f[3] || (f[3] = (d) => c.value === 0 && Se()),
             onKeydown: [
-              f[4] || (f[4] = Bt((c) => d.value === 0 && Se(), ["enter"])),
-              f[5] || (f[5] = Bt(Dt((c) => d.value === 0 && Se(), ["prevent"]), ["space"]))
+              f[4] || (f[4] = Bt((d) => c.value === 0 && Se(), ["enter"])),
+              f[5] || (f[5] = Bt(Dt((d) => c.value === 0 && Se(), ["prevent"]), ["space"]))
             ],
-            onDragover: f[6] || (f[6] = Dt((c) => g.value = !0, ["prevent"])),
-            onDragleave: f[7] || (f[7] = (c) => g.value = !1),
+            onDragover: f[6] || (f[6] = Dt((d) => g.value = !0, ["prevent"])),
+            onDragleave: f[7] || (f[7] = (d) => g.value = !1),
             onDrop: Pn
           }, [
             w(l(A), {
-              icon: d.value > 0 ? "tabler:loader-2" : "tabler:cloud-upload",
-              class: T(["kx-drop-ico", d.value > 0 && "spin"]),
+              icon: c.value > 0 ? "tabler:loader-2" : "tabler:cloud-upload",
+              class: T(["kx-drop-ico", c.value > 0 && "spin"]),
               "aria-hidden": "true"
             }, null, 8, ["icon", "class"]),
-            y("p", Hi, L(d.value > 0 ? "Uploading…" : "Drop files or click to browse"), 1),
+            y("p", Hi, L(c.value > 0 ? "Uploading…" : "Drop files or click to browse"), 1),
             f[11] || (f[11] = y("p", { class: "kx-drop-sub" }, "Documents convert to markdown; images and text are stored for agents.", -1))
           ], 34),
           h.value.length ? (s(), p("div", qi, [
             y("ul", null, [
-              (s(!0), p(Z, null, ue(h.value, (c, E) => (s(), p("li", { key: E }, L(c), 1))), 128))
+              (s(!0), p(Z, null, ue(h.value, (d, E) => (s(), p("li", { key: E }, L(d), 1))), 128))
             ])
           ])) : C("", !0),
           a.value && !r.value.length ? (s(), p("div", Zi, [
@@ -4528,10 +4528,10 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
               label: "Upload files",
               onClick: Se
             }, {
-              icon: D(({ class: c }) => [
+              icon: D(({ class: d }) => [
                 w(l(A), {
                   icon: "tabler:upload",
-                  class: T(c),
+                  class: T(d),
                   "aria-hidden": "true"
                 }, null, 8, ["class"])
               ]),
@@ -4542,59 +4542,59 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
             y("div", { class: "kx-empty-sub" }, "No files match the current search or filter.", -1)
           ])])) : r.value.length ? (s(), p(Z, { key: 4 }, [
             y("div", eo, [
-              (s(!0), p(Z, null, ue(r.value, (c) => (s(), p("div", {
-                key: c.uuid,
+              (s(!0), p(Z, null, ue(r.value, (d) => (s(), p("div", {
+                key: d.uuid,
                 class: "kx-row"
               }, [
                 y("span", to, [
                   w(l(A), {
-                    icon: l(vt)(c.mime_type),
+                    icon: l(vt)(d.mime_type),
                     "aria-hidden": "true"
                   }, null, 8, ["icon"])
                 ]),
                 y("div", no, [
                   y("div", {
                     class: "kx-name",
-                    title: l(Q)(c)
-                  }, L(l(Q)(c)), 9, ro),
+                    title: l(Q)(d)
+                  }, L(l(Q)(d)), 9, ro),
                   y("div", ao, [
-                    y("span", io, L(l(gn)(c)), 1),
-                    ke(" · " + L(l(_e)(c.size)), 1)
+                    y("span", io, L(l(gn)(d)), 1),
+                    ke(" · " + L(l(_e)(d.size)), 1)
                   ]),
-                  l(mn)(c) && c.error ? (s(), p("div", {
+                  l(mn)(d) && d.error ? (s(), p("div", {
                     key: 0,
                     class: "kx-err-reason",
-                    title: l(yt)(c.error)
-                  }, L(l(yt)(c.error)), 9, oo)) : C("", !0),
-                  B.value[c.uuid] ? (s(), p("div", so, L(B.value[c.uuid]), 1)) : C("", !0)
+                    title: l(yt)(d.error)
+                  }, L(l(yt)(d.error)), 9, oo)) : C("", !0),
+                  B.value[d.uuid] ? (s(), p("div", so, L(B.value[d.uuid]), 1)) : C("", !0)
                 ]),
                 w(l(Jt), {
-                  severity: l(ti)(c.status),
+                  severity: l(ti)(d.status),
                   class: "kx-badge kx-tag-sm"
                 }, {
                   default: D(() => [
-                    l(t).has(c.status) ? C("", !0) : (s(), $(l(A), {
+                    l(t).has(d.status) ? C("", !0) : (s(), $(l(A), {
                       key: 0,
                       icon: "tabler:loader-2",
                       class: "spin",
                       "aria-hidden": "true"
                     })),
-                    ke(" " + L(l(ni)(c.status)), 1)
+                    ke(" " + L(l(ni)(d.status)), 1)
                   ]),
                   _: 2
                 }, 1032, ["severity"]),
-                y("span", lo, L(l(pn)(c.created_at)), 1),
+                y("span", lo, L(l(pn)(d.created_at)), 1),
                 y("div", uo, [
-                  l(li)(c) ? (s(), $(l(U), {
+                  l(li)(d) ? (s(), $(l(U), {
                     key: 0,
                     type: "button",
                     text: "",
                     rounded: "",
                     size: "small",
                     "data-testid": "uploads-row-preview",
-                    "data-upload-id": c.uuid,
-                    "aria-label": `Preview ${l(Q)(c)}`,
-                    onClick: (E) => yn(c)
+                    "data-upload-id": d.uuid,
+                    "aria-label": `Preview ${l(Q)(d)}`,
+                    onClick: (E) => yn(d)
                   }, {
                     icon: D(({ class: E }) => [
                       w(l(A), {
@@ -4612,9 +4612,9 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
                     size: "small",
                     severity: "danger",
                     "data-testid": "uploads-row-delete",
-                    "data-upload-id": c.uuid,
-                    "aria-label": `Delete ${l(Q)(c)}`,
-                    onClick: (E) => xn(c)
+                    "data-upload-id": d.uuid,
+                    "aria-label": `Delete ${l(Q)(d)}`,
+                    onClick: (E) => xn(d)
                   }, {
                     icon: D(({ class: E }) => [
                       w(l(A), {
@@ -4626,10 +4626,10 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
                     _: 1
                   }, 8, ["data-upload-id", "aria-label", "onClick"])
                 ]),
-                l(di)(c) ? (s(), p("span", co)) : C("", !0)
+                l(ci)(d) ? (s(), p("span", co)) : C("", !0)
               ]))), 128))
             ]),
-            Ct.value > 1 ? (s(), $(l(cn), {
+            Ct.value > 1 ? (s(), $(l(dn), {
               key: 0,
               first: (x.value - 1) * Ae,
               rows: Ae,
@@ -4643,14 +4643,14 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
                 prev: { "data-testid": "uploads-pager-previous" },
                 next: { "data-testid": "uploads-pager-next" }
               },
-              onPage: f[8] || (f[8] = (c) => wn(c.page + 1))
+              onPage: f[8] || (f[8] = (d) => wn(d.page + 1))
             }, null, 8, ["first", "total-records"])) : C("", !0)
           ], 64)) : C("", !0)
         ])
       ]),
       w(Ti, {
         "parts-expanded": l(ee),
-        "onUpdate:partsExpanded": f[9] || (f[9] = (c) => Jn(ee) ? ee.value = c : null),
+        "onUpdate:partsExpanded": f[9] || (f[9] = (d) => Jn(ee) ? ee.value = d : null),
         preview: l(Y),
         "artifact-view": l(ge),
         "busy-action": l(xe),
@@ -4664,7 +4664,7 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
         "primary-kind": l(V),
         "artifacts-loading": l(te),
         "active-preview-source": l(he),
-        "download-active": l(de),
+        "download-active": l(ce),
         "open-active": l(be),
         "close-preview": Ce,
         "view-original": l(Ye),
@@ -4684,4 +4684,4 @@ const Ri = () => _n(), Fi = () => Mn(), Oi = { class: "kx" }, _i = { class: "kx-
 export {
   vo as mountConfig
 };
-//# sourceMappingURL=lazy-mount-CX-Zxj0D.js.map
+//# sourceMappingURL=lazy-mount-CSekvX1v.js.map

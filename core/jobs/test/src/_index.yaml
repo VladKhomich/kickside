@@ -153,6 +153,7 @@ entries:
     modules: [json, sql, uuid, process]
     imports:
       runtime_policy: kickside.core.jobs.policy:runtime
+      execution_policy: kickside.core.jobs.policy:execution
       lifecycle: kickside.core.jobs.persist:lifecycle
       config: kickside.core.jobs:config
       wake: kickside.core.jobs.persist:wake
@@ -307,6 +308,51 @@ entries:
       - process
     imports:
       job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
+
+  - name: job_dead_proc
+    kind: process.lua
+    meta:
+      type: test_helper
+      comment: Test-only proc:// worker whose dead jobs reach app:job_dead_recorder.
+      job_dead: app:job_dead_recorder
+    source: file://job_sleep_proc.lua
+    method: run
+    modules:
+      - time
+      - channel
+      - process
+    imports:
+      job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
+
+  - name: job_dead_invalid_proc
+    kind: process.lua
+    meta:
+      type: test_helper
+      comment: Test-only proc:// worker with an invalid dead handler declaration.
+      job_dead: ""
+    source: file://job_sleep_proc.lua
+    method: run
+    modules:
+      - time
+      - channel
+      - process
+    imports:
+      job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
+
+  - name: job_dead_recorder
+    kind: function.lua
+    meta:
+      type: test_helper
+      comment: Test-only dead handler that reads the dead job and sends it to the registered test receiver.
+    source: file://job_dead_recorder.lua
+    method: run
+    modules:
+      - process
+    imports:
+      jobs: kickside.core.jobs:jobs
 
   - name: job_crash_probe
     kind: process.lua
@@ -1900,6 +1946,8 @@ entries:
       thread_teardown: app:retention_native_fixture
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       thread_fence: kickside.core.jobs.persist:thread_fence
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
+      lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
 
   - name: retention_native_test
     kind: function.lua
@@ -2200,9 +2248,10 @@ entries:
   - name: enqueue_native_source
     kind: library.lua
     source: file://enqueue_native_source.lua
-    modules: [uuid]
+    modules: [uuid, time]
     imports:
       runtime_policy: app:enqueue_native_fixture
+      execution_policy: kickside.core.jobs.policy:execution
       sql: app:enqueue_native_sql
       json: app:enqueue_native_json_adapter
       clock: app:enqueue_native_clock_adapter
@@ -2214,7 +2263,8 @@ entries:
       listing: kickside.core.jobs.persist:listing
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       lifecycle_cancel: kickside.core.jobs.persist:lifecycle_cancel
-      capacity: app:capacity_native_adapter
+      capacity: app:enqueue_capacity_native_source
+      dead_outcome: app:enqueue_dead_outcome_native_source
 
   - name: enqueue_native_test
     kind: function.lua
@@ -2488,12 +2538,15 @@ entries:
       completion: app:scope_native_completion
       retention: app:scope_native_retention
       thread_teardown: app:scope_native_thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: app:scope_native_api_scope
       lease_release: app:scope_native_lease_release
       claim: app:scope_native_claim
       error_envelope: kickside.contract:error_envelope
       committed_error: kickside.contract:committed_error
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      lease_heartbeat: kickside.core.jobs.persist:lease_heartbeat
+      proc_supervisor: kickside.core.jobs:proc_supervisor
 
   - name: scope_native_config
     kind: library.lua
@@ -2783,12 +2836,15 @@ entries:
       lease_status: app:transaction_native_lease_status
       retention: app:transaction_native_retention
       thread_teardown: app:transaction_native_thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: app:transaction_native_api_scope
       lease_release: app:transaction_native_lease_release
       claim: app:transaction_native_claim
       error_envelope: kickside.contract:error_envelope
       committed_error: kickside.contract:committed_error
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      lease_heartbeat: kickside.core.jobs.persist:lease_heartbeat
+      proc_supervisor: kickside.core.jobs:proc_supervisor
 
   - name: transaction_native_test
     kind: function.lua
@@ -2962,12 +3018,15 @@ entries:
       lease_status: app:health_native_lease_status
       retention: app:health_native_retention
       thread_teardown: app:health_native_thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: app:health_native_api_scope
       lease_release: app:health_native_lease_release
       claim: app:health_native_claim
       error_envelope: kickside.contract:error_envelope
       committed_error: kickside.contract:committed_error
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      lease_heartbeat: kickside.core.jobs.persist:lease_heartbeat
+      proc_supervisor: kickside.core.jobs:proc_supervisor
 
   - name: health_native_test
     kind: function.lua
@@ -3120,6 +3179,7 @@ entries:
     kind: library.lua
     source: file://run_history_native_source.lua
     modules:
+    - logger
     - time
     - uuid
     imports:
@@ -3133,6 +3193,7 @@ entries:
       row_mutations: kickside.core.jobs.persist:row_mutations
       worker_marker: kickside.core.jobs.persist:worker_marker
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
   - name: run_history_native_test
     kind: function.lua
     source: file://run_history_native_test.lua
@@ -3232,6 +3293,7 @@ entries:
     kind: library.lua
     source: file://transition_native_source.lua
     modules:
+    - logger
     - time
     - uuid
     imports:
@@ -3245,6 +3307,7 @@ entries:
       worker_marker: app:transition_native_worker_marker
       job_types: kickside.core.jobs:types
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
   - name: transition_native_test
     kind: function.lua
     source: file://transition_native_test.lua
@@ -3459,6 +3522,7 @@ entries:
     modules: [json, uuid]
     imports:
       runtime_policy: app:claim_native_fixture
+      execution_policy: kickside.core.jobs.policy:execution
       sql: app:claim_native_sql
       job_types: kickside.core.jobs:types
       config: app:claim_native_config
@@ -3576,9 +3640,10 @@ entries:
   - name: child_native_source
     kind: library.lua
     source: file://child_native_source.lua
-    modules: [logger, time]
+    modules: [logger]
     imports:
       text_trim: kickside.contract:text_trim
+      time: app:child_native_time
       execution_policy: app:child_native_execution_policy
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       job_types: kickside.core.jobs:types
@@ -4225,6 +4290,8 @@ entries:
       worker_heartbeat: kickside.core.jobs.service:worker_heartbeat
       clock: kickside.core.jobs:clock
       job_fixture: app:job_fixture
+      dead_outcome: kickside.core.jobs.persist:dead_outcome
+      lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
 
   - name: retention_heartbeat
     kind: process.lua
@@ -4276,7 +4343,97 @@ entries:
     kind: db.sql.sqlite
     foreign_keys: true
     file: ":memory:"
+  - name: job_dead_self_proc
+    kind: process.lua
+    meta:
+      type: test_helper
+      comment: Test-only proc:// worker whose dead jobs reach app:job_dead_recorder.
+      job_dead: app:job_dead_self_handler
+    source: file://job_sleep_proc.lua
+    method: run
+    modules:
+      - time
+      - channel
+      - process
+    imports:
+      job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
 
+  - name: job_dead_missing_proc
+    kind: process.lua
+    meta:
+      type: test_helper
+      comment: Test-only proc:// worker whose dead jobs reach app:job_dead_recorder.
+      job_dead: app:missing_dead_handler
+    source: file://job_sleep_proc.lua
+    method: run
+    modules:
+      - time
+      - channel
+      - process
+    imports:
+      job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
+
+  - name: job_dead_nonfunction_proc
+    kind: process.lua
+    meta:
+      type: test_helper
+      comment: Test-only proc:// worker whose dead jobs reach app:job_dead_recorder.
+      job_dead: app:job_sleep_proc
+    source: file://job_sleep_proc.lua
+    method: run
+    modules:
+      - time
+      - channel
+      - process
+    imports:
+      job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
+
+  - name: job_dead_capacity_proc
+    kind: process.lua
+    meta:
+      type: test_helper
+      comment: Test-only proc:// worker whose dead jobs reach app:job_dead_recorder.
+      job_dead: app:capacity_worker_a
+    source: file://job_sleep_proc.lua
+    method: run
+    modules:
+      - time
+      - channel
+      - process
+    imports:
+      job_types: kickside.core.jobs:types
+      jobs: kickside.core.jobs:jobs
+
+
+  - name: job_dead_self_handler
+    kind: function.lua
+    meta:
+      job_dead: app:job_dead_self_handler
+    source: file://job_dead_recorder.lua
+    method: fail
+    modules: [process]
+    imports:
+      jobs: kickside.core.jobs:jobs
+
+  - name: child_native_time
+    kind: library.lua
+    source: file://child_native_time.lua
+    modules: [time]
+    imports:
+      fixture: app:child_native_fixture
+
+  - name: progress_deadline_test
+    kind: function.lua
+    source: file://progress_deadline_test.lua
+    method: run
+    meta: {type: test, suite: jobs_progress_deadline}
+    imports:
+      test: wippy.test:test
+      child: app:child_native_source
+      fixture: app:child_native_fixture
   - name: health_bounded_source
     kind: library.lua
     meta:
@@ -4294,12 +4451,14 @@ entries:
       reclaim: kickside.core.jobs.persist:reclaim
       lifecycle_enqueue: kickside.core.jobs.persist:lifecycle_enqueue
       lease_status: kickside.core.jobs.persist:lease_status
+      proc_supervisor: kickside.core.jobs:proc_supervisor
       wake: kickside.core.jobs.persist:wake
       slot_purge: kickside.core.jobs.persist:slot_purge
       clock: kickside.core.jobs:clock
       completion: kickside.core.jobs.persist:completion
       retention: kickside.core.jobs.persist:retention
       thread_teardown: kickside.core.jobs.persist:thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: kickside.core.jobs.api:scope
       lease_release: kickside.core.jobs:lease_release
       claim: kickside.core.jobs.persist:claim
@@ -4334,6 +4493,31 @@ entries:
       query_jobs: app:health_native_source
       query_fixture: app:health_native_fixture
 
+  - name: enqueue_capacity_native_source
+    kind: library.lua
+    source: file://enqueue_capacity_native_source.lua
+    modules: [contract]
+    imports:
+      registry: app:enqueue_native_fixture
+      job_types: kickside.core.jobs:types
+
+  - name: enqueue_dead_outcome_native_source
+    kind: library.lua
+    source: file://enqueue_dead_outcome_native_source.lua
+    imports:
+      registry: app:enqueue_native_fixture
+      job_types: kickside.core.jobs:types
+      capacity: app:enqueue_capacity_native_source
+
+  - name: enqueue_admission_native_test
+    kind: function.lua
+    meta: {type: test, suite: jobs_enqueue_native}
+    source: file://enqueue_admission_native_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      enqueue: app:enqueue_native_source
+      fixture: app:enqueue_native_fixture
   - name: private_queue_runtime_clock
     kind: db.sql.sqlite
     file: ":memory:"
@@ -4380,12 +4564,14 @@ entries:
       completion: kickside.core.jobs.persist:completion
       retention: kickside.core.jobs.persist:retention
       thread_teardown: kickside.core.jobs.persist:thread_teardown
+      thread_fence: kickside.core.jobs.persist:thread_fence
       api_scope: kickside.core.jobs.api:scope
       lease_release: kickside.core.jobs:lease_release
       claim: kickside.core.jobs.persist:claim
       error_envelope: kickside.contract:error_envelope
       committed_error: kickside.contract:committed_error
       sql_boundary: kickside.core.jobs.persist:sql_boundary
+      proc_supervisor: kickside.core.jobs:proc_supervisor
   - name: runtime_clock_test
     kind: function.lua
     source: file://runtime_clock_test.lua

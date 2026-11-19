@@ -7,6 +7,30 @@ local trim = require("text_trim").trim
 
 local upload_query_repo = {}
 
+local INTENTLESS_SQL = "processing_intent_state IS NULL AND processing_job_id IS NULL"
+
+function upload_query_repo.processing_job_identity_sql(upload: string): string
+    return "'7:uploads' || CAST(length(" .. upload .. "uuid) AS TEXT) || ':' || " .. upload .. "uuid || '7:process'"
+end
+
+function upload_query_repo.processing_job_owner_sql(): string
+    return [[EXISTS (SELECT 1 FROM kickside_job j WHERE j.id = ? AND
+        ((processing_intent_state = 'acknowledged' AND processing_job_id = CAST(j.id AS TEXT))
+         OR (]] .. INTENTLESS_SQL .. [[ AND j.job_identity = ]]
+             .. upload_query_repo.processing_job_identity_sql("kickside_uploads.") .. ")))"
+end
+
+-- Storage-only uploads also have NULL intent fields. Processing leaves
+-- either a queue event or its processing projection.
+function upload_query_repo.intentless_checkpoint_sql(upload_id: string): string
+    return INTENTLESS_SQL .. [[ AND (
+        EXISTS (SELECT 1 FROM kickside_upload_read_model r WHERE r.upload_id = ]] .. upload_id .. [[
+            AND r.status = 'processing')
+        OR EXISTS (SELECT 1 FROM kickside_event e WHERE e.external_source = 'uploads'
+            AND e.external_id = ]] .. upload_id .. [[ AND e.type = 'kickside.uploads.events:upload.queued')
+    )]]
+end
+
 local function select_upload_columns()
     return sql.builder.select(
         "uuid", "actor_id", "size", "mime_type",
@@ -16,7 +40,7 @@ local function select_upload_columns()
     )
 end
 
-local function parse_upload_row(upload)
+function upload_query_repo.parse_upload_row(upload)
     local metadata, metadata_err = persisted_json.decode_table(upload.metadata, "kickside_uploads.metadata")
     if metadata_err then return nil, metadata_err end
     local trace, trace_err = persisted_json.decode_table(upload.trace_context,
@@ -41,7 +65,7 @@ local function find_by_content_hash(db, actor_id, content_sha256, dedup_scope)
     if #rows == 0 then return nil, nil end
 
     local upload = rows[1]
-    return parse_upload_row(upload)
+    return upload_query_repo.parse_upload_row(upload)
 end
 
 -- Resolve an existing upload for an account by content hash, opening its own db handle.
@@ -101,7 +125,113 @@ end
 function upload_query_repo.get(uuid)
     local upload, err = get_upload(uuid, select_upload_columns())
     if err then return nil, err end
-    return parse_upload_row(upload)
+    return upload_query_repo.parse_upload_row(upload)
+end
+
+-- The upload of an account whose acknowledged processing intent names job_id,
+-- or nil when none does.
+function upload_query_repo.find_by_processing_job(actor_id: string, job_id: string, upload_id: string): (any?, any?)
+    if not actor_id or actor_id == "" or not job_id or job_id == "" or not upload_id or upload_id == "" then
+        return nil, errors.new({kind = errors.INVALID, message = "Actor ID, job ID and upload ID are required",
+            retryable = false, details = {code = "upload_processing_job_required"}})
+    end
+    local db, err = resources.get_db()
+    if err then return nil, err end
+    local query = select_upload_columns():from("kickside_uploads"):where("uuid = ?", upload_id)
+    local statement, params, build_err = query
+        :where("actor_id = ?", actor_id)
+        :where(upload_query_repo.processing_job_owner_sql(), job_id)
+        :limit(1)
+        :placeholder_format(sql.builder.dollar):to_sql()
+    if build_err then db:release(); return nil, build_err end
+    local rows, query_err = db:query(statement, params)
+    db:release()
+    if query_err then
+        return nil, binding_errors.from(query_err, errors.UNAVAILABLE, "upload_lookup_failed", "Failed to get upload")
+    end
+    if #rows == 0 then return nil, nil end
+    local upload, decode_err = upload_query_repo.parse_upload_row(rows[1])
+    return upload or rows[1], decode_err
+end
+
+-- A newer queue event fences a terminal event or projection from an earlier
+-- attempt. Released retries can share a queue event, so an earlier legacy
+-- failure cannot witness a completed checkpoint. The projection also survives event pruning.
+local terminal_projection = "r.status = CASE u.storage_state WHEN 'completed' THEN 'completed' ELSE 'error' END"
+local checkpoint_published = [[(
+    SELECT COALESCE(r.status = 'deleted', FALSE) OR COALESCE((
+        SELECT CASE WHEN e.type = 'kickside.uploads.events:upload.queued'
+            THEN e.seq <= r.last_event_seq AND ]] .. terminal_projection .. [[
+            ELSE e.seq >= COALESCE(r.last_event_seq, 0) END
+        FROM kickside_event e
+        WHERE e.external_source = 'uploads' AND e.external_id = u.uuid
+          AND (r.component_id IS NULL OR CAST(e.thread_id AS TEXT) = r.component_id)
+          AND (e.type = 'kickside.uploads.events:upload.queued'
+            OR (e.type IN ('kickside.uploads.events:upload.completed', 'kickside.uploads.events:upload.failed')
+              AND (e.external_version = u.processing_job_id
+                OR ((u.processing_job_id IS NULL OR e.external_version = e.type)
+                  AND e.type = CASE u.storage_state WHEN 'completed' THEN 'kickside.uploads.events:upload.completed'
+                    ELSE 'kickside.uploads.events:upload.failed' END))))
+        ORDER BY e.seq DESC LIMIT 1
+    ), ]] .. terminal_projection .. [[, FALSE)
+    FROM (SELECT 1) anchor LEFT JOIN kickside_upload_read_model r ON r.upload_id = u.uuid
+)]]
+
+function upload_query_repo.checkpoint_published_tx(tx, uuid: string): (boolean?, any?)
+    local rows, err = tx:query("SELECT " .. checkpoint_published .. " AS published FROM kickside_uploads u WHERE u.uuid = $1",
+        { uuid })
+    if err then return nil, err end
+    local published = rows[1].published
+    return published == true or published == 1, nil
+end
+
+-- Select a bounded index page and check publication without filtering away cursor positions.
+function upload_query_repo.list_checkpoints(limit: integer, cursor: string?, db: any): (table?, any?, string?)
+    local after, limit_arg, params = "", "$1", { limit }
+    if cursor then after, limit_arg, params = " AND u.uuid > $1", "$2", { cursor, limit } end
+    local dbtype, type_err = db:type()
+    if type_err then return nil, type_err end
+    local publication = "SELECT u.*, (u.processing_job_id IS NOT NULL OR ("
+        .. upload_query_repo.intentless_checkpoint_sql("u.uuid") .. ")) AND NOT " .. checkpoint_published
+        .. " AS unpublished FROM "
+    local page = [[
+        WHERE u.storage_state IN ('completed', 'failed')
+          AND ((u.processing_intent_state = 'acknowledged' AND u.processing_job_id IS NOT NULL)
+            OR (]] .. INTENTLESS_SQL .. "))" .. after .. " ORDER BY u.uuid LIMIT " .. limit_arg
+    local statement = publication .. "kickside_uploads u INDEXED BY idx_upload_checkpoint_candidates" .. page
+    local rows, err
+    if dbtype == sql.type.POSTGRES then
+        -- Page the partial index before fetching the wide rows or checking their events.
+        -- The lateral limit keeps hydration to one primary-key lookup per candidate.
+        statement = "WITH candidates AS MATERIALIZED (SELECT u.uuid FROM kickside_uploads u" .. page .. ") "
+            .. publication .. [[candidates c
+            CROSS JOIN LATERAL (SELECT * FROM kickside_uploads WHERE uuid = c.uuid LIMIT 1) u
+            ORDER BY c.uuid]]
+        local tx, begin_err = db:begin()
+        if begin_err then return nil, begin_err end
+        if not tx then
+            return nil, errors.new({kind = errors.INTERNAL, message = "Uploads checkpoint read transaction is missing"})
+        end
+        -- Skewed estimates can sort a full sequential or bitmap scan before the
+        -- limit. Keep the ordered seek and apply planner settings only to this read.
+        local _, configure_err = tx:execute(
+            "SET TRANSACTION READ ONLY; SET LOCAL enable_seqscan=off; SET LOCAL enable_bitmapscan=off")
+        if configure_err then
+            tx:rollback()
+            return nil, configure_err
+        end
+        rows, err = tx:query(statement, params)
+        local _, rollback_err = tx:rollback()
+        err = err or rollback_err
+    else
+        rows, err = db:query(statement, params)
+    end
+    if err then return nil, err end
+    local checkpoints = {}
+    for _, row in ipairs(rows) do
+        if row.unpublished == true or row.unpublished == 1 then checkpoints[#checkpoints + 1] = row end
+    end
+    return checkpoints, nil, #rows == limit and tostring(rows[#rows].uuid) or nil
 end
 
 -- Authorization needs the stored owner, without loading content metadata.
@@ -137,7 +267,7 @@ function upload_query_repo.list_processing_enqueue_intents(limit)
     if query_err then return nil, query_err end
 
     for _, row in ipairs(rows or {}) do
-        local _, decode_err = parse_upload_row(row)
+        local _, decode_err = upload_query_repo.parse_upload_row(row)
         if decode_err then return nil, decode_err end
     end
     return rows or {}, nil
@@ -219,7 +349,7 @@ function upload_query_repo.list_by_actor(actor_id, limit, offset, opts)
     end
 
     for _, upload in ipairs(uploads) do
-        local _, decode_err = parse_upload_row(upload)
+        local _, decode_err = upload_query_repo.parse_upload_row(upload)
         if decode_err then return nil, decode_err end
     end
 
@@ -259,7 +389,7 @@ function upload_query_repo.list_by_type(type_id, limit, offset)
     end
 
     for _, upload in ipairs(uploads) do
-        local _, decode_err = parse_upload_row(upload)
+        local _, decode_err = upload_query_repo.parse_upload_row(upload)
         if decode_err then return nil, decode_err end
     end
 
@@ -387,7 +517,7 @@ function upload_query_repo.list_with_filters(options)
     end
 
     for _, upload in ipairs(uploads) do
-        local _, decode_err = parse_upload_row(upload)
+        local _, decode_err = upload_query_repo.parse_upload_row(upload)
         if decode_err then return nil, decode_err end
     end
 

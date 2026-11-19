@@ -358,9 +358,9 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         content_sha256,
         trace_context,
         processing,
-        processing and process_worker.max_execution_ms() or nil
     }
-    local function create_record(tx)
+    local function create_record(tx, _dbtype, ceiling)
+        create_args[13] = ceiling
         if tx then return upload_record_repo.create_tx(tx, table.unpack(create_args, 1, create_args.n)) end
         return upload_record_repo.create(table.unpack(create_args, 1, create_args.n))
     end
@@ -369,7 +369,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         local submitted
         submitted, err = process_worker.enqueue_upload_job({ uuid = upload_uuid, actor_id = actor_id,
             mime_type = mime_type, size = size, type_id = type_id, metadata = metadata,
-            trace_context = trace_context, processing_max_execution_ms = process_worker.max_execution_ms() },
+            trace_context = trace_context },
             false, create_record)
         upload = submitted and submitted.upload
     else
@@ -416,7 +416,9 @@ function upload_lib.retry_upload(uuid)
         return nil, typed(err, errors.UNAVAILABLE, "infrastructure", "")
     end
 
-    local max_ms = math.floor(tonumber(upload.processing_max_execution_ms) or process_worker.max_execution_ms())
+    -- A retry is a new processing attempt under the current processing limits.
+    local max_ms, limits_err = process_worker.max_execution_ms(upload.type_id)
+    if not max_ms then return nil, typed(limits_err, errors.UNAVAILABLE, "infrastructure", "") end
     local marked, mark_err = upload_record_repo.mark_failed_for_retry(upload.uuid, max_ms)
     if mark_err then return nil, typed(mark_err, errors.UNAVAILABLE, "infrastructure", "") end
     if not marked then

@@ -10,6 +10,7 @@
 local trim = require("text_trim").trim
 local sql = require("sql")
 local json = require("json")
+local registry = require("registry")
 local uuid = require("uuid")
 local clock = require("clock")
 local types = require("types")
@@ -22,6 +23,8 @@ local retention_pin = require("retention_pin")
 local persisted_json = require("persisted_json")
 local sql_boundary = require("sql_boundary")
 local committed_error = require("committed_error")
+local core_db = require("core_db")
+local jobs_config = require("jobs_config")
 
 local writer = {}
 
@@ -41,6 +44,7 @@ type RegisterResult = {
     generation: number,
     job_id: string,
     created: boolean,
+    transitioned: boolean?,
 }
 
 local function response_error(field: string, message: string?, code: string?): error
@@ -169,6 +173,33 @@ function writer.declaration_matches(stored: table, declared: table): boolean
     return same_declaration(apply_declaration_fields({}, stored), apply_declaration_fields({}, declared))
 end
 
+-- The installed destination worker can declare compatibility with one predecessor.
+-- Only the worker reference and its derived runtime differ in the predecessor
+-- declaration. Cursor keys, input, filters, config and debounce must all match.
+function writer.transition_predecessor(body: table): (table?, string?, error?)
+    local meta = body.meta
+    if meta.worker_runtime ~= types.WORKER_RUNTIME.PROC
+        or meta.worker_input_mode ~= types.WORKER_INPUT_MODE.PREFETCH_EVENTS then
+        return nil, nil, nil
+    end
+    local entry, read_err = registry.get(string.sub(meta.worker_ref, #types.WORKER_SCHEME.PROC + 1))
+    if read_err and not errors.is(read_err, errors.NOT_FOUND) then return nil, nil, read_err end
+    local destination = entry and entry.meta
+    if type(destination) ~= "table" or destination.transition_from == nil then return nil, nil, nil end
+    local transition = destination.transition_from
+    if entry.kind ~= "process.lua" or destination.type ~= "projection.worker"
+        or destination.private ~= true or destination.checkpointed_apply ~= true
+        or type(transition) ~= "table" or type(transition.worker_ref) ~= "string"
+        or trim(transition.shared_db_config) == "" or trim(transition.worker_ref) == meta.worker_ref then
+        return nil, nil, errors.new({kind = errors.INVALID, retryable = false,
+            message = "installed projection worker has an invalid transition_from declaration"})
+    end
+    local previous, previous_err = writer.declaration_body({worker_ref = transition.worker_ref,
+        worker_input_mode = meta.worker_input_mode, worker_config = body.worker_config,
+        events = body.events, drop_notify = body.drop_notify})
+    return previous, transition.shared_db_config, previous_err
+end
+
 local function bounded(value: any, name: string, min_value: integer,
     max_value: integer, fallback: integer): (integer?, error?)
     if value == nil then return fallback, nil end
@@ -227,15 +258,105 @@ local function identity_row_from_params(params: table): (any?, error?)
     }) :: error)
 end
 
+local function transition_error(code: string, message: string): error
+    return errors.new({kind = errors.CONFLICT, retryable = false, message = message, details = {code = code}})
+end
+
+local function identity_matches(expected: any, actor_id: any, context: any): boolean
+    local stored = execution_identity.from_row(actor_id, context)
+    return stored ~= nil and same_declaration(expected, stored)
+end
+
+-- The component lock precedes the primary thread lock, as on component
+-- lifecycle writes. The stored identity remains stable while the declaration
+-- transaction checks both projection and cursor identity.
+local function transition_owner(tx: sql.Transaction, lock: string, thread_id: string): (table?, error?)
+    local rows, err = tx:query("SELECT impl_id,private_context,deleting_at FROM kickside_components WHERE component_id=$1 "
+        .. lock, {thread_id})
+    rows, err = sql_boundary.bounded_rows(rows, err, "failed to lock projection owner", "transition.owner", 0, 1, response_error)
+    return rows and rows[1] or nil, err
+end
+
+local function transition_cursor(tx: sql.Transaction, lock: string, thread: table, owner: table?,
+    impl_id: string, db_config_id: string, projection: table, cursor_key: string,
+    idle: number, maximum: number): (table?, error?)
+    local declaration, decl_err = registry.get(impl_id)
+    if decl_err then return nil, decl_err end
+    local meta = declaration and declaration.meta or {}
+    local owner_impl = meta.impl_id or impl_id
+    local declared_class = type(meta.thread) == "table" and meta.thread.class or nil
+    if not owner or owner.deleting_at ~= nil or owner.impl_id ~= owner_impl
+        or thread.deleting_at ~= nil or thread.id ~= thread.component_id
+        or (declared_class and declared_class ~= thread.thread_class)
+        or (not declared_class and impl_id ~= owner_impl) then
+        return nil, transition_error("projection_transition_owner", "projection transition requires its owning primary thread")
+    end
+    local context, context_err = persisted_json.decode_table(owner.private_context, "kickside_components.private_context")
+    if context_err then return nil, context_err end
+    local expected = context and context[execution_identity.CONTEXT_KEY]
+    if not expected or not identity_matches(expected, projection.actor_id, projection.actor_context) then
+        return nil, transition_error("projection_transition_identity", "projection transition requires the stored component identity")
+    end
+
+    local rows, err = tx:query([[SELECT id,thread_id,cursor_key,job_id,status,generation,last_seq,continuation,
+        debounce_idle_ms,debounce_max_ms,actor_id,execution_identity_json
+        FROM kickside_projection_cursor WHERE projection_id=$1 LIMIT 2 ]] .. lock, {projection.id})
+    rows, err = sql_boundary.bounded_rows(rows, err, "failed to lock projection cursor", "transition.cursor", 0, 2, response_error)
+    if err then return nil, err end
+    local cursor = rows[1]
+    if #rows ~= 1 or cursor.thread_id ~= thread.id or cursor.cursor_key ~= cursor_key
+        or tonumber(cursor.debounce_idle_ms) ~= idle or tonumber(cursor.debounce_max_ms) ~= maximum
+        or (cursor.continuation or "") ~= "" then
+        return nil, transition_error("projection_transition_cursor", "projection transition requires one matching cursor without a continuation")
+    end
+    if not identity_matches(expected, cursor.actor_id, cursor.execution_identity_json) then
+        return nil, transition_error("projection_transition_identity", "projection transition requires the stored component identity")
+    end
+    local last_seq = tonumber(cursor.last_seq)
+    if not last_seq or last_seq < (assert(tonumber(thread.max_pruned_seq))) then
+        return nil, transition_error("projection_transition_position", "projection transition requires a retained cursor position")
+    end
+    if cursor.status ~= "paused" then
+        return nil, transition_error("projection_transition_requires_pause", "pause the projection cursor before transitioning workers")
+    end
+
+    local config, config_err = registry.get(db_config_id)
+    if config_err then return nil, config_err end
+    local db_id = core_db.id()
+    if not config or not config.meta or config.meta.db_id ~= db_id or jobs_config.db_id() ~= db_id then
+        return nil, transition_error("projection_transition_database",
+            "projection transition requires the same Core, Jobs, and target database resource")
+    end
+
+    -- A legacy process can publish target writes before Core applies its fold.
+    -- A paused cursor with a settled Jobs slot supplies the cutover boundary.
+    -- Lock the slot so a concurrent claim can only read the new generation.
+    local jobs, job_err = tx:query([[SELECT id,status,lease_token,slot,worker_ref,owner_kind,owner_id,payload
+        FROM kickside_job WHERE id=$1 ]] .. lock, {cursor.job_id})
+    jobs, job_err = sql_boundary.bounded_rows(jobs, job_err, "failed to lock projection slot", "transition.job", 0, 1, response_error)
+    if job_err then return nil, job_err end
+    local job = jobs[1]
+    if not job or job.status ~= "pending" or job.lease_token ~= nil then
+        return nil, transition_error("projection_transition_slot_unsettled", "wait for the paused projection's existing Jobs slot to settle")
+    end
+    local payload, payload_err = persisted_json.decode_table(job.payload, "kickside_job.payload")
+    if payload_err then return nil, payload_err end
+    if (job.slot ~= true and tonumber(job.slot) ~= 1) or job.worker_ref ~= "kickside.core.projections:advance"
+        or job.owner_kind ~= "thread" or job.owner_id ~= thread.id or not payload or payload.cursor_id ~= cursor.id then
+        return nil, transition_error("projection_transition_slot", "projection transition requires the cursor's existing Jobs slot")
+    end
+    return cursor, nil
+end
+
 -- register_projection_tx upserts a projection and its cursor within a caller-
 -- owned transaction. Validates params, derives runtime/defaults, reads the
 -- thread row, upserts the projection (merging the body's read-model on
 -- re-register unless reset=true), and upserts the cursor. No tx management:
 -- the caller begins and commits; on error the caller rolls back. Declaration
--- convergence refuses drift on existing cursors. Lifecycle attachments start new
--- cursors at the retained boundary.
+-- convergence accepts only a declared compatible worker transition on an
+-- existing cursor. Lifecycle attachments start new cursors at the retained boundary.
 function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table,
-    mode: string?): (RegisterResult?, error?)
+    mode: string?, declaration_impl_id: string?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -282,7 +403,18 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         return nil, (errors.new({ message = message, kind = kind }) :: error)
     end
 
-    local thread_query = sql.builder.select("id", "event_count", "max_pruned_seq")
+    local previous, transition_db, owner
+    if mode == "convergence" and declaration_impl_id and params.ensure == true and not reset then
+        local transition_err
+        previous, transition_db, transition_err = writer.transition_predecessor(body)
+        if transition_err then return nil, transition_err end
+        if previous then
+            owner, transition_err = transition_owner(tx, lock, thread_id)
+            if transition_err then return nil, transition_err end
+        end
+    end
+
+    local thread_query = sql.builder.select("id", "event_count", "max_pruned_seq", "component_id", "thread_class", "deleting_at")
         :from("kickside_thread")
         :where(sql.builder.eq({ id = thread_id }))
     if lock ~= "" then
@@ -342,8 +474,9 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local created_projection = false
     local declaration_changed = false
     local worker_changed = false
+    local transitioning: table? = nil
     local checkpoint = start_seq
-    local projection_rows, projection_query_err = sql.builder.select("id", "body", "last_event_seq")
+    local projection_rows, projection_query_err = sql.builder.select("id", "body", "last_event_seq", "actor_id", "actor_context")
         :from("kickside_projection")
         :where(sql.builder.eq({ thread_id = thread_id, kind = kind, projection_key = projection_key }))
         :limit(1)
@@ -382,7 +515,13 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                     "failed to check existing projection cursors", "cursor.existing", 0, 1, response_error)
                 if existing_err then return nil, existing_err end
                 if #existing > 0 then
-                    return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
+                    if not previous or not writer.declaration_matches(stored :: table, previous) then
+                        return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
+                    end
+                    local transition_err
+                    transitioning, transition_err = transition_cursor(tx, lock, thread, owner, declaration_impl_id :: string,
+                        transition_db :: string, projection_rows[1], cursor_key, debounce_idle_ms :: number, debounce_max_ms :: number)
+                    if transition_err then return nil, transition_err end
                 end
             end
             apply_declaration_fields(stored :: table, body)
@@ -406,7 +545,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                 -- reset rewinds the projection to start_seq and marks it pending so
                 -- catch-up rebuilds it from scratch.
                 projection_update = projection_update:set("state", core_types.PROJECTION_STATE.PENDING):set("last_event_seq", start_seq)
-            elseif declaration_changed then
+            elseif declaration_changed and not transitioning then
                 -- INVALID records a fault in the PREVIOUS declaration (an unresolvable
                 -- worker_ref, an unsupported runtime). A new declaration retires that
                 -- verdict: the projection returns to pending and resumes from the seq it
@@ -447,6 +586,21 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                 retryable = false, details = {code = "projection_already_exists"}})
         end
 
+    end
+
+    if transitioning then
+        local cursor = transitioning :: table
+        local prior = tonumber(cursor.generation)
+        if not prior then return nil, response_error("transition.generation") end
+        local updated, update_err = tx:execute([[UPDATE kickside_projection_cursor SET generation=generation+1,updated_at=$1
+            WHERE id=$2 AND generation=$3]], {now, cursor.id, prior})
+        local _, proof_err = sql_boundary.exact_row_count(updated, update_err,
+            "failed to fence previous projection worker", "transition.fence", 1, response_error)
+        if proof_err then return nil, proof_err end
+        return {projection_id = projection_id, cursor_id = cursor.id, kind = kind, projection_key = projection_key,
+            cursor_key = cursor_key, worker_ref = worker_ref, worker_input_mode = worker_input_mode,
+            generation = prior + 1, job_id = cursor.job_id, created = false, transitioned = true,
+            debounce_idle_ms = debounce_idle_ms, debounce_max_ms = debounce_max_ms}, nil
     end
 
     if declaration_changed and not convergence then
@@ -580,13 +734,15 @@ end
 -- register_projection upserts a projection and its cursor, opening and
 -- committing its own transaction off db. On error it rolls back and returns
 -- the error. Delegates to register_projection_tx for the core SQL.
-function writer.register_projection(db: sql.DB, thread_id: string, params: table, mode: string?): (RegisterResult?, error?)
+function writer.register_projection(db: sql.DB, thread_id: string, params: table, mode: string?,
+    declaration_impl_id: string?): (RegisterResult?, error?)
     local dbtype, dbtype_err = sql_boundary.database_type(db, "failed to resolve db type", "database.type", response_error)
     if dbtype_err then return nil, dbtype_err end
     local result, err = sql_boundary.transaction(db, function(tx: sql.Transaction): (any?, error?)
-        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode)
+        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id)
     end, "projection registration", response_error)
     if err then return nil, err end
+    if result and result.transitioned then return result, nil end
     local _, notify_err = jobs_wake.nudge_workers(db, dbtype)
     if notify_err then return nil, committed_error.new(notify_err) end
     if params.reset == true then
