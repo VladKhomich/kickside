@@ -58,7 +58,7 @@ end
 local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?, error?)
     local rows, err = db:query([[SELECT c.id,c.projection_id,c.thread_id,c.cursor_key,c.last_seq,
         c.generation,c.status,c.job_id,c.last_error,c.debounce_idle_ms,c.debounce_max_ms,c.continuation,
-        c.actor_id,c.execution_identity_json,p.kind,p.body,t.event_count
+        c.actor_id,c.execution_identity_json,p.kind,p.body,t.event_count,t.deleting_at
         FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id
         JOIN kickside_thread t ON t.id=c.thread_id
@@ -232,22 +232,36 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         binding.actor_context = current.execution_identity_json
         binding.system_identity = system_identity
         local types: {string}? = nil
-        if not binding.checkpointed_apply then
+        local from = last + 1
+        local pinned: table? = nil
+        if binding.checkpointed_apply then
+            if current.deleting_at ~= nil then
+                return nil, release(db, job_types.lease_lost_error("projection source thread is deleting"))
+            end
+            local read_err
+            pinned, read_err = apply.continuation(current)
+            if read_err then return nil, release(db, read_err), current end
+            -- A committed partial step already selected its event. Explicit
+            -- backfills below that sequence follow the forward-only cursor.
+            if pinned then from = pinned.seq end
+            target = head
+        else
             local post_err: error? = nil
             post_commit, post_err = worker.post_commit_binding(binding)
             if post_err then return nil, release(db, post_err) end
             types = event_types(body)
         end
-        local events, events_err = worker.query_event_rows(db, tostring(current.thread_id), last + 1, target, page_size, types)
+        local events, events_err = worker.query_event_rows(db, tostring(current.thread_id), from, target, page_size, types)
         if events_err then return nil, release(db, events_err) end
         if type(events) ~= "table" then return nil, release(db, response_error("events")) end
         local batch = events :: table[]
-        if binding.checkpointed_apply and (#batch == 0 or tonumber(batch[1].seq) ~= last + 1) then
+        if binding.checkpointed_apply and (#batch == 0 or (pinned and batch[1].id ~= pinned.event_id)) then
             return nil, release(db, errors.new({kind = errors.NOT_FOUND, retryable = false,
-                message = "projection checkpoint input is missing"}))
+                message = "projection checkpoint input is missing"})), current
         end
         seen_last = target
         if not types and #batch > 0 then seen_last = tonumber(batch[#batch].seq) or last end
+        if binding.checkpointed_apply then target = seen_last end
         local mode = meta.worker_input_mode == "prefetch_events" and "prefetch_events" or "cursor_only"
         if binding.checkpointed_apply and mode ~= "prefetch_events" then
             return nil, release(db, errors.new({kind = errors.INVALID,
@@ -261,7 +275,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                 target_seq = target, batch_size = page_size, generation = tonumber(current.generation),
                 last_error = current.last_error },
             projection = { id = current.projection_id, kind = current.kind, body = body },
-            range = { from_seq = last + 1, to_seq = seen_last, target_seq = target, processed_count = #batch },
+            range = { from_seq = from, to_seq = seen_last, target_seq = target, processed_count = #batch },
             events = mode == "prefetch_events" and batch or nil,
         }
         if #batch > 0 then

@@ -123,7 +123,7 @@ entries:
     meta:
       comment: Lease ownership evidence and lost-lease classification.
     source: file://lease_status.lua
-    modules: [sql]
+    modules: [sql, time]
     imports:
       clock: kickside.core.jobs:clock
       job_types: kickside.core.jobs:types

@@ -31,9 +31,9 @@ local function effects(db, thread_id)
         {thread_id}))
 end
 
-local function add(db, thread_id, ordinal)
+local function add(db, thread_id, ordinal, seq)
     assert(threads.append_system(db, thread_id, {{type = "fixture.checkpoint", role = "system",
-        body = {ordinal = ordinal}}}))
+        seq = seq, body_json = string.format('{"ordinal":%d}', ordinal)}}))
 end
 
 return {run = test.run_cases(function()
@@ -48,8 +48,8 @@ return {run = test.run_cases(function()
                 assert(db:execute("INSERT INTO checkpoint_scheduler_gate (thread_id,available) VALUES ($1,0)", {thread_id}))
                 assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test',$2)]],
                     {thread_id, thread_id}))
-                add(db, thread_id, 1)
-                add(db, thread_id, 2)
+                add(db, thread_id, 1, 1000)
+                add(db, thread_id, 2, 1500)
                 return assert(projections.register_projection(db, thread_id, {kind = "checkpoint-scheduler",
                     worker_ref = "proc://app:checkpoint_scheduler_worker", worker_input_mode = "prefetch_events",
                     system_identity = true, events = {input = {{type = "fixture.checkpoint"}}}}))
@@ -64,7 +64,7 @@ return {run = test.run_cases(function()
                             FROM kickside_projection_cursor c JOIN kickside_job j ON j.id=c.job_id WHERE c.id=$1]],
                             {registration.cursor_id}))[1]
                         if not state or state.status ~= "pending" or tonumber(state.attempts) == 0 then return nil end
-                        test.eq(tonumber(state.last_seq), 1, tostring(state.last_error or state.job_error))
+                        test.eq(tonumber(state.last_seq), 1000, tostring(state.last_error or state.job_error))
                         test.contains(state.last_error, "fixture provider is unavailable")
                         test.eq(#effects(db, thread_id), 1)
                         return state
@@ -72,7 +72,7 @@ return {run = test.run_cases(function()
                 end, "scheduler never persisted the outage retry")
 
                 with_db(function(db)
-                    add(db, thread_id, 3)
+                    add(db, thread_id, 3, 2000)
                     local scheduled = assert(db:query("SELECT scheduled_at FROM kickside_job WHERE id=$1",
                         {registration.job_id}))[1]
                     test.eq(scheduled.scheduled_at, first_retry.scheduled_at)
@@ -83,7 +83,10 @@ return {run = test.run_cases(function()
                         local state = assert(db:query([[SELECT c.last_seq,c.last_error,c.continuation,j.status,j.scheduled_at
                             FROM kickside_projection_cursor c JOIN kickside_job j ON j.id=c.job_id WHERE c.id=$1]],
                             {registration.cursor_id}))[1]
-                        if tonumber(state.last_seq) ~= 3 or state.status ~= "pending" or state.scheduled_at then return nil end
+                        if tonumber(state.last_seq) ~= 2000 or state.status ~= "pending" or state.scheduled_at then return nil end
+                        local backfill = assert(db:query("SELECT id FROM kickside_event WHERE thread_id=$1 AND seq=1750",
+                            {thread_id}))
+                        test.eq(#backfill, 1)
                         local written = effects(db, thread_id)
                         test.eq(#written, 5)
                         for index, expected in ipairs({1, 2, 31, 32, 33}) do

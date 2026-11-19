@@ -45,7 +45,7 @@ function M.lock_thread_rows_tx(...: any): (any, error?)
     return M.outcome("lock", {thread = {event_count = 1}, other = {event_count = 0}, another = {event_count = 0}})
 end
 function M.lower_tx(...: any): (any, error?) return M.outcome("pin", {pin_generation = 1}) end
-function M.lock_active_tx(...: any): (any, error?) return M.outcome("lease", true) end
+function M.active_tx(...: any): (any, error?) return M.outcome("lease", true) end
 function M.complete_tx(...: any): (any, error?) return M.outcome("complete", {completed = true}) end
 function M.notify_cursor(...: any): (any, error?) return M.outcome("notify", false) end
 function M.notify(...: any): (any, error?) return M.outcome("retention", false) end
@@ -62,7 +62,10 @@ function M.database(): any
 end
 function M.transaction(): any
     return {
-        query = function(_self: any, _statement: any, _args: any): (any, error?)
+        query = function(_self: any, statement: string, _args: any): (any, error?)
+            if string.find(statement, "FROM kickside_event", 1, true) then
+                return {{id = "event", seq = 1}}, nil
+            end
             return M.outcome("cursor", {{generation = M.mode == "stale" and 2 or 1,
                 last_seq = 0, status = "active", job_id = "job", thread_id = "thread", projection_id = "projection"}})
         end,

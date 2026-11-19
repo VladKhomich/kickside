@@ -1,12 +1,15 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local apply = require("apply")
+local channel = require("channel")
 local claim = require("claim")
 local clock = require("clock")
 local json = require("json")
 local job_types = require("job_types")
+local jobs = require("jobs")
 local projections = require("projections")
 local sql = require("sql")
 local test = require("test")
+local teardown = require("teardown")
 local time = require("time")
 local uuid = require("uuid")
 
@@ -199,6 +202,83 @@ return {run = test.run_cases(function()
             end)
         end)
 
+        test.it("refuses checkpoint writes and faults after the source teardown mark", function()
+            with_execution(function(job, current)
+                local db = assert(sql.get(DATABASE))
+                assert(teardown.mark(db, current.thread_id) == nil)
+                db:release()
+                local called = false
+                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1}, function()
+                    called = true
+                    return true
+                end)
+                test.is_nil(receipt)
+                test.is_true(job_types.is_lease_lost_error(err), tostring(err))
+                test.is_false(called)
+                local fault, fault_err = apply.fail(DATABASE, job, current,
+                    errors.new({kind = errors.UNAVAILABLE, message = "worker preparation failed"}), false, true)
+                test.is_nil(fault)
+                test.is_true(job_types.is_lease_lost_error(fault_err), tostring(fault_err))
+                local stored, _, effects, history = persisted(job, current)
+                test.eq(tonumber(stored.last_seq), 0)
+                test.is_nil(stored.last_error)
+                test.eq(#effects, 0)
+                test.eq(#history, 0)
+            end)
+        end)
+
+        test.it("publishes owner writes and appends in Jobs wake order", function()
+            with_execution(function(job, current)
+                local db = assert(sql.get(DATABASE))
+                local dialect = assert(db:type())
+                local key = "thread:" .. current.thread_id
+                local writer_started, incoming_done
+                if dialect == sql.type.POSTGRES then
+                    assert(db:execute([[INSERT INTO kickside_wake_fanout (key,demand_generation,ack_generation)
+                        VALUES ($1,0,0) ON CONFLICT(key) DO NOTHING]], {key}))
+                    local wake_locked = channel.new(1)
+                    writer_started, incoming_done = channel.new(1), channel.new(1)
+                    coroutine.spawn(function()
+                        local incoming = assert(sql.get(DATABASE))
+                        local tx = assert(incoming:begin())
+                        assert(tx:query("SELECT key FROM kickside_wake_fanout WHERE key=$1 FOR UPDATE", {key}))
+                        wake_locked:send(true)
+                        writer_started:receive()
+                        local _, wake_err = jobs.wake_tx(tx, key, dialect)
+                        if wake_err then tx:rollback() else tx:commit() end
+                        incoming:release()
+                        incoming_done:send({ok = not wake_err, error = tostring(wake_err)})
+                    end)
+                    wake_locked:receive()
+                end
+                db:release()
+                current.body.events = {input = {{type = "fixture:checkpoint"}}}
+                local entered = false
+                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1,
+                    append_events = {{thread_id = current.thread_id, events = {{type = "fixture:checkpoint-output"}}}}},
+                    function(tx)
+                        entered = true
+                        if writer_started then writer_started:send(true) end
+                        return write_effect(current.thread_id, 1)(tx)
+                    end)
+                if incoming_done then
+                    if not entered then writer_started:send(true) end
+                    local incoming = incoming_done:receive()
+                    test.is_true(incoming.ok, incoming.error)
+                end
+                test.not_nil(receipt, tostring(err))
+                local stored, _, effects, history = persisted(job, current)
+                test.eq(tonumber(stored.last_seq), 1)
+                test.eq(#effects, 1)
+                test.eq(#history, 0)
+                db = assert(sql.get(DATABASE))
+                local events = assert(db:query("SELECT type FROM kickside_event WHERE thread_id=$1 AND seq=3",
+                    {current.thread_id}))
+                db:release()
+                test.eq(events[1].type, "fixture:checkpoint-output")
+            end)
+        end)
+
         test.it("checks the existing lease and database binding before calling the owner writer", function()
             with_execution(function(job, current)
                 local called = false
@@ -256,6 +336,59 @@ return {run = test.run_cases(function()
                 test.eq(lease.lease_token, job.lease_token)
                 test.eq(#effects, 0)
                 test.eq(#history, 0)
+            end)
+        end)
+
+        test.it("rolls back an append when its PostgreSQL Jobs lock wait outlasts the lease", function()
+            with_execution(function(job, current)
+                local db = assert(sql.get(DATABASE))
+                local dialect = assert(db:type())
+                if dialect ~= sql.type.POSTGRES then
+                    db:release()
+                    return
+                end
+                local target = uuid.v7()
+                assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id)
+                    VALUES ($1,'test',$2)]], {target, target}))
+                assert(db:execute("UPDATE kickside_job SET lease_until=$1 WHERE id=$2",
+                    {clock.format(time.now():add("2s"), dialect), job.id}))
+                db:release()
+                local held, entered, settled = channel.new(1), channel.new(1), channel.new(1)
+                coroutine.spawn(function()
+                    local incoming = assert(sql.get(DATABASE))
+                    local tx = assert(incoming:begin())
+                    assert(tx:query("SELECT id FROM kickside_job WHERE id=$1 FOR UPDATE", {job.id}))
+                    held:send(true)
+                    entered:receive()
+                    time.sleep("2250ms")
+                    local _, commit_err = tx:commit()
+                    incoming:release()
+                    settled:send({ok = not commit_err, error = tostring(commit_err)})
+                end)
+                held:receive()
+                local called = false
+                local receipt, err = apply.checkpoint(DATABASE, job, current, 2, {last_seq = 1,
+                    append_events = {{thread_id = target, events = {{type = "fixture:checkpoint-output"}}}}},
+                    function(tx)
+                        called = true
+                        entered:send(true)
+                        return write_effect(current.thread_id, 1)(tx)
+                    end)
+                if not called then entered:send(true) end
+                local result = settled:receive()
+                local stored, _, effects = persisted(job, current)
+                db = assert(sql.get(DATABASE))
+                local appended = assert(db:query("SELECT id FROM kickside_event WHERE thread_id=$1", {target}))
+                assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", {target}))
+                assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {target}))
+                db:release()
+                test.is_true(result.ok, result.error)
+                test.is_true(called)
+                test.is_nil(receipt)
+                test.is_true(job_types.is_lease_lost_error(err), tostring(err))
+                test.eq(tonumber(stored.last_seq), 0)
+                test.eq(#effects, 0)
+                test.eq(#appended, 0)
             end)
         end)
     end)
