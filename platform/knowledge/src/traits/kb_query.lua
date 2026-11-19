@@ -83,11 +83,15 @@ local function handle(args: any, context: any): (any, error?)
     local next_cursor: string? = nil
     for index = base, #kb_ids do
         local kb_id = kb_ids[index]
-        local result, query_err = kb_search.query(kb_id :: string, {
+        local result, query_err, kb_hidden = kb_search.query(kb_id :: string, {
             query = args.query,
             limit = (limit :: integer) - #all_results,
             offset = offset,
         })
+        if kb_hidden then
+            return nil, errors.new({ kind = errors.NOT_FOUND,
+                message = "Knowledge base not found. Activate Knowledge Base Explorer and use FindKnowledgeBases to discover an accessible KB ID." })
+        end
         if not query_err and result then
             if result.retrieval then
                 retrieval = retrieval or {}
