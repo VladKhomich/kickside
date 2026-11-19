@@ -32,6 +32,8 @@ entries:
     imports:
       uploads_resources: kickside.uploads.binding:uploads_resources
       artifact_schema: kickside.uploads.persist:artifact_schema
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      upload_mime: kickside.uploads:uploads_mime
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
 
   - name: artifact_cleanup_repo

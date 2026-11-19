@@ -9,11 +9,19 @@ local sql_boundary = require("sql_boundary")
 
 local M = {}
 local RECEIPT = "kickside_job_thread_cleanup_receipt"
+local JOB = "kickside_job"
+local RUN = "kickside_job_run"
+local OWNED = "owner_kind='thread' AND owner_id=$1"
+local LINKED = "thread_id=$1"
+-- Keep the indexed scope as the leading sort key even when the two range
+-- endpoints coincide. Ordering by id alone lets a common owner scan the PK.
+local OWNER_RANGE = "owner_kind='thread' AND owner_id >= $1 AND owner_id <= $1"
+local LINK_RANGE = "thread_id >= $1 AND thread_id <= $1"
 local SLICES = {
-    { table = "kickside_job_run", retain = true },
-    { table = "kickside_job", retain = true },
-    { table = "kickside_job_run", runs = true },
-    { table = "kickside_job" },
+    { name = RUN, scope = OWNED, seek = OWNER_RANGE, order = "owner_id,id" },
+    { name = JOB, scope = OWNED, seek = OWNER_RANGE, order = "owner_id,id" },
+    { name = JOB, scope = LINKED, seek = LINK_RANGE, order = "thread_id", detach = true },
+    { name = RUN, scope = LINKED, seek = LINK_RANGE, order = "thread_id,started_at DESC", detach = true },
 }
 
 local function response_error(field: string): error
@@ -46,121 +54,51 @@ end
 
 local function candidates(tx: sql.Transaction, slice: table, thread_id: string,
         limit: integer): ({ any }?, error?)
-    local scope = "owner_kind='thread' AND owner_id=$1"
-    if slice.table == "kickside_job" then
-        scope = scope .. " AND NOT EXISTS (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id)"
-    end
-    local rows, err = tx:query("SELECT id,status,owner_kind,owner_id"
-        .. (slice.runs and ",job_id" or "") .. " FROM " .. slice.table
-        .. " WHERE " .. scope .. " ORDER BY id LIMIT $2", { thread_id, limit })
-    if err then return nil, errors.wrap(err, "thread cleanup candidate read failed for " .. slice.table) end
-    if type(rows) ~= "table" then return nil, response_error("candidates.rows") end
-    return rows, nil
+    -- Owned slices consume the budget first. At most one page of owned rows
+    -- can precede the remaining links in either link index.
+    local scope = slice.detach and (slice.seek .. " AND NOT (owner_kind='thread' AND owner_id=$2)") or slice.seek
+    local args = slice.detach and { thread_id, thread_id, limit } or { thread_id, limit }
+    local rows, err = tx:query("SELECT id" .. (slice.name == RUN and ",job_id" or "") .. " FROM " .. slice.name
+        .. " WHERE " .. scope .. " ORDER BY " .. slice.order .. " LIMIT $" .. tostring(#args), args)
+    return sql_boundary.bounded_rows(rows, err, "thread cleanup candidate read failed for " .. slice.name,
+        "candidates.rows", 0, limit, response_error)
 end
 
--- Retained rows belong to another owner, so sever their deleted thread link in
--- the same statement that chooses the bounded page. The returned rows are the
--- authoritative count recorded in the cleanup receipt.
-local function detach(tx: sql.Transaction, dbtype: string, slice: table, thread_id: string,
-        limit: integer): ({ any }?, error?)
-    local scope = "thread_id=$1 AND NOT (owner_kind='thread' AND owner_id=$2)"
-    local columns = "id,status,owner_kind,owner_id"
-    local statement: string
-    if dbtype == sql.type.POSTGRES then
-        statement = "WITH selected AS MATERIALIZED (SELECT id FROM " .. slice.table
-            .. " WHERE " .. scope .. " ORDER BY id LIMIT $3 FOR UPDATE) UPDATE " .. slice.table
-            .. " SET thread_id=NULL WHERE id IN (SELECT id FROM selected) AND " .. scope
-            .. " RETURNING " .. columns
-    else
-        statement = "UPDATE " .. slice.table .. " SET thread_id=NULL WHERE id IN (SELECT id FROM "
-            .. slice.table .. " WHERE " .. scope .. " ORDER BY id LIMIT $3) AND " .. scope
-            .. " RETURNING " .. columns
-    end
-    local rows, err = tx:query(statement, { thread_id, thread_id, limit })
-    if err then return nil, errors.wrap(err, "thread cleanup retained detach failed for " .. slice.table) end
-    if type(rows) ~= "table" then return nil, response_error("detach.rows") end
-    for _, row in ipairs(rows) do
-        if type(row) ~= "table" or type(row.id) ~= "string" or row.id == "" then
-            return nil, response_error("detach.row")
-        end
-    end
-    return rows, nil
-end
-
-local function lock_ids(tx: sql.Transaction, dbtype: string, name: string, ids: { string }): error?
-    if dbtype ~= sql.type.POSTGRES then return nil end
-    table.sort(ids)
-    local previous = ""
-    for _, id in ipairs(ids) do
-        if id ~= previous then
-            local rows, err = tx:query("SELECT id FROM " .. name .. " WHERE id=$1 FOR UPDATE", { id })
-            if err then return errors.wrap(err, name .. " prelock failed") end
-            if type(rows) ~= "table" or not rows[1] then return response_error("prelock.rows") end
-            previous = id
-        end
-    end
-    return nil
-end
-
-local function count_discarded(slice: table, rows: { any }, count: integer, result: table): error?
-    local name = slice.table
-    result.discarded[name] = (result.discarded[name] or 0) + count
-    local unresolved = 0
-    for i = 1, count do
-        local status = rows[i].status
-        if type(status) ~= "string" then return response_error("cleanup.status") end
-        if (slice.runs and status == "running")
-            or (not slice.runs and (status == "pending" or status == "running")) then
-            unresolved = unresolved + 1
-        end
-    end
-    if unresolved > 0 then result.unresolved[name] = (result.unresolved[name] or 0) + unresolved end
-    return nil
-end
-
-local function erase(tx: sql.Transaction, slice: table, thread_id: string, rows: { any },
-        count: integer, dbtype: string, result: table): error?
-    local ids: { string } = {}
-    local parents: { string } = {}
-    for i = 1, count do
-        local row = rows[i]
-        ids[#ids + 1] = tostring(row.id)
-        if slice.runs then parents[#parents + 1] = tostring(row.job_id or "") end
-        if row.owner_kind ~= "thread" or row.owner_id ~= thread_id then
-            return response_error("cleanup.owner")
-        end
-    end
-    if slice.runs then
-        local parent_err = lock_ids(tx, dbtype, "kickside_job", parents)
-        if parent_err then return parent_err end
-        local run_err = lock_ids(tx, dbtype, "kickside_job_run", ids)
-        if run_err then return run_err end
-    else
-        local job_err = lock_ids(tx, dbtype, "kickside_job", ids)
-        if job_err then return job_err end
-    end
-    local params: { any } = { thread_id }
+local function placeholders(first: integer, count: integer): string
     local marks: { string } = {}
-    for i, id in ipairs(ids) do
-        params[#params + 1] = id
-        marks[i] = "$" .. tostring(i + 1)
+    for i = 1, count do marks[i] = "$" .. tostring(first + i - 1) end
+    return table.concat(marks, ",")
+end
+
+local function mutate(tx: sql.Transaction, dbtype: string, slice: table, thread_id: string,
+        ids: { string }): ({ any }?, error?)
+    local name = slice.name
+    local args: { any } = { thread_id }
+    for _, id in ipairs(ids) do args[#args + 1] = id end
+    local selected = "id IN (" .. placeholders(2, #ids) .. ")"
+    local target = name
+    if dbtype == sql.type.SQLITE then
+        -- Resolve the bounded IDs to rowids so the mutation never scans the scope.
+        target = name .. " NOT INDEXED"
+        selected = "rowid IN (SELECT rowid FROM " .. name .. " WHERE " .. selected .. ")"
     end
-    local changed, change_err = tx:execute("DELETE FROM " .. slice.table
-        .. " WHERE owner_kind='thread' AND owner_id=$1 AND id IN ("
-        .. table.concat(marks, ",") .. ")", params)
-    if change_err then return errors.wrap(change_err, "thread cleanup mutation failed for " .. slice.table) end
-    local _, proof_err = affected(changed, "thread cleanup " .. slice.table, count)
-    if proof_err then return proof_err end
-    return count_discarded(slice, rows, count, result)
+    local mutation = slice.detach and ("UPDATE " .. target .. " SET thread_id=NULL") or ("DELETE FROM " .. target)
+    local scope = slice.scope
+    if name == JOB and not slice.detach then
+        -- A start can have inserted history since discovery. Check under the
+        -- parent lock so a parent delete never cascades to unbudgeted runs.
+        scope = scope .. " AND (SELECT 1 FROM kickside_job_run r WHERE r.job_id=kickside_job.id LIMIT 1) IS NULL"
+    end
+    local rows, err = tx:query(mutation .. " WHERE " .. scope .. " AND " .. selected .. " RETURNING status", args)
+    local minimum = name == RUN and not slice.detach and #ids or 0
+    return sql_boundary.bounded_rows(rows, err, "thread cleanup mutation failed for " .. name,
+        "mutation.rows", minimum, #ids, response_error)
 end
 
 local function has_rows(tx: sql.Transaction, thread_id: string): (boolean?, error?)
-    local checks = {
-        "SELECT id FROM kickside_job_run WHERE thread_id=$1 OR (owner_kind='thread' AND owner_id=$2) LIMIT 1",
-        "SELECT id FROM kickside_job WHERE thread_id=$1 OR (owner_kind='thread' AND owner_id=$2) LIMIT 1",
-    }
-    for _, statement in ipairs(checks) do
-        local rows, err = tx:query(statement, { thread_id, thread_id })
+    for _, slice in ipairs(SLICES) do
+        local rows, err = tx:query("SELECT 1 FROM " .. slice.name .. " WHERE " .. slice.seek
+            .. " ORDER BY " .. slice.order .. " LIMIT 1", { thread_id })
         if err then return nil, errors.wrap(err, "thread cleanup continuation read failed") end
         if type(rows) ~= "table" then return nil, response_error("continuation.rows") end
         if rows[1] then return true, nil end
@@ -172,32 +110,78 @@ local function run_page(tx: sql.Transaction, dbtype: string, thread_id: string,
         limit: integer): (table?, error?)
     local result = { processed = 0, discarded = {}, unresolved = {} }
     local remaining = limit
-    for _, slice in ipairs(SLICES) do
-        local rows, read_err
-        if slice.retain then rows, read_err = detach(tx, dbtype, slice, thread_id, remaining)
-        else rows, read_err = candidates(tx, slice, thread_id, remaining + 1) end
-        if read_err then return nil, read_err end
-        local selected = rows :: { any }
-        local count = math.min(#selected, remaining)
-        if count > 0 then
-            if not slice.retain then
-                local erase_err = erase(tx, slice, thread_id, selected, count, dbtype, result)
-                if erase_err then return nil, erase_err end
-            end
-            result.processed = result.processed + count
-            remaining = remaining - count
+    local selected: {{ any }} = {}
+    local last_owned: { any }? = nil
+    for index, slice in ipairs(SLICES) do
+        if slice.detach and slice.name == JOB and last_owned then
+            -- Completed-owner retention discovers work by ownership. Hold
+            -- the last owned row until the surviving links fit on the page.
+            remaining = remaining + 1
         end
-        if #selected > count or remaining == 0 then
-            local lingering, linger_err = has_rows(tx, thread_id)
-            if linger_err then return nil, linger_err end
-            return { processed = result.processed, done = not lingering,
-                discarded = result.discarded, unresolved = result.unresolved }, nil
+        if slice.detach and remaining == 0 then break end
+        local candidate_limit = slice.detach and remaining or remaining + 1
+        local rows, read_err = candidates(tx, slice, thread_id, candidate_limit)
+        if read_err then return nil, read_err end
+        local page = rows :: { any }
+        selected[index] = page
+        if #page > remaining then
+            table.remove(page)
+            break
+        end
+        remaining = remaining - #page
+        if not slice.detach and #page > 0 then last_owned = page end
+        if slice.detach and remaining == 0 and last_owned then table.remove(last_owned) end
+    end
+
+    local pages: {{ string }} = {}
+    local parent_ids: { string } = {}
+    local seen: { [string]: boolean } = {}
+    for index, rows in ipairs(selected) do
+        local slice = SLICES[index]
+        local ids: { string } = {}
+        for _, row in ipairs(rows) do
+            local parent = slice.name == RUN and row.job_id or row.id
+            if type(row.id) ~= "string" or row.id == "" or type(parent) ~= "string" or parent == "" then
+                return nil, response_error("candidates.id")
+            end
+            ids[#ids + 1] = row.id
+            if not seen[parent] then
+                seen[parent] = true
+                parent_ids[#parent_ids + 1] = parent
+            end
+        end
+        pages[index] = ids
+    end
+    -- Batch claim and retention take the same parent order. Take every parent
+    -- lock before touching any run, including links owned by another thread.
+    if dbtype == sql.type.POSTGRES and #parent_ids > 0 then
+        local rows, err = tx:query("SELECT id FROM kickside_job WHERE id IN ("
+            .. placeholders(1, #parent_ids) .. ") ORDER BY id FOR UPDATE", parent_ids)
+        if err then return nil, errors.wrap(err, "thread cleanup parent lock failed") end
+        if type(rows) ~= "table" then return nil, response_error("parents.rows") end
+    end
+    for index, ids in ipairs(pages) do
+        if #ids > 0 then
+            local slice = SLICES[index] :: table
+            local rows, mutation_err = mutate(tx, dbtype, slice, thread_id, ids)
+            if mutation_err then return nil, mutation_err end
+            local changed = rows :: { any }
+            result.processed = result.processed + #changed
+            if not slice.detach and #changed > 0 then
+                result.discarded[slice.name] = #changed
+                for _, row in ipairs(changed) do
+                    if type(row.status) ~= "string" then return nil, response_error("cleanup.status") end
+                    if row.status == "running" or (slice.name == JOB and row.status == "pending") then
+                        result.unresolved[slice.name] = (result.unresolved[slice.name] or 0) + 1
+                    end
+                end
+            end
         end
     end
     local lingering, linger_err = has_rows(tx, thread_id)
     if linger_err then return nil, linger_err end
-    return { processed = result.processed, done = not lingering,
-        discarded = result.discarded, unresolved = result.unresolved }, nil
+    result.done = not lingering
+    return result, nil
 end
 
 local function sequence_error(expected: integer, actual: integer): error

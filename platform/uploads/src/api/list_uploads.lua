@@ -95,13 +95,12 @@ local function list_handler()
     local formatted_uploads = {}
     for _, upload in ipairs(uploads) do
         local public = upload_response.format_list_upload(upload, base)
-        local url, delivery_err = upload_response.delivery_url(upload.storage_id, upload.storage_path, public.raw_url)
+        local delivery_err, message = upload_response.attach_delivery(upload, public)
         if delivery_err then
             res:set_status(http_errors.classify(delivery_err))
-            res:write_json({success = false, error = "Failed to obtain upload delivery URL"})
+            res:write_json({success = false, error = message})
             return
         end
-        public.raw_url = url
         formatted_uploads[#formatted_uploads + 1] = public
     end
 

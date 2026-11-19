@@ -15,7 +15,7 @@ local function invalid(message: string): any
         details = {code = "invalid_storage_operation"} })
 end
 
-local function cloud_open(storage: any, key: string, volume: any, mode: string?): (any?, any?)
+local function cloud_open(storage: any, key: string, volume: any, mode: string?, limit: number?): (any?, any?, number?)
     if mode ~= nil and mode ~= "r" then
         storage:release()
         return nil, invalid("Cloud file handles are read-only")
@@ -25,7 +25,8 @@ local function cloud_open(storage: any, key: string, volume: any, mode: string?)
     local path = ".upload-read-" .. uuid.v4()
     local writer, writer_err = volume:open(path, "wx")
     if writer_err then storage:release(); return nil, writer_err end
-    local _, download_err = storage:download_object(key, writer, { if_match = head.etag })
+    local range = limit and head.size > limit and ("bytes=0-" .. tostring(limit - 1)) or nil
+    local _, download_err = storage:download_object(key, writer, { if_match = head.etag, range = range })
     storage:release()
     local _, close_err = writer:close()
     if download_err or close_err then
@@ -51,7 +52,7 @@ local function cloud_open(storage: any, key: string, volume: any, mode: string?)
         if err and remove_err then log:warn("Upload read temporary removal failed", {error = tostring(remove_err)}) end
         return ok, err or remove_err
     end
-    return handle, nil
+    return handle, nil, limit and head.size or nil
 end
 
 local function acquisition_error(err: any): any
@@ -94,11 +95,11 @@ function M.get(storage_id: string, _db_id: string, _staging_id: string, _cloud_i
         if sign_err then return nil, nil, sign_err end
         return url, expires_at, nil
     end
-    function adapter:open(path: string, mode: string?): (any?, any?)
+    function adapter:open(path: string, mode: string?, limit: number?): (any?, any?, number?)
         local storage, key, scheme, err = resolve(path)
         if err then return nil, err end
         if scheme == "fs" then return storage:open(key, mode) end
-        return cloud_open(storage, key :: string, volume, mode)
+        return cloud_open(storage, key :: string, volume, mode, limit)
     end
     function adapter:stat(path: string): (any?, any?)
         local storage, key, scheme, err = resolve(path)

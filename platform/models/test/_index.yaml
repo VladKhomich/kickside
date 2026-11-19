@@ -458,6 +458,8 @@ entries:
     source: file://fixtures/profile_resolver.lua
     imports:
       model_catalog: app:profile_catalog_fixture
+      providers: wippy.llm.discovery:providers
+      route_policy: wippy.llm.util:route
 
   - name: profile_cache_fixture
     kind: library.lua

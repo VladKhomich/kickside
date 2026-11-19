@@ -15,4 +15,5 @@ entries:
       uploads_resources: kickside.uploads.binding:uploads_resources
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       text_trim: kickside.uploads:text_trim
+      upload_mime: kickside.uploads:uploads_mime
     method: process

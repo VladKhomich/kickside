@@ -386,7 +386,8 @@ local function define_tests()
                 local upload_type = entry("kickside.uploads:types." .. name)
                 test.eq(meta(upload_type).type, "upload.type")
                 test.eq(value(upload_type, "type_key"), name)
-                test.is_true(type(value(upload_type, "extensions")) == "table")
+                local extension_mimes = value(upload_type, "extension_mime_types")
+                test.is_true(type(extension_mimes) == "table" and next(extension_mimes) ~= nil)
                 test.is_true(type(value(upload_type, "pipeline")) == "table")
             end
 

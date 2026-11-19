@@ -76,12 +76,10 @@ end
 
 local function extension_matches(entry, file_ext)
     local d = data(entry)
+    if d.extension_mime_types and d.extension_mime_types[file_ext] then return true end
     if type(d.extensions) ~= "table" then return false end
-    local wanted = string.lower(tostring(file_ext or ""))
     for _, ext in ipairs(d.extensions) do
-        if string.lower(tostring(ext)) == wanted then
-            return true
-        end
+        if string.lower(tostring(ext)) == file_ext then return true end
     end
     return false
 end
@@ -122,6 +120,10 @@ local function merge_group(entries)
     for _, entry in ipairs(entries) do
         local d = data(entry)
         append_unique(extensions, seen_ext, d.extensions)
+        local mapped_ext = {}
+        for ext in pairs(d.extension_mime_types or {}) do mapped_ext[#mapped_ext + 1] = ext end
+        table.sort(mapped_ext)
+        append_unique(extensions, seen_ext, mapped_ext)
         append_unique(mime_types, seen_mime, d.mime_types)
         table.insert(fragments, {
             id = entry.id,
@@ -134,6 +136,19 @@ local function merge_group(entries)
     merged.data.mime_types = mime_types
     merged.data.fragments = fragments
     return merged
+end
+
+function upload_type.mime_for_extension(file_ext)
+    local ext = file_ext:lower()
+    if ext == "" then return nil end
+    local types, err = find_upload_types()
+    if err then return nil, "Failed to find upload types: " .. err end
+    local entry = best_match(types, function(candidate)
+        local mapping = data(candidate).extension_mime_types
+        return mapping and mapping[ext] ~= nil
+    end)
+    if entry then return data(entry).extension_mime_types[ext] end
+    return nil
 end
 
 -- Find an upload type by MIME type or file extension
@@ -149,8 +164,9 @@ function upload_type.find_by_mime_or_ext(mime_type, file_ext)
 
     local extension_entry = nil
     if file_ext and file_ext ~= "" then
+        local ext = string.lower(tostring(file_ext))
         extension_entry = best_match(types, function(candidate)
-            return extension_matches(candidate, file_ext)
+            return extension_matches(candidate, ext)
         end)
     end
 

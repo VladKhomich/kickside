@@ -84,6 +84,32 @@ local function define_tests()
             registry_models.get_all = get_all
             assert(ok, tostring(err))
         end)
+        test.it("keeps native driver route capabilities on saved profiles", function()
+            for _, case in ipairs({
+                {provider = "wippy.llm.openai:provider", reasoning = true, sampling = false, thinking = "adaptive"},
+                {provider = "wippy.llm.openai:provider", reasoning = false},
+                {provider = "wippy.llm.openai_compat:provider", reasoning = true, sampling = false, thinking = "adaptive"},
+                {provider = "wippy.llm.claude:provider", reasoning = true},
+            }) do
+                local profile = assert(models_repo.create_profile({id = "route-capability-profile", name = "Route capability",
+                    provider_id = case.provider, api_key = "fixture-cache-secret"}))
+                assert(models_repo.upsert_card({name = "route-capability-model", provider_profile_id = profile.id,
+                    provider_id = case.provider, provider_model = "wire-model", capabilities = {"generate"},
+                    class = {"fast"}, options = {reasoning_model_request = case.reasoning}, enabled = true}))
+                local card, err = resolver.resolve({model = "class:fast"})
+                local _, delete_err = models_repo.delete_profile(profile.id)
+                test.is_nil(delete_err, tostring(delete_err))
+                test.is_nil(err, tostring(err))
+                for _, candidate in ipairs({card, card.candidates[1]}) do
+                    local route = candidate.providers[1]
+                    test.eq(route.id, "kickside.models:provider")
+                    test.eq(route.sampling, case.sampling)
+                    test.eq(route.thinking, case.thinking)
+                    test.eq(route.options.reasoning_model_request, case.reasoning)
+                    test.is_nil(route.context.api_key)
+                end
+            end
+        end)
         test.it("executes merged registry options with saved overrides", function()
             local profile = assert(models_repo.create_profile({id = "cached-profile", name = "Cached profile",
                 provider_id = "wippy.llm.openai_compat:provider", base_url = "https://provider.example.test/v1",
