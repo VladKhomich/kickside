@@ -28,6 +28,54 @@ entries:
       job_types: kickside.core.jobs:types
       threads: kickside.core.threads.persist:writer
 
+  - name: declared_checkpoint_component
+    kind: contract.binding
+    meta:
+      events:
+        input: [{type: "kickside.test.threads:trigger"}]
+        output: [{type: "kickside.test.threads:changed"}]
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: "kickside.core.threads:thread_status"}
+
+  - name: declared_checkpoint_descriptor
+    kind: registry.entry
+    meta:
+      impl_id: app:declared_checkpoint_component
+      thread: {class: test.declared.checkpoint}
+      projections:
+        - kind: test.declared.checkpoint
+          projection_key: source
+          cursor_key: source
+          worker_ref: proc://app:declared_checkpoint_worker
+          input_mode: prefetch_events
+          events:
+            input: [{type: "kickside.test.threads:trigger"}]
+
+  - name: declared_checkpoint_worker
+    kind: process.lua
+    meta: {type: projection.worker, private: true, checkpointed_apply: true}
+    source: file://projection_declared_checkpoint_worker.lua
+    method: run
+    modules: [security]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
+  - name: declared_checkpoint_test
+    kind: function.lua
+    meta: {type: test, suite: core_declared_checkpoint}
+    source: file://projection_declared_checkpoint_test.lua
+    method: run
+    modules: [sql, uuid, json, time]
+    imports:
+      claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
+      fixture: kickside.core.threads:contract_fixture
+      invoke: kickside.core.projections:invoke
+      projections: kickside.core.projections.persist:writer
+      test: wippy.test:test
+
   - name: checkpoint_scheduler_test
     kind: function.lua
     meta: {type: test, suite: core_checkpoint_scheduler, timeout: 60s}

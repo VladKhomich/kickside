@@ -2927,6 +2927,7 @@ entries:
       projection_policy: kickside.core.projections:policy_config
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
+      checkpoint_declaration: kickside.core.projections.persist:checkpoint_declaration
 
   - name: projection_worker_native_test
     kind: function.lua
