@@ -206,7 +206,8 @@ local function discover_universal(meta_type: string, function_field: string?)
         local scope = tostring(d.scope or meta(e).scope or "")
         local func = d[field] or meta(e)[field]
         if (scope == "universal" or scope == "all") and func then
-            stages[#stages + 1] = { id = tostring(e.id or ""), func = tostring(func), title = d.title or "stage", priority = priority(e) }
+            stages[#stages + 1] = { id = tostring(e.id or ""), func = tostring(func), title = d.title or "stage",
+                priority = priority(e), owner_func = d.owner_func or meta(e).owner_func }
         end
     end
     table.sort(stages, function(a, b)
@@ -257,7 +258,7 @@ function upload_type.get_on_delete(type_id, owner_teardown: boolean?)
     local universal, universal_err = discover_universal("upload.delete_stage")
     if universal_err then return nil, universal_err end
     for _, s in ipairs(universal) do
-        list[#list + 1] = { func = s.func, title = s.title }
+        list[#list + 1] = { func = s.func, title = s.title, owner_func = s.owner_func }
     end
     return list
 end

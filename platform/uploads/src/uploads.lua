@@ -1,6 +1,7 @@
 local uuid = require("uuid")
 local time = require("time")
 local hash = require("hash")
+local funcs = require("funcs")
 local logger = require("logger")
 local execution_identity = require("execution_identity")
 local binding_errors = require("binding_errors")
@@ -168,32 +169,41 @@ local function invoke_on_delete(upload, owner_teardown: boolean): error?
     end
     if #on_delete == 0 then return nil end
 
-    -- Run delete stages as the uploading actor by reconstructing the execution identity
-    -- frozen at upload time, so a stage can do scoped work like deleting the workspace
-    -- component it created. Failed reconstruction leaves the upload as a retry target.
-    local executor, recon_err = pipeline_lib.upload_stage_executor(upload, "delete:" .. tostring(upload.uuid), {
-        upload_id = upload.uuid,
-        actor_id = upload.actor_id,
-        mime_type = upload.mime_type,
-        type_id = upload.type_id,
-    })
-    if recon_err or not executor then
-        return typed(recon_err or "no executor", errors.UNAVAILABLE, "infrastructure",
-            "upload delete execution identity unavailable: ")
-    end
-
+    local executor
     for i, stage in ipairs(on_delete) do
-        local func_id = stage.func
+        local owner_func = owner_teardown and stage.owner_func or nil
+        local func_id = owner_func or stage.func
         if func_id then
-            local result, call_err = executor:call(tostring(func_id), {
-                upload_id = upload.uuid,
-                mime_type = upload.mime_type,
-                storage_id = upload.storage_id,
-                storage_path = upload.storage_path,
-                size = upload.size,
-                metadata = upload.metadata,
-                processor_id = func_id,
-            })
+            local result, call_err
+            if owner_func then
+                -- A registered owner cleanup owns a narrow maintenance operation.
+                -- It receives the stored owner and upload ID, with no user credentials or private metadata.
+                result, call_err = funcs.call(tostring(owner_func), { upload_id = upload.uuid, owner_id = upload.actor_id })
+            else
+                -- Ordinary stages use the execution identity frozen when the file was uploaded.
+                if not executor then
+                    local recon_err
+                    executor, recon_err = pipeline_lib.upload_stage_executor(upload, "delete:" .. tostring(upload.uuid), {
+                        upload_id = upload.uuid,
+                        actor_id = upload.actor_id,
+                        mime_type = upload.mime_type,
+                        type_id = upload.type_id,
+                    })
+                    if recon_err or not executor then
+                        return typed(recon_err or "no executor", errors.UNAVAILABLE, "infrastructure",
+                            "upload delete execution identity unavailable: ")
+                    end
+                end
+                result, call_err = executor:call(tostring(func_id), {
+                    upload_id = upload.uuid,
+                    mime_type = upload.mime_type,
+                    storage_id = upload.storage_id,
+                    storage_path = upload.storage_path,
+                    size = upload.size,
+                    metadata = upload.metadata,
+                    processor_id = func_id,
+                })
+            end
 
             if call_err then
                 return typed(call_err, errors.UNAVAILABLE, "infrastructure",

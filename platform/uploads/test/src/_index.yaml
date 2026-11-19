@@ -996,6 +996,7 @@ entries:
       comment: Library for handling file uploads to configured storage backends.
     source: file://fixtures/uploads.lua
     modules:
+    - funcs
     - uuid
     - time
     - hash

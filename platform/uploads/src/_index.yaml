@@ -378,7 +378,7 @@ entries:
     meta:
       comment: Library for handling file uploads to configured storage backends.
     source: file://uploads.lua
-    modules: [uuid, time, hash, logger]
+    modules: [uuid, time, hash, logger, funcs]
     imports:
       binding_errors: kickside.uploads.binding:binding_errors
       upload_record_repo: kickside.uploads.persist:upload_record_repo

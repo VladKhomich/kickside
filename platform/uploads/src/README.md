@@ -142,7 +142,11 @@ Deleting an Uploads component or principal drains the stored owner's upload rows
 artifacts, bytes, and read model without provisioning a thread. Type-specific
 delete stages that only cascade to another upload of the same owner can declare
 `delete_scope: single_upload`. The owner sweep visits those uploads directly.
-Other registered delete stages retain their stored uploader execution identity.
+A universal `upload.delete_stage` can declare an `owner_func` for owner teardown.
+That function runs under the lifecycle caller and receives only `upload_id` and
+`owner_id` from the stored upload row. Its ordinary `func` still runs as the
+recorded uploader on single-file deletion. Stages without a maintenance entry
+retain their existing uploader authority.
 
 ## Packed storage and delivery
 
