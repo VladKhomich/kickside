@@ -31,17 +31,13 @@ export interface Scope {
   overlay_policies?: Policy[]
 }
 
-// Draft state while creating/editing a scope. For a custom scope, target is ''
-// and policies is the full set. For an OVERLAY of a built-in/registry scope,
-// target is the base scope id, base holds its (locked) base policies, and
-// policies holds only the admin's added extensions.
+// An extension's target is the original role, and its policy IDs are the added grants.
 export interface ScopeDraft {
   slug: string
   label: string
   description: string
-  policies: Policy[]
+  policyIds: string[]
   enabled: boolean
   isNew: boolean
   target: string
-  base: Policy[]
 }

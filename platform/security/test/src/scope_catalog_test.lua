@@ -41,11 +41,11 @@ local function define_tests()
             end
         end)
 
-        test.it("offers only declared access and management permissions by exact id", function()
+        test.it("offers only declared module and tool permissions by exact id", function()
             local by_id = {}
+            local intents = {module_access = true, module_management = true, tool_access = true}
             for _, policy in ipairs(assert(scope_catalog.policies({ assignable = true }))) do
-                test.is_true(policy.intent == "module_access" or policy.intent == "module_management",
-                    "Unexpected permission: " .. policy.id)
+                test.is_true(intents[policy.intent] == true, "Unexpected permission: " .. policy.id)
                 test.is_false(policy.private)
                 test.is_true(policy.title ~= policy.id and policy.title:find("%S") ~= nil)
                 test.is_nil(by_id[policy.id])
@@ -59,6 +59,9 @@ local function define_tests()
             test.eq(by_id["app:module_access"].comment, "Opens the sample module.")
             test.eq(by_id["app:manage_samples"].title, "Sample management")
             test.eq(by_id["app:manage_samples"].comment, "Manages sample records.")
+            test.not_nil(by_id["app:sample_tool"])
+            test.eq(by_id["app:sample_tool"].title, "Sample tools")
+            test.eq(by_id["app:sample_tool"].comment, "Runs sample tools.")
         end)
     end)
 end

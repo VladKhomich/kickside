@@ -42,7 +42,7 @@ never the reverse:
 | GET | `/security/scopes` | Scope/role catalog (`?include_internal=true` includes internal scopes). `?include_unavailable=true` includes retired selections on stored roles and extensions with their `id` and `available=false`. |
 | POST | `/security/scopes` | create/update a custom scope |
 | DELETE | `/security/scopes?slug=` | remove a custom scope |
-| GET | `/security/policies` | Policy inventory (`?include_private=true` includes private entries). `?assignable=true` lists named module access and management permissions available in the role editor. A declaration can exclude infrastructure grants with `meta.assignable: false`. |
+| GET | `/security/policies` | Policy inventory (`?include_private=true` includes private entries). `?assignable=true` lists named module access, module management, and tool access grants available in the role editor. A declaration can exclude infrastructure grants with `meta.assignable: false`. |
 | GET | `/security/projection` | current scope resolution status |
 
 `GET /security/projection` resolves the caller's native groups and live selected

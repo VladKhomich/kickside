@@ -49,12 +49,28 @@ const filteredScopes = computed(() => {
 
 const selectedScope = computed(() => scopes.value.find(s => s.id === selectedId.value) || null)
 const readOnlyScope = computed(() => (selectedScope.value && selectedScope.value.source !== 'custom') ? selectedScope.value : null)
+const isOverlay = computed(() => !!draft.value?.target)
+const basePolicies = computed(() => isOverlay.value ? readOnlyScope.value?.policies ?? [] : [])
+
+const catalogById = computed(() => {
+  const byId = new Map<string, Policy>()
+  for (const scope of scopes.value) {
+    for (const policy of [...scope.policies, ...(scope.overlay_policies ?? [])]) {
+      if (policy.available !== false) byId.set(policy.id, policy)
+    }
+  }
+  for (const policy of policies.value) byId.set(policy.id, policy)
+  return byId
+})
+
+const selectedPolicies = computed(() => (draft.value?.policyIds ?? [])
+  .map(id => catalogById.value.get(id) ?? { id, available: false }))
 
 const palettePolicies = computed<Policy[]>(() => {
   if (!draft.value) return []
   // Exclude already-chosen extensions and, for an overlay, the locked base
   // policies (base can't be re-added).
-  const chosen = new Set([...draft.value.policies, ...draft.value.base].map(p => p.id))
+  const chosen = new Set([...draft.value.policyIds, ...basePolicies.value.map(p => p.id)])
   const q = paletteSearch.value.trim().toLowerCase()
   return policies.value.filter(p => !chosen.has(p.id)
     && (!q || (p.title || '').toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || (p.comment || '').toLowerCase().includes(q)))
@@ -63,13 +79,13 @@ const palettePolicies = computed<Policy[]>(() => {
 function selectScope(s: Scope) {
   selectedId.value = s.id
   draft.value = s.source === 'custom'
-    ? { slug: s.slug || '', label: s.label, description: s.description, policies: [...s.policies], enabled: s.enabled, isNew: false, target: '', base: [] }
+    ? { slug: s.slug || '', label: s.label, description: s.description, policyIds: s.policies.map(p => p.id), enabled: s.enabled, isNew: false, target: '' }
     : null
 }
 
 function newScope() {
   selectedId.value = null
-  draft.value = { slug: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''), label: '', description: '', policies: [], enabled: true, isNew: true, target: '', base: [] }
+  draft.value = { slug: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''), label: '', description: '', policyIds: [], enabled: true, isNew: true, target: '' }
 }
 
 // Clone any scope (built-in, registry, or custom) into a NEW editable custom
@@ -79,7 +95,7 @@ function copyScope(s: Scope) {
   Object.assign(draft.value!, {
     label: s.label ? `Copy of ${s.label}` : '',
     description: s.description,
-    policies: [...s.policies, ...(s.overlay_policies ?? [])].filter(p => p.available !== false),
+    policyIds: [...s.policies, ...(s.overlay_policies ?? [])].filter(p => p.available !== false).map(p => p.id),
   })
 }
 
@@ -95,23 +111,19 @@ function openOverlay(s: Scope) {
     slug: s.overlay_slug || sanitizeId(s.id),
     label: s.label || shortId(s.id),
     description: s.description,
-    policies: [...(s.overlay_policies ?? [])],
+    policyIds: (s.overlay_policies ?? []).map(p => p.id),
     enabled: true,
     isNew: !s.overlay_slug,
     target: s.id,
-    base: s.policies,
   }
 }
 
-const isOverlay = computed(() => !!draft.value && draft.value.target !== '')
-
 function addPolicy(id: string, index?: number) {
-  if (!draft.value || draft.value.policies.some(p => p.id === id) || draft.value.base.some(p => p.id === id)) return
-  const policy = policies.value.find(p => p.id === id)
-  if (policy) draft.value.policies.splice(index ?? draft.value.policies.length, 0, policy)
+  if (!draft.value || draft.value.policyIds.includes(id) || basePolicies.value.some(p => p.id === id)) return
+  if (policies.value.some(p => p.id === id)) draft.value.policyIds.splice(index ?? draft.value.policyIds.length, 0, id)
 }
 function removePolicy(id: string) {
-  if (draft.value) draft.value.policies = draft.value.policies.filter(p => p.id !== id)
+  if (draft.value) draft.value.policyIds = draft.value.policyIds.filter(policyId => policyId !== id)
 }
 
 function onPaneDrop(e: DragEvent) {
@@ -122,14 +134,14 @@ function onRowDrop(e: DragEvent, targetId: string) {
   e.stopPropagation()
   const id = e.dataTransfer?.getData('text/plain')
   if (!id || !draft.value || id === targetId) return
-  const selected = draft.value.policies
-  const from = selected.findIndex(p => p.id === id)
+  const selected = draft.value.policyIds
+  const from = selected.indexOf(id)
   if (from === -1) {
-    addPolicy(id, selected.findIndex(p => p.id === targetId))
+    addPolicy(id, selected.indexOf(targetId))
     return
   }
-  const [policy] = selected.splice(from, 1)
-  selected.splice(selected.findIndex(p => p.id === targetId), 0, policy!)
+  selected.splice(from, 1)
+  selected.splice(selected.indexOf(targetId), 0, id)
 }
 
 const draftSlug = computed(() => {
@@ -139,7 +151,7 @@ const draftSlug = computed(() => {
   return `${base}_${draft.value.slug}`
 })
 const canSave = computed(() => !!draft.value && draft.value.label.trim() !== ''
-  && (!draft.value.isNew || draft.value.policies.length > 0))
+  && (!draft.value.isNew || draft.value.policyIds.length > 0))
 
 // Transient confirmation after a successful save — the save button's spinner
 // alone left it ambiguous whether the change persisted.
@@ -163,7 +175,7 @@ async function save() {
     target,
     label: draft.value.label.trim(),
     description: draft.value.description.trim(),
-    policies: draft.value.policies.map(p => p.id),
+    policies: [...draft.value.policyIds],
     enabled: draft.value.enabled,
   })
   if (ok) {
@@ -281,11 +293,11 @@ function shortId(id: string): string {
           <section v-if="isOverlay" class="ks-pane locked-pane">
             <header class="ks-pane-head">
               <span>Original permissions</span>
-              <span class="ks-pane-sub">{{ draft.base.length }} · locked</span>
+              <span class="ks-pane-sub">{{ basePolicies.length }} · locked</span>
             </header>
             <div class="ks-pane-body">
-              <PolicyCard v-for="p in draft.base" :key="p.id" :policy="p" mode="locked" />
-              <div v-if="!draft.base.length" class="ks-pane-empty">No original permissions.</div>
+              <PolicyCard v-for="p in basePolicies" :key="p.id" :policy="p" mode="locked" />
+              <div v-if="!basePolicies.length" class="ks-pane-empty">No original permissions.</div>
             </div>
           </section>
 
@@ -310,18 +322,18 @@ function shortId(id: string): string {
           <section class="ks-pane drop" @dragover.prevent @drop="onPaneDrop">
             <header class="ks-pane-head">
               <span>{{ isOverlay ? 'Added by you' : 'In this role' }}</span>
-              <span class="ks-pane-sub">{{ draft.policies.length }} {{ draft.policies.length === 1 ? 'permission' : 'permissions' }}</span>
+              <span class="ks-pane-sub">{{ selectedPolicies.length }} {{ selectedPolicies.length === 1 ? 'permission' : 'permissions' }}</span>
             </header>
             <div class="ks-pane-body">
               <div
-                v-for="p in draft.policies"
+                v-for="p in selectedPolicies"
                 :key="p.id"
                 @dragover.prevent
                 @drop="onRowDrop($event, p.id)"
               >
                 <PolicyCard :policy="p" mode="selected" @remove="removePolicy(p.id)" />
               </div>
-              <div v-if="!draft.policies.length" class="ks-drop-hint">
+              <div v-if="!selectedPolicies.length" class="ks-drop-hint">
                 <Icon icon="tabler:drag-drop" aria-hidden="true" />
                 <span>Use + on an available permission, or drag it here.</span>
               </div>

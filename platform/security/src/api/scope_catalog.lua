@@ -61,7 +61,7 @@ end
 
 local function assignable_policies(): ({ stypes.PolicySummary }?, error?)
     local out: { stypes.PolicySummary } = {}
-    for _, intent in ipairs({"module_access", "module_management"}) do
+    for _, intent in ipairs({"module_access", "module_management", "tool_access"}) do
         local entries, read_err = registry.find({ [".kind"] = consts.POLICY_KIND, ["meta.intent"] = intent })
         if read_err then return nil, read_err end
         for _, entry in ipairs(entries :: { any }) do
