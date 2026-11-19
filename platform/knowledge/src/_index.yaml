@@ -108,6 +108,10 @@ entries:
         path: .meta.router
       - entry: kickside.knowledge.api:get_kb.endpoint
         path: .meta.router
+      - entry: kickside.knowledge.api:drive_folder_availability.endpoint
+        path: .meta.router
+      - entry: kickside.knowledge.api:browse_drive_folders.endpoint
+        path: .meta.router
       - entry: kickside.knowledge.api:delete_kb.endpoint
         path: .meta.router
       - entry: kickside.knowledge.api:update_kb.endpoint

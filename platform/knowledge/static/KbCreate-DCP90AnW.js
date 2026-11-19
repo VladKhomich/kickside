@@ -1,7 +1,7 @@
 import { computed as g, defineComponent as v, ref as d, onMounted as f, openBlock as w, createBlock as _, unref as r } from "vue";
 import { api as u } from "@wippy-fe/proxy";
 import { b as k, u as C } from "./wc-runtime-Bmxpx-Ro.js";
-import { _ as y, e as E } from "./KbDialog.vue_vue_type_script_setup_true_lang-DxwanWWB.js";
+import { _ as y, e as E } from "./KbDialog.vue_vue_type_script_setup_true_lang-BiUx2Uzh.js";
 function I(i) {
   return g(() => {
     const n = i.value;
@@ -43,4 +43,4 @@ const B = /* @__PURE__ */ v({
 export {
   B as default
 };
-//# sourceMappingURL=KbCreate-CwMcgYZF.js.map
+//# sourceMappingURL=KbCreate-DCP90AnW.js.map
