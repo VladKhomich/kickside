@@ -4,6 +4,7 @@ local status = require("thread_ingest_status")
 local thread_ingest = require("thread_ingest")
 local ingest_upload = require("ingest_upload")
 local uploads = require("upload_read_model")
+local attachments = require("attachment_ingest")
 local writable = require("writable_sink")
 local component = require("component")
 local funcs = require("funcs")
@@ -25,6 +26,11 @@ local function refuse(err: any): any
     if errors.is(err, errors.PERMISSION_DENIED) then return fail(tostring(err), "permission_denied") end
     if errors.is(err, errors.NOT_FOUND) then return fail(tostring(err), "not_found") end
     if errors.is(err, errors.INVALID) then return fail(tostring(err)) end
+    if errors.is(err, errors.RATE_LIMITED) then
+        local details = err:details()
+        return fail(tostring(err), "rate_limited", true,
+            type(details) == "table" and details.scope or "provider", details)
+    end
     return fail(tostring(err or "Knowledge upload delivery returned no committed result"),
         "provider_unavailable", true)
 end
@@ -179,10 +185,31 @@ function M.write(request: any): any
     if req.sink_op == "delete" then return delete_document(req, kb_id, external_id, key) end
     if req.sink_op ~= "upsert" then return fail("unsupported Knowledge upload operation") end
 
-    local upload_id = trim(type(req.input) == "table" and req.input.upload_id)
-    if not uuid.validate(upload_id) then return fail("write input.upload_id is required") end
-    local source_version = trim(req.input.source_version)
+    local input = type(req.input) == "table" and req.input or {}
+    local upload_id = trim(input.upload_id)
+    local source_version = trim(input.source_version)
     if #source_version > 128 then return fail("write input.source_version exceeds 128 bytes") end
+    local attachment = input.attachment
+    local matcher
+    if attachment ~= nil then
+        if upload_id ~= "" then return fail("Supply either an upload ID or an attachment") end
+        if source_version == "" then return fail("An attachment requires its source version") end
+        if type(req.resume_effect) ~= "boolean" then
+            return fail("Upgrade Automation to resume pending attachment effects.", "invalid_config", false, "flow")
+        end
+        if req.resume_effect then
+            local access_err = base.validate_kb_access(kb_id, component.ACCESS.WRITE)
+            if access_err then return refuse(access_err) end
+        else
+            local failure
+            matcher, failure = publication_matcher(kb_id)
+            if not matcher then return failure end
+        end
+        local admitted, admit_err = attachments.admit(attachment, key, req.resume_effect == true)
+        if admit_err or not admitted then return refuse(admit_err) end
+        upload_id = admitted.uuid
+    end
+    if not uuid.validate(upload_id) then return fail("write input.upload_id is required") end
     local actor = security.actor()
     if not actor or trim(actor:id()) == "" then return fail("Authentication required", "permission_denied") end
     local record, upload_err = uploads.get_for_actor(actor:id(), upload_id)
@@ -197,7 +224,7 @@ function M.write(request: any): any
         return fail("This upload is still processing. Upgrade Automation to resume pending effects.",
             "invalid_config", false, "flow")
     end
-    if req.resume_effect ~= true or record.status == "completed" then
+    if not matcher and (req.resume_effect ~= true or record.status == "completed") then
         local matcher, failure = publication_matcher(kb_id)
         if not matcher then return failure end
     end
@@ -221,6 +248,10 @@ function M.write(request: any): any
 
     local committed = guard.committed
     if not committed then
+        if attachment then
+            local verify_err = attachments.verify(attachment)
+            if verify_err then return refuse(verify_err) end
+        end
         delivery.expected_head = guard.head
         local _, ingest_err = ingest_upload.ingest_delivery(kb_id, record, delivery)
         if ingest_err then return refuse(ingest_err) end

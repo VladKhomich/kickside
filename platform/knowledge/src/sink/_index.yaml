@@ -22,6 +22,7 @@ entries:
       thread_ingest: kickside.knowledge.injection:thread_ingest
       ingest_upload: kickside.knowledge.api:ingest_upload
       upload_read_model: kickside.uploads.persist:upload_read_model
+      attachment_ingest: kickside.uploads:attachment_ingest
       writable_sink: kickside.data:writable_sink
       component: kickside.component:component
 
@@ -51,7 +52,11 @@ entries:
       delete: { requires_dest_ref: true }
     input_schema: |
       {"type":"object","properties":{"upload_id":{"type":"string"},
-        "source_version":{"type":"string","maxLength":128}},"required":["upload_id"]}
+        "source_version":{"type":"string","maxLength":128},
+        "attachment":{"type":"object","properties":{"source":{"type":"string"},
+          "component_id":{"type":"string"},"ref":{"type":"object"}},
+          "required":["source","component_id","ref"]}},
+        "oneOf":[{"required":["upload_id"]},{"required":["attachment","source_version"]}]}
     config_schema:
       kb_id: { picker: wc-kb-picker, required: true, title: Knowledge base }
 

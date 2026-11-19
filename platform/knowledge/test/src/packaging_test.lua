@@ -28,7 +28,7 @@ local EXPECTED: { [string]: { string } } = {
     ["kickside.knowledge:dep.kickside.contract"] = { "kickside/contract", ">=0.3.12" },
     ["kickside.knowledge:dep.kickside.core"] = { "kickside/core", ">=0.3.29" },
     ["kickside.knowledge:dep.kickside.models"] = { "kickside/models", ">=0.1.83" },
-    ["kickside.knowledge:dep.kickside.uploads"] = { "kickside/uploads", "*" },
+    ["kickside.knowledge:dep.kickside.uploads"] = { "kickside/uploads", ">=0.3.31" },
     ["kickside.knowledge:dep.wippy.agent"] = { "wippy/agent", "*" },
     ["kickside.knowledge:dep.wippy.dataflow"] = { "wippy/dataflow", "*" },
     ["kickside.knowledge:dep.wippy.llm"] = { "wippy/llm", "*" },
@@ -72,7 +72,7 @@ local function define_tests()
             local entry = registry.get("kickside.knowledge.api:list_embedding_models") :: FunctionEntry
             test.eq((entry.data :: FunctionData).imports.models, "kickside.models.catalog:model_catalog")
         end)
-        test.it("declares its direct production dependency set with open versions", function()
+        test.it("declares its direct production dependencies and version floors", function()
             local found: { [string]: boolean } = {}
             local all, err = registry.find({})
             test.is_nil(err)
