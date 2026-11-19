@@ -90,6 +90,13 @@ M.ALLOW = {
             entry = "kickside.core.threads:component_identity",
         },
     },
+    ["core/core/src/projections/persist/checkpoint_declaration.lua"] = {
+        list_system = {
+            count = 1,
+            why = "Jobs checkpoint admission verifies the cursor thread's installed component implementation and captured execution identity before dispatch",
+            entry = "kickside.core.projections.persist:checkpoint_declaration",
+        },
+    },
     ["platform/channel/src/receive.lua"] = {
         list_system = {
             count = 2,
