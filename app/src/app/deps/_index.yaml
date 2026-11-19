@@ -330,7 +330,7 @@ entries:
     - name: kickside.contract.http:user_security_scope
       value: app.security:unassigned_endpoints
 
-  - version: ">=0.3.4"
+  - version: ">=0.3.35"
     name: kickside_core
     kind: ns.dependency
     meta: {}
