@@ -381,12 +381,19 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         end
         local acl: any = nil
         local execution_frame: table? = nil
-        if component_backed then
+        if component_backed or needs_declaration then
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
-            local access_err: error?
-            acl, revision, execution_frame, access_err = batch_access(current, binding)
-            if access_err then return nil, access_err end
+            if needs_declaration then
+                local admitted, declaration_err = worker.admit_declared_checkpoint(binding, current)
+                if not admitted then return nil, declaration_err or response_error("worker.declaration") end
+                binding = admitted
+            end
+            if component_backed then
+                local access_err: error?
+                acl, revision, execution_frame, access_err = batch_access(current, binding)
+                if access_err then return nil, access_err end
+            end
             local open_err: error?
             db, open_err = sql.get(db_id)
             if open_err then return nil, open_err end
@@ -428,11 +435,6 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             -- before invoking either a function or a monitored process.
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
-            if needs_declaration then
-                local admitted, declaration_err = worker.admit_declared_checkpoint(binding, current)
-                if not admitted then return nil, declaration_err or response_error("worker.declaration") end
-                binding = admitted
-            end
             local function before_dispatch(): error?
                 return check_revision(revision, current.component_impl_id, binding.target_id)
             end

@@ -618,8 +618,11 @@ return {run = test.run_cases(function()
             execute("UPDATE kickside_components SET impl_id=$1 WHERE component_id=$2", {"event.read.test:admin_kind", id})
             local client = threads(READER)
             denied(client:list_events({thread_id = id}))
-            denied(client:find_event_by_external({thread_id = id, event_type = "kickside.threads:message.created",
-                external_source = "actor:" .. OWNER, external_id = "source"}))
+            local lookup = {thread_id = id, event_type = "kickside.threads:message.created",
+                external_source = "actor:" .. OWNER, external_id = "source"}
+            denied(client:find_event_by_external(lookup))
+            lookup.latest = true
+            denied(client:find_event_by_external(lookup))
             denied(client:list_projections({thread_id = id}))
             denied(client:get_projection_cursor({thread_id = id, kind = "count"}))
         end)
