@@ -89,3 +89,4 @@ entries:
     imports:
       migration: wippy.migration:migration
       models_types: kickside.models:models_types
+      llm_transport: wippy.llm.util:transport

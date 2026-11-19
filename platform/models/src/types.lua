@@ -51,4 +51,8 @@ function M.is_positive_number(value: any): boolean
     return type(value) == "number" and value > 0 and value < math.huge
 end
 
+function M.is_nonnegative_number(value: any): boolean
+    return value == 0 or M.is_positive_number(value)
+end
+
 return M

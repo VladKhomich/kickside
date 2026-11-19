@@ -6,6 +6,7 @@
 local json = require("json")
 local registry = require("registry")
 local models_types = require("models_types")
+local llm_transport = require("llm_transport")
 local models_secrets = require("models_secrets")
 
 local M = {}
@@ -317,11 +318,10 @@ local function copy_config(input: any, existing_config: any?): any
     return config
 end
 
-local function validate_optional_number(value: any, field: string): any?
-    if value == nil or models_types.is_positive_number(value) then return nil end
+local function invalid_number(field: string, expected: string): any
     return errors.new({
         kind = errors.INVALID,
-        message = field .. " must be a positive number",
+        message = field .. " must be " .. expected,
         retryable = false,
         details = {field = field},
     })
@@ -442,14 +442,20 @@ local function clean_profile_input(input: any, existing: any?): (any?, any?)
     local config = copy_config(input, existing and existing.config or {})
     local secret_config = copy_secret_config(input, existing and existing.secret_config or {})
     config = apply_provider_normalization(provider_id, config, secret_config)
-    local number_err = validate_optional_number(config.timeout, "timeout")
-    if number_err then return nil, number_err end
+    if config.timeout ~= nil then
+        local timeout = llm_transport.timeout_seconds(config.timeout)
+        if not timeout then return nil, invalid_number("timeout", "positive seconds or a positive duration") end
+        config.timeout = timeout
+    end
     local retry = config.retry
     config.retry = nil
     if type(retry) == "table" then
-        number_err = validate_optional_number(retry.attempts, "retry.attempts")
-            or validate_optional_number(retry.backoff_ms, "retry.backoff_ms")
-        if number_err then return nil, number_err end
+        if retry.attempts ~= nil and not models_types.is_positive_number(retry.attempts) then
+            return nil, invalid_number("retry.attempts", "a positive number")
+        end
+        if retry.backoff_ms ~= nil and not models_types.is_nonnegative_number(retry.backoff_ms) then
+            return nil, invalid_number("retry.backoff_ms", "a nonnegative number")
+        end
         if retry.attempts ~= nil or retry.backoff_ms ~= nil then
             config.retry = {attempts = retry.attempts, backoff_ms = retry.backoff_ms}
         end

@@ -41,7 +41,7 @@ local function define_tests()
             local id = "provider-timeout-validation"
             local profile
             local ok, failure = pcall(function()
-                for _, timeout in ipairs({0, false, -1, "0", "0s", "2s", "30 seconds", "30", "invalid", 0/0, math.huge}) do
+                for _, timeout in ipairs({0, false, -1, "0", "0s", "30 seconds", "invalid", 0/0, math.huge}) do
                     local created, err = repo.create_profile({
                         id = id, name = id, provider_id = provider, config = {timeout = timeout},
                     })
@@ -50,7 +50,7 @@ local function define_tests()
                 end
                 profile = assert(repo.create_profile({id = id, name = id, provider_id = provider, timeout = 0.25}))
                 test.eq(profile.config.timeout, 0.25)
-                for _, timeout in ipairs({0, false, -1, "2s", "30 seconds", "30", 0/0, math.huge}) do
+                for _, timeout in ipairs({0, false, -1, "0", "0s", "30 seconds", 0/0, math.huge}) do
                     local updated, err = repo.update_profile(profile.id, {timeout = timeout})
                     assert_invalid_number(updated, err, "timeout")
                 end
@@ -61,12 +61,30 @@ local function define_tests()
             assert(ok, tostring(failure))
         end)
 
+        test.it("accepts positive timeout strings on create and update", function()
+            local id = "provider-timeout-strings"
+            local profile
+            local ok, failure = pcall(function()
+                profile = assert(repo.create_profile({
+                    id = id, name = id, provider_id = provider, timeout = "250ms",
+                }))
+                test.eq(profile.config.timeout, 0.25)
+                local updated = assert(repo.update_profile(id, {config = {timeout = "120"}}))
+                test.eq(updated.config.timeout, 120)
+                test.eq(assert(repo.get_profile(id)).config.timeout, 120)
+            end)
+            if profile then assert(repo.delete_profile(id)) end
+            assert(ok, tostring(failure))
+        end)
+
         test.it("rejects invalid retry numbers and allows a retry policy to be cleared", function()
             local id = "provider-retry-validation"
             local profile
             local ok, failure = pcall(function()
                 for _, field in ipairs({"attempts", "backoff_ms"}) do
-                    for _, value in ipairs({0, false, -1, "30 seconds", "30", 0/0, math.huge}) do
+                    local invalid = {false, -1, "30 seconds", "30", 0/0, math.huge}
+                    if field == "attempts" then table.insert(invalid, 0) end
+                    for _, value in ipairs(invalid) do
                         local retry = {attempts = 2, backoff_ms = 250, [field] = value}
                         local created, err = repo.create_profile({
                             id = id, name = id, provider_id = provider, retry = retry,
@@ -79,7 +97,9 @@ local function define_tests()
                     id = id, name = id, provider_id = provider, retry = {attempts = 2, backoff_ms = 250},
                 }))
                 for _, field in ipairs({"attempts", "backoff_ms"}) do
-                    for _, value in ipairs({0, false, -1, "30 seconds", "30", 0/0, math.huge}) do
+                    local invalid = {false, -1, "30 seconds", "30", 0/0, math.huge}
+                    if field == "attempts" then table.insert(invalid, 0) end
+                    for _, value in ipairs(invalid) do
                         local updated, err = repo.update_profile(id, {retry = {attempts = 2, [field] = value}})
                         assert_invalid_number(updated, err, "retry." .. field)
                     end
@@ -93,15 +113,17 @@ local function define_tests()
             assert(ok, tostring(failure))
         end)
 
-        test.it("preserves each positive retry number on create and update", function()
+        test.it("preserves immediate retry and positive fractional backoff on profile writes", function()
             local profile = assert(repo.create_profile({
                 id = "provider-retry-positive", name = "Saved profile", provider_id = provider,
-                retry = {attempts = 2.5, backoff_ms = 0.5},
+                retry = {attempts = 2.5, backoff_ms = 0},
             }))
             local ok, failure = pcall(function()
                 local created = profile.config.retry or {}
-                test.eq(created.backoff_ms, 0.5)
+                test.eq(created.backoff_ms, 0)
                 test.eq(created.attempts, 2.5)
+                local immediate = assert(repo.update_profile(profile.id, {retry = {attempts = 2, backoff_ms = 0}}))
+                test.eq(immediate.config.retry.backoff_ms, 0)
                 local updated = assert(repo.update_profile(profile.id, {retry = {backoff_ms = 0.5}}))
                 test.eq((updated.config.retry or {}).backoff_ms, 0.5)
                 local edited = assert(repo.update_profile(profile.id, {name = "Renamed profile"}))
@@ -119,18 +141,18 @@ local function define_tests()
             local db = assert(sql.get("app:db"))
             local preserved_text = "label" .. string.char(0) .. "suffix"
             local fixtures = {
-                {id = "zero", value = 0},
+                {id = "zero", value = 0, backoff = 0},
                 {id = "string-zero", value = "0"},
                 {id = "duration-zero", value = "0s"},
                 {id = "false", value = false},
                 {id = "negative", value = -1},
                 {id = "text", value = "30 seconds"},
-                {id = "duration", value = "2.5s"},
+                {id = "duration", value = "2.5s", stored = 2.5, expected = "2500ms"},
                 {id = "empty", value = ""},
-                {id = "numeric-text", value = "30"},
+                {id = "numeric-text", value = "120", stored = 120, expected = "120000ms"},
                 {id = "nan-text", value = "NaN"},
-                {id = "positive", value = 1, stored = 1, expected = "1000ms"},
-                {id = "positive-fraction", value = 2.5, stored = 2.5, expected = "2500ms"},
+                {id = "positive", value = 1, stored = 1, expected = "1000ms", attempts = 1, backoff = 1},
+                {id = "positive-fraction", value = 2.5, stored = 2.5, expected = "2500ms", attempts = 2.5, backoff = 2.5},
                 {id = "unset"},
             }
             local client = plain_generate._client
@@ -175,18 +197,18 @@ local function define_tests()
                     test.eq(used_timeout, fixture.expected or "600000ms")
                     test.eq(profile.config.timeout, fixture.stored)
                     test.eq(profile.config.retry.attempts, 2)
-                    test.eq(profile.config.retry.backoff_ms, fixture.stored)
+                    test.eq(profile.config.retry.backoff_ms, fixture.backoff)
                     local retry_profile = assert(repo.get_profile(fixture.id .. "-retry"))
-                    test.eq(retry_profile.config.retry.attempts, fixture.stored)
+                    test.eq(retry_profile.config.retry.attempts, fixture.attempts)
                     test.eq(retry_profile.config.retry.backoff_ms, 250)
                     local retry_edited = assert(repo.update_profile(retry_profile.id, {name = "Renamed profile"})).config.retry or {}
                     test.eq(retry_edited.backoff_ms, 250)
-                    test.eq(retry_edited.attempts, fixture.stored)
+                    test.eq(retry_edited.attempts, fixture.attempts)
                     local edited = assert(repo.update_profile(fixture.id, {name = "Renamed profile", enabled = false}))
                     test.eq(edited.name, "Renamed profile")
                     test.is_false(edited.enabled)
                     test.eq(edited.config.timeout, fixture.stored)
-                    test.eq(edited.config.retry.backoff_ms, fixture.stored)
+                    test.eq(edited.config.retry.backoff_ms, fixture.backoff)
                 end
             end)
             client._ctx, client._http_client = original_context, original_http
