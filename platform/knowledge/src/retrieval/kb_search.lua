@@ -33,9 +33,9 @@ local function normalize_limit(value: any, default_value: any): number?
     return n
 end
 
--- query(kb_id, { query, limit?, offset? }) -> (result, err). result is the engine/graph
--- retrieval envelope ({ success, items, count, ... }).
-function M.query(kb_id: any, opts: any): (any, any)
+-- result is the engine's retrieval envelope ({ success, items, count, ... }).
+-- The third return is true when the component lookup hides an absent or unreadable KB.
+function M.query(kb_id: any, opts: any): (any, any, boolean?)
     opts = opts or {}
     if type(kb_id) ~= "string" or kb_id == "" then
         return nil, "knowledge base id is required"
@@ -51,7 +51,9 @@ function M.query(kb_id: any, opts: any): (any, any)
     end
     local comp, comp_err = svc:get({ component_id = kb_id })
     if not comp or not comp.success then
-        return nil, tostring(comp_err or "knowledge base not found")
+        local lookup_kind = not comp_err and comp and comp.kind
+        return nil, tostring(comp_err or "knowledge base not found"),
+            lookup_kind == errors.NOT_FOUND or lookup_kind == errors.PERMISSION_DENIED
     end
 
     local _, _, engine, store_err = stores.resolve_component_store(kb_id)
