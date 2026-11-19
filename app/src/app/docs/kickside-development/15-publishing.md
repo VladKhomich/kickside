@@ -115,6 +115,11 @@ served by Hub 0.1.76 can submit App and Keeper in one **Update all** request.
 If Keeper 0.5.114 or 0.5.115 handles that request, it can replace existing
 host settings even when the new App declares newer dependency floors.
 
+The same prerequisite applies to updates through the Keeper HTTP API and the
+`hub_dependencies` MCP tool. Apply the Keeper update by itself, verify the
+active version, then request a fresh App plan. A combined request runs under
+the Keeper version that received it.
+
 1. When Keeper is earlier than 0.5.116, select **Scan updates**, then
    **Update keeper/keeper** on its row. Wait for the standalone operation to
    finish, reload the page, and confirm **Installed** lists Keeper 0.5.116 or newer. For an
@@ -127,6 +132,12 @@ host settings even when the new App declares newer dependency floors.
    planner for kickside/kickside** on the App row or through Keeper's Hub API.
    Check that it preserves the installation's root bindings and configured
    constraints. Leave the App update unapplied if its plan omits those settings.
+
+With the supported Keeper active, an App update compares each saved Facade
+`host_config_layout` and `host_custom_css` value with the installed release's
+default. Unset values and values that match that default adopt the new default.
+Customized values carry forward. In a layout without a chat panel, **New chat**
+opens the inline chat on the Sessions page.
 
 A release that retires a stored shape includes a forward-only, idempotent,
 resumable migration in the owning module, tested against the previous published
