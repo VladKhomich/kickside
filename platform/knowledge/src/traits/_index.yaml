@@ -486,6 +486,8 @@ entries:
 
   - name: knowledge_manager_tool
     kind: function.lua
+    security:
+      policies: [kickside.knowledge.security:authorized_store_stats]
     meta:
       type: tool
       title: Knowledge
