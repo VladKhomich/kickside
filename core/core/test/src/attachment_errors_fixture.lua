@@ -17,7 +17,7 @@ function M.read(...)
     if M.stage == "scalar_thread" then return {"opaque"}, nil end
     return {{id = "thread", thread_class = "test_class", marker = "kept"}}, nil
 end
-function M.database(): any return {query = M.read} end
+function M.database(): any return {query = M.read, type = function() return "sqlite" end} end
 function M.purge(...)
     M.purges = M.purges + 1
     if M.stage == "missing_purge" then return nil, nil end

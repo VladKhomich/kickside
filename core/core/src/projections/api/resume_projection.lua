@@ -55,7 +55,7 @@ local function handler(): ()
         return
     end
 
-    local result, resume_err = writer.resume(db, thread_id, data)
+    local result, resume_err = writer.resume(db, thread_id, data, true)
     if not resume_err then result, resume_err = error_envelope.binding(result, nil, nil, "resume projection", "core_http_operation_response") end
     local err = release_error(db, resume_err, resume_err == nil)
     if err then

@@ -132,6 +132,24 @@ entries:
       - funcs
       - contract
 
+  - name: event_declaration
+    kind: library.lua
+    source: file://event_declaration.lua
+    modules: [registry]
+    imports:
+      threads_consts: kickside.core.threads:consts
+      error_envelope: kickside.contract:error_envelope
+
+  - name: event_access
+    kind: library.lua
+    source: file://event_access.lua
+    modules: [sql, uuid]
+    imports:
+      event_declaration: kickside.core.threads:event_declaration
+      threads_consts: kickside.core.threads:consts
+      core_types: kickside.core:types
+      component_query: kickside.component.persist:component_query
+
   - name: component
     kind: library.lua
     meta:
@@ -169,6 +187,8 @@ entries:
       - sql
     imports:
       text_trim: kickside.contract:text_trim
+      event_declaration: kickside.core.threads:event_declaration
+      event_access: kickside.core.threads:event_access
       consts: kickside.core.threads:notify_consts
       threads_env: kickside.core.threads:env
 
@@ -193,6 +213,16 @@ entries:
       actions: funcs.call
       effect: allow
 
+  - name: event_policy_read
+    kind: security.policy
+    meta:
+      private: true
+      comment: Lets Core entry points resolve the live event read policy for any component kind.
+    policy:
+      resources: '*'
+      actions: registry.get
+      effect: allow
+
   - name: emit_update
     kind: function.lua
     meta:
@@ -207,6 +237,8 @@ entries:
       - sql
     imports:
       text_trim: kickside.contract:text_trim
+      event_declaration: kickside.core.threads:event_declaration
+      event_access: kickside.core.threads:event_access
       consts: kickside.core.threads:notify_consts
       threads_env: kickside.core.threads:env
     security:
@@ -214,6 +246,7 @@ entries:
         id: kickside.core.threads:emit_update
       policies:
         - kickside.core.threads:emit_update_transport
+        - kickside.core.threads:event_policy_read
 
   - name: notify_consts
     kind: library.lua
@@ -410,6 +443,8 @@ entries:
     source: file://contract/event_authorization.lua
     modules: [sql, security, registry, uuid, json]
     imports:
+      threads_consts: kickside.core.threads:consts
+      event_declaration: kickside.core.threads:event_declaration
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
       threads_writer: kickside.core.threads.persist:writer
@@ -682,6 +717,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads list_events — read a thread's event log (READ-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/events.lua
     method: list_events
     modules: [sql, json, security, registry]
@@ -720,6 +757,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads find_event_by_external — exact durable external-identity lookup (READ-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/events.lua
     method: find_event_by_external
     modules: [sql, json, security, registry]
@@ -739,6 +778,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads append_events — durable typed event append (WRITE-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/events.lua
     method: append_events
     modules: [sql, json, security, registry]
@@ -758,6 +799,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads append_event — single durable typed event append (WRITE-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/events.lua
     method: append_event
     modules: [sql, json, security, registry]
@@ -813,10 +856,13 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads register_projection — WRITE-gated, delegates to projections writer.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/projections.lua
     method: register_projection
     modules: [sql, time]
     imports:
+      event_access: kickside.core.threads:event_access
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
       contract_common: kickside.core.threads:contract_common
@@ -834,10 +880,13 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads list_projections — projection definitions and cursors (READ-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/projections.lua
     method: list_projections
     modules: [sql, time]
     imports:
+      event_access: kickside.core.threads:event_access
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
       contract_common: kickside.core.threads:contract_common
@@ -855,10 +904,13 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads get_projection_cursor — one projection and cursor at their declared address (READ-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/projections.lua
     method: get_projection_cursor
     modules: [sql, time]
     imports:
+      event_access: kickside.core.threads:event_access
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
       contract_common: kickside.core.threads:contract_common
@@ -876,10 +928,13 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads catch_up_projection — READ-gated synchronous projection catch-up.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/projections.lua
     method: catch_up_projection
     modules: [sql, time]
     imports:
+      event_access: kickside.core.threads:event_access
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
       contract_common: kickside.core.threads:contract_common
@@ -897,10 +952,13 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads pause_projection — pause a projection cursor (WRITE-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/projections.lua
     method: pause_projection
     modules: [sql, time]
     imports:
+      event_access: kickside.core.threads:event_access
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
       contract_common: kickside.core.threads:contract_common
@@ -918,10 +976,13 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads resume_projection — resume a paused/failed cursor and wake scheduler (WRITE-gated).
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/projections.lua
     method: resume_projection
     modules: [sql, time]
     imports:
+      event_access: kickside.core.threads:event_access
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
       contract_common: kickside.core.threads:contract_common
@@ -943,6 +1004,7 @@ entries:
     method: remove_projection
     modules: [sql, time]
     imports:
+      event_access: kickside.core.threads:event_access
       committed_error: kickside.contract:committed_error
       error_envelope: kickside.contract:error_envelope
       contract_common: kickside.core.threads:contract_common
@@ -962,6 +1024,8 @@ entries:
     kind: function.lua
     meta:
       comment: Thread events as a pullable source; payload is the declared event body, metadata stays on the item; integer cursor, READ-gated, reports source_gap below the prune boundary.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://events_pullable.lua
     method: pull
     modules: [sql, json, time]
@@ -977,6 +1041,8 @@ entries:
     method: authorize_writes
     modules: [sql, security, registry, uuid, json]
     imports:
+      threads_consts: kickside.core.threads:consts
+      event_declaration: kickside.core.threads:event_declaration
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
       threads_writer: kickside.core.threads.persist:writer

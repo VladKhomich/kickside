@@ -10,6 +10,7 @@ function M.reset(stage: string, source: any)
     M.releases, M.rollbacks, M.commits, M.calls, M.advances = 0, 0, 0, 0, 0
     M.failures, M.deterministic = 0, nil
     M.previous_error, M.forwarded_error = nil, nil
+    M.dialect_reads = 0
     M.debounce = stage == "first" or stage == "latest" or stage == "type" or stage == "begin"
         or stage == "complete" or stage == "commit" or stage == "time"
     M.proc = stage == "process_host" or stage == "proc"
@@ -36,11 +37,13 @@ function M.validate(_parsed: any, _system: any): (any, error?)
 end
 function M.requires_checkpoint_declaration(_err: any): boolean return false end
 function M.post_commit_binding(_binding: any): (any, error?)
-    return M.outcome("post_binding", M.stage == "post_run" and {} or nil)
+    return M.outcome("post_binding", (M.stage == "post_run" or M.stage == "stale_callback" or M.stage == "next_claim") and {} or nil)
 end
 function M.query_event_rows(...: any): (any, error?) return M.outcome("events", {{seq = 1}}) end
 function M.common(_batch: any): any return nil end
-function M.run(_binding: any, input: any): (any, error?)
+function M.run(_binding: any, input: any, before_dispatch: (() -> error?)?): (any, error?)
+    local fence_err = before_dispatch and before_dispatch()
+    if fence_err then return nil, fence_err end
     M.calls = M.calls + 1
     M.forwarded_error = input.cursor.last_error
     if M.stage == "failure" then return nil, errors.new({kind = errors.INVALID, message = "worker refusal",
@@ -73,14 +76,21 @@ function M.database(): any
                 return M.outcome("latest", {{created_at = "2099-01-01T00:00:00Z"}})
             end
             local row: any = {id = "cursor", job_id = "job", projection_id = "projection", thread_id = "thread",
-                body = "body", status = "active", event_count = 1, last_seq = 0, generation = 1,
+                body = "body", status = "active", event_count = 1, last_seq = M.advances > 0 and 1 or 0,
+                generation = M.stage == "stale_callback" and M.advances > 0 and 2 or 1,
+                thread_incarnation = "test-thread",
+                slot_execution_seq = M.stage == "next_claim" and M.advances > 0 and 2 or 1,
                 debounce_idle_ms = M.debounce and 1000 or 0, debounce_max_ms = 10000}
-            if statement:find("c.last_error", 1, true) then row.last_error = M.previous_error end
+            if statement:find("k.last_error", 1, true) then row.last_error = M.previous_error end
             if M.stage == "identity" then row.actor_id, row.execution_identity_json = "actor", "identity" end
             if M.stage == "position" then row.last_seq = nil end
             return M.outcome("snapshot", {row})
         end,
-        type = function(_self: any): (any, error?) return M.outcome("type", sql.type.SQLITE) end,
+        type = function(_self: any): (any, error?)
+            M.dialect_reads = (M.dialect_reads or 0) + 1
+            if M.dialect_reads == 2 then return M.outcome("type", sql.type.SQLITE) end
+            return sql.type.SQLITE, nil
+        end,
         release = function(_self: any): (any, error?)
             M.releases = M.releases + 1
             if M.release_source then return nil, M.release_source end

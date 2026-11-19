@@ -14,6 +14,9 @@ local clock = require("clock")
 local consts = require("threads_consts")
 local normalize = require("threads_normalize")
 local component = require("threads_component")
+local component_client = require("component_client")
+local event_declaration = require("event_declaration")
+local event_access = require("event_access")
 local masks = require("core_types")
 local autoinit = require("autoinit")
 local proj_writer = require("proj_writer")
@@ -65,7 +68,7 @@ end
 
 -- identity: { row?, system?, error? } from the contract's declared_identity.
 local function register_declared_projection(db: DB, thread_id: string, p: table, identity: { [string]: any },
-    transition_impl_id: string?): error?
+    transition_impl_id: string?, source: table?): error?
     local params = {
         kind = p.kind,
         worker_ref = p.worker_ref,
@@ -93,7 +96,7 @@ local function register_declared_projection(db: DB, thread_id: string, p: table,
     for _, row in ipairs(rows :: table[]) do
         if type(row.id) ~= "string" or row.id == "" then return declaration_response("cursor id") end
     end
-    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, "convergence", transition_impl_id)
+    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, "convergence", transition_impl_id, source)
     if proj_err then return errors.wrap(proj_err, "register declared projection") end
     if type(projection) ~= "table" then return declaration_response("registration") end
     return nil
@@ -115,14 +118,16 @@ function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_
     identity: { [string]: any }, indexes: table?, allow_transition: boolean?): error?
     local impl_id = trim(declaration_impl_id)
     if impl_id == "" then return nil end
-    if has_thread_projections(impl_id) then
-        local identity_err = declared_identity_error(identity)
-        if identity_err then return identity_err end
-    end
+    if not has_thread_projections(impl_id) then return nil end
+    local identity_err = declared_identity_error(identity)
+    if identity_err then return identity_err end
+    local restricted, policy_err = event_access.restricted(impl_id)
+    if policy_err then return policy_err end
+    local source = restricted and {write = true} or nil
     for index, p in ipairs(autoinit.projections_for_impl(impl_id)) do
         if (not indexes or indexes[tostring(index)])
             and (p.on == nil or p.on == "" or p.on == autoinit.PROJECTION_ON.THREAD) then
-            local proj_err = register_declared_projection(db, thread_id, p :: table, identity, allow_transition and impl_id or nil)
+            local proj_err = register_declared_projection(db, thread_id, p :: table, identity, allow_transition and impl_id or nil, source)
             if proj_err then return proj_err end
         end
     end
@@ -143,6 +148,7 @@ end
 type CreateResult = {
     thread: table,
     component_id: string,
+    binding: table?,
 }
 
 -- register_thread_component creates the COMPONENT of a new thread together with its
@@ -235,8 +241,8 @@ function M.ensure_thread_type(component_id: string, thread_class: string?): (boo
     return component.ensure_thread_type(component_id, thread_class)
 end
 
-local function authorize_completion(component_id: string, params: table, maintenance: boolean?): error?
-    if params.trusted_audit == true or maintenance == true then return nil end
+local function authorize_completion(component_id: string, maintenance: boolean?): error?
+    if maintenance == true then return nil end
     local allowed, access_err = component.has_access(component_id, (masks.ACCESS.WRITE :: integer))
     if access_err then return access_err :: error end
     if not allowed then
@@ -245,8 +251,8 @@ local function authorize_completion(component_id: string, params: table, mainten
     return nil
 end
 
-local function mark_thread_type(thread_id: string, thread_class: string, params: table, maintenance: boolean?): error?
-    if params.trusted_audit == true or maintenance == true then return nil end
+local function mark_thread_type(thread_id: string, thread_class: string, maintenance: boolean?): error?
+    if maintenance == true then return nil end
     local _, mark_err = M.ensure_thread_type(thread_id, thread_class)
     return mark_err
 end
@@ -287,13 +293,39 @@ local function rollback_transaction(tx: sql.Transaction, primary: error, operati
     return sql_boundary.rollback(tx, primary, operation, response_error, "rollback") :: error
 end
 
+local function component_kind(component_id: string): (string?, error?)
+    local rows, err = component_client.list_system({
+        component_ids = {component_id}, include = {meta = false}, limit = 1,
+    })
+    if err then return nil, err end
+    local impl_id = rows and rows[1] and trim(rows[1].impl_id) or ""
+    if impl_id == "" then
+        return nil, errors.new({message = "thread component kind not found", kind = errors.NOT_FOUND})
+    end
+    return impl_id, nil
+end
+
+local function attachment_declaration(stored: string, supplied: string): (string?, error?)
+    local events, err = event_declaration.load(stored)
+    if err then return nil, err end
+    -- A restricted source admits trusted projection setup only from its own
+    -- declaration. Ordinary threads keep explicit declaration convergence.
+    return events.read == "admin" and stored or supplied, nil
+end
+
+function M.convergence_kind(component_id: string, supplied: string): (string?, error?)
+    local stored, err = component_kind(component_id)
+    if err or not stored then return nil, err end
+    return attachment_declaration(stored, supplied)
+end
+
 -- create attaches a thread row to a component that ALREADY exists (component-first:
 -- the component service created it, e.g. an installed automation or a KB, or another
 -- creator won its registration) and completes it with attach. The thread is
 -- SECONDARY -- it attaches under the component's id (thread.id == component.id) and
 -- never registers/owns a component.
-function M.create(db: DB, params: table, actor_id: string?, identity: { [string]: any }, owner_principal: any?,
-    maintenance: boolean?): (CreateResult?, error?)
+local function create_thread(db: DB, params: table, actor_id: string?, identity: { [string]: any }, owner_principal: any?,
+    maintenance: boolean?, audit: boolean?): (CreateResult?, error?)
     params = type(params) == "table" and params or {}
 
     local component_id = normalize.trim(params.component_id) ~= "" and (params.component_id :: string)
@@ -301,19 +333,26 @@ function M.create(db: DB, params: table, actor_id: string?, identity: { [string]
     if component_id == "" then
         return nil, (errors.new({ message = "component_id is required: a thread is created for an existing component", kind = errors.INVALID }) :: error)
     end
+    local access_err = authorize_completion(component_id, maintenance)
+    if access_err then return nil, access_err end
     local impl_id = trim(params.impl_id)
-    if impl_id == "" and params.trusted_audit ~= true then
-        local stored_impl, impl_err = component.impl_id(component_id)
+    local stored_impl = impl_id
+    if not audit and (not maintenance or impl_id ~= "") then
+        local stored, impl_err = component_kind(component_id)
+        if impl_err and (not maintenance or not errors.is(impl_err, errors.NOT_FOUND)) then return nil, impl_err end
+        stored_impl = stored or impl_id
+    elseif not audit and impl_id == "" then
+        local stored, impl_err = component.impl_id(component_id)
         if impl_err then return nil, impl_err end
-        impl_id = trim(stored_impl)
+        stored_impl = trim(stored)
     end
-    local row, row_err = prepare_row(params, impl_id, actor_id, owner_principal)
+    local declaration_impl_id, declaration_err = attachment_declaration(stored_impl, impl_id)
+    if declaration_err then return nil, declaration_err end
+    local row_impl = declaration_impl_id ~= "" and declaration_impl_id or stored_impl
+    local row, row_err = prepare_row(params, row_impl, actor_id, owner_principal)
     if row_err or not row then return nil, row_err end
 
     local thread_id = component_id
-    local access_err = authorize_completion(component_id, params, maintenance)
-    if access_err then return nil, access_err end
-    local declaration_impl_id: string? = normalize.trim(params.impl_id) ~= "" and (params.impl_id :: string) or nil
     if has_thread_projections(declaration_impl_id) then
         local identity_err = declared_identity_error(identity)
         if identity_err then return nil, identity_err end
@@ -337,13 +376,25 @@ function M.create(db: DB, params: table, actor_id: string?, identity: { [string]
         return nil, errors.wrap(committed_error.new(commit_err), "failed to commit thread create")
     end
 
-    return M.attach(db, thread_id, params, actor_id, identity, maintenance)
+    return M.attach(db, thread_id, {impl_id = declaration_impl_id}, actor_id, identity, maintenance)
+end
+
+function M.create(db: DB, params: table, actor_id: string?, identity: { [string]: any }, owner_principal: any?,
+    maintenance: boolean?): (CreateResult?, error?)
+    return create_thread(db, params, actor_id, identity, owner_principal, maintenance)
+end
+
+-- Only the capability-checked audit publisher uses this entry point. It has
+-- already resolved the existing component and its owner.
+function M.create_audit(db: DB, params: table, actor_id: string?, identity: { [string]: any },
+    owner_principal: any?): (CreateResult?, error?)
+    return create_thread(db, params, actor_id, identity, owner_principal, true, true)
 end
 
 local function complete_thread(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
     maintenance: boolean?, indexes: table?): (CreateResult?, error?)
     params = type(params) == "table" and params or {}
-    local access_err = authorize_completion(thread_id, params, maintenance)
+    local access_err = authorize_completion(thread_id, maintenance)
     if access_err then return nil, access_err end
     local declaration_impl_id: string? = normalize.trim(params.impl_id) ~= "" and (params.impl_id :: string) or nil
 
@@ -357,7 +408,11 @@ local function complete_thread(db: DB, thread_id: string, params: table, actor_i
         end
     end
 
-    local rows, rows_err = db:query("SELECT * FROM kickside_thread WHERE id = $1", { thread_id })
+    local key, key_err = event_access.component_key(db)
+    if key_err then return nil, key_err end
+    local rows, rows_err = db:query("SELECT t.*, " .. table.concat(event_access.binding_columns, ",", 2)
+        .. " FROM kickside_thread t LEFT JOIN " .. event_access.component_join(key :: string)
+        .. " WHERE t.id = $1", {thread_id})
     if rows_err then
         return nil, errors.wrap(rows_err, "read created thread")
     end
@@ -380,10 +435,13 @@ local function complete_thread(db: DB, thread_id: string, params: table, actor_i
     -- the thread is complete, its component advertises to the thread list/picker.
     -- Idempotent (a no-op once the marker is set, e.g. a thread-first component
     -- register already set it).
-    local mark_err = mark_thread_type(thread_id, tostring(thread.thread_class), params, maintenance)
+    local mark_err = mark_thread_type(thread_id, tostring(thread.thread_class), maintenance)
     if mark_err then return nil, mark_err end
 
-    return { thread = thread, component_id = thread_id }, nil
+    local binding = {component_id = thread.component_id, component_impl_id = thread.component_impl_id,
+        component_incarnation = thread.component_incarnation, thread_incarnation = thread.thread_incarnation}
+    thread.component_impl_id, thread.component_incarnation, thread.thread_incarnation = nil, nil, nil
+    return {thread = thread, component_id = thread_id, binding = binding}, nil
 end
 
 function M.finish(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
@@ -401,13 +459,13 @@ function M.complete(db: DB, thread_id: string, params: table, actor_id: string?,
         local _, complete_err = complete_thread(db, thread_id, params, actor_id, identity, maintenance, indexes)
         return complete_err
     end
-    local access_err = authorize_completion(thread_id, params, maintenance)
+    local access_err = authorize_completion(thread_id, maintenance)
     if access_err then return access_err end
     local declaration_err = M.apply_thread_declaration(db, thread_id, params.impl_id, identity, indexes)
     if declaration_err then return declaration_err end
     -- Output-authorized emits and audit writes intentionally skip public markers.
     -- Keep their retained-thread path free of the marker lookup as well.
-    if params.trusted_audit == true or maintenance == true then return nil end
+    if maintenance == true then return nil end
 
     local rows, read_err = db:query("SELECT thread_class FROM kickside_thread WHERE id = $1", { thread_id })
     if read_err then return errors.wrap(read_err, "read completed thread") end
@@ -420,7 +478,7 @@ function M.complete(db: DB, thread_id: string, params: table, actor_id: string?,
     end
     thread, read_err = error_envelope.binding(thread, nil, nil, "read completed thread row", "completed_thread_row_invalid")
     if read_err then return read_err end
-    return mark_thread_type(thread_id, tostring(thread.thread_class), params, maintenance)
+    return mark_thread_type(thread_id, tostring(thread.thread_class), maintenance)
 end
 
 -- attach completes the row of a new thread. Failure purges that row before the

@@ -14,7 +14,7 @@ local function run_case(mode: string)
     local id = uuid.v7()
     local head = 1
     assert(db:execute([[INSERT INTO kickside_thread
-        (id,thread_class,component_id,event_count) VALUES ($1,'test',$2,$3)]], { id, id, head }))
+        (id,thread_class,component_id,event_count) VALUES ($1,'test','',$2)]], { id, head }))
     if head > 0 then
         assert(db:execute([[INSERT INTO kickside_event
             (id,thread_id,type,role,body,seq) VALUES ($1,$2,'test:event','user','{}',1)]], { uuid.v7(), id }))

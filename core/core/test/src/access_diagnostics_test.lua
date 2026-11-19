@@ -23,7 +23,7 @@ local function invoke(route: string): any
     local response = {set_content_type = function() end, set_status = function(_, value) captured.status = value end,
         write_json = function(_, value) captured.body = value end}
     local work = {pause = fixture.work, resume = fixture.work, remove_projection = fixture.work,
-        list_projections = fixture.work, find_by_thread = fixture.work, upsert = fixture.work}
+        list_projections = fixture.read_projection_page, find_by_thread = fixture.work, upsert = fixture.work}
     local dependencies = {http = {request = function() return request end, response = function() return response end,
         STATUS = http.STATUS, CONTENT = http.CONTENT}, sql = {get = fixture.get}, thread_access = fixture.gate,
         writer = work, reader = work, repo = work}

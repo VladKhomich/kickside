@@ -93,7 +93,7 @@ entries:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": { \"threads\": { \"type\": \"array\", \"items\": { \"type\": \"object\" } } },\n  \"required\": [\"threads\"]\n}\n"
       - name: list_events
-        description: Read one page of a thread's event log after a READ access check. Newest-first by default; window via before/from_seq/to_seq/limit/ascending/event_type. A from_seq at or below the prune boundary returns no events and a source_gap with the earliest available sequence.
+        description: Read one page of a thread's event log with component READ, or ADMIN when the kind declares events.read as admin. Newest-first by default; window via before/from_seq/to_seq/limit/ascending/event_type. A from_seq at or below the prune boundary returns no events and a source_gap with the earliest available sequence.
         input_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"before\": { \"type\": \"integer\" },\n    \"from_seq\": { \"type\": \"integer\" },\n    \"to_seq\": { \"type\": \"integer\" },\n    \"limit\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 1000, \"default\": 200 },\n    \"ascending\": { \"type\": \"boolean\" },\n    \"event_type\": { \"type\": \"string\" }\n  },\n  \"required\": [\"thread_id\"]\n}\n"
@@ -119,7 +119,7 @@ entries:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"max_pruned_seq\": { \"type\": \"integer\", \"minimum\": 0 }\n  },\n  \"required\": [\"thread_id\", \"max_pruned_seq\"]\n}\n"
       - name: find_event_by_external
-        description: Resolve one event by its exact durable external identity after a READ access check. A missing external_version matches only an unversioned event. With latest=true and no version, resolve the newest retained event for the same external identity within the authorized thread.
+        description: Resolve one event by its durable external identity with component READ, or ADMIN when the kind declares events.read as admin. A missing external_version matches only an unversioned event. With latest=true and no version, resolve the newest retained event for the same external identity within the authorized thread.
         input_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"event_type\": { \"type\": \"string\" },\n    \"external_source\": { \"type\": \"string\" },\n    \"external_id\": { \"type\": \"string\" },\n    \"external_version\": { \"type\": \"string\" },\n    \"latest\": { \"type\": \"boolean\" }\n  },\n  \"required\": [\"thread_id\", \"event_type\", \"external_source\", \"external_id\"]\n}\n"
@@ -168,7 +168,7 @@ entries:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": { \"classes\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } }, \"next_cursor\": { \"type\": \"string\" } },\n  \"required\": [\"classes\"]\n}\n"
       - name: register_projection
-        description: Define a projection + cursor on a thread. Requires WRITE access. Reversible via remove_projection.
+        description: Define a projection + cursor on a thread. Requires WRITE and also ADMIN when the kind declares events.read as admin. Reversible via remove_projection.
         input_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"kind\": { \"type\": \"string\" },\n    \"projection_key\": { \"type\": \"string\" },\n    \"cursor_key\": { \"type\": \"string\" },\n    \"worker_ref\": { \"type\": \"string\", \"description\": \"func:// or proc:// worker the cursor advances through.\" },\n    \"worker_runtime\": { \"type\": \"string\" },\n    \"worker_input_mode\": { \"type\": \"string\" },\n    \"worker_config\": { \"type\": \"object\" },\n    \"batch_size\": { \"type\": \"integer\" },\n    \"start_seq\": { \"type\": \"integer\" },\n    \"reset\": { \"type\": \"boolean\" }\n  },\n  \"required\": [\"thread_id\", \"kind\", \"worker_ref\"]\n}\n"
@@ -176,7 +176,7 @@ entries:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"projection_id\": { \"type\": \"string\" },\n    \"projection\": { \"type\": \"object\" },\n    \"rollback\": { \"type\": [\"object\", \"null\"] }\n  },\n  \"required\": [\"thread_id\", \"projection_id\", \"projection\"]\n}\n"
       - name: list_projections
-        description: List projection definitions and cursors after READ access. Each array reports exhaustion and its own continuation cursor.
+        description: List projection definitions and cursors with component READ, or ADMIN when the kind declares events.read as admin. Each array reports exhaustion and its own continuation cursor.
         input_schemas:
           - format: application/schema+json
             definition: |
@@ -251,7 +251,7 @@ entries:
                 ]
               }
       - name: get_projection_cursor
-        description: Read one projection and cursor at their declared address. Requires READ access; absence returns NOT_FOUND.
+        description: Read one projection and cursor at their declared address. Requires component READ, or ADMIN when the kind declares events.read as admin. Absence returns NOT_FOUND.
         input_schemas:
           - format: application/schema+json
             definition: |
@@ -278,7 +278,7 @@ entries:
                 }
               }, "required": ["thread_id", "projection", "cursor"] }
       - name: catch_up_projection
-        description: Wake one projection slot and wait for its cursor after a READ check. The optional RFC3339 deadline bounds the wait; expiry returns a retriable failure. Used by durable writers for projection-backed read-after-write consistency.
+        description: Wake one projection slot and wait for its cursor with component READ, or ADMIN when the kind declares events.read as admin. The optional RFC3339 deadline bounds the wait; expiry returns a retriable failure. Used by durable writers for projection-backed read-after-write consistency.
         input_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"kind\": { \"type\": \"string\" },\n    \"projection_key\": { \"type\": \"string\" },\n    \"cursor_key\": { \"type\": \"string\" },\n    \"max_ticks\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 1000, \"default\": 20 },\n    \"deadline\": { \"type\": \"string\", \"format\": \"date-time\", \"description\": \"The caller's deadline; the wait ends there with a retriable failure.\" }\n  },\n  \"required\": [\"thread_id\", \"kind\"]\n}\n"
@@ -286,7 +286,7 @@ entries:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"event_count\": { \"type\": \"integer\" },\n    \"projection_id\": { \"type\": \"string\" },\n    \"cursor_id\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\" },\n    \"last_seq\": { \"type\": \"integer\" },\n    \"target_seq\": { \"type\": \"integer\" },\n    \"processed\": { \"type\": \"integer\" },\n    \"ticks\": { \"type\": \"integer\" },\n    \"max_ticks\": { \"type\": \"integer\" },\n    \"done\": { \"type\": \"boolean\" },\n    \"reason\": { \"type\": \"string\" },\n    \"error\": { \"type\": \"string\" }\n  },\n  \"required\": [\"thread_id\", \"projection_id\", \"cursor_id\", \"ticks\", \"max_ticks\"]\n}\n"
       - name: pause_projection
-        description: Pause a projection cursor by cursor_id or natural address. Requires WRITE access.
+        description: Pause a projection cursor by cursor_id or natural address. Requires WRITE and also ADMIN when the kind declares events.read as admin.
         input_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"cursor_id\": { \"type\": \"string\" },\n    \"kind\": { \"type\": \"string\" },\n    \"projection_key\": { \"type\": \"string\" },\n    \"cursor_key\": { \"type\": \"string\" }\n  },\n  \"required\": [\"thread_id\"]\n}\n"
@@ -294,7 +294,7 @@ entries:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"cursor_id\": { \"type\": \"string\" },\n    \"projection_id\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\" },\n    \"already_paused\": { \"type\": \"boolean\" }\n  },\n  \"required\": [\"thread_id\", \"cursor_id\", \"projection_id\", \"status\"]\n}\n"
       - name: resume_projection
-        description: Resume recoverable cursors and wake when state changes; active cursors keep their status. Requires WRITE access.
+        description: Resume recoverable cursors and wake when state changes; active cursors keep their status. Requires WRITE and also ADMIN when the kind declares events.read as admin.
         input_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"cursor_id\": { \"type\": \"string\" },\n    \"kind\": { \"type\": \"string\" },\n    \"projection_key\": { \"type\": \"string\" },\n    \"cursor_key\": { \"type\": \"string\" }\n  },\n  \"required\": [\"thread_id\"]\n}\n"

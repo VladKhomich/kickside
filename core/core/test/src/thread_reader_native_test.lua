@@ -6,8 +6,8 @@ local routes = {
     {name = "get", stage = "query"}, {name = "gate", stage = "query"},
     {name = "prune", stage = "query"}, {name = "component", stage = "query"},
     {name = "list", stage = "query"}, {name = "classes", stage = "query"},
-    {name = "events", stage = "query", fail_at = 2}, {name = "events", stage = "query", fail_at = 3},
-    {name = "external", stage = "query", fail_at = 2}, {name = "children", stage = "query", fail_at = 2},
+    {name = "events", stage = "query"},
+    {name = "external", stage = "query"}, {name = "children", stage = "query", fail_at = 2},
     {name = "edges", stage = "query", fail_at = 2}, {name = "children", stage = "type"},
     {name = "edges", stage = "type"}, {name = "get", stage = "decode"},
     {name = "loaded", stage = "decode"}, {name = "get", stage = "access"},
@@ -62,7 +62,6 @@ local function proofs()
         {name = "list", stage = "query", field = "list.rows"},
         {name = "classes", stage = "query", field = "classes.rows"},
         {name = "events", stage = "query", fail_at = 2, field = "events.rows"},
-        {name = "events", stage = "query", fail_at = 3, field = "prune.rows"},
         {name = "external", stage = "query", fail_at = 2, field = "external.rows"},
         {name = "children", stage = "query", fail_at = 2, field = "children.rows"},
         {name = "edges", stage = "query", fail_at = 2, field = "edges.rows"},
@@ -114,12 +113,26 @@ local function proofs()
     end)
     for _, name in ipairs({"component", "external", "list", "classes", "children", "edges"}) do
         test.it("legitimate absence stays empty/" .. name, function()
-            local route: any = {name = name, stage = "query", fail_at = (name == "external" or name == "children" or name == "edges") and 2 or 1}
+            local route: any = {name = name, stage = "query",
+                fail_at = (name == "children" or name == "edges" or name == "external") and 2 or 1}
             fixture.reset(route, nil)
-            fixture.missing, fixture.proof = true, {}
+            fixture.missing, fixture.proof = true, name == "external"
+                and {{component_id = "component", component_impl_id = "kickside.core:thread", component_incarnation = "test-component",
+                    thread_incarnation = "test-thread", payload_allowed = 1}} or {}
             local result, err = invoke(route)
             test.is_nil(err)
             if name == "component" or name == "external" then test.is_nil(result) else test.eq(#result, 0) end
+        end)
+    end
+    for _, name in ipairs({"events", "external"}) do
+        test.it(name .. " reads its payload and component ACL in one statement after selecting a binding", function()
+            fixture.reset({name = name, stage = ""}, nil)
+            local result, err = invoke({name = name})
+            test.is_nil(err); test.not_nil(result)
+            test.eq(fixture.queries, 2)
+            for _, source in ipairs({"kickside_thread", "kickside_components", "kickside_component_access", "kickside_event"}) do
+                test.not_nil(fixture.last_statement:find(source, 1, true))
+            end
         end)
     end
 end

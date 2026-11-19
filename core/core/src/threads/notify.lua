@@ -14,6 +14,8 @@ local sql = require("sql")
 local consts = require("consts")
 local funcs = require("funcs")
 local env = require("threads_env")
+local event_access = require("event_access")
+local event_declaration = require("event_declaration")
 
 local notify = {}
 
@@ -38,10 +40,18 @@ type ThreadAttrs = {
     audience_principals: { any }?,
 }
 
+type StoredThread = {
+    attrs: ThreadAttrs | string | nil,
+    component_id: string?,
+    component_impl_id: string?,
+    component_incarnation: string?,
+    thread_incarnation: string?,
+}
+
 type Transport = {
     lookup: (string) -> (any?, error?),
     send: (any, string, any) -> (any?, error?),
-    load_attrs: (string) -> (ThreadAttrs | string | nil, error?),
+    load_thread: (string) -> (StoredThread?, error?),
 }
 
 local default_lookup = process.registry.lookup :: (string) -> (any?, error?)
@@ -51,7 +61,7 @@ local function default_send(pid: any, topic: string, payload: any): (any?, error
 end
 
 -- The stored attrs of one thread; a thread without a row has no audience.
-local function default_load_attrs(thread_id: string): (ThreadAttrs | string | nil, error?)
+local function default_load_thread(thread_id: string): (StoredThread?, error?)
     local db, db_err = sql.get(env.db_id() :: string)
     if db_err then return nil, errors.wrap(db_err, "thread audience db unavailable") end
     if not db then
@@ -59,16 +69,23 @@ local function default_load_attrs(thread_id: string): (ThreadAttrs | string | ni
             kind = errors.INTERNAL, retryable = false,
             details = {code = "thread_audience_database_response", field = "sql.get"}})
     end
-    local rows, query_err = db:query("SELECT attrs FROM kickside_thread WHERE id=$1", { thread_id })
+    local component_key, key_err = event_access.component_key(db)
+    if key_err then db:release(); return nil, key_err end
+    local rows, query_err = db:query([[
+        SELECT t.attrs, ]] .. table.concat(event_access.binding_columns, ",") .. [[
+          FROM kickside_thread t
+          LEFT JOIN ]] .. event_access.component_join(component_key :: string) .. [[
+         WHERE t.id=$1
+    ]], { thread_id })
     db:release()
     if query_err then
         return nil, errors.wrap(query_err, "thread audience lookup failed")
     end
     local row = rows and (rows :: { table })[1] or nil
-    return row and row.attrs or nil, nil
+    return row :: StoredThread?, nil
 end
 
-local default_transport: Transport = { lookup = default_lookup, send = default_send, load_attrs = default_load_attrs }
+local default_transport: Transport = { lookup = default_lookup, send = default_send, load_thread = default_load_thread }
 
 -- Shape accepted by emit_thread_update. thread_id is required; everything else
 -- is optional. event/data/thread are caller-defined payload bodies relayed
@@ -87,6 +104,7 @@ type EmitPayload = {
     event: any?,
     data: any?,
     thread: any?,
+    binding: table?,
 }
 
 -- The message delivered to each hub, carrying the typed payload envelope. topic
@@ -302,9 +320,16 @@ local function emit_thread_update(payload_raw: EmitPayload | string | nil, trans
     end
     local topics = notify.build_topics(thread_id, topic, payload_type, projection_kind)
 
-    local stored_attrs, attrs_err = transport.load_attrs(thread_id)
-    if attrs_err then return nil, attrs_err end
-    local user_ids = notify.resolve_user_ids(stored_attrs)
+    local row, read_err = transport.load_thread(thread_id)
+    if read_err then return nil, read_err end
+    local bodies = row ~= nil and row.component_id == ""
+    if row and row.component_incarnation and row.component_impl_id and type(payload.binding) == "table"
+        and event_access.same_binding(payload.binding, row) then
+        local restricted, policy_err = event_declaration.read_policy(row.component_impl_id)
+        if policy_err then return nil, policy_err end
+        bodies = not restricted
+    end
+    local user_ids = notify.resolve_user_ids(row and row.attrs or nil)
 
     local event_type = trim(payload.event_type)
     if event_type == "" then
@@ -327,6 +352,10 @@ local function emit_thread_update(payload_raw: EmitPayload | string | nil, trans
         thread = payload.thread,
         ts = time.now():utc():format(time.RFC3339),
     }
+
+    if not bodies then
+        message.event, message.data, message.thread, message.seq = nil, nil, nil, nil
+    end
 
     local delivered = 0
     local failed = 0
