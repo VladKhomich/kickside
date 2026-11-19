@@ -28,6 +28,7 @@ import { logError, notifyModulesChanged } from './modules-page-utils.ts'
 import { useInstallRequirements } from './useInstallRequirements.ts'
 import { useInstallSecurityScan } from './useInstallSecurityScan.ts'
 import { requiredSetupDescriptors, runRequiredSetups } from './requiredSetup.ts'
+import { APP_COMPONENT, keeperFirstMessage, legacyKeeperForAppUpdate } from './app-update-prerequisite.ts'
 
 export type SectionKey = 'overview' | 'modules' | 'requirements' | 'scan' | 'review'
 export type VersionMode = 'pin' | 'track'
@@ -252,6 +253,10 @@ export function useInstallDialog(props: InstallDialogProps, emit: { (e: 'close')
     if (!dryRun) startProgress()
     let changed = false
     try {
+      if (!dryRun && props.mode === 'update' && props.component === APP_COMPONENT) {
+        if (await legacyKeeperForAppUpdate(hub)) throw new Error(keeperFirstMessage)
+        if (!isCurrent()) return
+      }
       const res = await hub.install({
         component: props.component,
         version: versionArg(),

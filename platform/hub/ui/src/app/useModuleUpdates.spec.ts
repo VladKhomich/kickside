@@ -139,3 +139,105 @@ describe('Update all status refresh', () => {
     expect(f.updates.updateAllRunning.value).toBe(false)
   })
 })
+
+function appFixture(version: string, offerKeeper = false) {
+  const app = { id: 'app.deps:kickside', namespace: 'app.deps', name: 'kickside',
+    component: 'kickside/kickside', version: '0.2.46', dependencyId: 'app.deps:kickside', is_root: true, used_by: [] }
+  const keeper = { id: 'app.deps:keeper', namespace: 'app.deps', name: 'keeper', component: 'keeper/keeper',
+    version, dependencyId: 'app.deps:keeper', is_root: true, used_by: [],
+    parameters: [{ name: 'keeper.hub:api_router', value: 'app:api' }] }
+  const state = {
+    success: true, dependencies: [keeper, app],
+    modules: [{ name: keeper.component, version }, { name: app.component, version: app.version }],
+  }
+  const payload = { dependencies: [{ id: keeper.id, component: keeper.component,
+    version: '>=0.5.116', parameters: keeper.parameters }], run_migrations: true, migration_policy: 'up' as const }
+  const appPayload = { component: app.component, version: '>=0.2.47', parameters: [{ name: 'title', value: 'Local title' }] }
+  const appPlan = { success: true, applicable: true, dependency: app, install_payload: appPayload }
+  const events: string[] = []
+  const hub = {
+    listDependencies: vi.fn(async () => state),
+    securityProjectionStatus: vi.fn(async () => ({ current: true })),
+    planInstall: vi.fn(async () => {
+      events.push('plan-app')
+      return appPlan
+    }),
+    planBatchInstall: vi.fn(async (body: { dependencies: { component: string }[] }) => {
+      events.push('plan-' + body.dependencies.map(row => row.component).join(','))
+      if (body.dependencies.length === 1 && body.dependencies[0].component === keeper.component) {
+        return { success: true, applicable: true, install_payload: payload,
+          plans: [{ success: true, dependency: keeper, graph: [{ module: keeper.component, version: '0.5.116' }] }] }
+      }
+      return { success: true, applicable: true, install_payload: body, plans: [appPlan] }
+    }),
+    install: vi.fn(async (body: { component?: string, dependencies?: { component: string }[] }) => {
+      if (body.dependencies?.length === 1 && body.dependencies[0].component === keeper.component) {
+        events.push('apply-keeper')
+        state.modules[0].version = '0.5.116'
+      } else {
+        events.push('apply-app')
+      }
+      return { success: true }
+    }),
+  }
+  const showToast = vi.fn()
+  const updates = useModuleUpdates({ hub: hub as unknown as ReturnType<typeof keeperHub>,
+    installed: ref([app, keeper]), installedError: ref(null), installedCanUpdate: () => true,
+    installedIsRoot: () => true, notifyModulesChanged: vi.fn(), showToast,
+    refreshAll: async () => {}, refreshSelectedDetail: async () => {} })
+  updates.updateScan.value[app.component] = { component: app.component, currentVersion: app.version,
+    latestVersion: '0.2.47', status: 'available' }
+  if (offerKeeper) updates.updateScan.value[keeper.component] = { component: keeper.component, currentVersion: version,
+    latestVersion: '0.5.116', status: 'available' }
+  return { app, keeper, state, payload, appPlan, appPayload, events, hub, updates, showToast }
+}
+
+describe('KickSide updates across the Keeper safety floor', () => {
+  it('stages and verifies Keeper before replanning a single App update, even with only App offered', async () => {
+    const f = appFixture('0.5.115')
+    expect(f.updates.availableUpdates.value.map(row => row.component)).toEqual(['kickside/kickside'])
+    expect(await f.updates.updateInstalledDependency(f.app)).toBe(true)
+    expect(f.events).toEqual(['plan-app', 'plan-keeper/keeper', 'apply-keeper', 'plan-app', 'apply-app'])
+    expect(f.hub.install.mock.calls[0][0]).toBe(f.payload)
+    expect(f.hub.install.mock.calls[1][0]).toMatchObject(f.appPayload)
+    expect(f.hub.listDependencies).toHaveBeenCalledTimes(2)
+    expect(f.hub.securityProjectionStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('preflights all roots and discards the old batch after staging Keeper', async () => {
+    const f = appFixture('0.5.114', true)
+    await f.updates.updateAllAvailable()
+    expect(f.events).toEqual(['plan-kickside/kickside,keeper/keeper', 'plan-keeper/keeper',
+      'apply-keeper', 'plan-kickside/kickside', 'apply-app'])
+    expect(f.hub.install.mock.calls[0][0]).toBe(f.payload)
+    expect(f.hub.install.mock.calls[1][0].dependencies?.map(row => row.component)).toEqual(['kickside/kickside'])
+    expect(f.showToast).toHaveBeenCalledWith('ok', 'Updated 2 modules')
+  })
+
+  it('blocks known missing App settings before staging Keeper', async () => {
+    const f = appFixture('0.5.114')
+    f.hub.planInstall.mockResolvedValueOnce({ ...f.appPlan, applicable: false,
+      missing_requirements: ['app:storage'] } as typeof f.appPlan)
+    expect(await f.updates.updateInstalledDependency(f.app)).toBe(false)
+    expect(f.hub.planBatchInstall).not.toHaveBeenCalled()
+    expect(f.hub.install).not.toHaveBeenCalled()
+    expect(f.updates.updateScan.value[f.app.component].message).toContain('app:storage')
+  })
+
+  it('leaves a completed Keeper prerequisite in place if the new App plan is blocked', async () => {
+    const f = appFixture('0.5.115')
+    f.hub.planInstall.mockResolvedValueOnce(f.appPlan).mockResolvedValueOnce({ ...f.appPlan, applicable: false })
+    expect(await f.updates.updateInstalledDependency(f.app)).toBe(false)
+    expect(f.events).toEqual(['plan-keeper/keeper', 'apply-keeper'])
+    expect(f.updates.updateScan.value[f.keeper.component].status).toBe('updated')
+    expect(f.updates.updateScan.value[f.app.component].message).toContain('Keeper was updated')
+  })
+
+  it('uses the ordinary batch path once the actual Keeper is safe', async () => {
+    const f = appFixture('0.5.116')
+    f.state.dependencies[0].version = '>=0.5.114'
+    await f.updates.updateAllAvailable()
+    expect(f.events).toEqual(['plan-kickside/kickside', 'apply-app'])
+    expect(f.hub.securityProjectionStatus).not.toHaveBeenCalled()
+  })
+})
