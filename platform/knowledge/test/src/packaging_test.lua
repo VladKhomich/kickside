@@ -26,7 +26,7 @@ local EXPECTED: { [string]: { string } } = {
     ["kickside.knowledge:dep.kickside.component"] = { "kickside/component", ">=0.3.12" },
     ["kickside.knowledge:dep.kickside.execution"] = { "kickside/execution", "*" },
     ["kickside.knowledge:dep.kickside.contract"] = { "kickside/contract", ">=0.3.9" },
-    ["kickside.knowledge:dep.kickside.core"] = { "kickside/core", "*" },
+    ["kickside.knowledge:dep.kickside.core"] = { "kickside/core", ">=0.3.29" },
     ["kickside.knowledge:dep.kickside.models"] = { "kickside/models", ">=0.1.83" },
     ["kickside.knowledge:dep.kickside.uploads"] = { "kickside/uploads", "*" },
     ["kickside.knowledge:dep.wippy.agent"] = { "wippy/agent", "*" },
