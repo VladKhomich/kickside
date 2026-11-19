@@ -261,6 +261,7 @@ return {run = test.run_cases(function()
             assert(db:execute("ALTER TABLE kickside_upload_artifact_blobs RENAME TO unavailable_artifact_blobs"))
             local _, native = db:query("SELECT blob_id FROM kickside_upload_artifact_blobs")
             local primary_ok, primary, primary_err = pcall(artifact_parts.read_primary_content, id)
+            local list_ok, found, list_err = pcall(artifact_parts.list_artifacts, id)
             local blob_ok, blob, blob_err = pcall(artifacts.read_blob, id)
             local artifact_ok, artifact, artifact_err = pcall(artifacts.read_artifact_content, id, id)
             assert(db:execute("ALTER TABLE unavailable_artifact_blobs RENAME TO kickside_upload_artifact_blobs"))
@@ -273,8 +274,11 @@ return {run = test.run_cases(function()
             test.is_nil(primary)
             test.is_nil(blob)
             test.is_nil(artifact)
+            test.is_true(list_ok, tostring(found))
+            test.is_nil(found)
             for _, failure in ipairs({
                 {operation = "primary", error = primary_err},
+                {operation = "list", error = list_err},
                 {operation = "blob", error = blob_err},
                 {operation = "artifact", error = artifact_err},
             }) do

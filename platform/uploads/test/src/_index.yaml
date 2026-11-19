@@ -1106,7 +1106,7 @@ entries:
     meta: {type: test, suite: uploads}
     source: file://referenced_upload_access_test.lua
     method: run
-    modules: [uuid, security, funcs, fs, sql, registry, http_client, contract]
+    modules: [uuid, security, funcs, fs, sql, registry, http_client, contract, json]
     imports:
       test: wippy.test:test
       records: kickside.uploads.persist:upload_record_repo

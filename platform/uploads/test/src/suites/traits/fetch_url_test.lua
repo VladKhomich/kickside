@@ -282,19 +282,34 @@ local function define_tests()
             test.eq(err:details().artifact_id, artifact.artifact_id)
         end)
 
-        test.it("wait returns a tool error when the derived artifacts cannot be listed", function()
-            base_deps(function(deps)
-                deps.http.get = function()
-                    return { status_code = 200, headers = { ["content-type"] = "application/pdf" }, body = "%PDF" }, nil
-                end
-                deps.read_model.get_for_actor = function() return { status = "completed", mime_type = "text/markdown" } end
-                deps.artifacts.list_artifacts = function() return nil, "failed to list artifacts: database is unavailable" end
-            end)
+        test.it("wait preserves the artifact list failure without exposing its diagnostic", function()
+            local diagnostic = "fetch-url-private-artifact-list"
+            for _, fixture in ipairs({
+                {failure = errors.new({kind = errors.UNAVAILABLE, retryable = true, message = diagnostic,
+                    details = {code = diagnostic, storage_path = diagnostic}}), kind = errors.UNAVAILABLE, retryable = true},
+                {failure = diagnostic, kind = errors.INTERNAL},
+            }) do
+                local calls = base_deps(function(deps)
+                    deps.http.get = function()
+                        return {status_code = 200, headers = {["content-type"] = "application/pdf"}, body = "%PDF"}, nil
+                    end
+                    deps.read_model.get_for_actor = function() return {status = "completed", mime_type = "text/markdown"} end
+                    deps.artifacts.list_artifacts = function() return nil, fixture.failure end
+                end)
 
-            local result, err = handler.handle({ url = "https://example.com/doc.pdf", wait = true })
-            test.is_nil(result)
-            test.is_true(errors.is(err, errors.INTERNAL))
-            test.contains(tostring(err), "database is unavailable")
+                local result, err = handler.handle({url = "https://example.com/doc.pdf", wait = true})
+                test.is_nil(result)
+                test.eq(err:kind(), fixture.kind, tostring(err))
+                test.eq(err:retryable(), fixture.retryable)
+                test.eq(err:message(), "processed upload could not be read: artifact list is unavailable")
+                test.is_nil(tostring(err):find(diagnostic, 1, true), tostring(err))
+                local details = err:details()
+                test.eq(details.code, "artifact_list_failed")
+                test.eq(details.upload_id, "upload-1")
+                test.is_nil(details.cause)
+                test.is_nil(details.storage_path)
+                test.eq(calls.upload_file, 1)
+            end
         end)
 
         test.it("wait returns a tool error when processing fails", function()

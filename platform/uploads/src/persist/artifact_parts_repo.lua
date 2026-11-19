@@ -211,7 +211,7 @@ function artifact_parts_repo.list_artifacts(upload_id)
         :query()
 
     db:release()
-    if query_err then return nil, "failed to list artifacts: " .. query_err end
+    if query_err then return nil, errors.wrap(query_err, "failed to list artifacts") end
     for _, row in ipairs(rows) do
         local _, decode_err = artifact_content_repo.normalize_artifact_row(row)
         if decode_err then return nil, decode_err end

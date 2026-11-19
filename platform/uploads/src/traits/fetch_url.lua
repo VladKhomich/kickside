@@ -142,6 +142,17 @@ local function wait_for_terminal(actor_id, upload_id, timeout_seconds)
     end
 end
 
+local function completed_artifact_error(err, upload_id, artifact_id, code, message)
+    local diagnostic = binding_errors.artifact_diagnostic(err, upload_id, artifact_id)
+    diagnostic.code = diagnostic.code or code
+    log:warn("Failed to read completed upload artifacts", diagnostic)
+    local retryable
+    if type(err) == "userdata" then retryable = (err :: error):retryable() end
+    return errors.new({kind = diagnostic.kind, retryable = retryable,
+        message = "processed upload could not be read: " .. message,
+        details = {code = diagnostic.code, upload_id = upload_id, artifact_id = artifact_id}})
+end
+
 -- Surface what a completed upload exposes: the extracted primary text and the
 -- references of every derived artifact. An upload without primary text (an
 -- image, for one) has no markdown; any other read failure is the caller's error.
@@ -150,13 +161,8 @@ local function completed_extras(upload_id, content_type)
 
     local primary, primary_err, artifact_id = M.deps.artifacts.read_primary_content(upload_id)
     if primary_err and not artifact_parts_repo.is_primary_artifact_missing(primary_err) then
-        local diagnostic = binding_errors.artifact_diagnostic(primary_err, upload_id, artifact_id)
-        log:warn("Failed to read primary artifact", diagnostic)
-        local retryable
-        if type(primary_err) == "userdata" then retryable = (primary_err :: error):retryable() end
-        return nil, errors.new({kind = diagnostic.kind, retryable = retryable,
-            message = "processed upload could not be read: primary artifact is unreadable",
-            details = {code = diagnostic.code or "artifact_read_failed", upload_id = upload_id, artifact_id = artifact_id}})
+        return nil, completed_artifact_error(primary_err, upload_id, artifact_id,
+            "artifact_read_failed", "primary artifact is unreadable")
     end
     if primary and type(primary.content) == "string" then
         local mime = primary.mime_type or content_type or ""
@@ -168,8 +174,8 @@ local function completed_extras(upload_id, content_type)
 
     local artifacts, artifacts_err = M.deps.artifacts.list_artifacts(upload_id)
     if artifacts_err then
-        return nil, errors.new({message = "processed upload could not be read: " .. tostring(artifacts_err),
-            kind = errors.INTERNAL, details = {upload_id = upload_id}})
+        return nil, completed_artifact_error(artifacts_err, upload_id, nil,
+            "artifact_list_failed", "artifact list is unavailable")
     end
     if #artifacts > 0 then
         local refs = {}
