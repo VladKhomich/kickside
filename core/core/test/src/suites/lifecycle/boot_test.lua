@@ -80,10 +80,9 @@ local function define_startup_tests()
             if not ok then error(failure) end
         end)
 
-        test.it("returns the provisioner's native terminal error from the startup gate", function()
+        test.it("fails the startup gate when the resident reports a terminal error", function()
             local original = assert(registry.current_version())
             local name = "test.lifecycle.failure." .. uuid.v7()
-            local requests = assert(process.listen(consts.SYSTEM_FAILURE_REQUEST, {message = true}))
             local lifecycle = process.events()
             local pid
             local ok, failure = pcall(function()
@@ -99,28 +98,22 @@ local function define_startup_tests()
                 test.is_nil(select(2, changes:apply()))
                 pid = assert(process.spawn_monitored(id, "app:processes"))
                 local deadline = time.after("5s")
-                local request = channel.select({requests:case_receive(), deadline:case_receive()})
-                test.eq(request.channel, requests)
-                test.eq(request.value:from(), pid)
-                test.eq(process.registry.lookup(consts.system_waiter_name(name, pid), process.registry.CONSISTENT), pid)
-                assert(process.send(pid, consts.SYSTEM_FAILURE_REPLY, {kind = errors.PERMISSION_DENIED, retryable = false,
-                    message = "declared grant was denied", details = {code = "startup_grant_denied"}}))
                 while true do
                     local selected = channel.select({lifecycle:case_receive(), deadline:case_receive()})
                     test.eq(selected.channel, lifecycle, "the terminal startup failure was not delivered")
                     local event = selected.value
                     if event.kind == process.event.EXIT and tostring(event.from) == tostring(pid) then
                         local err = event.result.error
-                        test.eq(err:kind(), errors.PERMISSION_DENIED)
+                        test.eq(err:kind(), errors.UNAVAILABLE)
                         test.is_false(err:retryable())
-                        test.eq(err:details().code, "startup_grant_denied")
-                        test.is_true(err:message():find("declared grant was denied", 1, true) ~= nil)
+                        test.eq(err:details().code, "lifecycle_startup_failed")
+                        test.eq(err:details().provisioner, tostring(process.pid()))
+                        test.is_true(err:message():find("kickside.lifecycle", 1, true) ~= nil)
                         break
                     end
                 end
             end)
             if pid and not ok then process.terminate(pid) end
-            process.unlisten(requests)
             test.is_nil(select(2, registry.apply_version(original)))
             if not ok then error(failure) end
         end)

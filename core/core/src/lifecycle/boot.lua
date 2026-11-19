@@ -134,34 +134,15 @@ local function converge_when_ready(boot_name: string, system_ready: boolean, led
     return CONVERGED, count, converge_err, false, pending
 end
 
--- Advertise failure only after the owner has a listener for its diagnostic.
--- The waiter proves it holds platform process authority by its registered name.
-local function reject_startup(boot_name: string, events: any, cause: error)
-    local requests, listen_err = process.listen(consts.SYSTEM_FAILURE_REQUEST, {message = true})
-    if listen_err or not requests then
-        error(error_envelope.wrap_secondary(listen_err or response_error("failure_listener"), cause, "listen for startup failure requests"))
+-- Hold the terminal outcome for the lifetime of this boot attempt. The
+-- detailed failure is already recorded by the provisioner in the lifecycle log.
+local function startup_failed(boot_name: string, system_ready: boolean, cause: error?): boolean
+    if system_ready or not cause or cause:retryable() then return false end
+    local registered, err = process.registry.register(consts.system_failure_name(boot_name), nil, process.registry.EVENTUAL)
+    if err or not registered then
+        error(error_envelope.wrap_secondary(err or response_error("system_failed"), cause, "publish startup failure"))
     end
-    local registered, register_err = process.registry.register(consts.system_failure_name(boot_name), nil, process.registry.EVENTUAL)
-    if register_err or not registered then
-        error(error_envelope.wrap_secondary(register_err or response_error("system_failed"), cause, "publish startup failure"))
-    end
-    local diagnostic = error_envelope.encode(cause)
-    while true do
-        local selected = channel.select({events:case_receive(), requests:case_receive()})
-        if not selected.ok then error(cause) end
-        if selected.channel == events then
-            if selected.value.kind == process.event.CANCEL then error(cause) end
-        else
-            local sender = tostring(selected.value:from())
-            local waiter = process.registry.lookup(consts.system_waiter_name(boot_name, sender), process.registry.CONSISTENT)
-            if waiter == sender then
-                local _, send_err = process.send(sender, consts.SYSTEM_FAILURE_REPLY, diagnostic)
-                if send_err then
-                    logger:warn("system lifecycle startup failure reply was not delivered", {reason = tostring(send_err)})
-                end
-            end
-        end
-    end
+    return true
 end
 
 local function main(_args: any): any
@@ -190,9 +171,7 @@ local function main(_args: any): any
     local system_ready = ready_owner ~= nil and ready_owner == process.pid()
     local state, count, converge_err, ledger_failed, pending = converge_when_ready(boot_name, system_ready, false)
     system_ready = system_ready or count ~= nil
-    if not system_ready and converge_err and not converge_err:retryable() then
-        reject_startup(boot_name, events, converge_err)
-    end
+    local failed = startup_failed(boot_name, system_ready, converge_err)
     local parked = state == PARKED
     if parked and not converge_err then logger:info("system lifecycle convergence awaits migrations") end
 
@@ -229,13 +208,11 @@ local function main(_args: any): any
             else
                 pending = nil
             end
-        elseif selected.channel == applied or selected.channel == retry then
+        elseif not failed and (selected.channel == applied or selected.channel == retry) then
             local next_state, next_count, next_err, next_ledger_failed, next_pending = converge_when_ready(boot_name, system_ready, ledger_failed)
             ledger_failed = next_ledger_failed
             system_ready = system_ready or next_count ~= nil
-            if not system_ready and next_err and not next_err:retryable() then
-                reject_startup(boot_name, events, next_err)
-            end
+            failed = startup_failed(boot_name, system_ready, next_err)
             if next_err then converge_err = next_err end
             if next_state == CONVERGED then
                 parked = false
@@ -245,7 +222,7 @@ local function main(_args: any): any
                 parked, pending = true, nil
                 logger:info("system lifecycle convergence awaits migrations")
             end
-        elseif ev and (ev :: any).kind == process.event.OUTDATED then
+        elseif not failed and ev and (ev :: any).kind == process.event.OUTDATED then
             process.upgrade()
         end
     end
