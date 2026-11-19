@@ -39,7 +39,7 @@ function x(t, e, n) {
   });
 }
 const v = x(
-  () => import("./RenderCode-Dt7jxeoT.js"),
+  () => import("./RenderCode-B0cCpEWi.js"),
   { loading: "Loading the code viewer…", failed: "Could not load the code viewer. Reload the page to try again." },
   l
 ), w = ":host > div:empty, :host > div:has(> [data-lazy-state]) { min-height: 96px; }", M = {

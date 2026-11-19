@@ -361,6 +361,7 @@ entries:
       - registry
       - security
     imports:
+      text_trim: kickside.contract:text_trim
       test: wippy.test:test
       user_consts: kickside.users:consts
     method: run

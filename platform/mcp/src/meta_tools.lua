@@ -129,10 +129,9 @@ local function tool_catalog(principal: any, available: boolean): ({ any }?, any?
     return descriptors
 end
 
--- handle: run a meta-tool. invoke_fn(tool_id, args) -> (result, err) is supplied by
--- the dispatcher (it owns the actor/scope) for call_tool. Returns the tool result
--- table (already MCP-content-free; the dispatcher wraps it).
-function M.handle(name: string, args: any, principal: any, invoke_fn: any): (any?, any?, string?)
+-- The dispatcher supplies call_tool's invoker and wraps the returned value for
+-- transport. A proxied result carries its target id and output schema presence.
+function M.handle(name: string, args: any, principal: any, invoke_fn: any): (any?, any?, string?, boolean?)
     args = args or {}
 
     if name == "session_info" then
@@ -301,8 +300,8 @@ function M.handle(name: string, args: any, principal: any, invoke_fn: any): (any
             return nil, errors.new({ kind = errors.PERMISSION_DENIED, message = "tool not active: " .. inner })
         end
         if type(invoke_fn) ~= "function" then return nil, errors.new({ kind = errors.INTERNAL, message = "no invoker" }) end
-        local result, invoke_err = invoke_fn(tool_id, (args :: any).arguments or canonical_json.object({}), { "params", "arguments", "arguments" })
-        return result, invoke_err, tool_id
+        local result, invoke_err, has_output_schema = invoke_fn(tool_id, (args :: any).arguments or canonical_json.object({}), { "params", "arguments", "arguments" })
+        return result, invoke_err, tool_id, has_output_schema
     end
 
     return nil, errors.new({ kind = errors.NOT_FOUND, message = "unknown meta tool: " .. tostring(name) })

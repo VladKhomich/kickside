@@ -485,6 +485,7 @@ entries:
     source: file://fixtures/kb_fetch_url.lua
     modules: [ctx, html, security, process, channel, time, uuid]
     imports:
+      text_trim: kickside.contract:text_trim
       util: kickside.knowledge:util
       component: app:kb_fetch_url_component_stub
       http_client: app:kb_fetch_url_http_stub

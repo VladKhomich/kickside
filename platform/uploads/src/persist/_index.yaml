@@ -32,6 +32,8 @@ entries:
     imports:
       uploads_resources: kickside.uploads.binding:uploads_resources
       artifact_schema: kickside.uploads.persist:artifact_schema
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      upload_mime: kickside.uploads:uploads_mime
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
 
   - name: artifact_cleanup_repo
@@ -163,15 +165,10 @@ entries:
     meta:
       type: kickside.lifecycle.principal_cleanup
       comment: Delete a principal's uploads through their storage-owning delete path.
-    security:
-      policies:
-      - kickside.uploads:thread_deleted_publish
     source: file://cleanup_principal.lua
     method: run
     imports:
       upload_lib: kickside.uploads:uploads
-      upload_query_repo: kickside.uploads.persist:upload_query_repo
-      upload_read_model: kickside.uploads.persist:upload_read_model
 
   - name: read_model_owner_delete
     kind: library.lua

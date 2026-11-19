@@ -24,7 +24,7 @@ function M.purge(db: any, cutoff: string, limit: integer): (any, error?)
     return {deleted = 0}, nil
 end
 function M.database(): any
-    return {
+    local db = {
         type = function(_self: any): (string?, error?)
             M.types = M.types + 1
             if M.stage == "type" then return nil, M.source end
@@ -33,15 +33,19 @@ function M.database(): any
         end,
         query = function(_self: any, statement: string, params: table?): (any, error?)
             M.queries = M.queries + 1
-            if (M.queries == 1 and M.stage == "heads") or (M.queries == 2 and M.stage == "receipts") then
-                return nil, M.source
-            end
-            local response = M.responses[M.queries == 2 and "receipts" or "heads"]
+            local kind = statement:find("SELECT completed_at", 1, true) and "receipts" or "heads"
+            if M.stage == kind then return nil, M.source end
+            local response = M.responses[kind]
             if response then return response.value, nil end
-            if M.queries == 2 then return {{completed_at = "2000-01-01T00:00:00Z"}}, nil end
-            return {{id = "thread", seq = 1, pin_floor = 1, projection_floor = 1,
-                eligibility_ms = 1000, created_at = "2000-01-01 00:00:00", head_created_at = "2000-01-01 00:00:00"}}, nil
+            if kind == "receipts" then return {{completed_at = "2000-01-01T00:00:00Z"}}, nil end
+            return {{id = "thread",
+                eligibility_ms = 1000, head_created_at = "2000-01-01 00:00:00"}}, nil
         end,
     }
+    db.begin = function(_self: any): (any, error?)
+        return {query = db.query, execute = function() return {rows_affected = 0}, nil end,
+            rollback = function() return true, nil end}, nil
+    end
+    return db
 end
 return M

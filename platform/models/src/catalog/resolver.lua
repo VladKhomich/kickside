@@ -1,4 +1,6 @@
 local model_catalog = require("model_catalog")
+local providers = require("providers")
+local route_policy = require("route_policy")
 
 local M = {}
 
@@ -10,6 +12,14 @@ local function resolved_card(card: any): any
         local provider = {}
         for key, value in pairs(route) do provider[key] = value end
         if route.provider_profile_id then
+            -- Resolve the native driver's legacy option before the credential
+            -- wrapper hides the binding from the LLM route normalizer.
+            if route.options and route.options.reasoning_model_request == true
+                and providers.driver_declares_legacy_reasoning_flag(route.id) then
+                -- Wippy reports invalid fields when it tries this particular route.
+                local accepts = route_policy.accepts(route, {}, "resolved", true)
+                for key, value in pairs(accepts or {}) do provider[key] = value end
+            end
             provider.id = "kickside.models:provider"
             provider.context = { card = card.name }
         end

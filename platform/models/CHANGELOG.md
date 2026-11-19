@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.1.85](https://github.com/kicksideai/kickside/compare/models-v0.1.84...models-v0.1.85) (2026-11-19)
+
+
+### Bug Fixes
+
+* **models:** preserve native sampling capabilities on saved profiles ([#587](https://github.com/kicksideai/kickside/issues/587)) ([9d00e73](https://github.com/kicksideai/kickside/commit/9d00e73c36c310e69242c0f3c60c7cc93f0b10a8))
+
+## [0.1.84](https://github.com/kicksideai/kickside/compare/models-v0.1.83...models-v0.1.84) (2026-11-19)
+
+
+### Bug Fixes
+
+* **models:** require a positive provider timeout ([20f1981](https://github.com/kicksideai/kickside/commit/20f19816ebc40063cebb2f652157c3f13a72136c))
+* **models:** retain valid provider timeouts and immediate retries ([#571](https://github.com/kicksideai/kickside/issues/571)) ([20f1981](https://github.com/kicksideai/kickside/commit/20f19816ebc40063cebb2f652157c3f13a72136c))
+* **models:** retain working provider timeouts and immediate retries ([551884c](https://github.com/kicksideai/kickside/commit/551884ca859faceb034a985d2642f5049731a79b))
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.1.83](https://github.com/kicksideai/kickside/compare/models-v0.1.82...models-v0.1.83) (2026-11-19)
+
+
+### Bug Fixes
+
+* **models:** distinguish unreadable class assignments ([20b2960](https://github.com/kicksideai/kickside/commit/20b2960e592ee7682ac217ce6b52eba6e1591535))
+* **models:** distinguish unreadable class assignments ([bdcbc62](https://github.com/kicksideai/kickside/commit/bdcbc62d374c2623b303c0039caf9d44aa9b30ea))
+* **models:** type unassigned class resolution errors ([6b525ce](https://github.com/kicksideai/kickside/commit/6b525ceac41885d6e8ab9558510bfe971a26b71f))
+
+## [0.1.82](https://github.com/kicksideai/kickside/compare/models-v0.1.81...models-v0.1.82) (2026-11-19)
+
+
+### Bug Fixes
+
+* **models:** probe first-party OpenAI generation through Responses ([#559](https://github.com/kicksideai/kickside/issues/559)) ([2e3eea9](https://github.com/kicksideai/kickside/commit/2e3eea93c4eddae321e27f8b34f87ae9d28e2ca8))
+
+## [0.1.81](https://github.com/kicksideai/kickside/compare/models-v0.1.80...models-v0.1.81) (2026-11-19)
+
+
+### Bug Fixes
+
+* keep secret operations in owning module frames ([#483](https://github.com/kicksideai/kickside/issues/483)) ([47f4f8a](https://github.com/kicksideai/kickside/commit/47f4f8af2dba69d4b8e818ab78530ec6fad12be9))
+* **models:** honor the provider timeout for plain chat ([#556](https://github.com/kicksideai/kickside/issues/556)) ([5a7518f](https://github.com/kicksideai/kickside/commit/5a7518f5ff44adc17498c4ea66961f8c2bed80ec))
+* **models:** keep discovered models usable without token limits ([#541](https://github.com/kicksideai/kickside/issues/541)) ([39e40c2](https://github.com/kicksideai/kickside/commit/39e40c234eeeb9f94607ae7cfba85e8360d5b472))
+* **models:** resolve configured models for members ([#395](https://github.com/kicksideai/kickside/issues/395)) ([b79e54f](https://github.com/kicksideai/kickside/commit/b79e54fa105fcf18794e8c4d989f55ddf4a7b376))
+
 ## [0.1.80](https://github.com/kicksideai/kickside/compare/models-v0.1.79...models-v0.1.80) (2026-11-16)
 
 

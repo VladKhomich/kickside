@@ -19,6 +19,7 @@ entries:
     source: file://cleanup_conversation_func.lua
     method: cleanup_conversation
     imports:
+      text_trim: kickside.contract:text_trim
       channel_persist: kickside.channel.persist:repo
       channel_consts: kickside.channel:consts
       session_service: wippy.session:service

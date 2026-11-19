@@ -57,6 +57,7 @@ entries:
       title: Public Fixture Agent
       public: true
     prompt: A public fixture system agent for the agents harness suite.
+    start_prompts: ["Show me a sample", "", "Find a document"]
     model: class:fast
     temperature: 0.25
 
@@ -100,6 +101,13 @@ entries:
     kind: registry.entry
     meta: {type: llm.model, name: unspecified-limits-model, capabilities: [generate]}
     providers: [{id: 'fixture:provider', provider_model: unspecified-limits-model}]
+
+  - name: output_limited_model
+    kind: registry.entry
+    meta: {type: llm.model, name: output-limited-model, capabilities: [generate]}
+    max_tokens: 32768
+    output_tokens: 2048
+    providers: [{id: 'fixture:provider', provider_model: output-limited-model}]
 
   - name: fixture_memory_provider
     kind: registry.entry

@@ -7,6 +7,8 @@ entries:
     meta:
       comment: Mapping v1 parser/normalizer for workflow edge transforms.
     source: file://mapping.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     modules: [json]
 
   - name: execution
@@ -24,6 +26,8 @@ entries:
     meta:
       comment: Canonical validator for exact immutable published Workflow references.
     source: file://flow_ref.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: execute
     kind: function.lua

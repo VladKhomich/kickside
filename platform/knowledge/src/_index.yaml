@@ -4,7 +4,7 @@ namespace: kickside.knowledge
 entries:
 
   - name: dep.kickside.models
-    version: '*'
+    version: '>=0.1.83'
     kind: ns.dependency
     component: kickside/models
 
@@ -35,7 +35,7 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.9'
     kind: ns.dependency
     meta:
       comment: Defines component, data, memory, and KB lifecycle contract surfaces.
@@ -416,6 +416,8 @@ entries:
     meta:
       comment: Shared Knowledge string and value helpers.
     source: file://util.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   # ─── Knowledge base registry (templates/admin UI facade) ─────────────
 

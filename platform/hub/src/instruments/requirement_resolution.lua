@@ -15,9 +15,7 @@ M._security = nil
 M._planner = nil
 M._evidence = nil
 
-local function trim(value)
-    return type(value) == "string" and value:gsub("^%s+", ""):gsub("%s+$", "") or ""
-end
+local trim = require("text_trim").trim
 
 local function invalid(message)
     return errors.new({kind = errors.INVALID, message = message})

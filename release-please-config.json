@@ -19,6 +19,7 @@
     "core/contract": {
       "component": "contract",
       "changelog-path": "CHANGELOG.md",
+      "extra-files": ["wippy.yaml"],
       "exclude-paths": [
         "core/contract/test",
         "core/contract/test-support",
@@ -37,6 +38,7 @@
     "core/execution": {
       "component": "execution",
       "changelog-path": "CHANGELOG.md",
+      "extra-files": ["wippy.yaml"],
       "exclude-paths": [
         "core/execution/test",
         "core/execution/test-support",

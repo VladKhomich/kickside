@@ -247,8 +247,10 @@ local function handler(params)
 
     if text_mode then
         if params.props ~= nil then return tool_result.fail(errors.INVALID, "props are only valid in component modes") end
-        if not non_empty_string(params.content) then return tool_result.fail(errors.INVALID, "content must be a non-empty string") end
-        if #params.content > MAX_TEXT_BYTES then
+        local content = params.content
+        local content_start = type(content) == "string" and content:find("%S")
+        if not content_start then return tool_result.fail(errors.INVALID, "content must be a non-empty string") end
+        if #content > MAX_TEXT_BYTES then
             return tool_result.fail(errors.INVALID, "content must be at most " .. tostring(MAX_TEXT_BYTES) .. " bytes")
         end
         local content_type = params.content_type or "text/markdown"
@@ -256,13 +258,13 @@ local function handler(params)
             return tool_result.fail(errors.INVALID, "text mode requires content_type: text/markdown or text/html")
         end
         if content_type == "text/html" then
-            local content = params.content:match("^%s*(.-)%s*$")
-            local first = content:sub(1, 1)
-            if content:sub(1, 3) == "```" or first == "{" or first == "[" then
+            local prefix = content:sub(content_start, content_start + 2)
+            local first = prefix:sub(1, 1)
+            if prefix == "```" or first == "{" or first == "[" then
                 return tool_result.fail(errors.INVALID, "HTML content requires rendered HTML markup; use a complete HTML document with SVG or canvas for charts, without code fences or JSON configuration")
             end
         end
-        artifact.content = params.content
+        artifact.content = content
         artifact.content_type = content_type
     elseif tag_mode then
         if params.resource_id ~= nil or params.resource_kind ~= nil or params.content ~= nil or params.content_type ~= nil then

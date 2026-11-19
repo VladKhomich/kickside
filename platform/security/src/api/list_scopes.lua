@@ -20,8 +20,10 @@ local function handler()
         return api_errors.write(res, http.STATUS.FORBIDDEN, api_errors.denied())
     end
 
-    local include_internal = req:query("include_internal") == "true"
-    local scopes, err = catalog.scopes({ include_internal = include_internal })
+    local scopes, err = catalog.scopes({
+        include_internal = req:query("include_internal") == "true",
+        include_unavailable = req:query("include_unavailable") == "true",
+    })
     if err then
         return api_errors.write(res, http.STATUS.INTERNAL_ERROR, err)
     end

@@ -27,6 +27,7 @@ local function run(input: table): table
     body.proc_actor_id = tostring(actor:id())
     body.proc_actor_user_id = meta.user_id
     body.proc_has_scope = true
+    body.proc_deadline_ns = input.execution_deadline_ns
     return { body = body }
 end
 

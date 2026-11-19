@@ -5,7 +5,8 @@
 -- server-side (principal and authorizer the caller) and rooted in the thread's
 -- component, so every deferred run rechecks the caller's live root ADMIN.
 -- Installing an identity-bearing execution needs ADMIN on the thread; a body
--- naming an identity is refused. Response shape: { success, ...descriptor }.
+-- naming an identity is refused. Component lifecycle threads use system identity
+-- after the lifecycle ADMIN or maintenance gate.
 
 local http = require("http")
 local json = require("json")
@@ -59,17 +60,21 @@ function M.register(thread_id: string, data: any): (integer, { [string]: any })
         return status, payload
     end
 
-    local allowed, _status, gate_msg, component_id, gate_err = thread_access.gate_thread_access(db, thread_id, thread_access.ADMIN)
+    local allowed, _status, gate_msg, component_id, gate_err = thread_access.gate_thread_access(db, thread_id, thread_access.ADMIN, true)
     if not allowed then
         local status, payload = thread_access.failure_response(db, gate_err :: error, gate_msg)
         return status, payload
     end
-    local identity, capture_err = execution_identity.capture({ component_id = component_id })
-    if not capture_err then identity, capture_err = error_envelope.binding(identity, nil, nil, "capture projection identity", "core_http_operation_response") end
-    if capture_err then
-        local err = release_error(db, capture_err) :: error
-        local status, payload = error_response(err, err == capture_err and tostring(capture_err) or nil)
-        return status, payload
+    local identity
+    if component_id then
+        local capture_err
+        identity, capture_err = execution_identity.capture({ component_id = component_id })
+        if not capture_err then identity, capture_err = error_envelope.binding(identity, nil, nil, "capture projection identity", "core_http_operation_response") end
+        if capture_err then
+            local err = release_error(db, capture_err) :: error
+            local status, payload = error_response(err, err == capture_err and tostring(capture_err) or nil)
+            return status, payload
+        end
     end
 
     local result, register_err = writer.register_projection(db, thread_id, {
@@ -81,6 +86,7 @@ function M.register(thread_id: string, data: any): (integer, { [string]: any })
         worker_ref = validated.worker_ref,
         worker_input_mode = data.worker_input_mode,
         execution_identity = identity,
+        system_identity = component_id == nil,
         worker_config = data.worker_config,
         events = data.events,
         debounce_idle_ms = data.debounce_idle_ms,

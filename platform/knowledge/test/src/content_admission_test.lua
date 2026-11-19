@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
+local test_gateway = require("test_gateway")
 local sql = require("sql")
 local uuid = require("uuid")
 local json = require("json")
@@ -7,7 +8,6 @@ local funcs = require("funcs")
 local security = require("security")
 local contract = require("contract")
 local http_client = require("http_client")
-local system = require("system")
 local session = require("session")
 local groups = require("groups")
 local component = require("component")
@@ -71,37 +71,46 @@ local function target(user: string, engine: string): string
     return id
 end
 
-local function upload(user: string, original_only: boolean?): string
+local function upload(user: string, original_only: boolean?, fixture: any?): string
     local actor = security.new_actor(user, {})
     local _, provision_err = provision.ensure_user(actor, security.named_scope("wippy.security:process"), user)
     test.is_nil(provision_err, tostring(provision_err))
     local id = uuid.v7()
     upload_ids[#upload_ids + 1] = id
-    local _, err = upload_records.create(id, user, #CONTENT, "text/plain", "app:uploads", id .. ".txt", "documents", { filename = "reference.txt" }, "completed")
+    fixture = fixture or {}
+    local content = fixture.content or CONTENT
+    local mime = fixture.mime or "text/plain"
+    local filename = fixture.filename or "reference.txt"
+    local _, err = upload_records.create(id, user, #content, mime, "app:uploads", id .. ".txt", "documents", { filename = filename }, "completed")
     test.is_nil(err, tostring(err))
     if original_only then return id end
-    local artifact, artifact_err = artifacts.create_artifact({ upload_id = id, kind = "text", role = "primary", mime_type = "text/plain", content = CONTENT, storage_id = "app:uploads" })
+    local artifact, artifact_err = artifacts.create_artifact({
+        upload_id = id, kind = fixture.kind or "text", role = "primary", mime_type = mime,
+        content = content, storage_id = "app:uploads",
+    })
     test.is_nil(artifact_err, tostring(artifact_err))
     test.not_nil(artifact)
     return id
 end
 
-local function admit(user: string, id: string, caller: string, refused: boolean?): any
+local function content_request(user: string, method: string, path: string, body: string): any
+    local token = assert(session.mint(assert(groups.get_user_with_groups(user)))).token
+    local response, err = http_client.request(method, test_gateway.url() .. path, {
+        headers = {Authorization = "Bearer " .. token, ["Content-Type"] = "application/json"}, body = body,
+    })
+    test.is_nil(err, tostring(err))
+    return response
+end
+
+local function admit(user: string, id: string, caller: string, refused: boolean?, fixture: any?): any
     local args = { kb_id = id, content = CONTENT, content_type = "text/plain", title = "Reference", external_id = "admission:" .. caller, external_version = "v1" }
     if caller == "content" or caller == "existing_upload" then
-        local token = assert(session.mint(assert(groups.get_user_with_groups(user)))).token
-        local gateway, gateway_err = system.supervisor.state("app:gateway")
-        test.is_nil(gateway_err, tostring(gateway_err))
-        local port = assert(gateway.details:match(":(%d+)$"))
         local path = "/ingest"
         if caller == "existing_upload" then
             path = "/ingest-upload"
-            args = { upload_id = upload(user) }
+            args = { upload_id = upload(user, false, fixture) }
         end
-        local response, err = http_client.request("POST", "http://127.0.0.1:" .. port .. "/api/knowledge/" .. id .. path, {
-            headers = { Authorization = "Bearer " .. token, ["Content-Type"] = "application/json" }, body = assert(json.encode(args)),
-        })
-        test.is_nil(err, tostring(err))
+        local response = content_request(user, "POST", "/api/knowledge/" .. id .. path, assert(json.encode(args)))
         test.eq(response.status_code, refused and caller == "content" and 500 or 200, response.body)
         local body = assert(json.decode(response.body))
         return caller == "existing_upload" and body.results[1] or body
@@ -141,22 +150,57 @@ local function admit(user: string, id: string, caller: string, refused: boolean?
     return result
 end
 
+local function cleanup_fixtures()
+    for _, id in ipairs(targets) do cleanup.cleanup(id) end
+    targets = {}
+    for _, id in ipairs(upload_ids) do
+        local _, err = uploads.delete_upload(id)
+        test.is_nil(err, tostring(err))
+    end
+    upload_ids = {}
+    for _, id in ipairs(users) do
+        cleanup.cleanup(assert(upload_types.component_id_for_owner(id)))
+        execute("DELETE FROM app_user_groups WHERE user_id = $1", { id })
+        execute("DELETE FROM app_users WHERE user_id = $1", { id })
+    end
+    users = {}
+end
+
 local function define_tests()
     test.describe("content admission through bound engines", function()
-        test.after_each(function()
-            for _, id in ipairs(targets) do cleanup.cleanup(id) end
-            targets = {}
-            for _, id in ipairs(upload_ids) do
-                local _, err = uploads.delete_upload(id)
-                test.is_nil(err, tostring(err))
-            end
-            upload_ids = {}
-            for _, id in ipairs(users) do
-                cleanup.cleanup(assert(upload_types.component_id_for_owner(id)))
-                execute("DELETE FROM app_user_groups WHERE user_id = $1", { id })
-                execute("DELETE FROM app_users WHERE user_id = $1", { id })
-            end
-            users = {}
+        test.after_each(cleanup_fixtures)
+        test.it("ingests a legacy binary-labelled table into a text-only knowledge base", function()
+            local user = owner()
+            local id = target(user, "document")
+            local content = "item\tquantity\nPencils\t12\n"
+            local result = admit(user, id, "existing_upload", false, {
+                kind = "table", mime = "application/octet-stream", filename = "inventory.tsv", content = content,
+            })
+            test.is_true(result.success, assert(json.encode(result)))
+            local events = rows("SELECT body FROM kickside_event WHERE thread_id = $1 AND type = 'kickside.knowledge.events:content.upserted'", { id })
+            test.eq(#events, 1)
+            local body = assert(json.decode(events[1].body))
+            test.eq(body.content, content)
+            test.eq(body.content_type, "text/tab-separated-values")
+        end)
+        test.it("rejects a concrete binary MIME even when the artifact is labelled Markdown", function()
+            local user = owner()
+            local id = target(user, "document")
+            local result = admit(user, id, "existing_upload", false, {
+                kind = "markdown", mime = "image/png", filename = "image.md", content = "image bytes",
+            })
+            test.is_false(result.success)
+            test.contains(result.error, "cannot ingest image/png as document content")
+            test.eq(#rows("SELECT id FROM kickside_event WHERE thread_id = $1 AND type = 'kickside.knowledge.events:content.upserted'", { id }), 0)
+        end)
+        test.it("rejects a null selected document UUID before appending a delete", function()
+            local user = owner()
+            local id = target(user, "document")
+            local response = content_request(user, "DELETE", "/api/knowledge/" .. id .. "/content",
+                '{"external_id":"source-document","metadata":{"node_id":null}}')
+            test.eq(response.status_code, 400, response.body)
+            test.contains(response.body, "invalid selected document node ID")
+            test.eq(#rows("SELECT id FROM kickside_event WHERE thread_id = $1 AND type = 'kickside.knowledge.events:content.deleted'", {id}), 0)
         end)
         for _, caller in ipairs({ "content", "upload", "archive", "callback", "existing_upload", "reference", "ingest_trait", "trait" }) do
             test.it("returns the binding's refusal for " .. caller, function()
@@ -203,5 +247,35 @@ local function define_tests()
         end
     end)
 end
-local run_cases = test.run_cases(define_tests)
-return { run = function(options) return run_cases(options) end }
+
+local function define_published_tests()
+    test.describe("published upload content provider contract", function()
+        test.after_each(cleanup_fixtures)
+        test.it("admits a text upload and preserves its MIME parameters", function()
+            local user = owner()
+            local id = target(user, "document")
+            local content_type = "application/vnd.example+json; charset=utf-8"
+            local result = admit(user, id, "existing_upload", false, {
+                mime = content_type, filename = "reference.json", content = CONTENT,
+            })
+            test.is_true(result.success, assert(json.encode(result)))
+            local events = rows("SELECT body FROM kickside_event WHERE thread_id = $1 AND type = 'kickside.knowledge.events:content.upserted'", { id })
+            test.eq(#events, 1)
+            local body = assert(json.decode(events[1].body))
+            test.eq(body.content, CONTENT)
+            test.eq(body.content_type, content_type)
+        end)
+        test.it("rejects binary content for an engine that accepts only text", function()
+            local user = owner()
+            local id = target(user, "document")
+            local result = admit(user, id, "existing_upload", false, {
+                kind = "text", mime = "image/png", filename = "reference.png", content = "Image bytes",
+            })
+            test.is_false(result.success)
+            test.contains(result.error, "cannot ingest image/png as document content")
+            test.eq(#rows("SELECT id FROM kickside_event WHERE thread_id = $1 AND type = 'kickside.knowledge.events:content.upserted'", { id }), 0)
+        end)
+    end)
+end
+
+return { run = test.run_cases(define_tests), run_published = test.run_cases(define_published_tests) }

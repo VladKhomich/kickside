@@ -117,12 +117,17 @@ function M.get_by_name(name: string): (any?, any?)
     return card
 end
 
-local function class_cards(cards: { any }, class_name: string): { any }
+local function class_cards(map: { [string]: any }, class_name: string): ({ any }, boolean)
     local out = {}
-    for _, card in ipairs(cards) do
+    local unavailable = false
+    for _, card in pairs(map) do
         for _, cls in ipairs(card.class or {}) do
             if cls == class_name then
-                table.insert(out, card)
+                if card.enabled ~= false then
+                    table.insert(out, card)
+                elseif card.class_load_failed then
+                    unavailable = true
+                end
                 break
             end
         end
@@ -132,14 +137,15 @@ local function class_cards(cards: { any }, class_name: string): { any }
         if a_priority == b_priority then return tostring(a.name) < tostring(b.name) end
         return a_priority > b_priority
     end)
-    return out
+    return out, unavailable
 end
 
 function M.get_by_class(class_name: string): ({ any }?, any?)
     if not class_name or class_name == "" then return {}, "Class name is required" end
-    local cards, err = M.get_all()
+    local map, err = by_name_map()
     if err then return nil, err end
-    return class_cards(cards :: { any }, class_name)
+    local cards = class_cards(map :: { [string]: any }, class_name)
+    return cards
 end
 
 function M.resolve(model_identifier: string): (any?, any?)
@@ -152,14 +158,21 @@ function M.resolve(model_identifier: string): (any?, any?)
         if card and card.error then return nil, card.error end
         if card and card.enabled ~= false then return card end
     end
-    local class_models = class_cards(sorted_values(map), class_name or model_identifier)
+    local requested_class = class_name or model_identifier
+    local class_models, unavailable = class_cards(map :: { [string]: any }, requested_class)
     if #class_models > 0 then
         local selected = {}
         for key, value in pairs(class_models[1]) do selected[key] = value end
         selected.candidates = class_models
         return selected
     end
-    if class_name then return nil, "No models found for class: " .. class_name end
+    if unavailable then
+        return nil, errors.new({ kind = errors.UNAVAILABLE,
+            message = "Model provider profile is unavailable for class: " .. requested_class })
+    end
+    if class_name then
+        return nil, errors.new({ kind = errors.NOT_FOUND, message = "No models found for class: " .. class_name })
+    end
     return nil, "Model or class not found: " .. model_identifier
 end
 

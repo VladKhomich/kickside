@@ -35,7 +35,11 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:27_disabled_slots
         path: .meta.target_db
+      - entry: kickside.core.jobs.migrations:29_demand_rearm
+        path: .meta.target_db
       - entry: kickside.core.jobs.migrations:26_owner_listing
+        path: .meta.target_db
+      - entry: kickside.core.jobs.migrations:30_retention_by_type
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:25_retention_order
         path: .meta.target_db
@@ -57,9 +61,9 @@ entries:
   # .wippy.yaml "kickside.core.jobs:policy:meta.<path>".
   - name: policy
     kind: registry.entry
-    # Defaults stay outside meta so explicit host assignments retain presence,
-    # including assignments whose value equals the shipped default.
-    defaults:
+    # Old workers still read this entry while their executions drain.
+    meta:
+      comment: Jobs runtime policy defaults and host configuration.
       worker:
         count_sqlite: 2
         count_postgres: 4
@@ -95,19 +99,8 @@ entries:
         sweep_interval: 1h
         batch: 500
         thread_cleanup_batch: 100
-
-    meta:
-      comment: Jobs runtime policy defaults with explicit host overrides under meta.
-      worker: {}
-      lease: {}
-      retry: {}
-      slot_retry: {}
-      fairness: {}
-      wake: {}
-      proc: {}
-      health: {}
-      limits: {}
-      retention: {}
+        # Job type -> {jobs, job_runs} windows; the global windows govern other types.
+        by_type: {}
 
   - name: process_host
     kind: ns.requirement
@@ -153,6 +146,8 @@ entries:
     meta:
       comment: Job / JobRun / EffectIntent entity shapes and job state vocabulary.
     source: file://types.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: job_class
     kind: library.lua
@@ -324,4 +319,4 @@ entries:
     meta: {comment: "Dep kickside contract."}
     kind: ns.dependency
     component: kickside/contract
-    version: '*'
+    version: '>=0.3.9'

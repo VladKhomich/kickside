@@ -12,6 +12,7 @@ entries:
       http_errors: kickside.contract:http_errors
       llm_mapper: wippy.llm.openai_compat:mapper
       llm_output: wippy.llm:output
+      llm_transport: wippy.llm.util:transport
 
   - name: mapper
     kind: library.lua
@@ -93,6 +94,7 @@ entries:
     meta:
       comment: Connector-level model discovery port for DB-backed provider profiles.
     source: file://service.lua
+    modules: [logger]
     imports:
       models_repo: kickside.models.persist:repo
       models_types: kickside.models:models_types

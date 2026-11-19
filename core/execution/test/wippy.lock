@@ -2,6 +2,9 @@ directories:
     modules: .wippy
     src: .
 modules:
+    - name: kickside/contract
+      version: 0.3.9
+      hash: e7d6ec472f7a36002f8740396a1b96b79ffe078ddeef06f3838641904a60bfbc
     - name: kickside/execution
       version: 0.0.0
     - name: wippy/terminal

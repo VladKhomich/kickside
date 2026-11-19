@@ -16,7 +16,7 @@ entries:
     component: kickside/jobs
   - name: dep.kickside.execution
     kind: ns.dependency
-    version: '*'
+    version: '>=0.2.9'
     component: kickside/execution
   - name: dep.kickside.component
     kind: ns.dependency
@@ -101,7 +101,7 @@ entries:
       comment: App-owned scope and policy administration. Scopes are security.scope declarations (custom scopes are DB-backed and projected to the registry); package policies stay declared by their owning package and the app composes scopes from public policies. Exposed to consumers via the kickside.contract:security_scopes port.
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.10'
     kind: ns.dependency
     component: kickside/contract
 

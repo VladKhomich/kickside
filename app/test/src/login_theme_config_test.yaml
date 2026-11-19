@@ -14,6 +14,7 @@ entries:
     kind: library.lua
     source: file://login_subject.lua
     imports:
+      text_trim: kickside.contract:text_trim
       registry: app:login_registry
       http: app:login_http
       templates: app:login_templates
@@ -25,5 +26,6 @@ entries:
     imports:
       test: wippy.test:test
       login: app:login_subject
+      http: app:login_http
       registry: app:login_registry
       templates: app:login_templates

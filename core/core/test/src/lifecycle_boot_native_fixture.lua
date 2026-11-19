@@ -3,7 +3,7 @@ local channel = require("channel")
 local M = {event = process.event, registry = {CONSISTENT = process.registry.CONSISTENT}}
 function M.reset(stage: string, source: error?, override: any?, pending: boolean?): ()
     M.stage, M.source, M.override, M.pending = stage, source, override, pending == true
-    M.calls, M.ledger, M.events_ch = {}, nil, nil
+    M.calls, M.ledger, M.events_ch, M.pages = {}, nil, nil, nil
 end
 -- Scripts successive ledger reads ("unavailable", "pending", "applied") and
 -- keeps the events channel open until a convergence closes it.
@@ -17,7 +17,16 @@ end
 function M.new_actor(...): any hit("actor"); return {} end
 function M.named_scope(...): (any, error?) return response("scope", {}) end
 function M.ensure_system(...): (any, error?) return response("provision", {"system"}) end
-function M.converge(...): (any, error?)
+function M.converge(_actor: any, _scope: any, continuation: table?): (any, error?)
+    local pages: any = M.pages
+    if pages then
+        local calls: any = M.calls
+        local step = (tonumber(calls.converge) or 0) + 1
+        pages[step] = continuation
+        if step == 1 then
+            return response("converge", {checked = 1, healed = 0, skipped = {}, continuation = {after = 256}})
+        end
+    end
     if M.events_ch then M.events_ch:close() end
     return response("converge", {checked = 1, healed = 0, skipped = {}})
 end
@@ -29,7 +38,7 @@ end
 function M.events(): any
     hit("events")
     local events = channel.new()
-    if M.ledger then M.events_ch = events else events:close() end
+    if M.ledger or M.pages then M.events_ch = events else events:close() end
     return events
 end
 -- The migration ledger rows find_migrations reports for the core database.

@@ -16,6 +16,7 @@ entries:
     modules:
       - registry
     imports:
+      text_trim: kickside.contract:text_trim
       test: wippy.test:test
       core_db: kickside.core:db
       threads_env: kickside.core.threads:env

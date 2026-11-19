@@ -109,6 +109,20 @@ component before its metadata, keeps the maximum finite nonnegative integer,
 and retains existing row identity and creation time. It reports corrupt stored
 values instead of replacing them. It adds no table, requirement or migration.
 
+## Deletion jobs and retry
+
+An authorized delete commits the deletion intent and schedules the kind's
+cleanup. The response reports `in_progress` and the `job_id`. Component reads
+with READ access include `deleting_at`, `deletion_job_id`, and the visible job
+status and error while cleanup is pending.
+
+Repeated authorized requests share a pending or running deletion job. If the
+job reaches `dead`, resolve its recorded failure and submit the same component's
+delete request again with DELETE access. Component schedules a new job with the
+originally accepted child policy and options. The Component retention sweep leaves terminal jobs
+in place. Follow the new job and verify the component
+has been removed when cleanup completes.
+
 ## Deleting placement dependents
 
 `component.delete_children(parent_id)` requires DELETE access to the parent and
@@ -137,14 +151,18 @@ this check. Omitting the field preserves unconditional declaration writes.
 ## Implementation deletion admission (SPEC)
 
 `meta.delete_admission` on a kind names a declaratively wired library import on
-`kickside.component:delete_admission`. Its `validate(payload) -> error?` receives
-`tx`, `component_id`, `impl_id`, `child_policy`, and `options` by reference after
-Component locks the row and validates access/child policy. It performs read-only
-validation in that transaction. A typed refusal rolls back before the delete
-mark, intent, job or cleanup; malformed/unwired declarations fail closed. Declaration lookup uses the existing trusted kind reader. Kinds
-without a declaration and replays of accepted intents retain their behavior.
-The seam runs only on deletion admission and does not serialize implementation
-writes against validation. Implementations document races with concurrent writes.
-Parent and owner cascades use the same per-component admission. Visible child refusals
-retain their kind, retryability and details alongside `deleted_count`; hidden
-blockers remain concealed. An entire multi-component cascade is not atomic.
+`kickside.component:delete_admission`. Its `validate(payload) -> error?` receives `component_id`, `impl_id`,
+`child_policy`, and `options` for the first deletion request. Component checks
+access and placement, then invokes the validator before opening the deletion
+transaction. The validator performs read-only checks against its own storage,
+which may share the SQLite connection. A typed refusal leaves the component
+unmarked and schedules no cleanup. Malformed or unwired declarations fail closed.
+
+Component rechecks access under the placement lock and validates placement
+before first committing the mark, intent, and job. The implementation validator
+observes a pre-transaction snapshot. Implementation owners document concurrent
+writes that can change its result. Kinds without a declaration and retries of
+accepted intents follow the existing deletion path. Parent and owner cascades
+use the same per-component admission. Visible child refusals retain their kind,
+retryability, and details alongside `deleted_count`. Hidden blockers remain
+concealed. Each component commits its own deletion.

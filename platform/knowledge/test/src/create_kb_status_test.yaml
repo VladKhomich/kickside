@@ -42,9 +42,10 @@ entries:
     method: run
     security:
       actor: { id: "system:knowledge-tests" }
-    modules: [sql, uuid, json, http_client, system]
+    modules: [sql, uuid, json, http_client]
     imports:
       test: wippy.test:test
+      test_gateway: app:test_gateway
       session: kickside.users:session
       groups: kickside.users.persist:user_groups_repo
       fixture: app.create_kb_status:fixture

@@ -6,6 +6,7 @@
 -- Layer 2 = core execution resolves its live principal and restrictions).
 -- Also serves resources/* (session + scope snapshots) and prompts/* (registry).
 
+local trim = require("text_trim").trim
 local json = require("json")
 local registry = require("registry")
 local security = require("security")
@@ -32,13 +33,17 @@ end
 -- Shape a tool/meta result into MCP content. Strings pass through; tables are JSON.
 -- A failed JSON conversion is itself a native runtime error and must be returned
 -- to the caller rather than producing malformed MCP content.
-local function content(result: any, is_error: boolean): (any?, any?)
+local function content(result: any, is_error: boolean, has_output_schema: boolean?): (any?, any?)
     if type(result) == "string" then
         return { content = { { type = "text", text = result } }, isError = is_error }, nil
     end
     local text, encode_err = json.encode(result)
     if encode_err then return nil, encode_err end
-    return { content = { { type = "text", text = text } }, isError = is_error }, nil
+    local shaped: any = { content = { { type = "text", text = text } }, isError = is_error }
+    if has_output_schema and type(result) == "table" and result.success ~= false and text:sub(1, 1) == "{" then
+        shaped.structuredContent = result
+    end
+    return shaped, nil
 end
 
 local function content_error(prefix: string, err: any): any
@@ -57,7 +62,7 @@ local function extract_bearer(auth_header: any): string?
     if type(auth_header) ~= "string" then return nil end
     local h = auth_header :: string
     if h:lower():sub(1, 7) ~= "bearer " then return nil end
-    local raw = h:sub(8):gsub("^%s+", ""):gsub("%s+$", "")
+    local raw = trim(h:sub(8))
     if raw == "" then return nil end
     return raw
 end
@@ -104,7 +109,7 @@ local function handle_tools_call(id: any, principal: any, authorized: any, param
     ctx.mcp_whitelist_component_ids = (principal :: any).whitelist_component_ids
 
     -- The invoker the trait engine uses for call_tool; the same path real tools take.
-    local function invoke(tool_id: string, targs: any, path: { string }?): (any, any)
+    local function invoke(tool_id: string, targs: any, path: { string }?): (any, any, boolean?)
         local descriptor, descriptor_err = surface.descriptor_for(tool_id)
         if descriptor_err or not descriptor then return nil, descriptor_err or "tool descriptor unavailable" end
         local argument_err = tool_arguments.validate(tool_id, descriptor.inputSchema, targs, original,
@@ -142,7 +147,8 @@ local function handle_tools_call(id: any, principal: any, authorized: any, param
         tool_ctx.mcp_credential_id = ctx.mcp_credential_id
         tool_ctx.mcp_actor_id = ctx.mcp_actor_id
         tool_ctx.mcp_whitelist_component_ids = ctx.mcp_whitelist_component_ids
-        return mcp_security.invoke(tool_id, targs, principal, tool_ctx, authorized)
+        local result, err = mcp_security.invoke(tool_id, targs, principal, tool_ctx, authorized)
+        return result, err, descriptor.outputSchema ~= nil
     end
 
     if meta_tools.is_meta(name) then
@@ -153,9 +159,9 @@ local function handle_tools_call(id: any, principal: any, authorized: any, param
     end
 
     if meta_tools.is_meta(name) then
-        local result, merr = meta_tools.handle(name, arguments, principal, invoke)
+        local result, merr, _, has_output_schema = meta_tools.handle(name, arguments, principal, invoke)
         if merr then return rpc_result(id, content_error("error: ", merr)) end
-        local shaped, encode_err = content(result, false)
+        local shaped, encode_err = content(result, false, has_output_schema)
         if encode_err then return rpc_result(id, content_error("error: ", encode_err)) end
         return rpc_result(id, shaped)
     end
@@ -169,12 +175,12 @@ local function handle_tools_call(id: any, principal: any, authorized: any, param
             .. ". Call session_info to see the current tools, or find_traits to find a trait that provides it.", true))
     end
     -- Layer 2 — run in the frame built by the core identity resolver.
-    local result, err = invoke(tool_id, arguments)
+    local result, err, has_output_schema = invoke(tool_id, arguments)
     if err then return rpc_result(id, content_error("tool error: ", err)) end
     -- A tool fails with a typed error (above) or a domain error table; both are
     -- MCP tool errors, and a domain error keeps its fields as structured content.
     local domain_error = type(result) == "table" and result.success == false
-    local shaped, encode_err = content(result, domain_error)
+    local shaped, encode_err = content(result, domain_error, has_output_schema)
     if encode_err then return rpc_result(id, content_error("tool result error: ", encode_err)) end
     if domain_error then shaped.structuredContent = result end
     return rpc_result(id, shaped)

@@ -2,14 +2,13 @@
 -- content?, external?, created_at?, body_table? }. Response: { success, event,
 -- duplicate? }. A scheduler nudge + thread update fire after a real insert.
 
+local trim = require("text_trim").trim
 local http = require("http")
 local http_errors = require("http_errors")
 local error_envelope = require("error_envelope")
 local committed_error = require("committed_error")
 local json = require("json")
 local contract = require("threads_contract")
-
-
 
 local function handler(): ()
     local req = http.request()
@@ -38,8 +37,7 @@ local function handler(): ()
         return
     end
 
-    local text = type((data :: any).text) == "string" and (data :: any).text or ""
-    text = text:gsub("^%s*(.-)%s*$", "%1")
+    local text = trim((data :: any).text)
     if text == "" then
         res:set_status(http.STATUS.BAD_REQUEST)
         res:write_json(http_errors.response(errors.new({kind = errors.INVALID, retryable = false,

@@ -9,3 +9,5 @@ entries:
   - name: agent_ref
     kind: library.lua
     source: file://agent_ref_stub.lua
+    imports:
+      text_trim: kickside.contract:text_trim

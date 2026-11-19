@@ -38,15 +38,15 @@ const form = reactive<Record<string, any>>({
   id: '',
   name: '',
   provider_id: '',
-  retry_attempts: 0,
-  retry_backoff_ms: 0,
+  retry_attempts: '',
+  retry_backoff_ms: '',
   enabled: true,
 })
 
 function fieldValue(field: ProviderField, config: Record<string, any>) {
   if (field.secret) return ''
   const value = config[field.key]
-  if (field.type === 'number') return Number(value || 0)
+  if (field.type === 'number') return value ?? ''
   return value || ''
 }
 
@@ -55,8 +55,8 @@ function reset() {
   form.id = props.profile?.id || ''
   form.name = props.profile?.name || props.preset?.title || spec.value.title
   form.provider_id = props.profile?.provider_id || props.preset?.provider_id || props.adapter?.id || spec.value.defaultProviderId
-  form.retry_attempts = Number((cfg.retry as any)?.attempts || 0)
-  form.retry_backoff_ms = Number((cfg.retry as any)?.backoff_ms || 0)
+  form.retry_attempts = (cfg.retry as any)?.attempts ?? ''
+  form.retry_backoff_ms = (cfg.retry as any)?.backoff_ms ?? ''
   form.enabled = props.profile?.enabled !== false
   for (const field of visibleFields.value) form[field.key] = fieldValue(field, cfg)
 }
@@ -70,8 +70,8 @@ function appendField(payload: Record<string, unknown>, field: ProviderField) {
     return
   }
   if (field.type === 'number') {
-    const n = Number(value)
-    if (Number.isFinite(n) && n > 0) payload[field.key] = n
+    if (value !== '') payload[field.key] = Number(value)
+    else if (props.profile?.config?.[field.key] != null) payload[field.key] = ''
     return
   }
   if (typeof value === 'string') {
@@ -90,10 +90,10 @@ function submit() {
     enabled: form.enabled,
   }
   for (const field of visibleFields.value) appendField(payload, field)
-  payload.retry = {
-    attempts: Math.max(0, Math.floor(Number(form.retry_attempts) || 0)),
-    backoff_ms: Math.max(0, Math.floor(Number(form.retry_backoff_ms) || 0)),
-  }
+  const retry: Record<string, number> = {}
+  if (form.retry_attempts !== '') retry.attempts = Number(form.retry_attempts)
+  if (form.retry_backoff_ms !== '') retry.backoff_ms = Number(form.retry_backoff_ms)
+  payload.retry = retry
   emit('save', payload)
 }
 </script>
@@ -160,16 +160,17 @@ function submit() {
           <TextInput
             v-model="form[field.key]"
             :type="field.type === 'number' ? 'number' : (field.type === 'password' ? 'password' : 'text')"
+            :step="field.type === 'number' ? 'any' : undefined"
             :placeholder="field.placeholder"
             :autocomplete="field.secret ? 'new-password' : undefined"
             :disabled="props.saving"
           />
         </FormField>
         <FormField label="Retry attempts">
-          <TextInput v-model="form.retry_attempts" type="number" :min="0" :disabled="props.saving" />
+          <TextInput v-model="form.retry_attempts" type="number" step="any" :disabled="props.saving" />
         </FormField>
         <FormField label="Retry backoff (ms)">
-          <TextInput v-model="form.retry_backoff_ms" type="number" :min="0" :disabled="props.saving" />
+          <TextInput v-model="form.retry_backoff_ms" type="number" step="any" :disabled="props.saving" />
         </FormField>
       </div>
     </section>

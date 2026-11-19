@@ -2,7 +2,6 @@ local test = require("test")
 local h = require("round_harness")
 local json = require("json")
 local time = require("time")
-local channel = require("channel")
 local drive = require("drive")
 local claim = require("round_claim")
 local automation_db = require("automation_db")
@@ -148,17 +147,32 @@ local function define_tests()
             h.new_drive({automation_id=env.automation_id,drive_key="history",source_kind="collection",
                 action={source_ref=PORT,config={items={}},schedule={type="interval",expression="1s"}}})
             h.set_drive(env.automation_id,"history","next_run_at=$1",{h.PAST})
-            local function slow(identity: any,target: string,args: any,opts: any): (any?,any)
-                if target == "kickside.automation:round_acquire" then
-                    local delay=time.after("1100ms")
-                    channel.select({delay:case_receive()})
-                end
-                return env.run_as(identity,target,args,opts)
+            local started = time.now():utc()
+            local finished = started:add(2 * time.SECOND)
+            local clock = started
+            local original_now, original_after = drive.utc_now, drive.utc_after
+            drive.utc_now = function(): string return clock:format(time.RFC3339) end
+            drive.utc_after = function(ms: integer): string
+                return clock:add(ms * time.MILLISECOND):format(time.RFC3339)
             end
-            local _,err=env.run(env.automation_id,"history",slow)
-            test.is_nil(err,tostring(err))
-            local completed=h.read_drive(env.automation_id,"history")
-            local decision_at=drive.utc_now()
+            local function pull(identity: any, target: string, args: any, opts: any): (any?, any)
+                local response, err = env.run_as(identity, target, args, opts)
+                if target == "kickside.automation:round_acquire" then clock = finished end
+                return response, err
+            end
+            -- The runner returns after the harness captures jobs.complete.
+            local ok, result, err = pcall(env.run, env.automation_id, "history", pull)
+            drive.utc_now, drive.utc_after = original_now, original_after
+            if not ok then error(tostring(result)) end
+            test.is_nil(err, tostring(err))
+            test.is_true(result.self_completed)
+            test.eq(#env.completions, 1)
+            local completion = env.last_completion()
+            test.eq(completion.id, env.last_job.id)
+            test.eq(completion.options.rearm, finished:add(time.SECOND):format(time.RFC3339))
+            local completed = h.read_drive(env.automation_id, "history")
+            test.eq(completed.next_run_at, completion.options.rearm)
+            local decision_at = finished:format(time.RFC3339)
             test.is_true(drive.after(completed.next_run_at,decision_at),"an idle pull rearms in the future")
             local decision,claim_err=automation_db.in_tx(function(tx)
                 return claim.stamp_tx(tx,env.automation_id,"history",{token=env.last_job.lease_token},decision_at)

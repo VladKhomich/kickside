@@ -1,6 +1,8 @@
 local security = require("security")
 local http_client = require("http_client")
 local time = require("time")
+local binding_errors = require("binding_errors")
+local log = require("logger"):named("kickside.uploads.traits.fetch_url")
 
 local upload_lib = require("upload_lib")
 local upload_read_model = require("upload_read_model")
@@ -140,26 +142,38 @@ local function wait_for_terminal(actor_id, upload_id, timeout_seconds)
     end
 end
 
+local function completed_artifact_error(err, upload_id, artifact_id, code, message)
+    local diagnostic = binding_errors.artifact_diagnostic(err, upload_id, artifact_id)
+    diagnostic.code = diagnostic.code or code
+    log:warn("Failed to read completed upload artifacts", diagnostic)
+    local retryable
+    if type(err) == "userdata" then retryable = (err :: error):retryable() end
+    return errors.new({kind = diagnostic.kind, retryable = retryable,
+        message = "processed upload could not be read: " .. message,
+        details = {code = diagnostic.code, upload_id = upload_id, artifact_id = artifact_id}})
+end
+
 -- Surface what a completed upload exposes: the extracted primary text and the
 -- references of every derived artifact. An upload without primary text (an
 -- image, for one) has no markdown; any other read failure is the caller's error.
 local function completed_extras(upload_id, content_type)
     local result = { content_type = content_type }
 
-    local primary, primary_err = M.deps.artifacts.read_primary_content(upload_id)
-    if primary_err and not errors.is(primary_err, errors.NOT_FOUND) then
-        return nil, primary_err
+    local primary, primary_err, artifact_id = M.deps.artifacts.read_primary_content(upload_id)
+    if primary_err and not artifact_parts_repo.is_primary_artifact_missing(primary_err) then
+        return nil, completed_artifact_error(primary_err, upload_id, artifact_id,
+            "artifact_read_failed", "primary artifact is unreadable")
     end
     if primary and type(primary.content) == "string" then
-        local mime = primary.mime_type or content_type or ""
-        if mime:find("text", 1, true) or mime:find("json", 1, true) or mime == "" then
-            result.markdown = primary.content
-            result.content_type = mime
-        end
+        result.markdown = primary.content
+        result.content_type = primary.mime_type or content_type
     end
 
     local artifacts, artifacts_err = M.deps.artifacts.list_artifacts(upload_id)
-    if artifacts_err then return nil, artifacts_err end
+    if artifacts_err then
+        return nil, completed_artifact_error(artifacts_err, upload_id, nil,
+            "artifact_list_failed", "artifact list is unavailable")
+    end
     if #artifacts > 0 then
         local refs = {}
         for _, a in ipairs(artifacts) do
@@ -263,10 +277,7 @@ local function handle(args)
 
     if status == "completed" then
         local extras, extras_err = completed_extras(upload_id, (row and row.mime_type) or content_type)
-        if extras_err then
-            return nil, errors.new({ message = "processed upload could not be read: " .. tostring(extras_err),
-                kind = errors.INTERNAL, details = { upload_id = upload_id } })
-        end
+        if extras_err then return nil, extras_err end
         return {
             upload_id = upload_id,
             status = "completed",

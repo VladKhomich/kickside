@@ -18,6 +18,7 @@ entries:
     imports:
       models_types: kickside.models:models_types
       models_secrets: kickside.models.persist:models_secrets
+      llm_transport: wippy.llm.util:transport
 
 
   - name: card_policy
@@ -28,6 +29,7 @@ entries:
     imports:
       catalog_policy: kickside.models.catalog:policy
       models_types: kickside.models:models_types
+      model_mapper: kickside.models.discovery:mapper
       registry_models: wippy.llm.discovery:models
 
   - name: model_catalog
@@ -45,9 +47,24 @@ entries:
     source: file://resolver.lua
     method: resolve
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call]
+      policies:
+        - kickside.models.catalog:catalog_read
+        - kickside.models.catalog:provider_binding_read
+        - kickside.models:reload_profiles_call
     imports:
       model_catalog: kickside.models.catalog:model_catalog
+      providers: wippy.llm.discovery:providers
+      route_policy: wippy.llm.util:route
+
+  - name: provider_binding_read
+    kind: security.policy
+    meta:
+      private: true
+      comment: Resolve the driver binding selected by a saved provider, including custom providers.
+    policy:
+      resources: '*'
+      actions: [registry.get]
+      effect: allow
 
   - name: catalog_read
     kind: security.policy

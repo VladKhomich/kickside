@@ -111,7 +111,7 @@
   border-radius: 10px;
   font-size: 13px;
   background: color-mix(in srgb, var(--p-danger-500) 12%, transparent);
-  color: var(--p-danger-600, var(--p-danger-500));
+  color: var(--p-text-color);
 }
 
 /* Inside a field or form body rather than against the surface gutter. */

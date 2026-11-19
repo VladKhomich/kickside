@@ -3,6 +3,7 @@
 -- itself. This is a thin transport shell: read the id, secret, and body, then defer
 -- to webhook_ingress.process, which returns the status + JSON body.
 
+local trim = require("text_trim").trim
 local http = require("http")
 local json = require("json")
 local ingress = require("webhook_ingress")
@@ -13,7 +14,7 @@ local function read_secret(req: any): string?
     if type(header) == "string" and header ~= "" then return header end
     local auth = req:header("Authorization")
     if type(auth) == "string" and auth:lower():sub(1, 7) == "bearer " then
-        local raw = auth:sub(8):gsub("^%s+", ""):gsub("%s+$", "")
+        local raw = trim(auth:sub(8))
         if raw ~= "" then return raw :: string end
     end
     return nil

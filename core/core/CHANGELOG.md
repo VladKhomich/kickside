@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.3.25](https://github.com/kicksideai/kickside/compare/core-v0.3.24...core-v0.3.25) (2026-11-19)
+
+
+### Features
+
+* **core:** checkpoint supervised projections under the Jobs lease ([#585](https://github.com/kicksideai/kickside/issues/585)) ([f6a586b](https://github.com/kicksideai/kickside/commit/f6a586b2bc5841078e076c4ef1fedd2e45d28af3))
+* **core:** expose bounded pending source work from projection cursors ([#589](https://github.com/kicksideai/kickside/issues/589)) ([de1698a](https://github.com/kicksideai/kickside/commit/de1698a2d01e6d4b044bfd73930c540c3e42c177))
+
+
+### Bug Fixes
+
+* **core:** require the Jobs checkpoint lease API ([#592](https://github.com/kicksideai/kickside/issues/592)) ([49c7e08](https://github.com/kicksideai/kickside/commit/49c7e08bf3bca7604f899f9365951585567ba0f2))
+* **core:** validate checkpoint position and writer types ([#594](https://github.com/kicksideai/kickside/issues/594)) ([cf0c736](https://github.com/kicksideai/kickside/commit/cf0c736152f7f8403c04bc413f06f35b99bd7ee0))
+
+## [0.3.24](https://github.com/kicksideai/kickside/compare/core-v0.3.23...core-v0.3.24) (2026-11-19)
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.3.23](https://github.com/kicksideai/kickside/compare/core-v0.3.22...core-v0.3.23) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** expose projection attempt state to workers ([#550](https://github.com/kicksideai/kickside/issues/550)) ([87fa84d](https://github.com/kicksideai/kickside/commit/87fa84d40c2fc78d434844033d70d8df996d3e24))
+
+## [0.3.22](https://github.com/kicksideai/kickside/compare/core-v0.3.21...core-v0.3.22) (2026-11-19)
+
+
+### Features
+
+* **core:** add a shared Unicode case-folding library ([#549](https://github.com/kicksideai/kickside/issues/549)) ([9804e84](https://github.com/kicksideai/kickside/commit/9804e848595bba63e9674fad4479388d55811fef))
+
+
+### Bug Fixes
+
+* **component:** encrypt declared credentials and mask external reads ([#469](https://github.com/kicksideai/kickside/issues/469)) ([03389bf](https://github.com/kicksideai/kickside/commit/03389bf0bdb5b5092883a061f40fed55ca78db37))
+* **core:** derive retention wake-ups from bounded rotations ([#551](https://github.com/kicksideai/kickside/issues/551)) ([8a48065](https://github.com/kicksideai/kickside/commit/8a48065794355f2c303e94f41d1ce91c692871f0))
+* **core:** preserve retention deadlines across scoped wakes ([#546](https://github.com/kicksideai/kickside/issues/546)) ([c9e1dc3](https://github.com/kicksideai/kickside/commit/c9e1dc324a88f26a2f2505c2d586dfcf2940e57e))
+* **core:** release PostgreSQL prune locks before WAL flush ([#553](https://github.com/kicksideai/kickside/issues/553)) ([6c9cc67](https://github.com/kicksideai/kickside/commit/6c9cc67757bfdfe5f3a9d4a95c4a8323eec08ed6))
+* **core:** rotate event retention across threads ([#545](https://github.com/kicksideai/kickside/issues/545)) ([084adc8](https://github.com/kicksideai/kickside/commit/084adc844c4fb911ffb72061146ff3d831305b09))
+* **jobs:** close the run of a cancelled execution when cancellation settles ([#526](https://github.com/kicksideai/kickside/issues/526)) ([452a15e](https://github.com/kicksideai/kickside/commit/452a15e51c0268cf1f435b9393e19969bc1ee2d4))
+* keep secret operations in owning module frames ([#483](https://github.com/kicksideai/kickside/issues/483)) ([47f4f8a](https://github.com/kicksideai/kickside/commit/47f4f8af2dba69d4b8e818ab78530ec6fad12be9))
+
 ## [0.3.21](https://github.com/kicksideai/kickside/compare/core-v0.3.20...core-v0.3.21) (2026-11-17)
 
 

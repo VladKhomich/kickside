@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.45](https://github.com/kicksideai/kickside/compare/kickside-v0.2.44...kickside-v0.2.45) (2026-11-19)
+
+
+### Bug Fixes
+
+* **security:** list declared permissions in the role picker ([#558](https://github.com/kicksideai/kickside/issues/558)) ([b768118](https://github.com/kicksideai/kickside/commit/b7681183c3fe087165dbb9638b4a565ed0eb3e61))
+
+## [0.2.44](https://github.com/kicksideai/kickside/compare/kickside-v0.2.43...kickside-v0.2.44) (2026-11-19)
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.2.43](https://github.com/kicksideai/kickside/compare/kickside-v0.2.42...kickside-v0.2.43) (2026-11-19)
+
+
+### Bug Fixes
+
+* **app:** share Host Vue and Iconify with web components ([9d382e7](https://github.com/kicksideai/kickside/commit/9d382e7e9ef7d088f2027e662dc9a9db656e729f))
+
 ## [0.2.42](https://github.com/kicksideai/kickside/compare/kickside-v0.2.41...kickside-v0.2.42) (2026-11-16)
 
 

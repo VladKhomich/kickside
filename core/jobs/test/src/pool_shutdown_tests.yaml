@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+entries:
+  - name: pool_shutdown_test
+    kind: function.lua
+    meta: { type: test, suite: jobs_pool_shutdown }
+    source: file://pool_shutdown_test.lua
+    method: run
+    modules: [channel, process, registry, sql, time, uuid]
+    imports:
+      test: wippy.test:test
+      config: kickside.core.jobs:config
+
+  - name: pool_shutdown_probe
+    kind: process.lua
+    source: file://pool_shutdown_probe.lua
+    method: run_pool
+    modules: [channel, process, sql, time]
+    imports:
+      worker_pool: kickside.core.jobs.service:worker_pool
+      job_fixture: app:job_fixture
+      claim: kickside.core.jobs.persist:claim
+      claim_execution: kickside.core.jobs.persist:claim_execution
+      lifecycle: kickside.core.jobs.persist:lifecycle
+
+  - name: pool_shutdown_slot
+    kind: process.lua
+    source: file://pool_shutdown_probe.lua
+    method: run_slot
+    modules: [channel, process, sql, time]
+    imports:
+      worker_pool: kickside.core.jobs.service:worker_pool
+      job_fixture: app:job_fixture
+      claim: kickside.core.jobs.persist:claim
+      claim_execution: kickside.core.jobs.persist:claim_execution
+      lifecycle: kickside.core.jobs.persist:lifecycle

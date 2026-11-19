@@ -24,6 +24,22 @@ drain of an in-flight execution is bounded by that execution's own declared
 `proc.max_execution`); past it the ordinary timeout termination and retry policy
 apply. An upgrade never terminates or re-runs an execution.
 
+The pool has five seconds for shutdown coordination, including dispatch,
+assignment release and cleanup waits in the database or runtime. A CANCEL
+event, including during service stop, replacement or context cancellation,
+closes admission and lets each running execution settle under its own
+execution ceiling. A drain triggered by the pool's registry subscription closing
+asks each slot to cancel through its existing termination fence. If coordination
+exceeds the deadline, the pool exits with an error. Shutdown cleanup can
+finish separately, reusing confirmed slot exits and the original claim and
+run-owner fences to refund assignments that never started.
+
+Before a hot upgrade or rollback, the pool handles lifecycle events already
+taken from its mailbox. The runtime carries later events to the replacement
+at the same PID. If a rollback removes the shutdown cleanup process before
+a concurrent stop can hand off an assignment, the existing lease recovery
+handles any release still pending when the root exits.
+
 The pool reads its next pending and lease deadlines in one query. Each branch
 seeks the first timestamp after the dispatch snapshot through the existing
 deadline index and stops after one row. SQLite explicitly selects the partial
@@ -50,6 +66,16 @@ freshness all compare against that runtime clock. SQL binds the runtime instant;
 pool delays subtract runtime time from the earliest stored deadline. Database
 host time and transaction-start time do not determine eligibility. SQLite keeps
 microsecond timestamp comparisons, including the worker freshness boundary.
+
+## History retention
+
+`retention.jobs` and `retention.job_runs` set the default windows.
+`retention.by_type` can override both windows for up to 64 job types.
+For each type, the worker prunes a bounded page of expired runs before
+checking jobs. It keeps jobs that still own run history. When a run page
+fills the sweep budget, the next sweep starts at the following type.
+Each sweep bounds the rows and types it examines and resumes through the
+existing retention timer.
 
 ## Dependency interface
 
@@ -217,6 +243,8 @@ sharing that queue has been upgraded to support capacity enforcement.
 
 `jobs.complete_tx` accepts optional `demand_satisfied = true` when the worker proves under its durable source lock that the completed run covers the source head. It consumes ordinary demand received during that run; independent control wakes still rearm the slot. Omission retains the existing demand behavior.
 
+When a successful reusable slot schedules optional future work with `rearm`, it can also set `rearm_on_demand = true`. A new ordinary wake brings that slot forward if its deadline is still in the future. This lets an event consumer wait for an item retry while remaining ready for new input. Omit the option for fixed deadlines such as source backoff or projection debounce. `rearm_on_demand` cannot be combined with `defer_demand` or parking. Existing deadlines retain the behavior they were written with until the slot next completes.
+
 Failure transitions accept an optional final `{ retry_after_ms = milliseconds }`
 argument on `fail_tx` and `fail_job`. The structured floor can exceed the policy
 cap. Slots use `slot_retry`; one-shot jobs use `retry`. Both retain their configured
@@ -246,8 +274,9 @@ The editable policy paths are Settings definitions in namespace
 `retry.max_attempts` (1–1000000), `retry.retry_after_ms` (1–86400000),
 `retry.max_delay_ms` (1000–86400000), and `proc.max_execution` (default **10m**).
 
-Precedence is administrator override, then the host assignment in
-`kickside.core.jobs:policy` meta, then the shipped default in its `defaults`.
+Precedence is administrator override, then the host assignment, then the
+shipped default. The complete host policy stays in `kickside.core.jobs:policy`
+meta so active workers can read it while a new module version is applied.
 Settings stores only overrides; Jobs reads the keys `get_namespace` reports as
 `overridden`, so a value without an override follows the host configuration
 rather than the Settings default. Each override is validated by

@@ -55,6 +55,7 @@ entries:
     source: file://worker_dispatch.lua
     modules: [sql, funcs, registry, logger, time, process, security]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: kickside.core.jobs.policy:execution
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
@@ -70,6 +71,7 @@ entries:
     source: file://worker_child.lua
     modules: [sql, logger, time, process]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: kickside.core.jobs.policy:execution
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       job_types: kickside.core.jobs:types
@@ -116,6 +118,18 @@ entries:
       job_class: kickside.core.jobs:job_class
       clock: kickside.core.jobs:clock
       migration_runner: wippy.migration:runner
+
+  - name: worker_shutdown
+    kind: process.lua
+    meta:
+      comment: Finishes fenced assignment release after the pool root exits.
+    source: file://worker_shutdown.lua
+    method: main
+    modules: [channel, process, sql, logger]
+    imports:
+      config: kickside.core.jobs:config
+      claim_execution: kickside.core.jobs.persist:claim_execution
+      wake: kickside.core.jobs.persist:wake
 
   - name: worker_pool
     kind: library.lua

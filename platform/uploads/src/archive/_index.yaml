@@ -75,7 +75,8 @@ entries:
       comment: Zip archives, transparently unpacked into their member files.
     type_key: archive
     priority: 100
-    extensions: [zip]
+    extension_mime_types:
+      zip: application/zip
     mime_types:
       - application/zip
       - application/x-zip-compressed
@@ -83,4 +84,6 @@ entries:
       - title: Unpacking archive
         func: kickside.uploads.archive:processor
     on_delete:
+      # Owner teardown already visits every member through its own upload row.
       - func: kickside.uploads.archive:on_delete
+        delete_scope: single_upload

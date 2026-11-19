@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 -- Canonical provenance envelope for event-body source references.
 --
 -- Platform contract:
@@ -41,11 +42,6 @@ local CANONICAL_KEYS = {
     fields = true,
     base = true,
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function put_optional(out: { [string]: any }, key: string, value: any): ()
     local s = trim(value)

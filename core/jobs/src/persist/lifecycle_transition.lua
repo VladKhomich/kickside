@@ -65,7 +65,8 @@ lifecycle.decode_payload = decode_payload
 
 -- Insert a run under its lifetime execution sequence. Retry attempt numbers
 -- are diagnostic and may repeat after a slot parks and resumes.
-local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, pid: string, attempt_no: integer): (table?, error?)
+local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, pid: string,
+        attempt_no: integer, parent_locked: boolean?): (table?, error?)
     local job_id = tostring(job.id or "")
     if job_id == "" then
         return nil, (errors.new({ message = "job.id is required for run history", kind = errors.INVALID }) :: error)
@@ -94,6 +95,13 @@ local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, 
     local size_err = row_bytes.check(run_row, (policy :: any).max_row_bytes,
         owner.kind .. ":" .. owner.id, "start_job_run")
     if size_err then return nil, size_err end
+    if not parent_locked then
+        -- A claim snapshot can still carry a link that teardown has cleared.
+        -- Read the parent in the insert so SQLite starts with a write and
+        -- PostgreSQL serializes the projection with the parent detach.
+        local lock = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
+        run_row.thread_id = sql.builder.expr("(SELECT thread_id FROM kickside_job WHERE id=?" .. lock .. ")", job_id)
+    end
     local statement, params, build_err = sql.builder.insert("kickside_job_run")
         :set_map(run_row):suffix("ON CONFLICT DO NOTHING")
         :placeholder_format(sql.builder.dollar):to_sql()
@@ -116,9 +124,10 @@ local function start_job_run_tx(db_or_tx: Executor, dbtype: string, job: table, 
     end
     return nil, (errors.new({ message = "run execution sequence already belongs to another lease", kind = errors.CONFLICT }) :: error)
 end
-local function start_job_run(db_or_tx: Executor, dbtype: string, job: table, pid: string, attempt_no: integer): (table?, error?)
+local function start_job_run(db_or_tx: Executor, dbtype: string, job: table, pid: string,
+        attempt_no: integer, parent_locked: boolean?): (table?, error?)
     if type((db_or_tx :: any).db_type) == "function" then
-        return start_job_run_tx(db_or_tx, dbtype, job, pid, attempt_no)
+        return start_job_run_tx(db_or_tx, dbtype, job, pid, attempt_no, parent_locked)
     end
     local tx, begin_err = sql_boundary.begin(db_or_tx :: sql.DB, "job run transaction failed", "transaction", response_error)
     if begin_err then return nil, begin_err end

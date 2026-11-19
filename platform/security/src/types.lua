@@ -26,9 +26,9 @@ type PolicySummary = {
     effect: string?,
     actions: any?,
     resources: any?,
-    -- A private policy (meta.private = true) is excluded from the picker; only
-    -- public policies are selectable when composing a scope.
-    private: boolean,
+    -- Declaration's meta.private marker.
+    private: boolean?,
+    available: boolean?,
 }
 
 -- A scope/role in the merged catalog: a built-in implicit group, a registry
@@ -45,6 +45,7 @@ type CatalogScope = {
     slug: string?,         -- present for custom (DB-backed) scopes
     -- For a built-in/registry scope that an admin has extended: the overlay's DB
     -- slug + the extra policies it grants (unioned onto the base at runtime).
+    base_policies: { PolicySummary }?,
     overlay_slug: string?,
     overlay_policies: { PolicySummary }?,
 }

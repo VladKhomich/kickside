@@ -353,8 +353,8 @@ local function define_tests()
         end)
 
         for _, case in ipairs({
-            { name = "image", mime = "image/png", content = "binary image bytes" },
-            { name = "archive", mime = "application/zip", content = "archive bytes" },
+            { name = "image", kind = "image", mime = "image/png", content = "binary image bytes" },
+            { name = "archive", kind = "archive", mime = "application/zip", content = "archive bytes" },
             { name = "original image without extraction", mime = "image/png", content = "image bytes", original = true },
             { name = "original archive without extraction", mime = "application/zip", content = "archive bytes", original = true },
             { name = "empty original file", mime = "application/octet-stream", content = "", original = true },
@@ -377,7 +377,7 @@ local function define_tests()
                     test.is_true(written)
                 else
                     local created, artifact_err = artifact_content_repo.create_artifact({
-                        upload_id = upload_id, kind = "markdown", role = "primary", mime_type = case.mime,
+                        upload_id = upload_id, kind = case.kind or "markdown", role = "primary", mime_type = case.mime,
                         label = "attachment", ordinal = 1, content = case.content,
                         storage_id = "app:uploads", metadata = { filename = "attachment" },
                     })

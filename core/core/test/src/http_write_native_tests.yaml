@@ -61,6 +61,7 @@ entries:
   kind: library.lua
   source: file://http_write_native_post_message.lua
   imports:
+    text_trim: kickside.contract:text_trim
     http_errors: kickside.contract:http_errors
     threads_contract: app:http_write_native_contract_adapter
     http: app:http_write_native_http_adapter

@@ -1,5 +1,6 @@
 -- Job dispatch, process binding and supervised child termination.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local funcs = require("funcs")
 local registry = require("registry")
@@ -25,13 +26,6 @@ local PROC_BLOCKED = {
     ["kickside.core.jobs.service:loop"] = "job worker loop is a daemon and cannot be used as a job worker_ref",
     ["kickside.core.jobs.service:job_child"] = "job execution child cannot be used as a job worker_ref",
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function entry_kind(entry: any): string?
     if type(entry) ~= "table" then
@@ -372,6 +366,5 @@ local function execute_job(db: sql.DB, dbtype: string, job: table): (table?, err
 end
 worker.execute_job = execute_job
 worker.proc_binding_for = proc_binding_for
-
 
 return worker

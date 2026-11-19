@@ -313,10 +313,7 @@ local RETIRED_TRIGGER_TEARDOWN = "kickside.automation.trigger:trigger_service_in
 local RETIRED_SCHEDULE_DELETE = "kickside.automation.schedule:delete_schedule"
 local COVERED_TRIGGER_MODES: { [string]: boolean } = { poll = true, timer = true }
 
-local function trimmed(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trimmed = require("text_trim").trim
 
 -- watch_projection(step) -> { thread_id, projection_id }? for a retired
 -- watch teardown step whose registration names its trigger projection.

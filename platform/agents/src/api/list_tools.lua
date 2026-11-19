@@ -1,15 +1,25 @@
+local trim = require("text_trim").trim
 local http = require("http")
 local security = require("security")
 local registry = require("registry")
 local query_params = require("query_params")
 local tool_schema = require("tool_schema")
 local tool_visibility = require("tool_visibility")
+local tool_resolver = require("tool_resolver")
+local canonical_json = require("canonical_json")
 
 local TOOL_TYPE = "tool"
 local MAX_PICKER_LIMIT = 100
 local DEFAULT_PICKER_LIMIT = 25
 
 local M = {}
+
+local function find_tools()
+    return registry.find({
+        [".kind"] = "function.lua",
+        ["meta.type"] = TOOL_TYPE,
+    })
+end
 
 function M.describe(entry: any): any
     local id = entry.id or ""
@@ -91,7 +101,7 @@ local function handler()
     if type(ids_param) == "string" and ids_param ~= "" then
         want_ids = {}
         for id in string.gmatch(ids_param, "([^,]+)") do
-            local trimmed = id:match("^%s*(.-)%s*$")
+            local trimmed = trim(id)
             if trimmed ~= "" then want_ids[trimmed] = true end
         end
     end
@@ -117,10 +127,7 @@ local function handler()
         offset = parsed_cursor or 0
     end
 
-    local entries, err = registry.find({
-        [".kind"] = "function.lua",
-        ["meta.type"] = TOOL_TYPE,
-    })
+    local entries, err = find_tools()
 
     if err then
         res:set_status(http.STATUS.INTERNAL_ERROR)
@@ -138,6 +145,59 @@ local function handler()
     }
     if next_cursor then payload.next_cursor = next_cursor end
     res:write_json(payload)
+end
+
+function M.resolve_names(entries: {any}?, wanted: any): any
+    local resolved = canonical_json.object({})
+    local aliases = {}
+    for _, entry in ipairs(entries or {}) do
+        if tool_visibility.entry_is_public_tool(entry) then
+            local name = tool_resolver.get_tool_name(entry)
+            local title = entry.meta.title or name
+            if wanted[entry.id] then
+                resolved[entry.id] = {name = name, title = title}
+            end
+            if wanted[name] then
+                -- A short name can occur in more than one namespace.
+                if aliases[name] == nil then
+                    aliases[name] = {name = name, title = title}
+                else
+                    aliases[name] = false
+                end
+            end
+        end
+    end
+    for key, value in pairs(aliases) do
+        if value and resolved[key] == nil then resolved[key] = value end
+    end
+    return resolved
+end
+
+function M.by_name()
+    local req, res = http.request(), http.response()
+    if not req or not res then return end
+    res:set_content_type(http.CONTENT.JSON)
+    res:set_header("Cache-Control", "no-store")
+    if not security.actor() then
+        res:set_status(http.STATUS.UNAUTHORIZED)
+        res:write_json({success = false, error = "authentication required"})
+        return
+    end
+    local names = req:query("tools")
+    if type(names) ~= "string" or names == "" then
+        query_params.bad_request(res, "Missing 'tools' query parameter")
+        return
+    end
+    local wanted = {}
+    for name in names:gmatch("[^,]+") do wanted[name] = true end
+    local entries, err = find_tools()
+    if err then
+        res:set_status(http.STATUS.INTERNAL_ERROR)
+        res:write_json({success = false, error = "tool lookup failed"})
+        return
+    end
+    res:set_status(http.STATUS.OK)
+    res:write_json({success = true, tools = M.resolve_names(entries, wanted)})
 end
 
 M.handler = handler

@@ -48,6 +48,10 @@ commit regenerated tracked assets with the source.
 
 Create an MCP credential from **MCP**, choose allowed capabilities and resources, and copy its token once. Use the displayed endpoint and bearer token in the external client. Tool calls retain the credential’s authority ceiling and Component restrictions; changing group access can reduce or revoke authority. Use `kickside/mcp-client` for outbound connections to an external server.
 
+Tools that declare an `output_schema` must return a JSON object that conforms to
+that schema. MCP sends the object as `structuredContent` alongside its JSON text,
+including when the tool is reached through `call_tool`.
+
 ### Host requirements
 
 Bind these exact requirement IDs through the module’s dependency declaration

@@ -9,8 +9,6 @@ import {
   artifactLabel,
   artifactMeta,
   formatSize,
-  isPrimaryMarkdown,
-  isTextualContent,
   typeIcon,
   typeLabel,
   uploadLabel,
@@ -29,6 +27,7 @@ interface Props {
   partsRangeStart: number
   partsRangeEnd: number
   hasPrimary: boolean
+  primaryKind?: string
   artifactsLoading: boolean
   activePreviewSource: (upload: Upload) => PreviewSource
   downloadActive: () => Promise<void>
@@ -39,10 +38,13 @@ interface Props {
   viewArtifact: (artifact: UploadArtifact) => void
   gotoPartsPage: (page: number) => void
   retrying: boolean
+  requestErrors?: string[]
   retryUpload: (upload: Upload) => Promise<void>
 }
 
 const props = defineProps<Props>()
+const source = computed(() => props.preview ? props.activePreviewSource(props.preview) : null)
+const isPrimary = computed(() => props.artifactView?.role === 'primary')
 const notice = computed(() => props.preview
   ? uploadNotice(props.preview) || (props.preview.status === 'processing'
     ? { tone: 'info', text: 'Processing. Retry is available if the job has stopped.' } : null)
@@ -127,6 +129,8 @@ const emit = defineEmits<{ (event: 'update:partsExpanded', value: boolean): void
         </Button>
       </header>
 
+      <div v-for="(error, index) in requestErrors" :key="index" class="kx-pv-fail" role="alert"><span>{{ error }}</span></div>
+
       <!-- A failed upload keeps its original bytes, so the drawer still opens: state
            the failure here instead of showing an empty Markdown view. -->
       <div
@@ -156,8 +160,7 @@ const emit = defineEmits<{ (event: 'update:partsExpanded', value: boolean): void
         </Button>
       </div>
 
-      <!-- Default views: the original file, plus the converted markdown when the
-           upload was converted. Clicking swaps the always-visible viewer below. -->
+      <!-- The original and the converted primary content share the viewer. -->
       <div class="kx-views">
         <Button
           type="button"
@@ -181,28 +184,32 @@ const emit = defineEmits<{ (event: 'update:partsExpanded', value: boolean): void
           class="kx-part"
           size="small"
           rounded
-          :outlined="!(artifactView && isPrimaryMarkdown(artifactView))"
-          label="Markdown"
-          data-testid="uploads-view-markdown"
-          :aria-pressed="!!artifactView && isPrimaryMarkdown(artifactView)"
+          :outlined="!isPrimary"
+          :label="primaryKind === 'markdown' ? 'Markdown' : 'Extracted text'"
+          :data-testid="primaryKind === 'markdown' ? 'uploads-view-markdown' : 'uploads-view-primary'"
+          :aria-pressed="isPrimary"
           :pt="{ label: { class: 'kx-part-label' } }"
           @click="viewPrimary"
         >
           <template #icon="{ class: iconClass }">
-            <Icon icon="tabler:markdown" :class="iconClass" aria-hidden="true" />
+            <Icon :icon="primaryKind === 'markdown' ? 'tabler:markdown' : 'tabler:file-text'" :class="iconClass" aria-hidden="true" />
           </template>
         </Button>
       </div>
 
-      <div class="kx-pv-view" :class="{ 'kx-pv-padded': isTextualContent(activePreviewSource(preview).contentType) }">
+      <div v-if="source?.contentType" class="kx-pv-view" :class="{ 'kx-pv-padded': source.textAvailable }">
+        <p v-if="source.previewTruncated" role="status">Showing the first rows. Download the file to view all rows.</p>
         <wc-resource-view
+          v-if="source.sourceUrl || source.previewText !== undefined"
           :key="artifactView ? `${preview.uuid}:${artifactView.artifact_id}` : preview.uuid"
           class="kx-pv-rv"
-          :content-type="activePreviewSource(preview).contentType"
-          :source-url="activePreviewSource(preview).sourceUrl"
-          :filename="activePreviewSource(preview).filename"
-          :alt="activePreviewSource(preview).filename"
+          :content-type="source.contentType"
+          :source="source.previewText"
+          :source-url="source.sourceUrl"
+          :filename="source.filename"
+          :alt="source.filename"
         />
+        <p v-else>Inline preview is unavailable. Download the file to view its contents.</p>
       </div>
 
       <!-- Extracted parts (page images, etc.), paginated since a file can have

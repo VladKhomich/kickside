@@ -44,12 +44,14 @@ local function define_tests()
             local card, save_err = models_repo.upsert_card({
                 name = name, title = "Member credential model", provider_profile_id = profile_id,
                 provider_id = "wippy.llm.openai_compat:provider", provider_model = "fixture",
-                capabilities = {"embed"}, dimensions = 512, max_tokens = 8192, enabled = true,
+                capabilities = {"generate"}, options = {reasoning_model_request = true},
+                max_tokens = 8192, enabled = true,
             })
             test.is_nil(save_err, tostring(save_err))
             test.not_nil(card)
             local actor = security.new_actor("credential-member", {})
             local scope = assert(security.named_scope("app:selected_model_members"))
+            test.eq(scope:evaluate(actor, "registry.get", "wippy.llm.openai_compat:provider"), "undefined")
             local caller = funcs.new():with_actor(actor):with_scope(scope)
             local resolved, err = caller:call("kickside.models.test.module_access:resolve_probe", {model = name})
             local readable, read_err = caller:call("kickside.models.test.module_access:store_probe", {})
@@ -61,6 +63,7 @@ local function define_tests()
             test.is_nil(err, tostring(err))
             test.not_nil(resolved)
             test.eq(resolved.name, name)
+            test.eq(resolved.providers[1].sampling, false)
             test.is_nil(readable, "Member reads the private model snapshot")
             test.not_nil(read_err, "Private store read is denied by the runtime")
             test.not_nil(tostring(read_err):find("not allowed to access store: kickside.models:cache", 1, true), tostring(read_err))

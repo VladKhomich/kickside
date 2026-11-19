@@ -2,6 +2,11 @@ version: "1.0"
 namespace: kickside.knowledge.retrieval
 
 entries:
+  - name: analysis_model
+    kind: library.lua
+    source: file://analysis_model.lua
+    modules: [contract]
+
   - name: kb_search
     kind: library.lua
     meta: { comment: Control-plane KB query facade — resolves a KB and delegates to the engine's queryable binding. Single inbound query seam; retrieval is entirely the engine's concern. }
@@ -21,6 +26,7 @@ entries:
     source: file://agentic_query.lua
     method: run
     imports:
+      text_trim: kickside.contract:text_trim
       flow: userspace.dataflow.flow:flow
 
   # Answering layer: retrieve + produce an answer via the selected query driver.
@@ -32,6 +38,7 @@ entries:
     imports:
       llm: wippy.llm:llm
       kb_search: kickside.knowledge.retrieval:kb_search
+      analysis_model: kickside.knowledge.retrieval:analysis_model
       model_failure: kickside.contract:model_failure
 
   # Built-in fallback agent for the agentic query driver.
