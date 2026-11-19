@@ -27,10 +27,10 @@ entries:
     component: kickside/contract
 
   - name: dep.kickside.jobs
-    version: '>=0.1.87'
+    version: '>=0.1.88'
     kind: ns.dependency
     meta:
-      comment: Durable leased-job engine, including transaction-scoped lease checks for projection checkpoints.
+      comment: Durable leased-job engine with transaction-scoped projection checkpoints and thread cleanup.
     component: kickside/jobs
 
   - name: dep.wippy.migration

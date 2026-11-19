@@ -63,6 +63,7 @@ wippy-loading ~ wippy-loading { display: none; }
 .kx-drop:hover .kx-drop-ico, .kx-drop.dragover .kx-drop-ico { color: var(--p-primary-color); }
 .kx-drop-title { font-size: 14px; font-weight: 600; color: var(--p-text-color); margin: 4px 0 0; }
 .kx-drop-sub { font-size: 12px; color: var(--p-text-muted-color); margin: 0; }
+.kx-err.kx-upload-errors { margin: 0; overflow-wrap: anywhere; }
 .kx-empty-cta { margin-top: 12px; }
 
 .kx-list {
@@ -104,6 +105,7 @@ wippy-loading ~ wippy-loading { display: none; }
 .kx-name { font-size: 14px; font-weight: 600; color: var(--p-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kx-sub { font-size: 12px; color: var(--p-text-muted-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kx-err-reason { font-size: 12px; color: var(--p-danger-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kx-err-reason[role="alert"] { color: var(--p-text-color); white-space: normal; overflow-wrap: anywhere; }
 .kx-type { color: var(--p-text-color); font-weight: 600; }
 /* Sizing is .kx-tag-sm and the fill is the Tag's own severity; this only adds
    the ring, which derives from whatever ink the severity chose. */
@@ -147,7 +149,8 @@ wippy-loading ~ wippy-loading { display: none; }
 .kx-pv-fail {
   display: flex; align-items: flex-start; gap: 8px; flex: none;
   padding: 9px 18px; font-size: 12.5px; line-height: 1.4;
-  color: var(--p-danger-500);
+  color: var(--p-text-color);
+  overflow-wrap: anywhere;
   background: color-mix(in srgb, var(--p-danger-500) 10%, transparent);
   border-bottom: 1px solid var(--p-content-border-color);
 }

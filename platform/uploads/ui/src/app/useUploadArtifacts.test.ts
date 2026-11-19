@@ -50,7 +50,7 @@ describe('upload delivery URLs', () => {
     state.openPreview(upload)
     expect(state.activePreviewSource(upload)).toMatchObject({ contentType: 'application/pdf', sourceUrl: upload.raw_url })
     await flushPromises()
-    expect(state.artifactStateFor(upload.uuid).error).toBe('Unavailable')
+    expect(state.artifactStateFor(upload.uuid).error).toBe('report.pdf · Unavailable')
     expect(state.activePreviewSource(upload)).toMatchObject({ contentType: 'application/pdf', sourceUrl: upload.raw_url })
 
     state.closePreview()

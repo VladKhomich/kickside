@@ -101,6 +101,7 @@ entries:
     modules: [sql, json]
     imports:
       thread_fence: kickside.core.jobs.persist:thread_fence
+      wake: kickside.core.jobs.persist:wake
       clock: kickside.core.jobs:clock
       config: kickside.core.jobs:config
       sql_boundary: kickside.core.jobs.persist:sql_boundary

@@ -3,6 +3,7 @@ import { api } from '@wippy-fe/proxy'
 import type { ArtifactState, PreviewSource, Upload, UploadArtifact } from './uploads.types.ts'
 import {
   artifactLabel,
+  formatUploadRequestError,
   uploadLabel,
 } from './uploads.format.ts'
 
@@ -26,7 +27,7 @@ function inertOpenType(source: PreviewSource, responseType: string) {
   return 'application/octet-stream'
 }
 
-export function useUploadArtifacts(error: Ref<string>) {
+export function useUploadArtifacts(deliveryError: Ref<string>) {
   // Preview opens as a right-side overlay drawer; artifactView selects which file
   // the viewer shows (the original, or one extracted part).
   const preview = ref<Upload | null>(null)
@@ -91,7 +92,10 @@ export function useUploadArtifacts(error: Ref<string>) {
   }
 
   function openPreview(upload: Upload) {
-    if (artifactView.value && preview.value?.uuid !== upload.uuid) artifactView.value = null
+    if (preview.value?.uuid !== upload.uuid) {
+      artifactView.value = null
+      deliveryError.value = ''
+    }
     preview.value = upload
     maybeSelectDefaultArtifact(upload)
     // Load the extracted parts up front so their chips appear alongside the file;
@@ -102,6 +106,7 @@ export function useUploadArtifacts(error: Ref<string>) {
   function closePreview() {
     preview.value = null
     artifactView.value = null
+    deliveryError.value = ''
   }
 
   function viewOriginal() {
@@ -130,6 +135,7 @@ export function useUploadArtifacts(error: Ref<string>) {
   const hasPrimary = computed(() => !!currentPrimary.value && !isSourceArtifact(currentPrimary.value))
   const primaryKind = computed(() => currentPrimary.value?.content_description?.kind)
   const artifactsLoading = computed(() => !!(preview.value && artifactStateFor(preview.value.uuid).loading))
+  const artifactsError = computed(() => preview.value ? artifactStateFor(preview.value.uuid).error : '')
 
   function gotoPartsPage(page: number) {
     if (!preview.value) return
@@ -148,14 +154,17 @@ export function useUploadArtifacts(error: Ref<string>) {
   }
 
   // Blob URLs let downloads use the record's filename across storage origins.
-  async function fetchBlobUrl(url: string, openSource?: PreviewSource): Promise<string | null> {
-    if (!url) return null
+  async function fetchBlobUrl(url: string, filename: string, openSource?: PreviewSource): Promise<string | null> {
+    const upload = preview.value
+    if (!url || !upload) return null
+    deliveryError.value = ''
     try {
       const response = await api.get<Blob>(url, { responseType: 'blob' })
       const blob = response.data
       return URL.createObjectURL(openSource ? blob.slice(0, blob.size, inertOpenType(openSource, blob.type)) : blob)
     } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : 'failed to fetch file'
+      const message = await formatUploadRequestError(filename, cause, 'Failed to fetch file')
+      if (preview.value?.uuid === upload.uuid) deliveryError.value = message
       return null
     }
   }
@@ -164,10 +173,11 @@ export function useUploadArtifacts(error: Ref<string>) {
     if (busyAction.value) return
     busyAction.value = true
     try {
-      const url = await fetchBlobUrl(activeRawUrl())
+      const filename = activeName()
+      const url = await fetchBlobUrl(activeRawUrl(), filename)
       if (!url) return
       const anchor = document.createElement('a')
-      anchor.href = url; anchor.download = activeName(); anchor.click()
+      anchor.href = url; anchor.download = filename; anchor.click()
       setTimeout(() => URL.revokeObjectURL(url), 10000)
     } finally { busyAction.value = false }
   }
@@ -176,7 +186,7 @@ export function useUploadArtifacts(error: Ref<string>) {
     if (busyAction.value || !preview.value) return
     busyAction.value = true
     try {
-      const url = await fetchBlobUrl(activeRawUrl(), activePreviewSource(preview.value))
+      const url = await fetchBlobUrl(activeRawUrl(), activeName(), activePreviewSource(preview.value))
       if (url) {
         window.open(url, '_blank', 'noopener')
         setTimeout(() => URL.revokeObjectURL(url), 60000)
@@ -186,15 +196,13 @@ export function useUploadArtifacts(error: Ref<string>) {
 
   async function loadArtifacts(upload: Upload, force = false, toPage = 1) {
     const current = artifactStateFor(upload.uuid)
-    if ((current.loaded || current.loading) && !force) return
+    if (current.loading || (current.loaded && !force)) return
     setArtifactState(upload.uuid, { ...current, loading: true, error: '' })
     try {
       const offset = (toPage - 1) * PARTS_PER_PAGE
-      const { data } = await api.get(`/api/v1/uploads/${upload.uuid}/artifacts`, { params: { limit: PARTS_PER_PAGE, offset } })
-      if (!data.success) {
-        setArtifactState(upload.uuid, { ...current, loaded: false, loading: false, error: data.error || 'failed to load artifacts' })
-        return
-      }
+      const response = await api.get(`/api/v1/uploads/${upload.uuid}/artifacts`, { params: { limit: PARTS_PER_PAGE, offset } })
+      const { data } = response
+      if (!data.success) throw { response }
       const raw: UploadArtifact[] = data.artifacts || []
       const primary = data.primary || raw.find((artifact) => artifact.role === 'primary' && !!artifact.raw_url) || null
       const parts = raw.filter((artifact) => !isSourceArtifact(artifact) && artifact.role !== 'primary')
@@ -208,7 +216,8 @@ export function useUploadArtifacts(error: Ref<string>) {
       })
       if (toPage === 1) maybeSelectDefaultArtifact(upload)
     } catch (cause) {
-      setArtifactState(upload.uuid, { ...current, loaded: false, loading: false, error: cause instanceof Error ? cause.message : 'failed to load artifacts' })
+      const error = await formatUploadRequestError(uploadLabel(upload), cause, 'Failed to load artifacts')
+      setArtifactState(upload.uuid, { ...current, loaded: false, loading: false, error })
     }
   }
 
@@ -217,6 +226,6 @@ export function useUploadArtifacts(error: Ref<string>) {
     artifactStateFor, isSourceArtifact, activePreviewSource,
     openPreview, closePreview, viewOriginal, viewPrimary, viewArtifact,
     currentArtifacts, partsTotal, partsPage, partsPages, partsRangeStart, partsRangeEnd,
-    hasPrimary, primaryKind, artifactsLoading, gotoPartsPage, downloadActive, openActive,
+    hasPrimary, primaryKind, artifactsLoading, artifactsError, gotoPartsPage, downloadActive, openActive,
   }
 }
