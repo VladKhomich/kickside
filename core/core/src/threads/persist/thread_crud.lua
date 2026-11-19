@@ -64,8 +64,7 @@ local function declaration_response(field: string): error
 end
 
 -- identity: { row?, system?, error? } from the contract's declared_identity.
-local function register_declared_projection(db: DB, thread_id: string, p: table, identity: { [string]: any },
-    convergence: boolean?): error?
+local function register_declared_projection(db: DB, thread_id: string, p: table, identity: { [string]: any }): error?
     local params = {
         kind = p.kind,
         worker_ref = p.worker_ref,
@@ -93,7 +92,7 @@ local function register_declared_projection(db: DB, thread_id: string, p: table,
     for _, row in ipairs(rows :: table[]) do
         if type(row.id) ~= "string" or row.id == "" then return declaration_response("cursor id") end
     end
-    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, convergence and "convergence" or nil)
+    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, "convergence")
     if proj_err then return errors.wrap(proj_err, "register declared projection") end
     if type(projection) ~= "table" then return declaration_response("registration") end
     return nil
@@ -112,7 +111,7 @@ local function declared_identity_error(identity: { [string]: any }): error?
 end
 
 function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_id: string?,
-    identity: { [string]: any }, convergence: boolean?, indexes: table?): error?
+    identity: { [string]: any }, indexes: table?): error?
     local impl_id = trim(declaration_impl_id)
     if impl_id == "" then return nil end
     if has_thread_projections(impl_id) then
@@ -122,7 +121,7 @@ function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_
     for index, p in ipairs(autoinit.projections_for_impl(impl_id)) do
         if (not indexes or indexes[tostring(index)])
             and (p.on == nil or p.on == "" or p.on == autoinit.PROJECTION_ON.THREAD) then
-            local proj_err = register_declared_projection(db, thread_id, p :: table, identity, convergence)
+            local proj_err = register_declared_projection(db, thread_id, p :: table, identity)
             if proj_err then return proj_err end
         end
     end
@@ -293,7 +292,7 @@ end
 -- SECONDARY -- it attaches under the component's id (thread.id == component.id) and
 -- never registers/owns a component.
 function M.create(db: DB, params: table, actor_id: string?, identity: { [string]: any }, owner_principal: any?,
-    maintenance: boolean?, convergence: boolean?): (CreateResult?, error?)
+    maintenance: boolean?): (CreateResult?, error?)
     params = type(params) == "table" and params or {}
 
     local component_id = normalize.trim(params.component_id) ~= "" and (params.component_id :: string)
@@ -337,11 +336,11 @@ function M.create(db: DB, params: table, actor_id: string?, identity: { [string]
         return nil, errors.wrap(committed_error.new(commit_err), "failed to commit thread create")
     end
 
-    return M.attach(db, thread_id, params, actor_id, identity, maintenance, convergence)
+    return M.attach(db, thread_id, params, actor_id, identity, maintenance)
 end
 
 local function complete_thread(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
-    maintenance: boolean?, convergence: boolean?, indexes: table?): (CreateResult?, error?)
+    maintenance: boolean?, indexes: table?): (CreateResult?, error?)
     params = type(params) == "table" and params or {}
     local access_err = authorize_completion(thread_id, params, maintenance)
     if access_err then return nil, access_err end
@@ -371,7 +370,7 @@ local function complete_thread(db: DB, thread_id: string, params: table, actor_i
     thread, rows_err = error_envelope.binding(thread, nil, nil, "read created thread row", "created_thread_row_invalid")
     if rows_err then return nil, rows_err end
 
-    local decl_err = M.apply_thread_declaration(db, thread_id, declaration_impl_id, identity, convergence, indexes)
+    local decl_err = M.apply_thread_declaration(db, thread_id, declaration_impl_id, identity, indexes)
     if decl_err then
         return nil, decl_err
     end
@@ -394,16 +393,16 @@ end
 -- A component-first primary row can already carry consumer pins. Completing
 -- that row propagates failures without tearing down the source or its consumers.
 function M.complete(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
-    maintenance: boolean?, convergence: boolean?, indexes: table?): error?
+    maintenance: boolean?, indexes: table?): error?
     local policy, policy_err = retention_repo.find_by_thread(db, thread_id)
     if policy_err then return policy_err end
     if not policy then
-        local _, complete_err = complete_thread(db, thread_id, params, actor_id, identity, maintenance, convergence, indexes)
+        local _, complete_err = complete_thread(db, thread_id, params, actor_id, identity, maintenance, indexes)
         return complete_err
     end
     local access_err = authorize_completion(thread_id, params, maintenance)
     if access_err then return access_err end
-    local declaration_err = M.apply_thread_declaration(db, thread_id, params.impl_id, identity, convergence, indexes)
+    local declaration_err = M.apply_thread_declaration(db, thread_id, params.impl_id, identity, indexes)
     if declaration_err then return declaration_err end
     -- Output-authorized emits and audit writes intentionally skip public markers.
     -- Keep their retained-thread path free of the marker lookup as well.
@@ -426,8 +425,8 @@ end
 -- attach completes the row of a new thread. Failure purges that row before the
 -- caller removes the component it registers for the failed creation.
 function M.attach(db: DB, thread_id: string, params: table, actor_id: string?, identity: { [string]: any },
-    maintenance: boolean?, convergence: boolean?): (CreateResult?, error?)
-    local result, complete_err = complete_thread(db, thread_id, params, actor_id, identity, maintenance, convergence)
+    maintenance: boolean?): (CreateResult?, error?)
+    local result, complete_err = complete_thread(db, thread_id, params, actor_id, identity, maintenance)
     if not complete_err then return result, nil end
     local err = error_envelope.cleanup(function()
         local purged, purge_err = teardown.purge_thread(db, thread_id, trim(actor_id))

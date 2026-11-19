@@ -3293,6 +3293,9 @@ entries:
       threads_component: app:thread_reader_native_component_adapter
       subjects: app:thread_reader_native_subjects_adapter
       core_types: kickside.core:types
+      component_lifecycle_log: kickside.core.threads.persist:lifecycle
+      lifecycle_consts: kickside.core.lifecycle:consts
+      contract_common: kickside.core.threads:contract_common
 
   - name: thread_reader_native_test
     kind: function.lua
@@ -4435,7 +4438,7 @@ entries:
     meta: {type: test, suite: kickside_core}
     source: file://lifecycle_convergence_test.lua
     method: run
-    modules: [sql, uuid, json, security, contract, process, channel, time]
+    modules: [sql, uuid, json, security, contract, process, channel, time, events, funcs]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision

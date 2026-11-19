@@ -43,7 +43,7 @@ local function complete_declaration(db: sql.DB, component_id: string, args: tabl
     identity: { [string]: any }, maintenance: boolean, convergence: boolean?): error?
     local indexes = convergence and args.projection_indexes or nil
     local primary = thread_crud.complete(db, component_id, {impl_id = args.impl_id}, actor_id(), identity,
-        maintenance, convergence, indexes)
+        maintenance, indexes)
     local failed = sql_boundary.release(db, primary, "release thread declaration connection")
     if failed and not primary then return committed_error.new(failed) end
     return failed
@@ -287,10 +287,10 @@ ensure_thread = function(args: any, output_target: any?, convergence: boolean?):
     local result, write_err
     if component_created == true then
         result, write_err = thread_crud.attach(_db, ensured_component_id :: string, create_args, thread_owner_id,
-            identity, is_maintenance_actor(), convergence)
+            identity, is_maintenance_actor())
     else
         result, write_err = thread_crud.create(_db, create_args, thread_owner_id, identity,
-            thread_owner_principal, is_maintenance_actor(), convergence)
+            thread_owner_principal, is_maintenance_actor())
     end
     if write_err or not result then
         local diagnostic: {cleanup_error: error?} = {}

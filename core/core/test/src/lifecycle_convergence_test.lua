@@ -8,6 +8,8 @@ local contract = require("contract")
 local process = require("process")
 local channel = require("channel")
 local time = require("time")
+local events = require("events")
+local funcs = require("funcs")
 local provision = require("provision")
 local lifecycle = require("lifecycle")
 local register = require("register")
@@ -115,9 +117,13 @@ return {run = test.run_cases(function()
 
             params.events = {input = {{type = lifecycle.EVENT.CREATED, via = "thread"},
                 {type = lifecycle.EVENT.UPDATED, via = "thread"}}, output = {}}
-            db = assert(sql.get("app:db"))
-            assert(register.register_projection(db, thread_id, params))
-            assert(db:release())
+            local threads = assert(assert(contract.get("kickside.core:threads"))
+                :with_actor(actor):with_scope(scope):open())
+            params.thread_id = thread_id
+            params.system_identity = nil
+            local result, repair_err = threads:register_projection(params)
+            assert(not repair_err, tostring(repair_err))
+            test.not_nil(result)
             local repaired = state(thread_id)
             test.eq(repaired.id, before.id)
             test.eq(tonumber(repaired.last_seq), 1)
@@ -127,6 +133,96 @@ return {run = test.run_cases(function()
             test.eq(#converge_fixture(), 0)
             local unchanged = state(thread_id)
             for key, value in pairs(repaired) do test.eq(unchanged[key], value, key) end
+        end)
+
+        test.it("refuses a component update without publishing the conflicting lifecycle declaration or event", function()
+            create(IMPL, KIND)
+            local db = assert(sql.get("app:db"))
+            assert(register.register_projection(db, thread_id, {kind = KIND, projection_key = "custom",
+                cursor_key = "progress", worker_ref = "func://app:test_count_worker",
+                worker_input_mode = "prefetch_events", system_identity = true,
+                events = {input = {{type = lifecycle.EVENT.CREATED}}}}))
+            assert(db:release())
+            local before = state(thread_id)
+            test.eq(tonumber(before.last_seq), 0)
+            test.eq(#converge_fixture(), 1)
+
+            local service = assert(assert(contract.get("kickside.component:component_service"))
+                :with_actor(actor):with_scope(scope):open())
+            local update, update_err = service:update({component_id = id,
+                commands = {{type = "SET_META", payload = {fields = {status = "changed"}}}}})
+            local refusal = update_err and update_err:details() or update and update.details
+            test.eq(refusal and refusal.code, "projection_declaration_requires_registration")
+            local after = state(thread_id)
+            for key, value in pairs(before) do test.eq(after[key], value, key) end
+            db = assert(sql.get("app:db"))
+            local retained = assert(db:query("SELECT seq,type FROM kickside_event WHERE thread_id=$1 ORDER BY seq", {thread_id}))
+            assert(db:release())
+            test.eq(#retained, 1)
+            test.eq(retained[1].type, lifecycle.EVENT.CREATED)
+            test.eq(#converge_fixture(), 1)
+        end)
+
+        test.it("lets a lifecycle administrator reset the projection through its existing HTTP control", function()
+            create(IMPL, KIND)
+            local db = assert(sql.get("app:db"))
+            assert(lifecycle.append(db, id, "updated", uuid.v4(), {}))
+            assert(db:execute([[UPDATE kickside_projection_cursor SET last_seq=1,status='invalid',last_error='failed'
+                WHERE thread_id=$1]], {thread_id}))
+            assert(db:release())
+
+            local args = {thread_id = thread_id, body = {kind = KIND, projection_key = "custom",
+                cursor_key = "progress", worker_ref = "func://app:test_count_worker", worker_input_mode = "prefetch_events",
+                start_seq = 0, reset = true, events = {input = {{type = lifecycle.EVENT.CREATED, via = "thread"},
+                    {type = lifecycle.EVENT.UPDATED, via = "thread"}}, output = {}}}}
+            local member = security.new_actor("lifecycle-member", {security_groups = {"app:user"}})
+            local admin = security.new_actor("lifecycle-admin", {security_groups = {"app:admin"}})
+            local before = state(thread_id)
+            local denied = assert(funcs.new():with_actor(member):with_scope(scope):call("app:test_register_projection", args))
+            test.eq(denied.status, 403)
+            local unchanged = state(thread_id)
+            for key, value in pairs(before) do test.eq(unchanged[key], value, key) end
+            local reset = assert(funcs.new():with_actor(admin):with_scope(scope):call("app:test_register_projection", args))
+            local response = assert(json.encode(reset.body))
+            test.eq(reset.status, 201, response)
+            local after = state(thread_id)
+            test.eq(after.id, before.id)
+            test.eq(tonumber(after.last_seq), 0)
+            test.eq(after.status, "active")
+            test.is_nil(after.last_error)
+            catch_up(thread_id, 2, 2)
+        end)
+
+        test.it("logs the typed declaration refusal as structured fields", function()
+            create(IMPL, KIND)
+            local db = assert(sql.get("app:db"))
+            assert(register.register_projection(db, thread_id, {kind = KIND, projection_key = "custom",
+                cursor_key = "progress", worker_ref = "func://app:test_count_worker",
+                worker_input_mode = "prefetch_events", system_identity = true,
+                events = {input = {{type = lifecycle.EVENT.CREATED}}}}))
+            assert(db:release())
+
+            local subscription = assert(events.subscribe("logs", "logs.entry"))
+            local logs = subscription:channel()
+            assert(funcs.call("kickside.core.lifecycle:migrations_applied"))
+            local deadline = time.after("5s")
+            local fields = {}
+            while true do
+                local selected = channel.select({logs:case_receive(), deadline:case_receive()})
+                if selected.channel ~= logs then break end
+                local record = selected.value.data
+                if record.entry.message == "declared thread not convergeable" then
+                    for _, field in ipairs(record.fields) do fields[field.key] = field.string end
+                    if fields.component_id == id then break end
+                    fields = {}
+                end
+            end
+            assert(subscription:close())
+            test.eq(fields.component_id, id)
+            test.eq(fields.code, "projection_declaration_requires_registration")
+            test.eq(fields.thread_id, thread_id)
+            test.eq(fields.projection_kind, KIND)
+            test.eq(fields.projection_key, "custom")
         end)
 
         test.it("attaches on the lifecycle thread at the retention floor and folds the retained event", function()

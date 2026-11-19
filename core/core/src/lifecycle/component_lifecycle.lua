@@ -83,8 +83,7 @@ local function attach_lifecycle_projections(args: table, lifecycle_thread_id: st
                     system_identity = true,
                     ensure = own,
                 }
-                local mode = own_declarations and "lifecycle_convergence" or "lifecycle"
-                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params, mode)
+                local _, reg_err = writer.register_projection_tx(tx, dbtype, lifecycle_thread_id, params, "lifecycle")
                 if reg_err then return reg_err end
             end
         end

@@ -277,8 +277,8 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     if start_err then return nil, start_err end
     local debounce_idle_ms, debounce_max_ms, debounce_err = writer.debounce(params)
     if debounce_err then return nil, debounce_err end
-    local convergence = mode == "convergence" or mode == "lifecycle_convergence"
-    local lifecycle = mode == "lifecycle" or mode == "lifecycle_convergence"
+    local lifecycle = mode == "lifecycle"
+    local convergence = lifecycle or mode == "convergence"
     local reset = params.reset == true
 
     local now = now_string(dbtype)

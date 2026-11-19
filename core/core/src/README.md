@@ -179,8 +179,10 @@ are restored in pages of up to 100. Boot resumes these pages between service
 events. Each repair commits before convergence moves to another projection or
 owner.
 
-A declaration that differs from a stored cursor is reported as
-`projection_declaration_requires_registration`. The report identifies the
-projection and cursor. Explicitly re-register to resume at the committed
-sequence, activate the cursor and clear its error. Request a reset to rebuild
-from a retained sequence.
+Boot and ordinary declaration attachment refuse drift against a stored cursor
+with `projection_declaration_requires_registration`. Boot logs the code,
+thread ID, projection address and cursor key as structured fields. Explicitly
+re-register to resume at the committed sequence, activate the cursor and clear
+its error. Request a reset to rebuild from a retained sequence. For a
+per-component lifecycle thread, the existing registration control requires
+ADMIN on the system lifecycle component or a framework maintenance actor.

@@ -33,7 +33,13 @@ local function converge_page(actor: any, scope: any, continuation: table?): (tab
     if (tonumber(summary.healed) or 0) > 0 or skipped > 0 then
         logger:info("declared-thread convergence", {checked = summary.checked, healed = summary.healed, skipped = skipped})
         for _, entry in ipairs((summary.skipped :: { any }) or {}) do
-            logger:error("declared thread not convergeable", entry :: { [string]: any })
+            local details = (entry.error or {}).details or {}
+            logger:error("declared thread not convergeable", {
+                component_id = entry.component_id, impl_id = entry.impl_id, reason = entry.reason,
+                code = details.code, thread_id = details.thread_id, projection_id = details.projection_id,
+                projection_kind = details.projection_kind, projection_key = details.projection_key,
+                cursor_key = details.cursor_key,
+            })
         end
     end
     return summary.continuation, err
