@@ -188,8 +188,8 @@ function M.get_projection_cursor(args: any): (any?, error?)
     return pair, nil
 end
 
-local function deadline_passed(): error
-    return (errors.new({ message = "projection catch-up reached the caller's deadline before the cursor reached the thread head",
+local function deadline_passed(position: string): error
+    return (errors.new({ message = "projection catch-up reached the caller's deadline before the cursor reached " .. position,
         kind = errors.UNAVAILABLE, retryable = true }) :: error)
 end
 
@@ -227,6 +227,13 @@ function M.catch_up_projection(args: any): (any?, error?)
     max_ticks = max_ticks or 20
     local deadline, deadline_err = parse_deadline(args.deadline)
     if deadline_err then return nil, deadline_err end
+    local target_seq: integer? = nil
+    if args.target_seq ~= nil then
+        target_seq = type(args.target_seq) == "number" and math.tointeger(args.target_seq) or nil
+        if target_seq == nil or target_seq < 0 then
+            return nil, (errors.new({ message = "target_seq must be a non-negative integer", kind = errors.INVALID }) :: error)
+        end
+    end
 
     local db, db_err = open_db()
     if db_err then return nil, db_err end
@@ -237,6 +244,10 @@ function M.catch_up_projection(args: any): (any?, error?)
         proj_reader.select_projection_cursor(_db, args.thread_id :: string, args, authorize)
     select_err = release(_db, select_err)
     if select_err or not selected then return nil, select_err end
+    local head = math.floor(event_count or 0)
+    if target_seq and target_seq > head then
+        return nil, (errors.new({ message = "target_seq exceeds the thread head", kind = errors.INVALID }) :: error)
+    end
     local projection_id = tostring(selected.projection_id)
     local cursor_id = tostring(selected.id)
     local job_id = selected.job_id
@@ -251,19 +262,20 @@ function M.catch_up_projection(args: any): (any?, error?)
     if initial_seq == nil then
         return nil, (errors.new({ message = "projection cursor sequence missing", kind = errors.INTERNAL }) :: error)
     end
-    local target = math.floor(event_count or 0)
+    local target = target_seq or head
+    local position = target_seq and "the target sequence" or "the thread head"
     local tick_limit = max_ticks :: integer
     local bound_ms = tick_limit * CATCH_UP_MS_PER_TICK
     local bounded_by_deadline = false
     if deadline then
         local remaining_ms = math.floor(((deadline :: any):sub(time.now()) :: any):milliseconds())
-        if remaining_ms < 1 then return nil, deadline_passed() end
+        if remaining_ms < 1 then return nil, deadline_passed(position) end
         if remaining_ms < bound_ms then bound_ms, bounded_by_deadline = remaining_ms, true end
     end
     if initial_seq >= target then
         return {
             thread_id = args.thread_id, projection_id = projection_id, cursor_id = cursor_id,
-            event_count = target, last_seq = initial_seq, status = current_status,
+            event_count = head, target_seq = target_seq, last_seq = initial_seq, status = current_status,
             ticks = 0, max_ticks = max_ticks, processed = 0, done = true,
         }, nil
     end
@@ -298,7 +310,7 @@ function M.catch_up_projection(args: any): (any?, error?)
             close_wait()
             return {
                 thread_id = args.thread_id, projection_id = projection_id, cursor_id = cursor_id,
-                event_count = target, last_seq = last_seq, status = current.status,
+                event_count = head, target_seq = target_seq, last_seq = last_seq, status = current.status,
                 ticks = observations, max_ticks = max_ticks,
                 processed = last_seq - initial_seq,
                 done = true,
@@ -306,19 +318,19 @@ function M.catch_up_projection(args: any): (any?, error?)
         end
         if current.status ~= "active" then
             close_wait()
-            return nil, (errors.new({ message = "projection cursor stopped before reaching the thread head", kind = errors.CONFLICT }) :: error)
+            return nil, (errors.new({ message = "projection cursor stopped before reaching " .. position, kind = errors.CONFLICT }) :: error)
         end
         if observations >= tick_limit then
             close_wait()
-            return nil, (errors.new({ message = "projection cursor did not reach the thread head within the observation bound", kind = errors.INTERNAL, retryable = true }) :: error)
+            return nil, (errors.new({ message = "projection cursor did not reach " .. position .. " within the observation bound", kind = errors.INTERNAL, retryable = true }) :: error)
         end
 
         local _, timed_out, wait_err = cursor_waiters.wait_until_reached(waiter :: table)
         if wait_err then close_wait(); return nil, wait_err end
         if timed_out then
             close_wait()
-            if bounded_by_deadline then return nil, deadline_passed() end
-            return nil, (errors.new({ message = "projection cursor did not reach the thread head within the wait bound", kind = errors.INTERNAL, retryable = true }) :: error)
+            if bounded_by_deadline then return nil, deadline_passed(position) end
+            return nil, (errors.new({ message = "projection cursor did not reach " .. position .. " within the wait bound", kind = errors.INTERNAL, retryable = true }) :: error)
         end
         observations = observations + 1
     end
