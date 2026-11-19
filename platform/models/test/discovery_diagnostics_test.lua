@@ -30,6 +30,35 @@ local function check(message, diagnostics, kind, retryable, status)
 end
 
 return {run = test.run_cases(function()
+    test.describe("provider discovery timeout", function()
+        test.it("uses saved direct and environment durations for discovery and connection probes", function()
+            local saved = assert(repo.create_profile({name = "Provider discovery timeout",
+                provider_id = "wippy.llm.openai_compat:provider", api_key = "test-key",
+                config = {timeout = "60s", timeout_env = "MODELS_DISCOVERY_TIMEOUT"}}))
+            local original = discovery.adapter_for
+            discovery.adapter_for = function() return openai end
+            local ok, err = pcall(function()
+                local function check_requests(expected)
+                    http_fixture.prepare({status_code = 200, body = '{"data":[]}'}, nil)
+                    assert(discovery.discover(saved.id))
+                    test.eq(http_fixture.timeout(), expected)
+                    http_fixture.prepare({status_code = 200, body = "{}"}, nil)
+                    assert(discovery.test(saved.id, {model = "test-model"}))
+                    test.eq(http_fixture.timeout(), expected)
+                end
+
+                check_requests("60000ms")
+                assert(repo.update_profile(saved.id, {timeout = ""}))
+                check_requests("1500ms")
+                assert(repo.update_profile(saved.id, {config = {timeout_env = "MODELS_VERTEX_CREDS_A"}}))
+                check_requests("30000ms")
+            end)
+            discovery.adapter_for = original
+            assert(repo.delete_profile(saved.id))
+            if not ok then error(err, 0) end
+        end)
+    end)
+
     test.describe("safe discovery diagnostics", function()
         for _, row in ipairs({{401, errors.PERMISSION_DENIED, false}, {429, errors.RATE_LIMITED, true},
             {503, errors.UNAVAILABLE, true}}) do

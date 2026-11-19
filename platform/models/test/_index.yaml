@@ -121,6 +121,12 @@ entries:
     default: '{"project_id":"vertex-b"}'
     variable: MODELS_VERTEX_CREDS_B
 
+  - name: discovery_timeout
+    kind: env.variable
+    storage: app:env_storage
+    default: "1500ms"
+    variable: MODELS_DISCOVERY_TIMEOUT
+
   - name: db
     kind: db.sql.sqlite
     foreign_keys: true

@@ -40,7 +40,7 @@ local function define_tests()
             local id = "provider-timeout-validation"
             local profile
             local ok, failure = pcall(function()
-                for _, timeout in ipairs({0, "0", -1, "0s", "invalid", false}) do
+                for _, timeout in ipairs({0, "0", -1, "0s", "30 seconds", "invalid", false}) do
                     local created, err = repo.create_profile({
                         id = id, name = id, provider_id = provider, config = {timeout = timeout},
                     })
@@ -58,7 +58,7 @@ local function define_tests()
             assert(ok, tostring(failure))
         end)
 
-        test.it("upgrades saved default sentinels and preserves positive timeouts", function()
+        test.it("upgrades invalid saved timeouts and preserves valid ones", function()
             local db = assert(sql.get("app:db"))
             local preserved_text = "label" .. string.char(0) .. "suffix"
             local fixtures = {
@@ -66,7 +66,11 @@ local function define_tests()
                 {id = "provider-timeout-string-zero", timeout = "0", expected = "600000ms"},
                 {id = "provider-timeout-duration-zero", timeout = "0s", expected = "600000ms"},
                 {id = "provider-timeout-default-false", timeout = false, expected = "600000ms"},
+                {id = "provider-timeout-legacy-text", timeout = "30 seconds", expected = "600000ms"},
+                {id = "provider-timeout-negative", timeout = -1, expected = "600000ms"},
+                {id = "provider-timeout-empty", timeout = "", expected = "600000ms"},
                 {id = "provider-timeout-positive", timeout = 1, stored = 1, expected = "1000ms"},
+                {id = "provider-timeout-duration", timeout = "2.5s", stored = "2.5s", expected = "2500ms"},
                 {id = "provider-timeout-unset", expected = "600000ms"},
             }
             local client = plain_generate._client
@@ -104,9 +108,12 @@ local function define_tests()
                     test.eq(used_timeout, fixture.expected)
                     test.eq(profile.config.timeout, fixture.stored)
                 end
-                local previously_false = assert(repo.update_profile("provider-timeout-default-false", {enabled = false}))
-                test.is_false(previously_false.enabled)
-                test.is_nil(previously_false.config.timeout)
+                local edited = assert(repo.update_profile("provider-timeout-legacy-text", {
+                    name = "Renamed profile", enabled = false,
+                }))
+                test.eq(edited.name, "Renamed profile")
+                test.is_false(edited.enabled)
+                test.is_nil(edited.config.timeout)
             end)
             client._ctx, client._http_client = original_context, original_http
             for _, fixture in ipairs(fixtures) do

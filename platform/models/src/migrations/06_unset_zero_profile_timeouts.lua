@@ -1,19 +1,12 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local json = require("json")
 local logger = require("logger")
-local time = require("time")
+local llm_transport = require("llm_transport")
 
 local log = logger:named("kickside.models.migrations")
 
-local function uses_default(value: any): boolean
-    if value == false or tonumber(value) == 0 then return true end
-    if type(value) ~= "string" then return false end
-    local duration = time.parse_duration(value)
-    return duration ~= nil and duration:nanoseconds() == 0
-end
-
 return require("migration").define(function()
-    migration("unset zero provider profile timeouts", function()
+    migration("unset invalid provider profile timeouts", function()
         for _, engine in ipairs({"sqlite", "postgres"}) do
             database(engine, function()
                 up(function(db, cursor)
@@ -27,7 +20,7 @@ return require("migration").define(function()
                         local config, decode_err = json.decode(row.config_json)
                         if decode_err or type(config) ~= "table" then
                             log:warn("skipping unreadable provider profile configuration", {profile_id = row.id})
-                        elseif uses_default(config.timeout) then
+                        elseif config.timeout ~= nil and llm_transport.timeout_seconds(config.timeout) == nil then
                             config.timeout = nil
                             local encoded, encode_err = json.encode(config)
                             if encode_err then error(encode_err) end

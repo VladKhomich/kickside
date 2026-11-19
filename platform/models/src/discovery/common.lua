@@ -3,6 +3,7 @@ local json = require("json")
 local http_errors = require("http_errors")
 local llm_mapper = require("llm_mapper")
 local llm_output = require("llm_output")
+local llm_transport = require("llm_transport")
 
 local M = {}
 
@@ -55,20 +56,12 @@ function M.resolve_value(profile: any, key: string, default_env: string?): strin
     return nil
 end
 
-function M.numeric_config(profile: any, key: string, fallback: number): number
-    local config = type(profile) == "table" and profile.config or {}
-    local direct = tonumber(config[key])
-    if direct then return direct end
-    local from_ref = M.env_value(config[key .. "_env"])
-    if from_ref then
-        local n = tonumber(from_ref)
-        if n then return n end
-    end
-    return fallback
-end
-
 function M.timeout(profile: any, fallback: number?): string
-    return tostring(M.numeric_config(profile, "timeout", fallback or 30)) .. "s"
+    local config = type(profile) == "table" and profile.config or {}
+    local seconds = llm_transport.timeout_seconds(config.timeout)
+        or llm_transport.timeout_seconds(M.env_value(config.timeout_env))
+        or fallback or 30
+    return string.format("%.0fms", math.max(1, math.floor(seconds * 1000)))
 end
 
 function M.configured_base_url(profile: any, fallback: string): string
