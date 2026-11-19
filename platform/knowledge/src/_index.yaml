@@ -49,7 +49,7 @@ entries:
     component: kickside/core
 
   - name: dep.kickside.uploads
-    version: '*'
+    version: '>=0.3.31'
     kind: ns.dependency
     meta:
       comment: Supplies upload tokens, artifact lookup, upload ingestion, and URL safety policy.

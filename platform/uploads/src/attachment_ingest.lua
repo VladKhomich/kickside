@@ -71,15 +71,29 @@ local function fetcher_for(provider: string, method: string?): (string?, string?
     if type(entries) ~= "table" then return nil, "attachment fetcher registry returned invalid data" end
 
     local found = ""
+    local versioned_fetch = nil
+    local versioned_verify = nil
     for _, entry in ipairs(entries :: { any }) do
         local declared: any = (entry :: any).data or entry
         if tostring(declared.provider or "") == provider then
-            local func = tostring(declared[method or "fetch_func"] or "")
-            if func ~= "" then
-                if found ~= "" and found ~= func then
-                    return nil, "multiple attachment fetchers declared for provider " .. provider
+            if method then
+                -- A legacy attachment fetcher does not opt into versioned delivery.
+                local fetch, verify = declared.fetch_func, declared.verify_func
+                if type(fetch) == "string" and fetch ~= "" and type(verify) == "string" and verify ~= "" then
+                    if versioned_fetch and (versioned_fetch ~= fetch or versioned_verify ~= verify) then
+                        return nil, "multiple versioned attachment fetchers declared for provider " .. provider
+                    end
+                    versioned_fetch, versioned_verify = fetch, verify
+                    found = declared[method]
                 end
-                found = func
+            else
+                local func = tostring(declared.fetch_func or "")
+                if func ~= "" then
+                    if found ~= "" and found ~= func then
+                        return nil, "multiple attachment fetchers declared for provider " .. provider
+                    end
+                    found = func
+                end
             end
         end
     end
@@ -109,16 +123,24 @@ local function provider_call(att: any, method: string): (any?, error?)
     return M.deps.funcs.call(target, {ref = att.ref, component_id = att.component_id})
 end
 
--- Unlike ordinary URL ingestion, Sync delivery requires a registered
--- authenticated provider. Lookup precedes every download.
-function M.admit(att: any, delivery_key: string, resume_effect: boolean): (any?, error?)
-    local signature, signature_err = attachment_identity(att)
-    if signature_err or not signature then return nil, signature_err end
+local function current_actor_id(): (string?, error?)
     local actor = security.actor()
     if not actor or actor:id() == "" then
         return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false, message = "Authentication required"})
     end
-    local actor_id = actor:id()
+    return actor:id(), nil
+end
+
+-- Unlike ordinary URL ingestion, Sync delivery requires a registered
+-- authenticated provider. Lookup precedes every download.
+function M.admit(att: any, delivery_key: string, resume_effect: boolean): (any?, error?)
+    local actor_id, auth_err = current_actor_id()
+    if auth_err or not actor_id then return nil, auth_err end
+    if type(delivery_key) ~= "string" or delivery_key == "" or type(resume_effect) ~= "boolean" then
+        return nil, invalid("A delivery key and resume flag are required")
+    end
+    local signature, signature_err = attachment_identity(att)
+    if signature_err or not signature then return nil, signature_err end
     local existing, lookup_err = M.deps.uploads.find_delivery_upload(actor_id, delivery_key, signature)
     if lookup_err or existing then return existing, lookup_err end
     if resume_effect then
@@ -136,6 +158,10 @@ function M.admit(att: any, delivery_key: string, resume_effect: boolean): (any?,
 end
 
 function M.verify(att: any): error?
+    local _, auth_err = current_actor_id()
+    if auth_err then return auth_err end
+    local _, signature_err = attachment_identity(att)
+    if signature_err then return signature_err end
     local found, err = provider_call(att, "verify_func")
     if err then return err end
     if type(found) ~= "table" or found.current ~= true then return invalid("Attachment version is no longer current") end

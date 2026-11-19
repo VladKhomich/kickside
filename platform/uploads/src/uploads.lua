@@ -423,7 +423,7 @@ end
 local DELIVERY_METADATA = "__attachment_delivery"
 
 local function delivery_upload_id(actor_id: string, delivery_key: string): (string?, error?)
-    local digest = hash.sha256("kickside.uploads.attachment\0" .. actor_id .. "\0" .. delivery_key)
+    local digest = hash.sha256("kickside.uploads.attachment:" .. tostring(#actor_id) .. ":" .. actor_id .. delivery_key)
     if type(digest) ~= "string" or #digest ~= 64 then
         return nil, failure("Could not derive attachment delivery identity", errors.INTERNAL, "infrastructure", true)
     end

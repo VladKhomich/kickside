@@ -42,7 +42,7 @@ entries:
   - name: attachment_ingest
     kind: library.lua
     meta:
-      comment: Download a remote attachment reference and push it into the upload pipeline, tagged with its thread.
+      comment: Ingest remote attachments and admit versioned delivery through an authenticated provider.
     source: file://../attachment_ingest.lua
     modules: [funcs, http_client, registry, security, hash]
     imports:

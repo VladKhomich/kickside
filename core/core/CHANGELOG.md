@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.36](https://github.com/kicksideai/kickside/compare/core-v0.3.35...core-v0.3.36) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** wait for a committed projection sequence ([e590e5c](https://github.com/kicksideai/kickside/commit/e590e5cac690061421217aaf15519e8ac1df95bc))
+
+## [0.3.35](https://github.com/kicksideai/kickside/compare/core-v0.3.34...core-v0.3.35) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** recover the lifecycle reaper after upgrade ([32774f8](https://github.com/kicksideai/kickside/commit/32774f80483f1986481892d5cefdc83f0af4d05d))
+
 ## [0.3.34](https://github.com/kicksideai/kickside/compare/core-v0.3.33...core-v0.3.34) (2026-11-19)
 
 

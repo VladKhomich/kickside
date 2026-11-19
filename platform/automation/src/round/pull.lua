@@ -86,8 +86,10 @@ local function pull_collection(r: Map): (Map?, any)
     return page_of(page, call_err, "source pull: ")
 end
 
--- pull_keys lists one page of the source's keys through its declared
--- pull_keys function (A33): { keys = [item_key], next_cursor, has_more }.
+-- The scheduler converts milliseconds to a signed nanosecond duration.
+local MAX_RETRY_AFTER_MS = 9223372036854
+
+-- pull_keys lists one page of keys from the source's declared enumerator.
 local function pull_keys(r: Map): (Map?, any)
     local target = tostring(r.pull_keys or "")
     if target == "" then return nil, invalid("reconcile drive declares no pull_keys") end
@@ -115,9 +117,15 @@ local function pull_keys(r: Map): (Map?, any)
         if type(key) ~= "string" or key == "" then return nil, invalid("source key listing keys[" .. tostring(index) .. "] names no item_key") end
         keys[#keys + 1] = key :: string
     end
-    local retry = tonumber(p.retry_after_ms)
+    local retry = nil
+    if p.retry_after_ms ~= nil then
+        retry = math.tointeger(tonumber(p.retry_after_ms))
+        if retry == nil or retry < 0 or retry > MAX_RETRY_AFTER_MS then
+            return nil, invalid("source key listing retry_after_ms is outside the supported millisecond range")
+        end
+    end
     return { items = {}, keys = keys, next_cursor = p.next_cursor, has_more = p.has_more,
-        retry_after_ms = retry and retry > 0 and retry < math.huge and math.floor(retry) or nil }, nil
+        retry_after_ms = retry }, nil
 end
 
 local function pull(r: Map): (Map?, any)

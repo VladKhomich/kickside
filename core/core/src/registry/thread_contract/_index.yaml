@@ -278,10 +278,19 @@ entries:
                 }
               }, "required": ["thread_id", "projection", "cursor"] }
       - name: catch_up_projection
-        description: Wake one projection slot and wait for its cursor with component READ, or ADMIN when the kind declares events.read as admin. The optional RFC3339 deadline bounds the wait; expiry returns a retriable failure. Used by durable writers for projection-backed read-after-write consistency.
+        description: Wake one projection slot and wait for its cursor with component READ, or ADMIN when the kind declares events.read as admin. The target defaults to the sampled thread head. The optional RFC3339 deadline bounds the wait. Expiry returns a retriable failure. Used by durable writers for projection-backed read-after-write consistency.
         input_schemas:
           - format: application/schema+json
-            definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"kind\": { \"type\": \"string\" },\n    \"projection_key\": { \"type\": \"string\" },\n    \"cursor_key\": { \"type\": \"string\" },\n    \"max_ticks\": { \"type\": \"integer\", \"minimum\": 1, \"maximum\": 1000, \"default\": 20 },\n    \"deadline\": { \"type\": \"string\", \"format\": \"date-time\", \"description\": \"The caller's deadline; the wait ends there with a retriable failure.\" }\n  },\n  \"required\": [\"thread_id\", \"kind\"]\n}\n"
+            definition: |
+              { "type": "object", "properties": {
+                "thread_id": { "type": "string" },
+                "kind": { "type": "string" },
+                "projection_key": { "type": "string" },
+                "cursor_key": { "type": "string" },
+                "target_seq": { "type": "integer", "minimum": 0, "description": "Committed thread sequence to cover. A target above the sampled thread head is invalid." },
+                "max_ticks": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 20 },
+                "deadline": { "type": "string", "format": "date-time", "description": "The caller's deadline; the wait ends there with a retriable failure." }
+              }, "required": ["thread_id", "kind"] }
         output_schemas:
           - format: application/schema+json
             definition: "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"thread_id\": { \"type\": \"string\" },\n    \"event_count\": { \"type\": \"integer\" },\n    \"projection_id\": { \"type\": \"string\" },\n    \"cursor_id\": { \"type\": \"string\" },\n    \"status\": { \"type\": \"string\" },\n    \"last_seq\": { \"type\": \"integer\" },\n    \"target_seq\": { \"type\": \"integer\" },\n    \"processed\": { \"type\": \"integer\" },\n    \"ticks\": { \"type\": \"integer\" },\n    \"max_ticks\": { \"type\": \"integer\" },\n    \"done\": { \"type\": \"boolean\" },\n    \"reason\": { \"type\": \"string\" },\n    \"error\": { \"type\": \"string\" }\n  },\n  \"required\": [\"thread_id\", \"projection_id\", \"cursor_id\", \"ticks\", \"max_ticks\"]\n}\n"
