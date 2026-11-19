@@ -9,7 +9,10 @@ type Passage = {
 type QueryOptions = { query: string, limit: integer? }
 type QueryResult = { items: { Passage }, next_offset: integer?, retrieval: any? }
 
-local function query(_kb_id: string, _opts: QueryOptions): (QueryResult, string?)
+local function query(_kb_id: string, _opts: QueryOptions): (QueryResult?, error?)
+    if ctx.get("storage_not_found") then
+        return nil, errors.new({ kind = errors.NOT_FOUND, message = "passages not found in store" })
+    end
     return { items = ctx.get("passages") :: { Passage }, next_offset = ctx.get("next_offset"), retrieval = ctx.get("retrieval") }, nil
 end
 

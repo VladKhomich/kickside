@@ -1,4 +1,4 @@
-import { s as a } from "./wc-runtime-DRNaOAbU.js";
+import { s as a } from "./wc-runtime-C6gaf4iX.js";
 import { openBlock as i, createElementBlock as l, mergeProps as C, createElementVNode as u } from "vue";
 var s = {
   name: "SpinnerIcon",
@@ -45,4 +45,4 @@ s.render = d;
 export {
   s
 };
-//# sourceMappingURL=index-B4Oms5dR.js.map
+//# sourceMappingURL=index-BDDI-UVm.js.map
