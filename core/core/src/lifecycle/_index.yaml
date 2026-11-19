@@ -275,17 +275,19 @@ entries:
       order: 40
       requires:
         - wippy.migration:migration_bootloader
-      comment: Runs after each install's migrations and asks the resident lifecycle boot process to converge declared state against the migrated schema.
+      comment: Completes system component provisioning and grants at startup, or wakes the resident converger after an install's migrations.
     source: file://migrations_applied.lua
     method: run
-    modules: [process]
+    modules: [process, security]
     security:
       actor:
         id: kickside.core.lifecycle:migrations_applied
       policies:
         - kickside.core.lifecycle:migrations_applied_transport
         - kickside.core.retention:notify_access
+        - kickside.core.security:lifecycle_actor_delegation
     imports:
+      provision: kickside.core.threads:provision
       retention_notifier: kickside.core.retention:notifier
       lifecycle_consts: kickside.core.lifecycle:consts
 

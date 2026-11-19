@@ -182,6 +182,10 @@ advance through local pins with bounded work.
 
 ## Declared projection convergence
 
+At startup, Core's post-migration hook materializes the declared system
+components and applies their grants before the bootloader releases dependent
+services. A provisioning or grant error fails startup.
+
 After Core's migrations are current, lifecycle boot checks declared projections
 on the component's primary thread or, for `on: lifecycle`, its lifecycle thread.
 Child lifecycle projections attach when the child emits its lifecycle events.
