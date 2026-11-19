@@ -2,6 +2,16 @@ version: "1.0"
 namespace: kickside.contract
 
 entries:
+  - name: text_trim
+    kind: library.lua
+    source: file://text_trim.lua
+
+  - name: unfence
+    kind: library.lua
+    source: file://unfence.lua
+    imports:
+      text_trim: kickside.contract:text_trim
+
   - name: secret_cipher
     kind: library.lua
     source: file://secret_cipher.lua

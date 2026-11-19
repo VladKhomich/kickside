@@ -3,7 +3,7 @@ function M.reset(operation, stage, source, dialect)
     M.operation, M.stage, M.source, M.dialect = operation, stage, source, dialect
     M.primary, M.missing, M.proof = nil, false, nil
     M.trace, M.rollbacks, M.commits, M.releases = {}, 0, 0, 0
-    M.count, M.release_error = 1, nil
+    M.count, M.release_error, M.spawn_args = 1, nil, nil
 end
 function M.result(stage, value)
     M.trace[#M.trace + 1] = stage

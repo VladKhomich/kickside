@@ -69,6 +69,14 @@ local function releases(first: integer, last: integer)
 end
 
 local function outcomes()
+    test.it("passes the previous cursor error to the current worker", function()
+        fixture.reset("normal", nil)
+        fixture.previous_error = "provider temporarily unavailable"
+        local result, err = invoke.run(input)
+        test.is_nil(err)
+        test.not_nil(result)
+        test.eq(fixture.forwarded_error, fixture.previous_error)
+    end)
     for _, stage in ipairs({"identity", "parse", "validate", "post_binding", "run", "proc", "advance"}) do
         test.it("records a deterministic attempt refusal as a visible invalid projection/" .. stage, function()
             local source = errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
