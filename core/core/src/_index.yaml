@@ -44,6 +44,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.migrations:16_teardown_projection_index
         path: .meta.target_db
+      - entry: kickside.core.migrations:17_missing_teardown_pages
+        path: .meta.target_db
       - entry: kickside.core:db_config
         path: .meta.db_id
 

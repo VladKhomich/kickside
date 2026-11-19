@@ -217,3 +217,18 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 17_missing_teardown_pages
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-19T00:00:17Z"
+    source: file://17_missing_teardown_pages.lua
+    modules: [logger]
+    imports:
+      migration: wippy.migration:migration
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
+    method: migrate
