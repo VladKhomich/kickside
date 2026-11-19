@@ -50,7 +50,8 @@ end
 -- One SQL shape is retained; bindings and authority answers stay invocation-local.
 local lock_template_key: string? = nil
 local lock_template: string? = nil
-local function lock_statement(dbtype: string, component_count: number, thread_count: number, with_cursor: boolean): string
+local function lock_statement(dbtype: string, component_count: number, thread_count: number, with_cursor: boolean,
+    source_generation_only: boolean): string
     -- SQLite serializes this transaction; indexed joins need no lock-order CTEs.
     if dbtype == sql.type.SQLITE and component_count <= 1 then
         local marks: {string} = {}
@@ -80,13 +81,14 @@ local function lock_statement(dbtype: string, component_count: number, thread_co
         end
         local selected = table.concat(marks, ",")
         local owners = "component_id IN (" .. selected .. ")"
-        if dbtype == sql.type.POSTGRES then
+        local lock_placement = dbtype == sql.type.POSTGRES and not source_generation_only
+        if lock_placement then
             owners = [[component_id IN (SELECT ancestor_id FROM kickside_component_ancestor WHERE component_id IN (]]
                 .. selected .. [[) UNION SELECT component_id FROM kickside_components WHERE component_id IN (]] .. selected .. "))"
         end
         -- Structural writers take the same fence exclusively before component rows.
         local placement_fence = ""
-        if dbtype == sql.type.POSTGRES then
+        if lock_placement then
             ctes[#ctes + 1] = [[placement_fence AS MATERIALIZED (
                 SELECT pg_advisory_xact_lock_shared(hashtextextended('kickside.component.placement',0)))]]
             placement_fence = " CROSS JOIN placement_fence"
@@ -136,7 +138,7 @@ local function lock_statement(dbtype: string, component_count: number, thread_co
 end
 
 function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_ids: { string }, component_ids: {string}?,
-    cursor_id: string?): ({ [string]: table }?, error?, {[string]: table}?, table[]?)
+    cursor_id: string?, source_generation_only: boolean?): ({ [string]: table }?, error?, {[string]: table}?, table[]?)
     local seen: { [string]: boolean } = {}
     local ordered: { string } = {}
     for _, raw in ipairs(thread_ids) do
@@ -151,10 +153,13 @@ function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_
     for _, id in ipairs(component_ids or {}) do args[#args + 1] = id end
     for _, id in ipairs(ordered) do args[#args + 1] = id end
     if cursor_id then args[#args + 1] = cursor_id end
-    local key = dbtype .. ":" .. tostring(component_ids and #component_ids or 0) .. ":" .. tostring(#ordered)
-        .. ":" .. tostring(cursor_id ~= nil)
+    local component_count = component_ids and #component_ids or 0
+    local point_owner = source_generation_only == true and dbtype == sql.type.POSTGRES
+        and component_count == 1 and #ordered == 1 and cursor_id ~= nil
+    local key = dbtype .. ":" .. tostring(component_count) .. ":" .. tostring(#ordered)
+        .. ":" .. tostring(cursor_id ~= nil) .. (point_owner and ":generation" or "")
     if lock_template_key ~= key then
-        lock_template = lock_statement(dbtype, component_ids and #component_ids or 0, #ordered, cursor_id ~= nil)
+        lock_template = lock_statement(dbtype, component_count, #ordered, cursor_id ~= nil, point_owner)
         lock_template_key = key
     end
     local statement = lock_template :: string

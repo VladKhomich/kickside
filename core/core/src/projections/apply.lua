@@ -168,7 +168,13 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     end
     if authority then include_component(authority.component_id) end
     for _, check in ipairs(checks) do include_component(check.component_id) end
-    local locked_threads, lock_err, component_rows, rows = threads_writer.lock_thread_rows_tx(tx, dbtype, ids, component_ids, snapshot.id)
+    -- A maintenance fold without returned writes only compares the source
+    -- identity generation. Placement changes bump that generation on the
+    -- moved component and its descendants.
+    local source_generation_only = authority ~= nil and authority.maintenance_owner ~= nil
+        and #writes == 0 and #checks == 0
+    local locked_threads, lock_err, component_rows, rows =
+        threads_writer.lock_thread_rows_tx(tx, dbtype, ids, component_ids, snapshot.id, source_generation_only)
     if lock_err then return abort(lock_err) end
     if authority then
         local owner = component_rows and component_rows[authority.component_id]

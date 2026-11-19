@@ -220,6 +220,43 @@ return {run = test.run_cases(function()
                 test.not_nil(writer_err, "authority mutation conflicts with an active authority reader")
             end
         end)
+        test.it("locks the source identity without fencing unrelated placement during a maintenance fold", function()
+            local svc = service("system:lifecycle")
+            local parent = assert(svc:register({impl_id = "app:lifecycle_folder"})).component_id
+            local child = assert(svc:register({impl_id = "app:provision_owner_seeded_system_decl", parent_id = parent})).component_id
+            local db = assert(sql.get("app:db"))
+            local dialect = tostring(db:type())
+            local thread = lifecycle.thread_id(child)
+            local cursor = assert(db:query("SELECT id,job_id FROM kickside_projection_cursor WHERE thread_id=$1", {thread}))[1]
+            local tx = assert(db:begin())
+            local threads, err, components, cursors = threads_writer.lock_thread_rows_tx(tx, dialect,
+                {thread}, {child}, cursor.id, true)
+            local tree_available, parent_err, owner_err: any = nil, nil, nil
+            if dialect == sql.type.POSTGRES then
+                local other = assert(sql.get("app:db"))
+                local move = assert(other:begin())
+                tree_available = assert(move:query("SELECT pg_try_advisory_xact_lock(hashtextextended('kickside.component.placement',0)) AS acquired"))[1].acquired
+                local _, blocked_parent = move:query("SELECT component_id FROM kickside_components WHERE component_id=$1 FOR NO KEY UPDATE NOWAIT", {parent})
+                parent_err = blocked_parent
+                assert(move:rollback())
+                local owner = assert(other:begin())
+                local _, blocked_owner = owner:query("SELECT component_id FROM kickside_components WHERE component_id=$1 FOR NO KEY UPDATE NOWAIT", {child})
+                owner_err = blocked_owner
+                assert(owner:rollback())
+                assert(other:release())
+            end
+            assert(tx:rollback())
+            assert(db:release())
+            test.is_nil(err)
+            test.not_nil(threads[thread])
+            test.eq(tonumber(components[child].identity_generation), 0)
+            test.eq(cursors[1].job_id, cursor.job_id)
+            if dialect == sql.type.POSTGRES then
+                test.is_true(tree_available)
+                test.is_nil(parent_err)
+                test.not_nil(owner_err)
+            end
+        end)
         test.it("fences inherited authority when a subtree moves away and back", function()
             local svc = service("system:lifecycle")
             local root = assert(svc:register({impl_id = "app:lifecycle_folder"})).component_id
