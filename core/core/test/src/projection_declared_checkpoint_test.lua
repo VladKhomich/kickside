@@ -49,6 +49,26 @@ end
 
 return {run = test.run_cases(function()
     test.describe("private checkpoints on actor-bound component declarations", function()
+        local created_component: string?
+
+        -- Convergence revisits each remaining component and can restore its projections.
+        test.after_each(function()
+            if not created_component then return end
+            local component_id = created_component
+            in_db(function(db)
+                assert(db:execute("DELETE FROM kickside_components WHERE component_id=$1", {component_id}))
+                local threads = assert(db:query("SELECT id FROM kickside_thread WHERE component_id=$1", {component_id}))
+                for _, thread in ipairs(threads) do
+                    local registered = assert(db:query("SELECT id FROM kickside_projection WHERE thread_id=$1", {thread.id}))
+                    for _, row in ipairs(registered) do
+                        assert(projections.remove_projection(db, thread.id, {projection_id = row.id}))
+                    end
+                    assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {thread.id}))
+                end
+            end)
+            created_component = nil
+        end)
+
         for _, case in ipairs({
             {name = "runs the installed descriptor under its persisted actor", allowed = true},
             {name = "refuses an extra cursor", alternate = true, refusal = "installed projection declaration"},
@@ -61,6 +81,7 @@ return {run = test.run_cases(function()
                 local f = fixture.new()
                 if case.revoked then f.owner = "transition-" .. f.owner end
                 local id = uuid.v7()
+                created_component = id
                 local impl = case.owner and "kickside.test.threads:thread_kind" or "app:declared_checkpoint_component"
                 assert(f.register_bare_component(f.owner, id, impl, {}))
                 local attached, attach_err = f.run_as(f.owner, "ensure_thread", {component_id = id,
@@ -124,7 +145,6 @@ return {run = test.run_cases(function()
                         test.eq(#effects, 0)
                         test.eq(#outputs, 0)
                     end
-                    assert(projections.remove_projection(db, id, {projection_id = before.projection_id}))
                 end)
             end)
         end
