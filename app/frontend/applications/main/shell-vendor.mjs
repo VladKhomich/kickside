@@ -107,8 +107,11 @@ export function shellVendor() {
               source: readFileSync(join(root, key, name)) })
           }
         }
-        const files = Object.fromEntries(Object.entries(bundle).map(([name, entry]) =>
-          [name, sri(entry.type === 'chunk' ? entry.code : entry.source)]))
+        const files = {}
+        for (const name of Object.keys(bundle).sort()) {
+          const entry = bundle[name]
+          files[name] = sri(entry.type === 'chunk' ? entry.code : entry.source)
+        }
         this.emitFile({ type: 'asset', fileName: 'vendor/manifest.json',
           source: JSON.stringify({ imports, packages: Object.fromEntries(Object.entries(packages).sort()), files }, null, 2) + '\n' })
       },
