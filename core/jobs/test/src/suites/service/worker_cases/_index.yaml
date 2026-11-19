@@ -311,6 +311,7 @@ entries:
   - process
   - channel
   imports:
+    dead_outcome: kickside.core.jobs.persist:dead_outcome
     test: wippy.test:test
     job_types: kickside.core.jobs:types
     worker: kickside.core.jobs.service:loop

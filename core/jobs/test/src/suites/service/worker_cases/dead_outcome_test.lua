@@ -15,6 +15,7 @@ local worker = require("worker")
 local dispatch = require("worker_dispatch")
 local worker_child = require("worker_child")
 local enqueue = require("lifecycle_enqueue")
+local dead_outcome = require("dead_outcome")
 
 local DEAD_PROC = "proc://app:job_dead_proc"
 local SLEEP_PROC = "proc://app:job_sleep_proc"
@@ -207,6 +208,14 @@ local function define_tests()
                 end)
             end)
         end
+
+        test.it("refuses non-string dead handlers, including false", function()
+            for _, declared in ipairs({false, 0, {}}) do
+                local handler, err = dead_outcome.validate(DEAD_PROC, {job_dead = declared})
+                test.is_nil(handler)
+                test.is_true(errors.is(err, errors.INVALID), tostring(err))
+            end
+        end)
 
         test.it("refuses to enqueue a job whose worker declares an invalid dead handler", function()
             with_db(function(db: sql.DB, dbtype: string)

@@ -15,8 +15,8 @@ M.KEY = "outcome"
 
 -- Validate the declaration in metadata already resolved for worker admission.
 function M.validate(worker_ref: any, meta: table?): (string?, error?)
-    local declared = type(meta) == "table" and meta.job_dead or nil
-    if declared == nil then return nil, nil end
+    if type(meta) ~= "table" or meta.job_dead == nil then return nil, nil end
+    local declared = meta.job_dead
     if type(declared) ~= "string" or declared == "" then
         return nil, (errors.new({ message = M.META .. " of " .. tostring(worker_ref) .. " must name a function",
             kind = errors.INVALID, retryable = false }) :: error)
