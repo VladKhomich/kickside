@@ -66,7 +66,8 @@ end
 -- reuse one key for a different external_id on the same KB. The content event
 -- remains keyed by document identity for reconciliation. A claim without a
 -- content event is safe to resume with the same immutable payload.
-function M.claim_delivery(kb_id: string, delivery_key: string, content: string, sink_write: any): (boolean, any?)
+function M.claim_delivery(kb_id: string, delivery_key: string, content: string, sink_write: any,
+        resume_effect: boolean?): (boolean, any?, any?)
     local access_err = validate_kb_access(kb_id, component.ACCESS.WRITE)
     if access_err then return false, access_err end
     local exec, exec_err = current_executor()
@@ -89,8 +90,12 @@ function M.claim_delivery(kb_id: string, delivery_key: string, content: string, 
     if previous then
         local same, match_err = matches(previous)
         if match_err then return false, match_err end
-        if same then return true, nil end
+        if same then return true, nil, previous end
         return false, errors.new({ message = "idempotency key already used for a different write",
+            kind = errors.CONFLICT, retryable = false })
+    end
+    if resume_effect then
+        return false, errors.new({ message = "Upload delivery claim is no longer retained",
             kind = errors.CONFLICT, retryable = false })
     end
     local _, append_err = emit_event(exec, kb_id, {
@@ -104,7 +109,7 @@ function M.claim_delivery(kb_id: string, delivery_key: string, content: string, 
     if claimed then
         local same, match_err = matches(claimed)
         if match_err then return false, match_err end
-        if same then return true, nil end
+        if same then return true, nil, claimed end
     end
     return false, errors.new({ message = "idempotency key already used for a different write",
         kind = errors.CONFLICT, retryable = false })
@@ -305,7 +310,7 @@ function M.control(args)
     return result, nil
 end
 
-function M.append_content(kb_id, params, reingest_key)
+function M.append_content(kb_id, params, reingest_key, expect_head)
     kb_id = trim(kb_id)
     if kb_id == "" then return nil, "kb_id is required" end
     params = type(params) == "table" and params or {}
@@ -387,11 +392,17 @@ function M.append_content(kb_id, params, reingest_key)
         },
         trace_context = event_trace,
     }
+    local function append(): (any?, any?)
+        if expect_head ~= nil then
+            return call_threads(exec, "append_event", {thread_id = kb_id, event = event, expect = {head = expect_head}})
+        end
+        return emit_event(exec, kb_id, event)
+    end
     local appended, append_err
     if reingest_key then
         appended, append_err = reingest.append(exec, kb_id, event, reingest_key)
     else
-        appended, append_err = emit_event(exec, kb_id, event)
+        appended, append_err = append()
     end
     -- Preserve every previously accepted inline event. Core owns the row limit:
     -- only its typed, rolled-back size refusal permits an artifact-only retry.
@@ -406,7 +417,7 @@ function M.append_content(kb_id, params, reingest_key)
             body.content_bytes = #content
             body.content_sha256 = content_sha(content)
             if not body.content_sha256 then return nil, "failed to hash omitted artifact content" end
-            appended, append_err = emit_event(exec, kb_id, event)
+            appended, append_err = append()
         end
     end
     if append_err then return nil, append_err end

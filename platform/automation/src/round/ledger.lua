@@ -322,12 +322,18 @@ function M.record_tx(tx: any, owner_id: string, source_port: string, outcomes: {
             local proof: Map? = prior_item and prior_item.delivery_evidence or nil
             if not existing or type(proof) == "table" or (prior_item and prior_item.reservation ~= nil) then
                 local refused=(proof and tonumber(proof.refused_attempts) or 0)
+                local effects = proof and tonumber(proof.effects) or 0
+                local pending = o.state == M.STATE.WAITING and type(o.error) == "table"
+                    and o.error.code == failure_classification.EFFECT_PENDING
+                if not refusal(o) and (not pending or effects == 0) then effects = effects + 1 end
                 proof={refused_attempts=refused + ((o.state ~= "waiting" and refusal(o)) and 1 or 0),
-                    effects=(proof and tonumber(proof.effects) or 0) + (refusal(o) and 0 or 1),
+                    effects=effects,
+                    pending_effect=(pending or (proof and proof.pending_effect == true)) and true or nil,
                     event=proof and proof.event or nil}
                 if type(o.error) == "table" and o.error.code == "replay_evidence_unavailable" then
                     -- A refusal without proof cannot create proof for a later replay.
-                    proof={refused_attempts=refused,effects=proof.effects,event=nil}
+                    proof.refused_attempts=refused
+                    proof.event=nil
                 elseif round and history.event(o,existing,false) then
                     proof.event={drive_key=round.drive_key,round_token=round.captured.round_token,round_at=round.now,
                         source_port=source_port,item_key=item.item_key,identity_key=identity}

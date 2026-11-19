@@ -24,6 +24,14 @@ entries:
           dest_ref; the engine validates this before dispatch. dest_ref/dest_version are aliases for
           dest_refs.default; one-to-many fan-out uses map_slots. Atomic multi-record writes are modeled as
           provider-atomic sink_ops with composite input and dest_refs output.
+          A record-shaped exactly_once binding with meta.resumes_effect=true may
+          return success=false for a single default destination with
+          error.code=effect_pending, scope=item, and retriable=true after identifying
+          a durable effect still processing. Repeating the same key must observe the
+          same effect. This answer carries no destination reference and does not
+          acknowledge delivery. Its optional error.retry_after_ms schedules a poll.
+          On a resumed write, resume_effect=true requires the binding to refuse
+          absent or retired effect evidence instead of admitting a new effect.
         input_schemas:
           - format: application/schema+json
             definition: |
@@ -75,6 +83,10 @@ entries:
                     "type": "string",
                     "minLength": 1,
                     "description": "Stable name of the destination record this write owns, carried across deliveries. A sink that names records by the write key MUST prefer this over idempotency_key, or re-delivery mints a duplicate instead of refreshing."
+                  },
+                  "resume_effect": {
+                    "type": "boolean",
+                    "description": "Engine observation of an earlier effect_pending reply for this key."
                   },
                   "map_slot": {
                     "type": "string",
@@ -194,6 +206,7 @@ entries:
                           "history_unavailable",
                           "stalled",
                           "dependency_missing",
+                          "effect_pending",
                           "idempotency_conflict",
                           "unknown"
                         ]

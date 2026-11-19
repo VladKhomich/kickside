@@ -19,7 +19,7 @@
 --   write(sink, request, d, item)     -- the classified outcome: delivered with the
 --                                        receipts of every destination slot it
 --                                        wrote (a delete's slot as removed),
---                                        waiting on capacity, uncertain for an
+--                                        waiting on capacity or a durable effect, uncertain for an
 --                                        ambiguous at-most-once send, failed
 --
 -- Every function answers (value, err); prepare's conflict is the writable
@@ -94,6 +94,7 @@ function M.describe_sink(port_id: string): (Map?, error?)
     local slots, slots_err = M.destination_slots()
     if slots_err or not slots then return nil, slots_err end
     return { port = port_id, binding = binding, delivery = meta.delivery, input_shape = meta.input_shape,
+        resumes_effect = meta.resumes_effect == true,
         destination_slots = slots }, nil
 end
 
@@ -396,6 +397,10 @@ function M.write(sink: Map, request: Map, d: Map, item: Map): Map
             revision = math.floor(tonumber(d.automation_revision) or 1) },
     }
     if type(request.map_slot) == "string" and request.map_slot ~= "" then body.map_slot = request.map_slot end
+    local can_resume = sink.resumes_effect and sink.delivery == M.DELIVERY.EXACTLY_ONCE
+        and sink.input_shape == M.INPUT_SHAPE.RECORD and (body.map_slot == nil or body.map_slot == "default")
+    local evidence = item.delivery_evidence
+    if can_resume and type(evidence) == "table" and evidence.pending_effect == true then body.resume_effect = true end
     local fence_err = M.check_fence(d)
     if fence_err then return { state = "failed", error = failure_classification.classify(fence_err) } end
     local packet,send_err=funcs.call("kickside.automation:round_sink_effect",{
@@ -421,6 +426,10 @@ function M.write(sink: Map, request: Map, d: Map, item: Map): Map
     end
     local e: Map = type(envelope) == "table" and (envelope :: Map) or {}
     local classified = failure_classification.classify(next(e) ~= nil and e or message)
+    if can_resume and e.code == failure_classification.EFFECT_PENDING and e.scope == "item" and e.retriable == true then
+        classified.sink_effect = true
+        return { state = "waiting", retry_after_ms = classified.retry_after_ms, error = classified }
+    end
     if classified.kind == errors.RATE_LIMITED and classified.scope == "capacity" then
         return { state = "waiting", retry_after_ms = classified.retry_after_ms, error = classified }
     end

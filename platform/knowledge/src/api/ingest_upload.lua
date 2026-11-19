@@ -249,7 +249,8 @@ end
 -- ingest(kb_id, upload_id, file) -> (result, err).
 -- file (optional) carries caller-side file facts: { mime_type, size, metadata,
 -- trace_context }. Upload storage locators never cross into KB events.
-function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: boolean }, reingest_key: string?): (any, any)
+function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: boolean }, reingest_key: string?,
+        upload_delivery: any?): (any, any)
     if type(kb_id) ~= "string" or kb_id == "" then return nil, "kb_id is required" end
     if type(upload_id) ~= "string" or upload_id == "" then return nil, "upload_id is required" end
     file = type(file) == "table" and file or {}
@@ -261,6 +262,7 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
 
     local primary, content_err = read_upload_content(upload_id)
     if content_err or not primary then
+        if upload_delivery then return nil, content_err or typed(errors.INVALID, "upload has no primary artifact") end
         local archive_result, archive_err = ingest_archive_children(kb_id, upload_id, file, seen, reingest_key)
         if archive_result or archive_err then return archive_result, archive_err end
 
@@ -319,13 +321,15 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
     put_default(source_ref, "source_url", metadata.source_url)
     put_default(source_ref, "content_type", content_type)
 
-    local external_id = first_value(
+    local external_id = upload_delivery and upload_delivery.external_id or first_value(
         metadata.external_id,
         source_ref.external_id,
         url_external_id(metadata.source_url),
         "upload:" .. upload_id
     )
-    local external_version = first_value(metadata.external_version, source_ref.external_version)
+    local external_version = upload_delivery and upload_delivery.external_version
+        or first_value(metadata.external_version, source_ref.external_version)
+    if upload_delivery then put_if_present(metadata, "source_version", upload_delivery.source_version) end
     if content == nil then put_default(metadata, "content_hash", artifact.checksum) end
     metadata.external_id = external_id
     source_ref.external_id = external_id
@@ -342,6 +346,7 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
         source_ref = source_ref,
         trace_context = file.trace_context,
     }
+    if upload_delivery then return thread_ingest.append_content(kb_id, params, nil, upload_delivery.expected_head) end
     if reingest_key then
         local queued, err = thread_ingest.append_content(kb_id, params, reingest_key)
         if err or not queued then return nil, err end
@@ -370,6 +375,10 @@ end
 
 function M.ingest(kb_id: any, upload_id: any, file: any, reingest_key: string?): (any, any)
     return ingest_impl(kb_id, upload_id, file, {}, reingest_key)
+end
+
+function M.ingest_delivery(kb_id: string, upload: any, delivery: any): (any?, any?)
+    return ingest_impl(kb_id, upload.uuid, upload, {}, nil, delivery)
 end
 
 return M

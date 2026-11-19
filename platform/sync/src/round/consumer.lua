@@ -36,7 +36,11 @@ local function write_slots(plan: Map, d: Map, item: Map, slots: { Map }, sink_op
     local receipts: { Map } = {}
     for _, slot in ipairs(slots) do
         local map_slot = tostring(slot.map_slot or "")
-        local keys = round_write.keys(d, item, map_slot ~= "" and map_slot or nil)
+        local key_slot = map_slot ~= "" and map_slot or nil
+        -- The default slot can appear or disappear while an upload processes.
+        -- Its pending delivery always uses the unslotted delivery key.
+        if plan.sink.resumes_effect and sink_op == "upsert" and map_slot == "default" then key_slot = nil end
+        local keys = round_write.keys(d, item, key_slot)
         local outcome = round_write.write(plan.sink, {
             config = plan.sink_config, sink_op = sink_op, input = input,
             identity_key = slot.identity_key or keys.identity_key, idempotency_key = keys.idempotency_key,
