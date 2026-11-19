@@ -13,6 +13,7 @@ local function run(args)
             id = agent.id,
             name = agent.name,
             model = agent.model,
+            max_tokens = agent.max_tokens,
             tools = agent.tools,
         },
         current_agent_id = ctx.current_agent_id,

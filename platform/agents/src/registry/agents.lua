@@ -125,7 +125,7 @@ function M.create(args: any): (agent_types.CreateResult?, error?)
         prompt = args.prompt or "",
         model = args.model or agent_types.DEFAULT_MODEL,
         temperature = tonumber(args.temperature),
-        max_tokens = tonumber(args.max_tokens) or agent_types.DEFAULT_MAX_TOKENS,
+        max_tokens = tonumber(args.max_tokens),
         traits = traits,
         trait_contexts = args.trait_contexts or {},
         trait_agent_options = args.trait_agent_options or {},
