@@ -5,7 +5,7 @@ entries:
     kind: http.service
     addr: :8085
     lifecycle:
-      depends_on: [wippy.bootloader:bootloader.service]
+      requires: [kickside.core.lifecycle:system_ready.service]
       auto_start: true
 
   - name: api.public
