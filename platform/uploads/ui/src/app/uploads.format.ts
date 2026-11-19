@@ -1,4 +1,5 @@
 export { typeIcon, formatSize } from '@widgets/app/fileMetadata'
+import { errMsg } from '@kickside/ui-kit/errMsg'
 import { formatSize } from '@widgets/app/fileMetadata'
 import type { Upload, UploadArtifact } from './uploads.types.ts'
 
@@ -28,6 +29,16 @@ export function statusLabel(status: string): string {
 
 export function uploadLabel(upload: Upload): string {
   return (upload.filename || '').trim() || 'Untitled file'
+}
+
+export function formatUploadRequestError(filename: string | undefined, cause: unknown, fallback: string): string {
+  const response = (cause as { response?: { data?: unknown; status?: number; statusText?: string } } | null)?.response
+  const body = response?.data
+  const declaredReason = typeof body === 'string' ? body.trim() : errMsg({ response }, '').trim()
+  const status = response?.status
+  const httpReason = status && status >= 400 ? response?.statusText?.trim() || `HTTP ${status}` : ''
+  const reason = declaredReason || httpReason || errMsg(cause, fallback)
+  return `${filename || 'File'} · ${reason}`
 }
 
 // Short, human label instead of the raw mime (e.g. the very long

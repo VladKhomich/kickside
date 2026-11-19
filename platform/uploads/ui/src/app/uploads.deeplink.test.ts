@@ -58,14 +58,14 @@ describe('upload deep links', () => {
     expect(navigate).toHaveBeenLastCalledWith('navigate', { path: file.uuid })
     wrapper.unmount()
   })
-  it.each([403, 404])('shows a clear unavailable state for HTTP %s', async status => {
+  it.each([[403, 'Forbidden'], [404, 'Not Found']])('shows a clear unavailable state for HTTP %i', async (status, statusText) => {
     props.value = { route: 'unavailable' }
     get.mockImplementation(async (url: string) => {
-      if (!url.endsWith('/list')) throw { response: { status } }
+      if (!url.endsWith('/list')) throw { response: { status, statusText } }
       return { data: { success: true, uploads: [] } }
     })
     const wrapper = render(); await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toMatch(/not found|permission/i)
+    expect(wrapper.get('[role="alert"]').text()).toContain(`File · ${statusText}`)
     wrapper.unmount()
   })
   it('ignores an old read when the route changes or closes', async () => {
