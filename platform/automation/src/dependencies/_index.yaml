@@ -29,10 +29,10 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '>=0.3.1'
+    version: '>=0.3.9'
     kind: ns.dependency
     meta:
-      comment: Provides the Trigger lifecycle, delivery, and acquisition-control contracts.
+      comment: Provides Trigger contracts and text normalization.
     component: kickside/contract
 
   - name: dep.kickside.core
@@ -48,10 +48,3 @@ entries:
     meta:
       comment: Automation health reads the jobs runtime policy's overdue grace.
     component: kickside/jobs
-
-  - name: dep.kickside.provider_text
-    version: '*'
-    kind: ns.dependency
-    meta:
-      comment: Boundary whitespace normalization for automation metadata.
-    component: kickside/provider-text
