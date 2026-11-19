@@ -9,7 +9,7 @@
 -- ledger is left to its redelivery, so a pass ends when nothing else is
 -- stale; the next pass is due one reconcile interval later.
 --
---   delete_items(keys)                  -- the sweep's delete items
+--   delete_items(keys, pass_id)         -- the sweep's delete items
 --   stale(db, round, d, limit)          -- item keys of stale receipts
 --   after(d, page, stale_count, now, next_pass_at) -> (spec, continues)
 --   apply_tx(tx, round, spec, fields)   -- the commit's pass writes
@@ -29,12 +29,12 @@ local function internal(message: string, err: any): error
     return (errors.new({ message = message .. ": " .. tostring(err), kind = errors.INTERNAL, retryable = true }) :: error)
 end
 
--- delete_items(keys) -> one delete item per stale item key; its dedup key
--- keeps its ledger identity apart from the source item's.
-function M.delete_items(keys: { string }): { Map }
+-- Retries within a pass replay the same delete. A later pass can delete a
+-- restored item at the same destination.
+function M.delete_items(keys: { string }, pass_id: string): { Map }
     local items: { Map } = {}
     for _, key in ipairs(keys) do
-        items[#items + 1] = { item_key = key, dedup_key = "reconcile:" .. key, op = "delete", payload = {} }
+        items[#items + 1] = { item_key = key, dedup_key = "reconcile:" .. pass_id .. ":" .. key, op = "delete", payload = {} }
     end
     return items
 end
