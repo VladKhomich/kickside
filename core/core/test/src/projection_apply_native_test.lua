@@ -61,8 +61,8 @@ local function outcomes()
             fixture.reset(stage, source, "advance")
             local receipt, err = apply.checkpoint("app:db", {id = "job", lease_token = "token", execution_seq = 1},
                 {id = "cursor", thread_id = "thread", projection_id = "projection", generation = 1, last_seq = 0, body = {}},
-                1, {last_seq = 1}, function()
-                    return true
+                1, {last_seq = 1}, function(_tx, _dialect)
+                    return true, nil
                 end)
             test.eq(receipt.last_seq, 1)
             test.is_false(receipt.self_completed)
