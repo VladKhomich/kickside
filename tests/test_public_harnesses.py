@@ -1,15 +1,19 @@
 """Native harnesses resolve public inputs and own their CI databases."""
 from pathlib import Path
+import hashlib
 import json
 import os
 import re
 import shutil
 import textwrap
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+from release_artifacts import prepared_artifact
 
 
 class PublicHarnessTests(unittest.TestCase):
@@ -60,6 +64,71 @@ class PublicHarnessTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('cd ' + directory + ' &&', result.stdout)
                 self.assertIn('npm test', result.stdout)
+
+    def test_ui_kit_materializes_the_locked_archive(self):
+        with tempfile.TemporaryDirectory(prefix='ui kit ') as directory:
+            root = Path(directory)
+            shutil.copy(ROOT / 'Makefile', root)
+            (root / 'scripts').mkdir()
+            shutil.copy(ROOT / 'scripts/wire-ui-kit.mjs', root / 'scripts')
+            consumer = root / 'platform/widgets/ui'
+            consumer.mkdir(parents=True)
+            (consumer / 'package.json').write_text(json.dumps({
+                'workspaces': ['./.wippy/npm/@*/*'], 'dependencies': {'@kickside/ui-kit': '*'},
+            }))
+            vendor = root / 'build-inputs/.wippy/vendor/kickside'
+            vendor.mkdir(parents=True)
+            locked = vendor / 'ui-kit-1.7.10.wapp'
+            stale = vendor / 'ui-kit-1.7.9.wapp'
+            source = root / 'platform/ui-kit'
+            shutil.copytree(ROOT / 'platform/ui-kit', source,
+                            ignore=shutil.ignore_patterns('node_modules', '.wippy'))
+            wippy = shutil.which('wippy')
+            self.assertIsNotNone(wippy)
+            module = {'name': 'kickside/ui-kit', 'path': 'platform/ui-kit', 'embed': ['kickside.ui_kit:package_fs']}
+            package_path = source / 'package/package.json'
+            package = json.loads(package_path.read_text())
+            for version, archive in [('1.7.9', stale), ('1.7.10', locked)]:
+                package_path.write_text(json.dumps({**package, 'version': version}))
+                with prepared_artifact(root, dict(module, version=version), wippy) as artifact:
+                    shutil.copyfile(artifact, archive)
+            lock = root / 'build-inputs/wippy.lock'
+            lock.write_text('modules:\n  - version: "1.7.10"\n'
+                            f'    hash: {hashlib.sha256(locked.read_bytes()).hexdigest()}\n'
+                            '    name: "kickside/ui-kit"\n'
+                            'directories: {src: src, modules: .wippy}\n')
+            (root / 'build-inputs/src').mkdir()
+            wrapper = root / 'wippy-fixture'
+            wrapper.write_text('#!/bin/sh\ncase "$1" in\n'
+                               'update) echo resolved >> "$UI_KIT_TEST_TRACE"; exit 0 ;;\n'
+                               'install) test -z "$UI_KIT_TEST_FAIL_INSTALL" || exit 1 ;;\n'
+                               'esac\nexec "$UI_KIT_TEST_WIPPY" "$@"\n')
+            wrapper.chmod(0o755)
+            npm = root / 'npm'
+            npm.write_text('#!/bin/sh\nexit 0\n')
+            npm.chmod(0o755)
+            trace = root / 'materialized'
+            env = {**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
+                   'UI_KIT_TEST_TRACE': str(trace), 'UI_KIT_TEST_WIPPY': wippy}
+
+            def materialize(override='', *, fail_install=False):
+                return subprocess.run(['make', 'ui-kit', 'MOD=widgets', f'WIPPY_BIN={wrapper}',
+                                       f'UI_KIT_WAPP={override}'], cwd=root,
+                                      env={**env, 'UI_KIT_TEST_FAIL_INSTALL': '1' if fail_install else ''},
+                                      text=True, capture_output=True, timeout=30)
+
+            installed = consumer / '.wippy/npm/@kickside/ui-kit/package.json'
+            result = materialize()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(installed.read_text())['version'], '1.7.10')
+            self.assertTrue(stale.is_file())
+            result = materialize(fail_install=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(json.loads(installed.read_text())['version'], '1.7.10')
+            result = materialize(stale)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(installed.read_text())['version'], '1.7.9')
+            self.assertEqual(trace.read_text().splitlines(), ['resolved', 'resolved'])
 
     def test_release_extra_files_resolve_within_their_module(self):
         config = json.loads((ROOT / 'release-please-config.json').read_text())
