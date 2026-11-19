@@ -206,7 +206,8 @@ local function discover_universal(meta_type: string, function_field: string?)
         local scope = tostring(d.scope or meta(e).scope or "")
         local func = d[field] or meta(e)[field]
         if (scope == "universal" or scope == "all") and func then
-            stages[#stages + 1] = { id = tostring(e.id or ""), func = tostring(func), title = d.title or "stage", priority = priority(e) }
+            stages[#stages + 1] = { id = tostring(e.id or ""), func = tostring(func), title = d.title or "stage",
+                priority = priority(e), owner_func = d.owner_func or meta(e).owner_func }
         end
     end
     table.sort(stages, function(a, b)
@@ -242,18 +243,22 @@ function upload_type.get_archive_preparers()
 end
 
 -- Get on_delete lifecycle stages for a type
-function upload_type.get_on_delete(type_id)
+function upload_type.get_on_delete(type_id, owner_teardown: boolean?)
     local list = {}
     local entry = upload_type.get_by_id(type_id)
     if entry and entry.data and type(entry.data.on_delete) == "table" then
-        for _, s in ipairs(entry.data.on_delete) do list[#list + 1] = s end
+        for _, stage in ipairs(entry.data.on_delete) do
+            if not owner_teardown or stage.delete_scope ~= "single_upload" then
+                list[#list + 1] = stage
+            end
+        end
     end
     -- Universally-dropped-in delete stages run on every upload delete (e.g. reap the
     -- workspace file component that pointed at it).
     local universal, universal_err = discover_universal("upload.delete_stage")
     if universal_err then return nil, universal_err end
     for _, s in ipairs(universal) do
-        list[#list + 1] = { func = s.func, title = s.title }
+        list[#list + 1] = { func = s.func, title = s.title, owner_func = s.owner_func }
     end
     return list
 end

@@ -2,8 +2,8 @@
 
 Execution identity: the principal codec, actor keys, delegation encoding and the live
 capture/resolve/bind/run_as path; and the execution trace context (`kickside.execution:trace`): the
-canonical trace_context vocabulary, its row codec and the opaque correlation token. A leaf module: it
-depends on no KickSide module.
+canonical trace_context vocabulary, its row codec and the opaque correlation token. It uses the
+shared text normalization in `kickside/contract`.
 
 User credential executions check current status, pending policy fences and optional
 provider authority epochs through the Users-owned `kickside.contract:scope_resolver`.

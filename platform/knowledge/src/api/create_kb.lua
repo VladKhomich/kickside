@@ -68,7 +68,7 @@ local function handler()
     end
     local kb_type = engine.kb_type
 
-    -- Persistence (component + per-impl store row + config defaults + any
+    -- Persistence (component + per-impl store row + any
     -- engine-owned anchor seeding) goes through the canonical knowledge_bases
     -- registry; this handler keeps only the HTTP shape and the change notification.
     local svc, svc_err = contract.get(KB_REGISTRY)

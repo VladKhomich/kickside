@@ -39,7 +39,7 @@ entries:
   - name: contract_dependency
     kind: ns.dependency
     component: kickside/contract
-    version: "*"
+    version: '>=0.3.9'
 
   - name: definition
     kind: ns.definition
@@ -112,6 +112,7 @@ entries:
     source: file://link_service.lua
     modules: [sql, crypto, time, uuid]
     imports:
+      text_trim: kickside.contract:text_trim
       identity_consts: kickside.identity:identity_consts
       credential_eligibility: kickside.identity:credential_eligibility_check
       component: kickside.component:component
@@ -139,6 +140,7 @@ entries:
     method: cleanup_principal
     modules: [sql, crypto, time, uuid]
     imports:
+      text_trim: kickside.contract:text_trim
       identity_consts: kickside.identity:identity_consts
       credential_eligibility: kickside.identity:credential_eligibility_check
       component: kickside.component:component

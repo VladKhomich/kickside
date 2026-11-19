@@ -10,7 +10,7 @@ withDefaults(defineProps<{
   autocomplete?: string
   min?: number
   max?: number
-  step?: number
+  step?: number | 'any'
   mono?: boolean
 }>(), { type: 'text' })
 const emit = defineEmits<{ (e: 'update:modelValue', value: string | number): void }>()

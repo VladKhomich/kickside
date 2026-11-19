@@ -1,5 +1,8 @@
 local M: any = {}
-function M.reset(stage, source) M.stage, M.source, M.calls, M.spawns = stage, source, 0, 0 end
+function M.reset(stage, source)
+    M.stage, M.source, M.calls, M.spawns = stage, source, 0, 0
+    M.output = {result = {marker = "kept"}}
+end
 function M.result(stage, value) if M.stage == stage then return nil, M.source end; return value, nil end
 function M.get(...) return M.result("registry", {kind = "function.lua"}) end
 function M.scope() return M end
@@ -9,7 +12,7 @@ function M.new() return M end
 function M.with_context(...) return M end
 function M.with_scope(...) return M end
 function M.with_options(...) return M.result("executor", M) end
-function M.call(...) M.calls = M.calls + 1; return {result = {marker = "kept"}}, nil end
+function M.call(...) M.calls = M.calls + 1; return M.output, nil end
 function M.spawn_linked_monitored(...)
     M.spawns = M.spawns + 1
     return M.result("spawn", "child")

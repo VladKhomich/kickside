@@ -164,6 +164,7 @@ entries:
       - funcs
       - logger
     imports:
+      text_trim: kickside.contract:text_trim
       revocation: kickside.users:revocation
     method: handler
 

@@ -80,6 +80,7 @@ local function define_tests()
             local ctx = decode_context(row.private_context)
             test.eq(ctx.prompt, args.prompt or "")
             test.eq(ctx.model, args.model or "class:fast")
+            test.eq(ctx.max_tokens, args.max_tokens)
 
             local meta_rows, meta_err = db:query(
                 [[SELECT value FROM kickside_component_meta WHERE component_id = $1 AND key = 'status']],
@@ -291,6 +292,34 @@ local function define_tests()
             test.is_nil(err)
             test.not_nil(resolved)
             test.eq(43000, resolved.agent_options.checkpoint.token_threshold)
+        end)
+
+        test.it("keeps the effective response budget for an agent with unknown model limits", function()
+            local cid = register_agent({ model = "unspecified-limits-model" }, "Resolver Model Budget Agent")
+            local loaded, err = new_executor(owner):call(CONTEXT_PROBE, { agent_id = "user_agent:" .. cid })
+
+            test.is_nil(err)
+            test.eq(loaded.success, true, loaded.error)
+            test.eq(loaded.agent.max_tokens, 8000)
+        end)
+
+        test.it("fits an omitted response budget to the resolved model's limit", function()
+            local cid = register_agent({ model = "output-limited-model" }, "Resolver Limited Model Agent")
+            local resolved, err = new_executor(owner):call(RESOLVER, { agent_id = cid })
+
+            test.is_nil(err)
+            test.not_nil(resolved)
+            test.eq(resolved.max_tokens, 2048)
+        end)
+
+        test.it("preserves the configured response budget above the former cap", function()
+            local cid = register_agent({ model = "unspecified-limits-model", max_tokens = 160000 },
+                "Resolver Configured Budget Agent")
+            local resolved, err = new_executor(owner):call(RESOLVER, { agent_id = cid })
+
+            test.is_nil(err)
+            test.not_nil(resolved)
+            test.eq(resolved.max_tokens, 160000)
         end)
 
         test.it("preserves trait-owned runtime options on the trait spec", function()

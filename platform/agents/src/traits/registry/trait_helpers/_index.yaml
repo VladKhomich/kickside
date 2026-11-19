@@ -76,6 +76,7 @@ entries:
     source: file://../../capability_context.lua
     modules: [json]
     imports:
+      text_trim: kickside.contract:text_trim
       canonical_json: kickside.contract:canonical_json
 
   - name: validate_trait_context

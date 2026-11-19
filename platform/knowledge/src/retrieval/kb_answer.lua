@@ -1,6 +1,7 @@
 local llm = require("llm")
 local funcs = require("funcs")
 local kb_search = require("kb_search")
+local analysis_model = require("analysis_model")
 local model_failure = require("model_failure")
 
 local AGENTIC_QUERY = "kickside.knowledge.retrieval:agentic_query"
@@ -9,8 +10,7 @@ local AGENTIC_QUERY = "kickside.knowledge.retrieval:agentic_query"
 -- job (kb_search.query); answering is ours: the KB's query_driver selects how the
 -- answer is produced — the agentic dataflow driver (a tool-calling agent) or a
 -- single-shot synthesis over the retrieved passages. The ranked passages are
--- returned as sources either way. Driver failures return errors. Without an
--- analysis model the result contains passages only.
+-- returned as sources either way. Driver failures return errors.
 local M = {}
 
 -- Injectable LLM seam so the synthesis path is unit-testable without a live
@@ -24,6 +24,7 @@ local MAX_SOURCES = 6
 local PREVIEW_LENGTH = 1200
 local ANSWER_MAX_TOKENS = 1024
 local ANSWER_TIMEOUT_SECONDS = 30
+local NO_ANSWER_MODEL = "No answer model is available. Returning query results."
 
 local ANSWER_PROMPT = [[Answer the question using ONLY the passages below. State nothing the passages do not support; if they do not contain the answer, say so plainly. Cite each supported statement with the passage number in square brackets, such as [1]. Use one number per bracket pair: for multiple sources write [1][2]; never combine numbers inside one pair. Use only numbers from the supplied passages. Be concise and direct.%s
 
@@ -69,15 +70,6 @@ local function synthesize(query_text: string, items: any, model: any, extra_prom
     return answer :: string
 end
 
--- The analysis model controls answering independently of document summarization.
-local function resolve_answer_model(config: table): string?
-    local configured = config.analysis_model
-    if type(configured) ~= "string" or configured == "" then
-        return nil
-    end
-    return configured
-end
-
 -- Flatten the retrieval envelope (engine items carry a meta sub-table) into the
 -- ranked-source shape the UI renders.
 local function normalize(items: any): any
@@ -99,8 +91,8 @@ local function normalize(items: any): any
 end
 
 -- ask(kb_id, { query, limit? }) -> (result, err). result is
--- { success, query, answer, items, count }; answer may be nil when no model is
--- configured anywhere (the UI then shows the ranked sources alone).
+-- { success, query, answer?, results, count, mode? }. In query mode, answer
+-- describes why the response contains passages without a generated answer.
 function M.ask(kb_id: any, opts: any): (any, any)
     opts = opts or {}
     local query_text = opts.query
@@ -114,22 +106,43 @@ function M.ask(kb_id: any, opts: any): (any, any)
     local config, _, config_err = M._kb_search.config(kb_id)
     if config_err then return nil, config_err end
     if type(config) ~= "table" then return nil, "knowledge base config is missing" end
-    local answer_model = resolve_answer_model(config)
+    local setting = config.analysis_model
+    local answer_model = analysis_model.configured(config)
+    if not answer_model and (setting == nil or type(setting) == "string") then
+        answer_model = analysis_model.DEFAULT
+    end
 
     local result, q_err = M._kb_search.query(kb_id, { query = query_text, limit = opts.limit or DEFAULT_LIMIT })
     if q_err then
         return nil, q_err
     end
     local analysis = result and result.retrieval and result.retrieval.analysis
-    if answer_model and analysis and analysis.status == "unavailable" and analysis.reason == "no_models_for_class" then
+    local items = (result and result.items) or {}
+    local response: any = { success = true, query = query_text, results = normalize(items), count = #items }
+    if not answer_model then
+        response.mode = "query"
+        response.answer = setting == false and "Answers are disabled. Returning query results." or NO_ANSWER_MODEL
+        return response, nil
+    end
+    local unavailable = analysis and analysis.model == answer_model
+        and analysis.status == "unavailable" and analysis.reason == "no_models_for_class"
+    if answer_model == analysis_model.DEFAULT then
+        if not unavailable then
+            local available, lookup_err = analysis_model.class_available(answer_model)
+            if lookup_err then return nil, model_failure.wrap("answer model lookup", lookup_err) end
+            unavailable = not available
+        end
+        if unavailable then
+            response.mode, response.answer = "query", NO_ANSWER_MODEL
+            return response, nil
+        end
+    elseif unavailable then
         return nil, errors.new({ kind = errors.UNAVAILABLE,
             message = "answer generation failed: No models found for class: " .. answer_model:sub(7),
             details = { retrieval = result.retrieval } })
     end
-    local items = (result and result.items) or {}
 
-    local answer: string? = nil
-    if answer_model and config.query_driver == "agentic" then
+    if config.query_driver == "agentic" then
         -- Seed the agent with the passages already retrieved here (slimmed) so it
         -- starts informed and spends its iterations exploring/refining, not
         -- rediscovering the KB.
@@ -140,28 +153,24 @@ function M.ask(kb_id: any, opts: any): (any, any)
         end
         -- Run the dataflow agent in its own pool (funcs.call) so its dataflow
         -- runtime never enters this control-plane/HTTP import closure.
-        local r, ferr = M._funcs.call(AGENTIC_QUERY, { kb_id = kb_id, query = query_text, config = config, seed_items = seed_items })
+        local agent_config = {}
+        for key, value in pairs(config) do agent_config[key] = value end
+        agent_config.analysis_model = answer_model
+        local r, ferr = M._funcs.call(AGENTIC_QUERY, { kb_id = kb_id, query = query_text, config = agent_config, seed_items = seed_items })
         if ferr then return nil, model_failure.wrap("agentic answer", ferr) end
         if type(r) ~= "table" or type((r :: any).answer) ~= "string" or (r :: any).answer == "" then
             return nil, errors.new({ kind = errors.INTERNAL, message = "agentic answer returned empty content" })
         end
-        answer = (r :: any).answer
-    elseif answer_model then
-        local synthesis_err: any = nil
-        answer, synthesis_err = synthesize(query_text, items, answer_model, config.extra_prompt)
+        response.answer = (r :: any).answer
+    else
+        local answer, synthesis_err = synthesize(query_text, items, answer_model, config.extra_prompt)
         if synthesis_err then return nil, synthesis_err end
+        response.answer = answer
     end
 
-    return {
-        success = true,
-        query = query_text,
-        answer = answer,
-        results = normalize(items),
-        count = #items,
-    }, nil
+    return response, nil
 end
 
 M._synthesize = synthesize
-M._resolve_answer_model = resolve_answer_model
 
 return M

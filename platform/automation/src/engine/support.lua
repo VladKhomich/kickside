@@ -21,10 +21,7 @@ local function automation_error(message: string, kind: string, cause: any?): err
     return (errors.new({ message = message .. (cause ~= nil and (": " .. tostring(cause)) or ""), kind = kind }) :: error)
 end
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 local function copy_map(raw: any): Map
     local out: Map = {}

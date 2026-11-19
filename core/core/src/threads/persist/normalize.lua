@@ -10,13 +10,7 @@ local clock = require("clock")
 
 local M = {}
 
--- trim returns value with surrounding whitespace removed, or "" for a non-string.
-function M.trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
+M.trim = require("text_trim").trim
 
 -- to_int coerces value to an integer, returning fallback when it is not numeric.
 function M.to_int(value: any, fallback: integer?): integer?

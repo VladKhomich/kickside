@@ -4,10 +4,7 @@ local prefix = "user_agent:"
 M.USER_AGENT_PREFIX = prefix
 M.USER_AGENT_NAMESPACE = "user_agent"
 
-local function trim(value)
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 function M.user(component_id)
     return prefix .. trim(component_id)

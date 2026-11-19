@@ -7,6 +7,7 @@
 -- time.now() in the dialect's textual shape and bound as params, so the SQL
 -- stays portable. Errors are returned as values.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local json = require("json")
 local uuid = require("uuid")
@@ -50,13 +51,6 @@ end
 
 local function projection_insert_response(field: string): error
     return response_error(field, "projection insert returns no affected-row proof", "projection_insert_result_invalid")
-end
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
 end
 
 local now_string = clock.now

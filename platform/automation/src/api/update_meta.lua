@@ -10,6 +10,7 @@ local json = require("json")
 local security = require("security")
 local component = require("component")
 local api_errors = require("api_errors")
+local trim = require("text_trim").trim
 
 -- Build the meta field set from the request body. title must be a non-empty
 -- trimmed string; description may be any string (empty clears the rendered
@@ -27,7 +28,7 @@ local function build_fields(body: any): ({ [string]: any }?, string?)
         if type(title) ~= "string" then
             return nil, "title must be a string"
         end
-        title = title:match("^%s*(.-)%s*$")
+        title = trim(title)
         if title == "" then
             return nil, "title must be a non-empty string"
         end

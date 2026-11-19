@@ -58,4 +58,5 @@ entries:
     method: teardown_owner
     modules: [registry, funcs, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       automations_lib: kickside.automation:automation

@@ -158,6 +158,7 @@ entries:
     kind: security.policy
     meta:
       title: Module access
+      comment: Opens the sample module.
       surface: test.module
       intent: module_access
       includes: [app:module_runtime]
@@ -172,6 +173,50 @@ entries:
     policy:
       actions: [registry.get, registry.find, funcs.call]
       resources: app:module_view
+      effect: allow
+
+  - name: manage_samples
+    kind: security.policy
+    meta:
+      title: Sample management
+      comment: Manages sample records.
+      intent: module_management
+    policy:
+      actions: access
+      resources: app:manage_samples.endpoint
+      effect: allow
+
+  - name: sample_service
+    kind: security.policy
+    meta:
+      title: Sample service
+      intent: module_management
+      service_only: true
+    policy:
+      actions: access
+      resources: app:sample_service.endpoint
+      effect: allow
+
+  - name: sample_tool
+    kind: security.policy
+    meta:
+      title: Sample tools
+      comment: Runs sample tools.
+      intent: tool_access
+    policy:
+      actions: access
+      resources: app:sample.tool
+      effect: allow
+
+  - name: sample_infrastructure
+    kind: security.policy
+    meta:
+      title: Sample infrastructure
+      intent: tool_access
+      assignable: false
+    policy:
+      actions: access
+      resources: app:sample_infrastructure.endpoint
       effect: allow
 
   - name: dep.wippy.test

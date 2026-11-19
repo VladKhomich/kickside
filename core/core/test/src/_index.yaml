@@ -1271,6 +1271,7 @@ entries:
     source: file://src_link/projections/persist/register.lua
     modules: [sql, json]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       committed_error: kickside.contract:committed_error
       uuid: app:projection_uuid_fixture
@@ -1567,6 +1568,7 @@ entries:
     source: file://thread_database_native_source.lua
     modules: [security]
     imports:
+      text_trim: kickside.contract:text_trim
       error_envelope: kickside.contract:error_envelope
       sql: app:thread_database_native_sql_adapter
       component_identity: kickside.core.threads:component_identity
@@ -2176,6 +2178,7 @@ entries:
     source: file://thread_audience_native_source.lua
     modules: [json, time, funcs]
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:thread_audience_native_sql_adapter
       process: app:thread_audience_native_process_adapter
       consts: kickside.core.threads:notify_consts
@@ -2523,6 +2526,7 @@ entries:
     kind: library.lua
     source: file://read_model_native_source.lua
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:read_model_native_sql_adapter
       json: app:read_model_native_json_adapter
       component: app:read_model_native_component_adapter
@@ -2576,6 +2580,7 @@ entries:
     kind: library.lua
     source: file://projection_reader_native_source.lua
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:projection_reader_native_sql_adapter
       types: kickside.core.projections:types
 
@@ -2614,6 +2619,7 @@ entries:
     source: file://audit_publication_native_source.lua
     modules: [uuid, process, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       sql: app:audit_publication_native_sql_adapter
       autoinit: kickside.component:autoinit
@@ -2808,6 +2814,7 @@ entries:
     source: file://projection_register_native_source.lua
     modules: [uuid]
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:projection_register_native_sql_adapter
       json: app:projection_register_native_json_adapter
       clock: kickside.core.jobs:clock
@@ -2899,6 +2906,7 @@ entries:
     source: file://projection_worker_native_source.lua
     modules: [process, time, security]
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:projection_worker_native_sql_adapter
       json: app:projection_worker_native_json_adapter
       funcs: app:projection_worker_native_funcs_adapter
@@ -3280,6 +3288,7 @@ entries:
     kind: library.lua
     source: file://thread_reader_native_source.lua
     imports:
+      text_trim: kickside.contract:text_trim
       sql: app:thread_reader_native_sql_adapter
       json: app:thread_reader_native_json_adapter
       threads_component: app:thread_reader_native_component_adapter
@@ -3681,6 +3690,7 @@ entries:
     source: file://receipt_sql_native_source.lua
     modules: [json]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       sql: app:receipt_sql_native_sql
       core_db: kickside.core:db
@@ -4160,6 +4170,7 @@ entries:
     source: file://projection_transaction_source.lua
     modules: [sql]
     imports:
+      text_trim: kickside.contract:text_trim
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
       job_reclaim: kickside.core.jobs.persist:reclaim
@@ -4238,6 +4249,7 @@ entries:
     source: file://projection_postcommit_source.lua
     modules: [sql]
     imports:
+      text_trim: kickside.contract:text_trim
       clock: kickside.core.jobs:clock
       register: kickside.core.projections.persist:register
       job_reclaim: app:projection_postcommit_job_reclaim

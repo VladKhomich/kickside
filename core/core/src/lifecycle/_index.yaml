@@ -99,6 +99,7 @@ entries:
     source: file://component_lifecycle.lua
     modules: [uuid, process, sql, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
@@ -118,6 +119,7 @@ entries:
     method: created
     modules: [uuid, process, sql, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
@@ -137,6 +139,7 @@ entries:
     method: updated
     modules: [uuid, process, sql, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
@@ -156,6 +159,7 @@ entries:
     method: deleted
     modules: [uuid, process, sql, logger]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       autoinit: kickside.component:autoinit
       component_lifecycle_log: kickside.core.threads.persist:lifecycle

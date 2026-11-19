@@ -28,7 +28,7 @@ entries:
     meta:
       comment: Implements kickside.contract:content_provider.get_content for uploads.
     source: file://get_content_func.lua
-    modules: [security, ctx]
+    modules: [security, ctx, logger]
     imports:
       binding_errors: kickside.uploads.binding:binding_errors
       component: kickside.component:component
@@ -81,9 +81,6 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.contract:deletable.delete for the uploads component — tears down the actor's uploads, artifacts, chunks, and blob storage.
-    security:
-      policies:
-      - kickside.uploads:thread_deleted_publish
     source: file://delete_uploads_func.lua
     method: handle
     modules: [ctx]
@@ -91,8 +88,6 @@ entries:
       binding_errors: kickside.uploads.binding:binding_errors
       component: kickside.component:component
       upload_lib: kickside.uploads:uploads
-      upload_query_repo: kickside.uploads.persist:upload_query_repo
-      upload_read_model: kickside.uploads.persist:upload_read_model
 
   - name: storage_adapter_default
     kind: library.lua
@@ -105,6 +100,7 @@ entries:
     - logger
     imports:
       storage_location: kickside.uploads.binding:storage_location
+      binding_errors: kickside.uploads.binding:binding_errors
   - name: storage_location
     kind: library.lua
     source: file://storage_location.lua

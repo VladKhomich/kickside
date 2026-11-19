@@ -6,6 +6,8 @@ entries:
     meta:
       comment: Composer catalog projection for public agent capabilities.
     source: file://../../composer_catalog.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     modules: [registry]
 
   - name: composer_traits_catalog_rows
@@ -13,6 +15,8 @@ entries:
     meta:
       comment: Composer catalog projection rows for public agent capabilities.
     source: file://../../composer_catalog.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     method: traits
     modules: [registry]
 

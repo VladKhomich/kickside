@@ -5,7 +5,7 @@ modules:
     - name: kickside/component
       version: 0.3.12
     - name: kickside/contract
-      version: 0.0.0
+      version: 0.3.9
     - name: kickside/core
       version: 0.3.17
     - name: kickside/doc2md

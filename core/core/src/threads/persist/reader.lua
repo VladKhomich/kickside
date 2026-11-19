@@ -5,6 +5,7 @@
 -- the requested mask — there is NO kickside_component_access / kickside_component_group_access SQL
 -- join here. Every entry takes the caller's db handle and returns rows as values.
 
+local trim = require("text_trim").trim
 local sql = require("sql")
 local json = require("json")
 local component = require("threads_component")
@@ -40,13 +41,6 @@ local EVENT_COLUMNS = {
     "trace_id", "run_id", "caused_by_event_id", "correlation_key",
     "created_at", "subject", "subject_version",
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then
-        return ""
-    end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function attach_trace_context(row: table): table
     local trace_id = trim(row.trace_id)

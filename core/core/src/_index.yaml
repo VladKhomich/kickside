@@ -124,6 +124,7 @@ entries:
     source: file://write_receipt.lua
     modules: [sql, json]
     imports:
+      text_trim: kickside.contract:text_trim
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       core_db: kickside.core:db
       retention_policy: kickside.core:policy_config

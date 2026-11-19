@@ -115,6 +115,7 @@ entries:
     source: file://requirement_resolution.lua
     modules: [http, json, security]
     imports:
+      text_trim: kickside.contract:text_trim
       planner: keeper.hub:planner
       requirement_fill: keeper.hub:requirement_fill
       llm: wippy.llm:llm
@@ -129,6 +130,7 @@ entries:
     method: handler
     modules: [http, json, security]
     imports:
+      text_trim: kickside.contract:text_trim
       planner: keeper.hub:planner
       requirement_fill: keeper.hub:requirement_fill
       llm: wippy.llm:llm
@@ -166,6 +168,7 @@ entries:
     method: inspect_module
     modules: [hub, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       keyset: kickside.contract:keyset
   - name: requirement_evidence_runtime
     kind: library.lua
@@ -174,6 +177,7 @@ entries:
     source: file://requirement_evidence.lua
     modules: [hub, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       keyset: kickside.contract:keyset
   - name: inspect_registry_entries
     kind: function.lua
@@ -196,6 +200,7 @@ entries:
     method: inspect_registry
     modules: [hub, registry]
     imports:
+      text_trim: kickside.contract:text_trim
       keyset: kickside.contract:keyset
   - name: requirement_resolution.endpoint
     kind: http.endpoint
@@ -212,6 +217,7 @@ entries:
     source: file://recommendations.lua
     modules: [http, json, security]
     imports:
+      text_trim: kickside.contract:text_trim
       agent_invoke: kickside.agents.invoke:agent_invoke_runtime
 
   - name: recommendations
@@ -222,6 +228,7 @@ entries:
     method: handler
     modules: [http, json, security]
     imports:
+      text_trim: kickside.contract:text_trim
       agent_invoke: kickside.agents.invoke:agent_invoke_runtime
 
   - name: recommendations.endpoint

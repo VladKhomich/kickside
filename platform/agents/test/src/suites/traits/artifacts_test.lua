@@ -18,10 +18,10 @@ end
 local function define_tests()
     test.describe("Artifacts capability", function()
         test.it("rejects fenced chart configuration and JSON mislabeled as HTML", function()
-            for _, content in ipairs({ '```chart\n{"type":"bar"}\n```', '{"type":"bar"}', '  [47,12]' }) do
+            for _, content in ipairs({ ' \t```chart\n{"type":"bar"}\n```', '\n{"type":"bar"}', '  [47,12]' }) do
                 local result, err = call_tool({ title = "Chart", content_type = "text/html", content = content })
                 test.is_nil(result)
-                test.not_nil(err)
+                test.is_true(errors.is(err, errors.INVALID), tostring(err))
                 test.contains(tostring(err), "HTML")
             end
         end)
@@ -29,6 +29,15 @@ local function define_tests()
         test.it("accepts a self-contained SVG bar chart as HTML", function()
             local html = '<!doctype html><html><body><svg viewBox="0 0 100 60"><rect width="47" height="10"/><rect y="20" width="12" height="10"/></svg></body></html>'
             local result, err = call_tool({ title = "Chart", content_type = "text/html", content = html })
+            test.is_nil(err, tostring(err))
+            test.eq(result._control.artifacts[1].content, html)
+            test.eq(result._control.artifacts[1].content_type, "text/html")
+        end)
+
+        test.it("preserves long whitespace runs in valid HTML byte for byte", function()
+            local html = string.rep(" ", 128 * 1024) .. '<div>before'
+                .. string.rep(" ", 512 * 1024) .. 'after</div>\t\n'
+            local result, err = call_tool({ title = "Large HTML", content_type = "text/html", content = html })
             test.is_nil(err, tostring(err))
             test.eq(result._control.artifacts[1].content, html)
             test.eq(result._control.artifacts[1].content_type, "text/html")

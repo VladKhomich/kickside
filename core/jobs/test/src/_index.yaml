@@ -560,6 +560,7 @@ entries:
     modules:
       - registry
     imports:
+      text_trim: kickside.contract:text_trim
       test: wippy.test:test
       config: kickside.core.jobs:config
 
@@ -1697,6 +1698,9 @@ entries:
   - name: heartbeat_native_config_adapter
     kind: library.lua
     source: file://heartbeat_native_config_adapter.lua
+    imports:
+      config: kickside.core.jobs:config
+      fixture: app:heartbeat_native_fixture
 
   - name: heartbeat_native_source
     kind: library.lua
@@ -2818,6 +2822,8 @@ entries:
     kind: library.lua
     source: file://health_native_fixture.lua
     modules: [sql]
+    imports:
+      config: kickside.core.jobs:config
 
   - name: health_native_sql
     kind: library.lua
@@ -3570,6 +3576,7 @@ entries:
     source: file://child_native_source.lua
     modules: [logger, time]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: app:child_native_execution_policy
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       job_types: kickside.core.jobs:types
@@ -3829,6 +3836,7 @@ entries:
     source: file://dispatch_cause_native_source.lua
     modules: [sql, logger, time]
     imports:
+      text_trim: kickside.contract:text_trim
       execution_policy: app:dispatch_cause_native_execution_policy
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
@@ -4205,7 +4213,7 @@ entries:
     meta: {type: test, suite: jobs_retention_pace, timeout: 600s}
     source: file://retention_pace_test.lua
     method: run
-    modules: [sql, uuid, time]
+    modules: [sql, uuid, time, process, channel]
     imports:
       test: wippy.test:test
       config: kickside.core.jobs:config
@@ -4213,7 +4221,24 @@ entries:
       retention_schedule: kickside.core.jobs.service:retention_schedule
       retention_order_migration: app:retention_order_migration
       worker_heartbeat: kickside.core.jobs.service:worker_heartbeat
+      clock: kickside.core.jobs:clock
       job_fixture: app:job_fixture
+
+  - name: retention_heartbeat
+    kind: process.lua
+    source: file://retention_heartbeat_source.lua
+    method: main
+    modules: [sql, time, channel, process]
+    imports:
+      clock: kickside.core.jobs:clock
+      config: app:retention_heartbeat_config
+      sql_boundary: kickside.core.jobs.persist:sql_boundary
+
+  - name: retention_heartbeat_config
+    kind: library.lua
+    source: file://retention_heartbeat_config.lua
+    imports:
+      config: kickside.core.jobs:config
 
   - name: private_queue_retention_pace
     kind: db.sql.sqlite
@@ -4264,6 +4289,9 @@ entries:
   - name: health_bounded_config
     kind: library.lua
     source: file://health_bounded_config.lua
+    imports:
+      config: kickside.core.jobs:config
+
   - name: private_queue_health_bounded
     kind: db.sql.sqlite
     foreign_keys: true
@@ -4357,3 +4385,5 @@ entries:
   - name: runtime_clock_config
     kind: library.lua
     source: file://runtime_clock_config.lua
+    imports:
+      config: kickside.core.jobs:config

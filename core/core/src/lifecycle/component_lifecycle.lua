@@ -3,6 +3,7 @@
 -- lifecycle event append, parent child.lifecycle projection wiring and a
 -- thread-backed component's primary thread row commit with the component mutation.
 
+local trim = require("text_trim").trim
 local uuid = require("uuid")
 local autoinit = require("autoinit")
 local lifecycle_log = require("component_lifecycle_log")
@@ -16,11 +17,6 @@ local component_meta = require("component_meta")
 local execution_identity = require("execution_identity")
 
 local M = {}
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function fail(message: string, kind: string?): error
     return (errors.new({ message = message, kind = kind or errors.INTERNAL }) :: error)

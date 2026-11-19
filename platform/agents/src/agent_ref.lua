@@ -3,10 +3,7 @@ local M = {}
 M.USER_AGENT_PREFIX = "user_agent:"
 M.USER_AGENT_NAMESPACE = "user_agent"
 
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s+", ""):gsub("%s+$", ""))
-end
+local trim = require("text_trim").trim
 
 function M.trim(value: any): string
     return trim(value)

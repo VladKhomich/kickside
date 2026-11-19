@@ -146,6 +146,8 @@ local function define_tests()
     test.describe("thread_ingest identity", function()
         for _, case in ipairs({
             { name = "small inline text", content = string.rep("a", 1024), omitted = false },
+            { name = "a title with a megabyte of internal whitespace", content = "Document body",
+                title = "Before" .. string.rep(" ", 1024 * 1024) .. "after", omitted = false },
             { name = "previously supported inline text", content = string.rep("a", 3584 * 1024), omitted = false },
             { name = "text above the event row bound", content = string.rep("a", 5 * 1024 * 1024), omitted = true },
             { name = "text above the bound after JSON escaping", content = string.rep("\0", 800 * 1024), omitted = true },
@@ -166,6 +168,7 @@ local function define_tests()
                 test.is_nil(ensure_err)
                 local result, append_err = funcs.new():with_actor(actor):with_scope(scope):call(APPEND_PROBE, {
                     kb_id = component_id, content = case.content,
+                    title = case.title and ("\t" .. case.title .. "\n") or nil,
                     source_ref = {kind = "upload", upload_id = "test-upload", artifact_id = "test-text"},
                     external_id = "upload:test-upload", external_version = case.omitted and "delivery:artifact-pull" or "v1"})
                 test.is_nil(append_err, tostring(append_err))
@@ -178,6 +181,7 @@ local function define_tests()
                 test.eq(page.success, true)
                 test.eq(#page.items, 1)
                 local body = page.items[1].payload
+                if case.title then test.is_true(body.title == case.title) end
                 test.eq(body.source_ref.upload_id, "test-upload")
                 test.eq(body.source_ref.artifact_id, "test-text")
                 if case.omitted then

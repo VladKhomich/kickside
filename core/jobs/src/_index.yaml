@@ -35,6 +35,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:27_disabled_slots
         path: .meta.target_db
+      - entry: kickside.core.jobs.migrations:29_demand_rearm
+        path: .meta.target_db
       - entry: kickside.core.jobs.migrations:26_owner_listing
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:25_retention_order
@@ -140,6 +142,8 @@ entries:
     meta:
       comment: Job / JobRun / EffectIntent entity shapes and job state vocabulary.
     source: file://types.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: job_class
     kind: library.lua
@@ -311,4 +315,4 @@ entries:
     meta: {comment: "Dep kickside contract."}
     kind: ns.dependency
     component: kickside/contract
-    version: '*'
+    version: '>=0.3.9'

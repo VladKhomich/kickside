@@ -143,11 +143,19 @@ function M.ask(args: any, context: any): any
     return M.format_ask_result(result)
 end
 
--- format_ask_result shapes a grounded answer and the full source passages it used.
+-- Query mode includes numbered passages in the tool's existing text field.
 function M.format_ask_result(result: any): any
-    local r = (type(result) == "table") and (result :: { answer: any, results: any, count: any }) or {}
+    local r = (type(result) == "table") and (result :: { answer: any, results: any, mode: any }) or {}
     local sources = (type(r.results) == "table") and (r.results :: {any}) or {}
-    return { success = true, answer = trim(r.answer), count = #sources, sources = sources }
+    local answer = trim(r.answer)
+    if r.mode == "query" then
+        local passages = { answer }
+        for i, source in ipairs(sources) do
+            passages[#passages + 1] = string.format("[%d] %s", i, source.content)
+        end
+        answer = table.concat(passages, "\n\n")
+    end
+    return { success = true, mode = r.mode, answer = answer, count = #sources, sources = sources }
 end
 
 return { find = M.find, search = M.search, ask = M.ask, format_ask_result = M.format_ask_result }

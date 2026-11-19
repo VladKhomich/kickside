@@ -309,6 +309,7 @@ entries:
     source: file://dispatcher.lua
     modules: [json, registry, security]
     imports:
+      text_trim: kickside.contract:text_trim
       mcp_traits: kickside.mcp:mcp_traits
       canonical_json: kickside.contract:canonical_json
       mcp_consts: kickside.mcp:consts
@@ -333,7 +334,7 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '>=0.3.8'
+    version: '>=0.3.9'
     kind: ns.dependency
     meta:
       comment: Implements the shared component and deletable contracts.

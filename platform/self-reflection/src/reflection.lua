@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local keyset = require("keyset")
 
 local M = {}
@@ -26,11 +27,6 @@ local OVERVIEW_TYPES = {
     { key = "endpoints", kind = "http.endpoint" },
     { key = "policies", kind = "security.policy" },
 }
-
-local function trim(value: any): string
-    if type(value) ~= "string" then return "" end
-    return (value:gsub("^%s*(.-)%s*$", "%1"))
-end
 
 local function lower(value: any): string
     return string.lower(trim(value))

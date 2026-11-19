@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 -- Canonical exact reference to one immutable published Flow version.
 
 local M = {}
@@ -17,7 +18,7 @@ function M.validate(value: any): (FlowRef?, error?)
     end
     if ref.kind ~= "flow" then return nil, errors.new({ kind = errors.INVALID, message = "flow_ref.kind must be flow" }) end
     if type(ref.id) ~= "string" or ref.id == "" then return nil, errors.new({ kind = errors.INVALID, message = "flow_ref.id is required" }) end
-    local trimmed = ref.id:gsub("^%s+", ""):gsub("%s+$", "")
+    local trimmed = trim(ref.id)
     if trimmed == "" then return nil, errors.new({ kind = errors.INVALID, message = "flow_ref.id is required" }) end
     if trimmed ~= ref.id then return nil, errors.new({ kind = errors.INVALID, message = "flow_ref.id must not have surrounding whitespace" }) end
     if type(ref.version) ~= "number" or ref.version < 1 or ref.version ~= math.floor(ref.version) then

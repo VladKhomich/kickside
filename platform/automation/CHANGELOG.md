@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.33](https://github.com/kicksideai/kickside/compare/automation-v0.2.32...automation-v0.2.33) (2026-11-19)
+
+
+### Bug Fixes
+
+* **automation:** pull new events while an item waits for redelivery ([#562](https://github.com/kicksideai/kickside/issues/562)) ([212a2df](https://github.com/kicksideai/kickside/commit/212a2df202eeadaf920b769d318770e40937fb6e))
+
+## [0.2.32](https://github.com/kicksideai/kickside/compare/automation-v0.2.31...automation-v0.2.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* preserve text with long internal whitespace ([#563](https://github.com/kicksideai/kickside/issues/563)) ([80ea34c](https://github.com/kicksideai/kickside/commit/80ea34cd57e9bd053d2874c2f7c98625db05c2f7))
+
+## [0.2.31](https://github.com/kicksideai/kickside/compare/automation-v0.2.30...automation-v0.2.31) (2026-11-19)
+
+
+### Bug Fixes
+
+* **automation:** preserve internal whitespace when renaming ([#570](https://github.com/kicksideai/kickside/issues/570)) ([632d306](https://github.com/kicksideai/kickside/commit/632d306dad314d318210a84e9712c3b8e701423a))
+
 ## [0.2.30](https://github.com/kicksideai/kickside/compare/automation-v0.2.29...automation-v0.2.30) (2026-11-17)
 
 

@@ -62,17 +62,14 @@ local function prepare_config(component_id: string, comp: any, patch: any): (any
         return nil, problem(get_err or "store not found", get_err and (http_errors.classify(get_err)) or http.STATUS.NOT_FOUND)
     end
 
-    -- Descriptor defaults remain beneath persisted values, and the caller's patch
-    -- remains the highest-precedence layer. None of these merges mutate the exact
-    -- persisted snapshot retained for compensation.
-    local configs, config_err = update_consistency.config_plan(
+    local plan, config_err = update_consistency.config_plan(
         (store_row :: any).config,
         patch,
         function(current: any): any
             return engines.apply_default_config(current, engine)
         end
     )
-    if config_err or not configs then
+    if config_err or not plan then
         return nil, problem(config_err or "failed to prepare config", (http_errors.classify(config_err)))
     end
 
@@ -87,14 +84,10 @@ local function prepare_config(component_id: string, comp: any, patch: any): (any
         if maintenance_err or not maintenance then return nil, problem(maintenance_err, http.STATUS.INTERNAL_ERROR) end
     end
 
-    return {
-        store = store_inst,
-        maintenance = maintenance,
-        config_maintenance = engine.config_maintenance,
-        current_config = configs.current_config,
-        effective_config = configs.effective_config,
-        desired_config = configs.desired_config,
-    }, nil
+    plan.store = store_inst
+    plan.maintenance = maintenance
+    plan.config_maintenance = engine.config_maintenance
+    return plan, nil
 end
 
 local function write_config(component_id: string, plan: any, config: any): (any?, any?)

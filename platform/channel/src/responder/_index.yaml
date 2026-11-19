@@ -23,6 +23,7 @@ entries:
     source: file://responder.lua
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component
@@ -36,6 +37,7 @@ entries:
     method: install
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component
@@ -49,6 +51,7 @@ entries:
     method: delete
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component
@@ -62,6 +65,7 @@ entries:
     method: status
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component
@@ -75,6 +79,7 @@ entries:
     method: read_config
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component
@@ -88,6 +93,7 @@ entries:
     method: configure
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component
@@ -104,6 +110,7 @@ entries:
     method: pause
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component
@@ -120,6 +127,7 @@ entries:
     method: resume
     modules: [ctx, contract, security]
     imports:
+      text_trim: kickside.contract:text_trim
       owner_gc: kickside.automation:owner_gc
       automations_lib: kickside.automation:automation
       component: kickside.component:component

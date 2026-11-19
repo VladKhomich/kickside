@@ -18,6 +18,7 @@ entries:
     imports:
       models_types: kickside.models:models_types
       models_secrets: kickside.models.persist:models_secrets
+      llm_transport: wippy.llm.util:transport
 
 
   - name: card_policy

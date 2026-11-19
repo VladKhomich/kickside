@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.11](https://github.com/kicksideai/kickside/compare/contract-v0.3.10...contract-v0.3.11) (2026-11-19)
+
+
+### Bug Fixes
+
+* **security:** list declared permissions in the role picker ([#558](https://github.com/kicksideai/kickside/issues/558)) ([b768118](https://github.com/kicksideai/kickside/commit/b7681183c3fe087165dbb9638b4a565ed0eb3e61))
+
+## [0.3.10](https://github.com/kicksideai/kickside/compare/contract-v0.3.9...contract-v0.3.10) (2026-11-19)
+
+
+### Bug Fixes
+
+* **security:** declare infrastructure grants nonassignable ([#583](https://github.com/kicksideai/kickside/issues/583)) ([2df1d32](https://github.com/kicksideai/kickside/commit/2df1d32d3cdad285b1c854f3ca0c7d99e6624be9))
+
+## [0.3.9](https://github.com/kicksideai/kickside/compare/contract-v0.3.8...contract-v0.3.9) (2026-11-19)
+
+
+### Bug Fixes
+
+* **contract:** trim text without pattern backtracking ([#578](https://github.com/kicksideai/kickside/issues/578)) ([991fbc9](https://github.com/kicksideai/kickside/commit/991fbc94471a080e33715003eb195330c7e03147))
+
 ## [0.3.8](https://github.com/kicksideai/kickside/compare/contract-v0.3.7...contract-v0.3.8) (2026-11-15)
 
 

@@ -44,11 +44,6 @@ M.DEFAULT_MODEL = "class:fast"
 -- the temperature default -- reference this, never a re-typed literal.
 M.DEFAULT_TEMPERATURE = 0.5
 
--- Response token budget an agent is created with, and the value read sites
--- substitute when a stored config omits max_tokens. Single source of truth for
--- the max_tokens default -- reference this, never a re-typed literal.
-M.DEFAULT_MAX_TOKENS = 8000
-
 -- New user agents receive artifact authoring and uploaded-file access unless the caller
 -- explicitly supplies a traits array (including an empty array as opt-out).
 -- Return a fresh table so one create path cannot mutate another's defaults.
@@ -65,7 +60,7 @@ type AgentConfig = {
     prompt: string,
     model: string,
     temperature: number,
-    max_tokens: number,
+    max_tokens: number?,
     traits: { string },
     trait_contexts: { [string]: any },
     trait_agent_options: { [string]: any },

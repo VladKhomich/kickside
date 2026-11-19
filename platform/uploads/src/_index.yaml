@@ -76,7 +76,7 @@ entries:
     meta:
       comment: Shared KickSide contract definitions implemented by the upload content provider.
     component: kickside/contract
-    version: '>=0.3.8'
+    version: '>=0.3.9'
 
   - name: dependency.migration
     kind: ns.dependency
@@ -298,8 +298,10 @@ entries:
   - name: text_trim
     kind: library.lua
     meta:
-      comment: Whitespace trim uses a linear scan to avoid backtracking; the runtime matcher stops at MaxBacktracks = 100000 (wippyai/go-lua pm.go) and reports no match, so the anchored pattern fails on large text.
+      comment: Shared whitespace trim.
     source: file://text_trim.lua
+    imports:
+      text_trim: kickside.contract:text_trim
 
   - name: metadata_sanitizer
     kind: library.lua
@@ -378,8 +380,9 @@ entries:
     meta:
       comment: Library for handling file uploads to configured storage backends.
     source: file://uploads.lua
-    modules: [uuid, time, hash, logger]
+    modules: [uuid, time, hash, logger, funcs]
     imports:
+      binding_errors: kickside.uploads.binding:binding_errors
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       upload_response: kickside.uploads.api:upload_response

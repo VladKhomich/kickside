@@ -1,3 +1,4 @@
+local trim = require("text_trim").trim
 local component = require("component")
 local artifact_parts_repo = require("artifact_parts_repo")
 local contract = require("contract")
@@ -44,7 +45,7 @@ local TEXT_CONTENT_TYPES: { [string]: boolean } = {
 }
 
 local function is_text_content(content_type: string): boolean
-    local base = (content_type:lower():match("^[^;]+") or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local base = trim(content_type:lower():match("^[^;]+"))
     if base:sub(1, 5) == "text/" then return true end
     if base:sub(1, 12) == "application/" and (base:match(".+%+json$") or base:match(".+%+xml$")) then return true end
     return TEXT_CONTENT_TYPES[base] == true

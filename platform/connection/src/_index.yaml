@@ -71,6 +71,7 @@ entries:
     source: file://base_connection.lua
     modules: [ctx, time]
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component
       conn_types: kickside.connection:types
       capacity: kickside.connection:capacity
@@ -471,6 +472,8 @@ entries:
   - name: html_text
     kind: library.lua
     source: file://html_text.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     modules: [html]
 
   - name: reply_sender
@@ -498,7 +501,7 @@ entries:
     component: kickside/component
 
   - name: dep.kickside.contract
-    version: '*'
+    version: '>=0.3.9'
     kind: ns.dependency
     meta:
       comment: Implements the shared component and deletable contracts.
@@ -520,6 +523,7 @@ entries:
     method: reconcile_workers
     modules: [ctx, time, process]
     imports:
+      text_trim: kickside.contract:text_trim
       component: kickside.component:component
       conn_types: kickside.connection:types
       capacity: kickside.connection:capacity

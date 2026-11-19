@@ -155,6 +155,21 @@ local function define_tests()
             test.eq(r.sources[1].meta.metadata.title, "Source title")
         end)
 
+        test.it("ask formatter presents query passages with source citations", function()
+            local r = kb_tools.format_ask_result({
+                mode = "query",
+                answer = "No answer model is available. Returning query results.",
+                results = {
+                    { id = "first", content = "first passage" },
+                    { id = "second", content = "second passage" },
+                },
+            })
+            test.eq(r.mode, "query")
+            test.eq(r.answer, "No answer model is available. Returning query results.\n\n[1] first passage\n\n[2] second passage")
+            test.eq(r.count, 2)
+            test.eq(r.sources[2].id, "second")
+        end)
+
         -- Multi-KB pinning (the kb_reader trait writes kb_ids: string[]). A single
         -- pinned KB still resolves with no kb_id; several pinned changes how each
         -- tool resolves — search spans every base.

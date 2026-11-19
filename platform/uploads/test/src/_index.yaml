@@ -74,7 +74,7 @@ entries:
   - name: upload_artifacts_fixture
     kind: library.lua
     source: file://fixtures/artifacts.lua
-    modules: [security]
+    modules: [security, logger]
     imports:
       http: app:upload_http_probe
       upload_response: app:signed_upload_response
@@ -85,6 +85,7 @@ entries:
       upload_tokens: kickside.uploads.persist:upload_tokens
       original_read: kickside.uploads:original_read
       http_errors: kickside.contract:http_errors
+      binding_errors: kickside.uploads.binding:binding_errors
 
   - name: upload_delete_fixture
     kind: library.lua
@@ -996,11 +997,13 @@ entries:
       comment: Library for handling file uploads to configured storage backends.
     source: file://fixtures/uploads.lua
     modules:
+    - funcs
     - uuid
     - time
     - hash
     - logger
     imports:
+      binding_errors: kickside.uploads.binding:binding_errors
       upload_record_repo: kickside.uploads.persist:upload_record_repo
       upload_query_repo: kickside.uploads.persist:upload_query_repo
       upload_read_model: kickside.uploads.persist:upload_read_model
@@ -1105,12 +1108,13 @@ entries:
     meta: {type: test, suite: uploads}
     source: file://referenced_upload_access_test.lua
     method: run
-    modules: [uuid, security, funcs, fs, sql, registry, http_client, contract]
+    modules: [uuid, security, funcs, fs, sql, registry, http_client, contract, json]
     imports:
       test: wippy.test:test
       records: kickside.uploads.persist:upload_record_repo
       types: kickside.uploads:types
       upload_tokens: kickside.uploads.persist:upload_tokens
+      artifacts: kickside.uploads.persist:artifact_content_repo
 
   - name: reference_api
     kind: http.router

@@ -96,6 +96,8 @@ entries:
     meta:
       comment: List safe provider labels and icons for provider-id presentation.
     source: file://provider_badges.lua
+    imports:
+      text_trim: kickside.contract:text_trim
     modules: [http, registry, logger]
     method: handler
 

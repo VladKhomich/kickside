@@ -83,6 +83,7 @@ entries:
     kind: library.lua
     source: file://channel_receive_stub.lua
     imports:
+      text_trim: kickside.contract:text_trim
       test_state: app:test_state
 
   - name: channel_persist_stub

@@ -168,6 +168,7 @@ entries:
       - funcs
       - sql
     imports:
+      text_trim: kickside.contract:text_trim
       consts: kickside.core.threads:notify_consts
       threads_env: kickside.core.threads:env
 
@@ -205,6 +206,7 @@ entries:
       - funcs
       - sql
     imports:
+      text_trim: kickside.contract:text_trim
       consts: kickside.core.threads:notify_consts
       threads_env: kickside.core.threads:env
     security:
@@ -355,6 +357,7 @@ entries:
     source: file://contract/common.lua
     modules: [sql, security]
     imports:
+      text_trim: kickside.contract:text_trim
       error_envelope: kickside.contract:error_envelope
       component_identity: kickside.core.threads:component_identity
       execution_identity: kickside.execution:execution_identity
