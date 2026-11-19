@@ -106,6 +106,10 @@ Attach the token as the `upload_token` multipart field of `POST /uploads`, as
 `metadata.__upload_token` for `upload_file`. Several tokens may be attached as
 `metadata.__upload_tokens`.
 
+Multipart `POST /uploads` returns HTTP 400 before storing the file when its
+explicit `upload_token` is malformed or expired. If the field is omitted,
+Uploads admits the file without a completion token.
+
 Uploads admits a durable Jobs job under the identity frozen in the token once
 per upload, token and outcome. The job may retry up to eight attempts, so the
 callback must be idempotent. The function receives:
