@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local json = require("json")
 local test = require("test")
 local h = require("round_harness")
