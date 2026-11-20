@@ -12,7 +12,7 @@ local function probe(): any
     local settings = assert(definition:open())
     local write = settings:set({namespace="kickside.settings.test", key="api_token", value="owner-boundary-value"})
     local cache = assert(store.get("kickside.settings:cache"))
-    cache:delete("snapshot")
+    cache:delete("snapshot-v2")
     cache:release()
     local loaded = settings:get({namespace="kickside.settings.test", key="api_token"})
     local clear = settings:unset({namespace="kickside.settings.test", key="api_token"})

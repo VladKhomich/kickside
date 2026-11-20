@@ -6,6 +6,7 @@
 -- module upgrade propagates immediately.
 
 local registry = require("registry")
+local json = require("json")
 local time = require("time")
 local settings_types = require("settings_types")
 
@@ -57,6 +58,17 @@ function M.find(ns: any, key: any): settings_types.Definition?
     return n and n[key :: string] or nil
 end
 
+-- A JSON declaration with a container type owns the same schema on save and
+-- on reads of an override. Scalar and enum-only declarations have separate rules.
+function M.structured_schema(def: settings_types.Definition): any
+    local schema = def.schema
+    if def.value_type == "json" and type(schema) == "table"
+        and (schema.type == "array" or schema.type == "object") then
+        return schema
+    end
+    return nil
+end
+
 -- Validate + canonicalize a raw value against a declaration. Returns the typed
 -- value or (nil, message).
 function M.coerce(def: settings_types.Definition, value: any): (settings_types.SettingValue?, string?)
@@ -78,6 +90,13 @@ function M.coerce(def: settings_types.Definition, value: any): (settings_types.S
         return value
     elseif t == "json" then
         if type(value) ~= "table" then return nil, "expected an object or array" end
+        local schema = M.structured_schema(def)
+        if schema then
+            local encoded, encode_err = json.encode(value)
+            if not encoded then return nil, tostring(encode_err) end
+            local valid, validation_err = json.validate_string(schema, encoded)
+            if not valid then return nil, tostring(validation_err) end
+        end
         return value
     end
     return nil, "unknown value_type " .. tostring(t)
