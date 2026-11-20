@@ -54,6 +54,19 @@ local function native(first: integer, last: integer)
     end
 end
 local function outcomes()
+    test.it("advances an empty scan without encoding the projection body", function()
+        local job = {id = "job", lease_token = "token", execution_seq = 1}
+        local snapshot = {id = "cursor", thread_id = "thread", projection_id = "projection",
+            generation = 1, last_seq = 0, body = {history = "retained"}}
+        for _, empty_scan in ipairs({false, true}) do
+            fixture.reset("", nil, "advance")
+            local result, err = apply.advance("app:db", job, snapshot, 1, {}, empty_scan)
+            test.is_nil(err)
+            test.eq(result.last_seq, 1)
+            test.eq(fixture.commits, 1)
+            test.eq(fixture.encodes, empty_scan and 0 or 1)
+        end
+    end)
     for _, stage in ipairs({"notify", "retention", "release"}) do
         test.it("returns a durable checkpoint receipt after a/" .. stage .. " failure", function()
             local source = errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "follow-up failed",

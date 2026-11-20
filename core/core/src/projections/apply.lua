@@ -243,7 +243,7 @@ local function check_checkpoint_owner(tx: sql.Transaction, dbtype: string, owner
 end
 
 local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table,
-        writes: table[], checkpoint: Checkpoint?): (table?, error?)
+        writes: table[], checkpoint: Checkpoint?, empty_scan: boolean?): (table?, error?)
     local raw_type, type_err = db:type()
     if type_err then return nil, errors.wrap(type_err, "projection dialect unavailable") end
     if type(raw_type) ~= "string" or raw_type == "" then return nil, response_error("database.type") end
@@ -360,7 +360,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local now = clock.now(dbtype)
     if not checkpoint or (effect and not partial) then
         local updated, update_err
-        if not checkpoint or output.body ~= nil or output.patch ~= nil then
+        if (not checkpoint and not empty_scan) or output.body ~= nil or output.patch ~= nil then
             local folded, fold_err = next_body(body, output)
             if fold_err then return abort(fold_err) end
             local encoded, encode_err = json.encode(folded)
@@ -541,7 +541,7 @@ end
 -- Resolve returned writes live before taking an apply connection. Actor-bound
 -- authorization re-enters Component and Threads, including SQLite's single pool.
 local function advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table,
-        checkpoint: Checkpoint?): (table?, error?)
+        checkpoint: Checkpoint?, empty_scan: boolean?): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
     if #writes > 0 and (snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
@@ -561,7 +561,7 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection apply DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
-    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checkpoint)
+    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checkpoint, empty_scan)
     local finish_err = release(db, apply_err)
     if checkpoint and result then
         local progressed = result.last_seq > tonumber(snapshot.last_seq)
@@ -578,8 +578,9 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
     return result, nil
 end
 
-function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table): (table?, error?)
-    return advance(db_id, job, snapshot, prefetched_last, output)
+function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table,
+        empty_scan: boolean?): (table?, error?)
+    return advance(db_id, job, snapshot, prefetched_last, output, nil, empty_scan)
 end
 
 local function shared_db(target_db: string): (string?, error?)
