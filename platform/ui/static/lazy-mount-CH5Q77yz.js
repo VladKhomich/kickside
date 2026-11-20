@@ -1,8 +1,8 @@
-import { s as lt, a as Te, B as st, b as ut, O as dt, Y as ct, C as pt, c as Oe, P as ft, I as ht, D as vt, x as ke, d as mt, e as bt } from "./wc-runtime-asymqT3f.js";
-import { defineComponent as Xe, ref as H, onMounted as Ke, watch as Ce, onBeforeUnmount as Ye, openBlock as v, createElementBlock as k, resolveComponent as gt, mergeProps as _, createCommentVNode as S, createVNode as g, withCtx as Re, Transition as yt, createElementVNode as a, computed as O, toDisplayString as I, unref as i, normalizeClass as N, createTextVNode as L, withDirectives as Fe, vModelText as _e, createBlock as fe, Fragment as Z, renderList as he, withModifiers as W } from "vue";
+import { s as lt, a as Ee, B as at, b as st, O as ut, Y as dt, C as ct, c as Te, P as pt, I as ft, D as ht, x as we, d as vt, e as mt } from "./wc-runtime-asymqT3f.js";
+import { defineComponent as Ge, ref as C, onMounted as Xe, watch as He, onBeforeUnmount as Ke, openBlock as m, createElementBlock as k, resolveComponent as bt, mergeProps as U, createCommentVNode as S, createVNode as g, withCtx as Oe, Transition as gt, createElementVNode as l, computed as O, toDisplayString as I, unref as r, normalizeClass as P, createTextVNode as L, withDirectives as Re, vModelText as Fe, createBlock as fe, Fragment as W, renderList as he, withModifiers as q } from "vue";
 import { Icon as y } from "@iconify/vue";
-import { loadByTagName as kt, api as He, host as we, on as wt } from "@wippy-fe/proxy";
-const Ue = /* @__PURE__ */ Xe({
+import { loadByTagName as yt, api as Le, host as Ce, on as kt } from "@wippy-fe/proxy";
+const _e = /* @__PURE__ */ Ge({
   __name: "IconField",
   props: {
     modelValue: {},
@@ -10,33 +10,33 @@ const Ue = /* @__PURE__ */ Xe({
   },
   emits: ["update:modelValue"],
   setup(n, { emit: e }) {
-    const t = n, r = e, c = H(null);
-    let l = null;
-    function m(w) {
-      r("update:modelValue", w.detail || "");
+    const t = n, i = e, c = C(null);
+    let a = null;
+    function b(w) {
+      i("update:modelValue", w.detail || "");
     }
     async function h() {
       if (c.value) {
-        l && l.removeEventListener("select", m), c.value.innerHTML = "";
+        a && a.removeEventListener("select", b), c.value.innerHTML = "";
         try {
-          customElements.get("wc-icon-picker") || await kt("wc-icon-picker", { timeoutMs: 8e3 });
+          customElements.get("wc-icon-picker") || await yt("wc-icon-picker", { timeoutMs: 8e3 });
         } catch {
         }
-        c.value && (l = document.createElement("wc-icon-picker"), l.setAttribute("value", t.modelValue || ""), t.fallback && l.setAttribute("fallback", t.fallback), l.addEventListener("select", m), c.value.appendChild(l));
+        c.value && (a = document.createElement("wc-icon-picker"), a.setAttribute("value", t.modelValue || ""), t.fallback && a.setAttribute("fallback", t.fallback), a.addEventListener("select", b), c.value.appendChild(a));
       }
     }
-    return Ke(h), Ce(() => t.modelValue, (w) => {
-      l && l.getAttribute("value") !== w && l.setAttribute("value", w || "");
-    }), Ye(() => {
-      l && l.removeEventListener("select", m);
-    }), (w, x) => (v(), k("div", {
+    return Xe(h), He(() => t.modelValue, (w) => {
+      a && a.getAttribute("value") !== w && a.setAttribute("value", w || "");
+    }), Ke(() => {
+      a && a.removeEventListener("select", b);
+    }), (w, x) => (m(), k("div", {
       ref_key: "host",
       ref: c,
       class: "wc-iconfield"
     }, null, 512));
   }
 });
-var Ct = {
+var wt = {
   name: "BaseEditableHolder",
   extends: lt,
   emits: ["update:modelValue", "value-change"],
@@ -95,15 +95,15 @@ var Ct = {
     $formName: {
       immediate: !0,
       handler: function(e) {
-        var t, r;
-        this.formField = ((t = this.$pcForm) === null || t === void 0 || (r = t.register) === null || r === void 0 ? void 0 : r.call(t, e, this.$formControl)) || {};
+        var t, i;
+        this.formField = ((t = this.$pcForm) === null || t === void 0 || (i = t.register) === null || i === void 0 ? void 0 : i.call(t, e, this.$formControl)) || {};
       }
     },
     $formControl: {
       immediate: !0,
       handler: function(e) {
-        var t, r;
-        this.formField = ((t = this.$pcForm) === null || t === void 0 || (r = t.register) === null || r === void 0 ? void 0 : r.call(t, this.$formName, e)) || {};
+        var t, i;
+        this.formField = ((t = this.$pcForm) === null || t === void 0 || (i = t.register) === null || i === void 0 ? void 0 : i.call(t, this.$formName, e)) || {};
       }
     },
     $formDefaultValue: {
@@ -123,22 +123,22 @@ var Ct = {
   formField: {},
   methods: {
     writeValue: function(e, t) {
-      var r, c;
-      this.controlled && (this.d_value = e, this.$emit("update:modelValue", e)), this.$emit("value-change", e), (r = (c = this.formField).onChange) === null || r === void 0 || r.call(c, {
+      var i, c;
+      this.controlled && (this.d_value = e, this.$emit("update:modelValue", e)), this.$emit("value-change", e), (i = (c = this.formField).onChange) === null || i === void 0 || i.call(c, {
         originalEvent: t,
         value: e
       });
     },
     // @todo move to @primeuix/utils
     findNonEmpty: function() {
-      for (var e = arguments.length, t = new Array(e), r = 0; r < e; r++)
-        t[r] = arguments[r];
-      return t.find(Te);
+      for (var e = arguments.length, t = new Array(e), i = 0; i < e; i++)
+        t[i] = arguments[i];
+      return t.find(Ee);
     }
   },
   computed: {
     $filled: function() {
-      return Te(this.d_value);
+      return Ee(this.d_value);
     },
     $invalid: function() {
       var e, t;
@@ -172,7 +172,7 @@ var Ct = {
       return this.$filled;
     }
   }
-}, Ht = `
+}, Ct = `
     .p-colorpicker {
         display: inline-block;
         position: relative;
@@ -279,7 +279,7 @@ var Ct = {
         cursor: pointer;
         border-color: dt('colorpicker.handle.color');
     }
-`, Lt = {
+`, Ht = {
   root: "p-colorpicker p-component",
   preview: function(e) {
     var t = e.props;
@@ -288,10 +288,10 @@ var Ct = {
     }];
   },
   panel: function(e) {
-    var t = e.instance, r = e.props;
+    var t = e.instance, i = e.props;
     return ["p-colorpicker-panel", {
-      "p-colorpicker-panel-inline": r.inline,
-      "p-disabled": r.disabled,
+      "p-colorpicker-panel-inline": i.inline,
+      "p-disabled": i.disabled,
       "p-invalid": t.$invalid
     }];
   },
@@ -300,13 +300,13 @@ var Ct = {
   colorHandle: "p-colorpicker-color-handle",
   hue: "p-colorpicker-hue",
   hueHandle: "p-colorpicker-hue-handle"
-}, $t = st.extend({
+}, Lt = at.extend({
   name: "colorpicker",
-  style: Ht,
-  classes: Lt
-}), St = {
+  style: Ct,
+  classes: Ht
+}), $t = {
   name: "BaseColorPicker",
-  extends: Ct,
+  extends: wt,
   props: {
     defaultColor: {
       type: null,
@@ -343,16 +343,16 @@ var Ct = {
     panelClass: null,
     overlayClass: null
   },
-  style: $t,
+  style: Lt,
   provide: function() {
     return {
       $pcColorPicker: this,
       $parentInstance: this
     };
   }
-}, Ze = {
+}, Ye = {
   name: "ColorPicker",
-  extends: St,
+  extends: $t,
   inheritAttrs: !1,
   emits: ["change", "show", "hide"],
   data: function() {
@@ -384,18 +384,18 @@ var Ct = {
     }
   },
   beforeUnmount: function() {
-    this.unbindOutsideClickListener(), this.unbindDragListeners(), this.unbindResizeListener(), this.scrollHandler && (this.scrollHandler.destroy(), this.scrollHandler = null), this.picker && this.autoZIndex && ke.clear(this.picker), this.clearRefs();
+    this.unbindOutsideClickListener(), this.unbindDragListeners(), this.unbindResizeListener(), this.scrollHandler && (this.scrollHandler.destroy(), this.scrollHandler = null), this.picker && this.autoZIndex && we.clear(this.picker), this.clearRefs();
   },
   mounted: function() {
     this.updateUI();
   },
   methods: {
     pickColor: function(e) {
-      var t = this.colorSelector.getBoundingClientRect(), r = t.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0), c = t.left + document.body.scrollLeft, l = Math.floor(100 * Math.max(0, Math.min(150, (e.pageX || e.changedTouches[0].pageX) - c)) / 150), m = Math.floor(100 * (150 - Math.max(0, Math.min(150, (e.pageY || e.changedTouches[0].pageY) - r))) / 150);
+      var t = this.colorSelector.getBoundingClientRect(), i = t.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0), c = t.left + document.body.scrollLeft, a = Math.floor(100 * Math.max(0, Math.min(150, (e.pageX || e.changedTouches[0].pageX) - c)) / 150), b = Math.floor(100 * (150 - Math.max(0, Math.min(150, (e.pageY || e.changedTouches[0].pageY) - i))) / 150);
       this.hsbValue = this.validateHSB({
         h: this.localHue,
-        s: l,
-        b: m
+        s: a,
+        b
       }), this.selfUpdate = !0, this.updateColorHandle(), this.updateInput(), this.updateModel(e);
     },
     pickHue: function(e) {
@@ -463,9 +463,9 @@ var Ct = {
     validateHEX: function(e) {
       var t = 6 - e.length;
       if (t > 0) {
-        for (var r = [], c = 0; c < t; c++)
-          r.push("0");
-        r.push(e), e = r.join("");
+        for (var i = [], c = 0; c < t; c++)
+          i.push("0");
+        i.push(e), e = i.join("");
       }
       return e;
     },
@@ -485,24 +485,24 @@ var Ct = {
         h: 0,
         s: 0,
         b: 0
-      }, r = Math.min(e.r, e.g, e.b), c = Math.max(e.r, e.g, e.b), l = c - r;
-      return t.b = c, t.s = c !== 0 ? 255 * l / c : 0, t.s !== 0 ? e.r === c ? t.h = (e.g - e.b) / l : e.g === c ? t.h = 2 + (e.b - e.r) / l : t.h = 4 + (e.r - e.g) / l : t.h = -1, t.h *= 60, t.h < 0 && (t.h += 360), t.s *= 100 / 255, t.b *= 100 / 255, t;
+      }, i = Math.min(e.r, e.g, e.b), c = Math.max(e.r, e.g, e.b), a = c - i;
+      return t.b = c, t.s = c !== 0 ? 255 * a / c : 0, t.s !== 0 ? e.r === c ? t.h = (e.g - e.b) / a : e.g === c ? t.h = 2 + (e.b - e.r) / a : t.h = 4 + (e.r - e.g) / a : t.h = -1, t.h *= 60, t.h < 0 && (t.h += 360), t.s *= 100 / 255, t.b *= 100 / 255, t;
     },
     HSBtoRGB: function(e) {
       var t = {
         r: null,
         g: null,
         b: null
-      }, r = Math.round(e.h), c = Math.round(e.s * 255 / 100), l = Math.round(e.b * 255 / 100);
+      }, i = Math.round(e.h), c = Math.round(e.s * 255 / 100), a = Math.round(e.b * 255 / 100);
       if (c === 0)
         t = {
-          r: l,
-          g: l,
-          b: l
+          r: a,
+          g: a,
+          b: a
         };
       else {
-        var m = l, h = (255 - c) * l / 255, w = (m - h) * (r % 60) / 60;
-        r === 360 && (r = 0), r < 60 ? (t.r = m, t.b = h, t.g = h + w) : r < 120 ? (t.g = m, t.b = h, t.r = m - w) : r < 180 ? (t.g = m, t.r = h, t.b = h + w) : r < 240 ? (t.b = m, t.r = h, t.g = m - w) : r < 300 ? (t.b = m, t.g = h, t.r = h + w) : r < 360 ? (t.r = m, t.g = h, t.b = m - w) : (t.r = 0, t.g = 0, t.b = 0);
+        var b = a, h = (255 - c) * a / 255, w = (b - h) * (i % 60) / 60;
+        i === 360 && (i = 0), i < 60 ? (t.r = b, t.b = h, t.g = h + w) : i < 120 ? (t.g = b, t.b = h, t.r = b - w) : i < 180 ? (t.g = b, t.r = h, t.b = h + w) : i < 240 ? (t.b = b, t.r = h, t.g = b - w) : i < 300 ? (t.b = b, t.g = h, t.r = h + w) : i < 360 ? (t.r = b, t.g = h, t.b = b - w) : (t.r = 0, t.g = 0, t.b = 0);
       }
       return {
         r: Math.round(t.r),
@@ -512,8 +512,8 @@ var Ct = {
     },
     RGBtoHEX: function(e) {
       var t = [e.r.toString(16), e.g.toString(16), e.b.toString(16)];
-      for (var r in t)
-        t[r].length === 1 && (t[r] = "0" + t[r]);
+      for (var i in t)
+        t[i].length === 1 && (t[i] = "0" + t[i]);
       return t.join("");
     },
     HSBtoHEX: function(e) {
@@ -538,16 +538,16 @@ var Ct = {
       return t.s === 0 || t.b === 0 ? t.h = this.localHue : this.localHue = t.h, t;
     },
     onOverlayEnter: function(e) {
-      this.updateUI(), this.alignOverlay(), this.bindOutsideClickListener(), this.bindScrollListener(), this.bindResizeListener(), this.autoZIndex && ke.set("overlay", e, this.baseZIndex || this.$primevue.config.zIndex.overlay), this.$attrSelector && e.setAttribute(this.$attrSelector, ""), this.$emit("show");
+      this.updateUI(), this.alignOverlay(), this.bindOutsideClickListener(), this.bindScrollListener(), this.bindResizeListener(), this.autoZIndex && we.set("overlay", e, this.baseZIndex || this.$primevue.config.zIndex.overlay), this.$attrSelector && e.setAttribute(this.$attrSelector, ""), this.$emit("show");
     },
     onOverlayLeave: function() {
       this.unbindOutsideClickListener(), this.unbindScrollListener(), this.unbindResizeListener(), this.clearRefs(), this.$emit("hide");
     },
     onOverlayAfterLeave: function(e) {
-      this.autoZIndex && ke.clear(e);
+      this.autoZIndex && we.clear(e);
     },
     alignOverlay: function() {
-      this.appendTo === "self" ? ht(this.picker, this.$refs.input) : vt(this.picker, this.$refs.input);
+      this.appendTo === "self" ? ft(this.picker, this.$refs.input) : ht(this.picker, this.$refs.input);
     },
     onInputClick: function() {
       this.disabled || (this.overlayVisible = !this.overlayVisible);
@@ -564,26 +564,26 @@ var Ct = {
       }
     },
     onInputBlur: function(e) {
-      var t, r;
-      (t = (r = this.formField).onBlur) === null || t === void 0 || t.call(r);
+      var t, i;
+      (t = (i = this.formField).onBlur) === null || t === void 0 || t.call(i);
     },
     onColorMousedown: function(e) {
       this.disabled || (this.bindDragListeners(), this.onColorDragStart(e));
     },
     onColorDragStart: function(e) {
-      this.disabled || (this.colorDragging = !0, this.pickColor(e), this.$el.setAttribute("p-colorpicker-dragging", "true"), !this.isUnstyled && Oe(this.$el, "p-colorpicker-dragging"), e.preventDefault());
+      this.disabled || (this.colorDragging = !0, this.pickColor(e), this.$el.setAttribute("p-colorpicker-dragging", "true"), !this.isUnstyled && Te(this.$el, "p-colorpicker-dragging"), e.preventDefault());
     },
     onDrag: function(e) {
       this.colorDragging && (this.pickColor(e), e.preventDefault()), this.hueDragging && (this.pickHue(e), e.preventDefault());
     },
     onDragEnd: function() {
-      this.colorDragging = !1, this.hueDragging = !1, this.$el.setAttribute("p-colorpicker-dragging", "false"), !this.isUnstyled && ft(this.$el, "p-colorpicker-dragging"), this.unbindDragListeners();
+      this.colorDragging = !1, this.hueDragging = !1, this.$el.setAttribute("p-colorpicker-dragging", "false"), !this.isUnstyled && pt(this.$el, "p-colorpicker-dragging"), this.unbindDragListeners();
     },
     onHueMousedown: function(e) {
       this.disabled || (this.bindDragListeners(), this.onHueDragStart(e));
     },
     onHueDragStart: function(e) {
-      this.disabled || (this.hueDragging = !0, this.pickHue(e), !this.isUnstyled && Oe(this.$el, "p-colorpicker-dragging"), e.preventDefault());
+      this.disabled || (this.hueDragging = !0, this.pickHue(e), !this.isUnstyled && Te(this.$el, "p-colorpicker-dragging"), e.preventDefault());
     },
     isInputClicked: function(e) {
       return this.$refs.input && this.$refs.input.isSameNode(e.target);
@@ -605,7 +605,7 @@ var Ct = {
     },
     bindScrollListener: function() {
       var e = this;
-      this.scrollHandler || (this.scrollHandler = new pt(this.$refs.container, function() {
+      this.scrollHandler || (this.scrollHandler = new ct(this.$refs.container, function() {
         e.overlayVisible && (e.overlayVisible = !1);
       })), this.scrollHandler.bindScrollListener();
     },
@@ -615,7 +615,7 @@ var Ct = {
     bindResizeListener: function() {
       var e = this;
       this.resizeListener || (this.resizeListener = function() {
-        e.overlayVisible && !ct() && (e.overlayVisible = !1);
+        e.overlayVisible && !dt() && (e.overlayVisible = !1);
       }, window.addEventListener("resize", this.resizeListener));
     },
     unbindResizeListener: function() {
@@ -652,69 +652,69 @@ var Ct = {
       this.picker = null, this.colorSelector = null, this.colorHandle = null, this.hueView = null, this.hueHandle = null;
     },
     onOverlayClick: function(e) {
-      dt.emit("overlay-click", {
+      ut.emit("overlay-click", {
         originalEvent: e,
         target: this.$el
       });
     }
   },
   components: {
-    Portal: ut
+    Portal: st
   }
 };
-function le(n) {
+function ae(n) {
   "@babel/helpers - typeof";
-  return le = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
+  return ae = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(e) {
     return typeof e;
   } : function(e) {
     return e && typeof Symbol == "function" && e.constructor === Symbol && e !== Symbol.prototype ? "symbol" : typeof e;
-  }, le(n);
+  }, ae(n);
 }
-function Ae(n, e) {
+function Ue(n, e) {
   var t = Object.keys(n);
   if (Object.getOwnPropertySymbols) {
-    var r = Object.getOwnPropertySymbols(n);
-    e && (r = r.filter(function(c) {
+    var i = Object.getOwnPropertySymbols(n);
+    e && (i = i.filter(function(c) {
       return Object.getOwnPropertyDescriptor(n, c).enumerable;
-    })), t.push.apply(t, r);
+    })), t.push.apply(t, i);
   }
   return t;
 }
-function Ne(n) {
+function Ae(n) {
   for (var e = 1; e < arguments.length; e++) {
     var t = arguments[e] != null ? arguments[e] : {};
-    e % 2 ? Ae(Object(t), !0).forEach(function(r) {
-      Dt(n, r, t[r]);
-    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(n, Object.getOwnPropertyDescriptors(t)) : Ae(Object(t)).forEach(function(r) {
-      Object.defineProperty(n, r, Object.getOwnPropertyDescriptor(t, r));
+    e % 2 ? Ue(Object(t), !0).forEach(function(i) {
+      St(n, i, t[i]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(n, Object.getOwnPropertyDescriptors(t)) : Ue(Object(t)).forEach(function(i) {
+      Object.defineProperty(n, i, Object.getOwnPropertyDescriptor(t, i));
     });
   }
   return n;
 }
-function Dt(n, e, t) {
-  return (e = Mt(e)) in n ? Object.defineProperty(n, e, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : n[e] = t, n;
+function St(n, e, t) {
+  return (e = Dt(e)) in n ? Object.defineProperty(n, e, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : n[e] = t, n;
 }
-function Mt(n) {
-  var e = Vt(n, "string");
-  return le(e) == "symbol" ? e : e + "";
+function Dt(n) {
+  var e = Mt(n, "string");
+  return ae(e) == "symbol" ? e : e + "";
 }
-function Vt(n, e) {
-  if (le(n) != "object" || !n) return n;
+function Mt(n, e) {
+  if (ae(n) != "object" || !n) return n;
   var t = n[Symbol.toPrimitive];
   if (t !== void 0) {
-    var r = t.call(n, e);
-    if (le(r) != "object") return r;
+    var i = t.call(n, e);
+    if (ae(i) != "object") return i;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (e === "string" ? String : Number)(n);
 }
-var xt = ["id", "tabindex", "disabled"];
-function Bt(n, e, t, r, c, l) {
-  var m = gt("Portal");
-  return v(), k("div", _({
+var Vt = ["id", "tabindex", "disabled"];
+function xt(n, e, t, i, c, a) {
+  var b = bt("Portal");
+  return m(), k("div", U({
     ref: "container",
     class: n.cx("root")
-  }, n.ptmi("root")), [n.inline ? S("", !0) : (v(), k("input", _({
+  }, n.ptmi("root")), [n.inline ? S("", !0) : (m(), k("input", U({
     key: 0,
     ref: "input",
     id: n.inputId,
@@ -724,72 +724,72 @@ function Bt(n, e, t, r, c, l) {
     tabindex: n.tabindex,
     disabled: n.disabled,
     onClick: e[0] || (e[0] = function() {
-      return l.onInputClick && l.onInputClick.apply(l, arguments);
+      return a.onInputClick && a.onInputClick.apply(a, arguments);
     }),
     onKeydown: e[1] || (e[1] = function() {
-      return l.onInputKeydown && l.onInputKeydown.apply(l, arguments);
+      return a.onInputKeydown && a.onInputKeydown.apply(a, arguments);
     }),
     onBlur: e[2] || (e[2] = function() {
-      return l.onInputBlur && l.onInputBlur.apply(l, arguments);
+      return a.onInputBlur && a.onInputBlur.apply(a, arguments);
     })
-  }, n.ptm("preview")), null, 16, xt)), g(m, {
+  }, n.ptm("preview")), null, 16, Vt)), g(b, {
     appendTo: n.appendTo,
     disabled: n.inline
   }, {
-    default: Re(function() {
-      return [g(yt, _({
+    default: Oe(function() {
+      return [g(gt, U({
         name: "p-anchored-overlay",
-        onEnter: l.onOverlayEnter,
-        onLeave: l.onOverlayLeave,
-        onAfterLeave: l.onOverlayAfterLeave
+        onEnter: a.onOverlayEnter,
+        onLeave: a.onOverlayLeave,
+        onAfterLeave: a.onOverlayAfterLeave
       }, n.ptm("transition")), {
-        default: Re(function() {
-          return [n.inline || c.overlayVisible ? (v(), k("div", _({
+        default: Oe(function() {
+          return [n.inline || c.overlayVisible ? (m(), k("div", U({
             key: 0,
-            ref: l.pickerRef,
+            ref: a.pickerRef,
             class: [n.cx("panel"), n.panelClass, n.overlayClass],
             onClick: e[11] || (e[11] = function() {
-              return l.onOverlayClick && l.onOverlayClick.apply(l, arguments);
+              return a.onOverlayClick && a.onOverlayClick.apply(a, arguments);
             })
-          }, Ne(Ne({}, n.ptm("panel")), n.ptm("overlay"))), [a("div", _({
+          }, Ae(Ae({}, n.ptm("panel")), n.ptm("overlay"))), [l("div", U({
             class: n.cx("content")
-          }, n.ptm("content")), [a("div", _({
-            ref: l.colorSelectorRef,
+          }, n.ptm("content")), [l("div", U({
+            ref: a.colorSelectorRef,
             class: n.cx("colorSelector"),
             onMousedown: e[3] || (e[3] = function(h) {
-              return l.onColorMousedown(h);
+              return a.onColorMousedown(h);
             }),
             onTouchstart: e[4] || (e[4] = function(h) {
-              return l.onColorDragStart(h);
+              return a.onColorDragStart(h);
             }),
             onTouchmove: e[5] || (e[5] = function(h) {
-              return l.onDrag(h);
+              return a.onDrag(h);
             }),
             onTouchend: e[6] || (e[6] = function(h) {
-              return l.onDragEnd();
+              return a.onDragEnd();
             })
-          }, n.ptm("colorSelector")), [a("div", _({
+          }, n.ptm("colorSelector")), [l("div", U({
             class: n.cx("colorBackground")
-          }, n.ptm("colorBackground")), [a("div", _({
-            ref: l.colorHandleRef,
+          }, n.ptm("colorBackground")), [l("div", U({
+            ref: a.colorHandleRef,
             class: n.cx("colorHandle")
-          }, n.ptm("colorHandle")), null, 16)], 16)], 16), a("div", _({
-            ref: l.hueViewRef,
+          }, n.ptm("colorHandle")), null, 16)], 16)], 16), l("div", U({
+            ref: a.hueViewRef,
             class: n.cx("hue"),
             onMousedown: e[7] || (e[7] = function(h) {
-              return l.onHueMousedown(h);
+              return a.onHueMousedown(h);
             }),
             onTouchstart: e[8] || (e[8] = function(h) {
-              return l.onHueDragStart(h);
+              return a.onHueDragStart(h);
             }),
             onTouchmove: e[9] || (e[9] = function(h) {
-              return l.onDrag(h);
+              return a.onDrag(h);
             }),
             onTouchend: e[10] || (e[10] = function(h) {
-              return l.onDragEnd();
+              return a.onDragEnd();
             })
-          }, n.ptm("hue")), [a("div", _({
-            ref: l.hueHandleRef,
+          }, n.ptm("hue")), [l("div", U({
+            ref: a.hueHandleRef,
             class: n.cx("hueHandle")
           }, n.ptm("hueHandle")), null, 16)], 16)], 16)], 16)) : S("", !0)];
         }),
@@ -799,22 +799,22 @@ function Bt(n, e, t, r, c, l) {
     _: 1
   }, 8, ["appendTo", "disabled"])], 16);
 }
-Ze.render = Bt;
-const Pe = "#d63a22", $e = "--p-primary";
-function It(n) {
+Ye.render = xt;
+const Ne = "#d63a22", Se = "--p-primary";
+function Bt(n) {
   const e = /^rgba?\(([^)]+)\)/i.exec((n || "").trim());
   if (!e) return null;
   const t = e[1].split(",").map((c) => parseFloat(c.trim()));
   if (t.length < 3 || t.slice(0, 3).some((c) => Number.isNaN(c))) return null;
-  const r = (c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0");
-  return `#${r(t[0])}${r(t[1])}${r(t[2])}`;
+  const i = (c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0");
+  return `#${i(t[0])}${i(t[1])}${i(t[2])}`;
 }
-function Se(n) {
+function De(n) {
   let e = (n || "").trim().replace(/^#/, "");
   return e.length === 3 && (e = e[0] + e[0] + e[1] + e[1] + e[2] + e[2]), /^[0-9a-fA-F]{6}$/.test(e) ? `#${e.toLowerCase()}` : null;
 }
-function je(n) {
-  const e = Se(n);
+function Pe(n) {
+  const e = De(n);
   if (!e) return null;
   const t = e.slice(1);
   return {
@@ -823,78 +823,78 @@ function je(n) {
     b: parseInt(t.slice(4, 6), 16)
   };
 }
-function Le(n, e) {
-  const t = Se(n);
+function $e(n, e) {
+  const t = De(n);
   if (!t) return "";
-  const r = `${$e}: ${t};`;
-  return e === ":host" ? `:host { ${r} }` : [
-    `:root { ${r} }`,
-    `@media (prefers-color-scheme: dark) { :root:not(.w-theme-light) { ${r} } }`,
-    `:root.w-theme-dark, .w-theme-dark { ${r} }`,
-    `@media (prefers-color-scheme: light) { :root:not(.w-theme-dark) { ${r} } }`,
-    `:root.w-theme-light, .w-theme-light { ${r} }`
+  const i = `${Se}: ${t};`;
+  return e === ":host" ? `:host { ${i} }` : [
+    `:root { ${i} }`,
+    `@media (prefers-color-scheme: dark) { :root:not(.w-theme-light) { ${i} } }`,
+    `:root.w-theme-dark, .w-theme-dark { ${i} }`,
+    `@media (prefers-color-scheme: light) { :root:not(.w-theme-dark) { ${i} } }`,
+    `:root.w-theme-light, .w-theme-light { ${i} }`
   ].join(`
 `);
 }
-function Et(n, e) {
+function It(n, e) {
   if (!n || typeof n != "object") return "";
-  const t = n[$e];
-  return typeof t == "string" ? Le(t, e) : "";
+  const t = n[Se];
+  return typeof t == "string" ? $e(t, e) : "";
 }
-const Tt = { r: 255, g: 255, b: 255 }, Ot = { r: 12, g: 14, b: 18 }, Rt = 2, Ft = 2;
-function ze(n) {
+const Et = { r: 255, g: 255, b: 255 }, Tt = { r: 12, g: 14, b: 18 }, Ot = 2, Rt = 2;
+function je(n) {
   const e = (t) => {
-    const r = t / 255;
-    return r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
+    const i = t / 255;
+    return i <= 0.03928 ? i / 12.92 : Math.pow((i + 0.055) / 1.055, 2.4);
   };
   return 0.2126 * e(n.r) + 0.7152 * e(n.g) + 0.0722 * e(n.b);
 }
-function Ge(n, e) {
-  const t = ze(n), r = ze(e);
-  return (Math.max(t, r) + 0.05) / (Math.min(t, r) + 0.05);
+function ze(n, e) {
+  const t = je(n), i = je(e);
+  return (Math.max(t, i) + 0.05) / (Math.min(t, i) + 0.05);
 }
-function _t(n, e = typeof document < "u" ? document : void 0) {
-  const t = Se(n);
+function Ft(n, e = typeof document < "u" ? document : void 0) {
+  const t = De(n);
   if (!t) return null;
-  if (!e || !e.body || !e.defaultView) return je(t);
-  const r = e.createElement("span");
-  r.style.setProperty($e, t), r.style.color = "var(--p-primary-color)", r.style.display = "none", e.body.appendChild(r);
-  const c = e.defaultView.getComputedStyle(r).color;
-  return r.remove(), je(It(c) || t);
+  if (!e || !e.body || !e.defaultView) return Pe(t);
+  const i = e.createElement("span");
+  i.style.setProperty(Se, t), i.style.color = "var(--p-primary-color)", i.style.display = "none", e.body.appendChild(i);
+  const c = e.defaultView.getComputedStyle(i).color;
+  return i.remove(), Pe(Bt(c) || t);
 }
-function Ut(n) {
-  const e = _t(n);
+function _t(n) {
+  const e = Ft(n);
   if (!e) return null;
-  const t = Ge(e, Tt), r = Ge(e, Ot), c = t >= Rt, l = r >= Ft;
-  let m = "";
-  return !c && !l ? m = "This tone is too low-contrast - buttons and accents would be unreadable in both light and dark mode." : c ? l || (m = "This tone is too dark - accents would be invisible against the dark background.") : m = "This tone is too light - white button text and accents would be unreadable in light mode.", { ok: c && l, onLight: t, onDark: r, reason: m };
+  const t = ze(e, Et), i = ze(e, Tt), c = t >= Ot, a = i >= Rt;
+  let b = "";
+  return !c && !a ? b = "This tone is too low-contrast - buttons and accents would be unreadable in both light and dark mode." : c ? a || (b = "This tone is too dark - accents would be invisible against the dark background.") : b = "This tone is too light - white button text and accents would be unreadable in light mode.", { ok: c && a, onLight: t, onDark: i, reason: b };
 }
-function At({ items: n, categories: e, overrides: t, home: r }) {
+function Ut({ items: n, categories: e, overrides: t, home: i }) {
   const c = (s) => s.route_name || s.id;
-  function l(s, u) {
+  function a(s, u) {
     const f = c(s), $ = { ...t.value[f] || {} };
     for (const [B, V] of Object.entries(u))
       V === void 0 || V === "" ? delete $[B] : $[B] = V;
     t.value = { ...t.value, [f]: $ };
   }
-  function m(s, u) {
-    l(s, { hidden: u || void 0 }), s.hidden = u;
+  function b(s, u) {
+    a(s, { hidden: u || void 0 }), s.hidden = u;
   }
   function h(s, u) {
-    l(s, { category: u }), s.category = u;
+    a(s, { category: u }), s.category = u;
   }
   function w(s, u) {
-    l(s, { order: u }), s.order = u;
+    a(s, { order: u }), s.order = u;
   }
   function x(s, u) {
     const f = u.replace(/^\s+/, "");
-    s.label = f, l(s, { label: f || void 0 });
+    s.label = f, a(s, { label: f || void 0 });
   }
   function E(s, u) {
     const f = (u || "").trim();
-    s.icon = f, l(s, { icon: f || void 0 });
+    s.icon = f, a(s, { icon: f || void 0 });
   }
-  function z(s) {
+  function G(s) {
     const u = t.value[c(s)];
     return !!u && (u.label !== void 0 || u.icon !== void 0);
   }
@@ -910,98 +910,98 @@ function At({ items: n, categories: e, overrides: t, home: r }) {
     for (const f of n.value)
       f.category && !u.has(f.category) && (u.add(f.category), s.push({ key: f.category, label: f.category, real: !1 }));
     return s;
-  }), me = O(() => n.value.filter((s) => s.hidden)), q = (s) => e.value.find((u) => u.key === s), M = H(null), G = H(null), J = H(null), C = (s) => n.value.find((u) => u.id === s);
-  function Q(s, u) {
+  }), me = O(() => n.value.filter((s) => s.hidden)), J = (s) => e.value.find((u) => u.key === s), M = C(null), X = C(null), Q = C(null), H = (s) => n.value.find((u) => u.id === s);
+  function ee(s, u) {
     M.value = s.id, u.dataTransfer && (u.dataTransfer.effectAllowed = "move", u.dataTransfer.setData("text/plain", s.id));
   }
   function T() {
-    M.value = null, G.value = null, J.value = null;
+    M.value = null, X.value = null, Q.value = null;
   }
   function be(s) {
-    const u = M.value ? C(M.value) : null;
+    const u = M.value ? H(M.value) : null;
     if (!u || u.id === s.id) return T();
     const f = s.category || "", $ = R(f).filter((V) => V.id !== u.id), B = $.indexOf(s);
-    $.splice(B < 0 ? $.length : B, 0, u), h(u, f), $.forEach((V, U) => w(V, U * 10)), T();
+    $.splice(B < 0 ? $.length : B, 0, u), h(u, f), $.forEach((V, A) => w(V, A * 10)), T();
   }
   function ge(s) {
-    const u = M.value ? C(M.value) : null;
+    const u = M.value ? H(M.value) : null;
     if (!u) return T();
     const f = R(s).filter(($) => $.id !== u.id);
     f.push(u), h(u, s), f.forEach(($, B) => w($, B * 10)), T();
   }
-  function P(s, u) {
-    G.value = s, u.dataTransfer && (u.dataTransfer.effectAllowed = "move", u.dataTransfer.setData("text/plain", "cat:" + s));
+  function j(s, u) {
+    X.value = s, u.dataTransfer && (u.dataTransfer.effectAllowed = "move", u.dataTransfer.setData("text/plain", "cat:" + s));
   }
-  function ee(s) {
-    const u = G.value;
+  function te(s) {
+    const u = X.value;
     if (!u || u === s) return T();
-    const f = [...D.value], $ = f.findIndex((U) => U.key === u), B = f.findIndex((U) => U.key === s);
+    const f = [...D.value], $ = f.findIndex((A) => A.key === u), B = f.findIndex((A) => A.key === s);
     if ($ < 0 || B < 0) return T();
     const [V] = f.splice($, 1);
-    f.splice(B, 0, V), f.forEach((U, oe) => {
-      const re = e.value.find((ye) => ye.key === U.key);
-      re && (re.order = oe * 10);
+    f.splice(B, 0, V), f.forEach((A, ie) => {
+      const re = e.value.find((ye) => ye.key === A.key);
+      re && (re.order = ie * 10);
     }), T();
   }
-  let X = 0;
+  let K = 0;
   function se() {
-    X += 1;
+    K += 1;
     const s = D.value[D.value.length - 1];
-    e.value.push({ key: "cat_" + Date.now().toString(36) + "_" + X, label: "New category", icon: "tabler:folder", order: (s?.order ?? 0) + 10 });
+    e.value.push({ key: "cat_" + Date.now().toString(36) + "_" + K, label: "New category", icon: "tabler:folder", order: (s?.order ?? 0) + 10 });
   }
-  function K(s) {
+  function Y(s) {
     for (const u of n.value) u.category === s && h(u, "");
     e.value = e.value.filter((u) => u.key !== s);
   }
-  function te(s, u) {
-    const f = q(s);
+  function ne(s, u) {
+    const f = J(s);
     f && (f.label = u);
   }
-  function ne(s, u) {
-    const f = q(s);
+  function oe(s, u) {
+    const f = J(s);
     f && (f.icon = (u || "").trim() || void 0);
   }
-  function j(s) {
-    return !!r.value && r.value === s.path;
+  function z(s) {
+    return !!i.value && i.value === s.path;
   }
   function ue(s) {
-    r.value = j(s) ? "" : s.path;
+    i.value = z(s) ? "" : s.path;
   }
   return {
     itemKey: c,
-    patchOverride: l,
-    setHidden: m,
+    patchOverride: a,
+    setHidden: b,
     setCategory: h,
     setOrder: w,
     setLabel: x,
     setIcon: E,
-    hasOverride: z,
+    hasOverride: G,
     orderedCats: D,
     itemsOf: R,
     editorGroups: ve,
     hiddenItems: me,
-    catByKey: q,
+    catByKey: J,
     dragItemId: M,
-    dragCatKey: G,
-    overGroup: J,
-    onItemDragStart: Q,
+    dragCatKey: X,
+    overGroup: Q,
+    onItemDragStart: ee,
     endDrag: T,
     onItemDrop: be,
     onGroupDrop: ge,
-    onCatDragStart: P,
-    onCatDrop: ee,
+    onCatDragStart: j,
+    onCatDrop: te,
     addCategory: se,
-    removeCategory: K,
-    renameCategory: te,
-    setCatIcon: ne,
-    isHome: j,
+    removeCategory: Y,
+    renameCategory: ne,
+    setCatIcon: oe,
+    isHome: z,
     setHome: ue
   };
 }
-function Nt({ logoUrl: n, error: e, apiError: t }) {
-  const r = H(!1);
-  async function c(m) {
-    const h = m.target, w = h.files && h.files[0];
+function At({ logoUrl: n, error: e, apiError: t }) {
+  const i = C(!1);
+  async function c(b) {
+    const h = b.target, w = h.files && h.files[0];
     if (w) {
       if (!w.type.startsWith("image/")) {
         e.value = "Logo must be an image", h.value = "";
@@ -1011,141 +1011,143 @@ function Nt({ logoUrl: n, error: e, apiError: t }) {
         e.value = "Logo too large (max 2 MB)", h.value = "";
         return;
       }
-      r.value = !0, e.value = "";
+      i.value = !0, e.value = "";
       try {
         const x = new FormData();
         x.append("logo", w);
-        const { data: E } = await He.post("/api/v1/nav/logo", x, { headers: { "Content-Type": "multipart/form-data" } });
+        const { data: E } = await Le.post("/api/v1/nav/logo", x, { headers: { "Content-Type": "multipart/form-data" } });
         if (!E.success || !E.url) throw new Error(E.error || "upload failed");
         n.value = E.url;
       } catch (x) {
         e.value = t(x, "upload failed");
       } finally {
-        r.value = !1, h.value = "";
+        i.value = !1, h.value = "";
       }
     }
   }
-  function l() {
+  function a() {
     n.value = "";
   }
-  return { uploadingLogo: r, uploadLogo: c, removeLogo: l };
+  return { uploadingLogo: i, uploadLogo: c, removeLogo: a };
 }
-const Pt = { class: "ap" }, jt = { class: "ap-body" }, zt = { class: "ap-bar" }, Gt = {
+const Nt = { class: "ap" }, Pt = { class: "ap-body" }, jt = { class: "ap-bar" }, zt = {
   key: 0,
   class: "ap-dirty ap-dirty-warn"
-}, Xt = {
+}, Gt = {
   key: 1,
   class: "ap-dirty"
-}, Kt = ["disabled"], Yt = ["disabled"], Zt = {
+}, Xt = ["disabled"], Kt = ["disabled"], Yt = {
   key: 0,
   class: "ap-msg ap-err"
-}, Wt = {
+}, Zt = {
   key: 1,
   class: "ap-loading"
-}, qt = {
+}, Wt = {
   key: 2,
   class: "ap-grid"
-}, Jt = { class: "ap-side" }, Qt = { class: "ap-card" }, en = { class: "ap-h" }, tn = { class: "ap-logo" }, nn = { class: "ap-logo-prev" }, on = ["src"], rn = { class: "ap-logo-actions" }, an = ["accept", "disabled"], ln = { class: "ap-hint" }, sn = { class: "ap-tone" }, un = ["placeholder"], dn = {
+}, qt = { class: "ap-side" }, Jt = { class: "ap-card" }, Qt = { class: "ap-h" }, en = { class: "ap-logo" }, tn = { class: "ap-logo-prev" }, nn = ["src"], on = { class: "ap-logo-actions" }, rn = ["accept", "disabled"], ln = { class: "ap-hint" }, an = { class: "ap-tone" }, sn = ["placeholder"], un = {
   key: 0,
   class: "ap-tone-warn",
   role: "alert"
-}, cn = {
+}, dn = {
   class: "ap-theme-modes",
   role: "group",
   "aria-label": "Color scheme"
-}, pn = ["aria-pressed", "onClick"], fn = { class: "ap-card" }, hn = { class: "ap-h" }, vn = { class: "ap-layouts" }, mn = { class: "ap-lo-name" }, bn = { class: "ap-lo-name" }, gn = { class: "ap-card ap-legend" }, yn = { class: "ap-h" }, kn = { class: "ap-tips" }, wn = { class: "ap-card ap-structure" }, Cn = { class: "ap-h" }, Hn = ["onDragover", "onDragleave", "onDrop"], Ln = ["onDrop"], $n = ["onDragstart"], Sn = {
+}, cn = ["aria-pressed", "onClick"], pn = { class: "ap-card" }, fn = { class: "ap-h" }, hn = { class: "ap-layouts" }, vn = { class: "ap-lo-name" }, mn = { class: "ap-lo-name" }, bn = { class: "ap-card ap-legend" }, gn = { class: "ap-h" }, yn = { class: "ap-tips" }, kn = { class: "ap-card ap-structure" }, wn = { class: "ap-h" }, Cn = ["onDragover", "onDragleave", "onDrop"], Hn = ["onDrop"], Ln = ["onDragstart"], $n = {
   key: 1,
   class: "ap-grip ap-grip-ghost",
   "aria-hidden": "true"
-}, Dn = ["value", "onInput"], Mn = { class: "ap-tile ap-tile-muted" }, Vn = { class: "ap-field ap-field-strong ap-field-static" }, xn = { class: "ap-count" }, Bn = ["onClick"], In = {
+}, Sn = ["value", "onInput"], Dn = { class: "ap-tile ap-tile-muted" }, Mn = { class: "ap-field ap-field-strong ap-field-static" }, Vn = { class: "ap-count" }, xn = ["onClick"], Bn = {
   key: 0,
   class: "ap-drop-hint"
-}, En = ["onDrop"], Tn = ["onDragstart"], On = ["value", "onInput"], Rn = { class: "ap-path" }, Fn = {
+}, In = ["onDrop"], En = ["onDragstart"], Tn = ["value", "onInput"], On = { class: "ap-path" }, Rn = {
   key: 0,
   class: "ap-pill kx-tag-sm"
-}, _n = {
+}, Fn = {
   key: 1,
   class: "ap-pill kx-tag-sm ap-pill-home"
-}, Un = ["aria-label", "title", "onClick"], An = ["onClick"], Nn = {
+}, _n = ["aria-label", "title", "onClick"], Un = ["onClick"], An = {
   key: 0,
   class: "ap-hidden"
-}, Pn = {
+}, Nn = {
   key: 0,
   class: "ap-hidden-list"
-}, jn = { class: "ap-tile" }, zn = { class: "ap-field ap-field-strong ap-field-static" }, Gn = ["onClick"], Xn = /* @__PURE__ */ Xe({
+}, Pn = { class: "ap-tile" }, jn = { class: "ap-field ap-field-strong ap-field-static" }, zn = ["onClick"], Gn = /* @__PURE__ */ Ge({
   __name: "appearance",
   setup(n) {
-    const e = H(!0), t = H(!1), r = H("");
+    const e = C(!0), t = C(!1), i = C("");
     function c(p, o) {
       return p?.response?.data?.error || p?.message || o;
     }
-    const l = H("vertical"), m = H(we.getThemeMode?.() ?? "auto"), h = H([]), w = H([]), x = H({}), E = H(!1), z = H(""), D = H(""), R = H(), ve = O(() => R.value?.formats.flatMap((p) => [p.mime, ...p.extensions.map((o) => `.${o}`)]).join(",")), me = O(() => R.value ? `${R.value.formats.map((p) => p.label).join(", ")} · up to ${R.value.max_bytes / 1048576} MB.` : ""), q = Nt({ logoUrl: D, error: r, apiError: c }), { uploadingLogo: M, uploadLogo: G, removeLogo: J } = q, C = H(""), Q = H(Pe), T = O({
+    const a = C("vertical"), b = C(Ce.getThemeMode?.() ?? "auto"), h = C([]), w = C([]), x = C({}), E = C(!1), G = C(""), D = C(""), R = C(), ve = O(() => R.value?.formats.flatMap((p) => [p.mime, ...p.extensions.map((o) => `.${o}`)]).join(",")), me = O(() => R.value ? `${R.value.formats.map((p) => p.label).join(", ")} · up to ${R.value.max_bytes / 1048576} MB.` : ""), J = At({ logoUrl: D, error: i, apiError: c }), { uploadingLogo: M, uploadLogo: X, removeLogo: Q } = J, H = C(""), ee = C(Ne), T = O({
       // PrimeVue's <ColorPicker format="hex"> exchanges a BARE rrggbb string, while the stored
       // setting and the hex text field both keep the #-prefixed form — so strip on the way in
       // and re-add on the way out. Falling back to defaultTone keeps the swatch showing the live
       // theme tone while the setting is unset.
-      get: () => (C.value || Q.value).trim().replace(/^#/, ""),
+      get: () => (H.value || ee.value).trim().replace(/^#/, ""),
       set: (p) => {
         const o = String(p ?? "").replace(/^#/, "");
-        C.value = o ? `#${o}` : "";
+        H.value = o ? `#${o}` : "";
       }
     });
     function be() {
-      C.value = "";
+      H.value = "";
     }
     function ge(p) {
-      m.value = p, we.setThemeMode(p);
+      b.value = p, Ce.setThemeMode(p);
     }
-    const P = O(() => C.value.trim() ? Ut(C.value) : null), ee = O(() => !!C.value.trim() && P.value === null), X = O(() => ee.value || !!P.value && !P.value.ok), se = O(() => ee.value ? "Enter a valid hex color, e.g. #2563eb." : P.value && !P.value.ok ? P.value.reason : ""), K = H(""), te = H(""), ne = () => JSON.stringify({
-      layout: l.value,
+    const j = O(() => H.value.trim() ? _t(H.value) : null), te = O(() => !!H.value.trim() && j.value === null), K = O(() => te.value || !!j.value && !j.value.ok), se = O(() => te.value ? "Enter a valid hex color, e.g. #2563eb." : j.value && !j.value.ok ? j.value.reason : ""), Y = C(""), ne = C(""), oe = () => JSON.stringify({
+      layout: a.value,
       cats: w.value,
       overrides: x.value,
-      title: z.value,
+      title: G.value,
       logo: D.value,
-      home: K.value,
-      tone: C.value,
+      home: Y.value,
+      tone: H.value,
       pos: h.value.map((p) => [p.id, p.category, p.order, !!p.hidden])
-    }), j = O(() => ne() !== te.value);
+    }), z = O(() => oe() !== ne.value);
     async function ue() {
-      e.value = !0, r.value = "";
+      e.value = !0, i.value = "";
       try {
-        const { data: p } = await He.get("/api/v1/nav/list?manage=1");
+        const { data: p } = await Le.get("/api/v1/nav/list?manage=1");
         if (!p.success) throw new Error(p.error || "failed to load nav");
-        R.value = p.logo_upload, h.value = (p.items ?? []).map((d) => ({ ...d })), l.value = p.layout === "horizontal" ? "horizontal" : "vertical";
+        R.value = p.logo_upload, h.value = (p.items ?? []).map((v) => ({ ...v })), a.value = p.layout === "horizontal" ? "horizontal" : "vertical";
         const o = p.config ?? {};
-        return w.value = Array.isArray(o.categories) ? o.categories.map((d) => ({ ...d })) : [], x.value = o.overrides && typeof o.overrides == "object" ? structuredClone(o.overrides) : {}, z.value = typeof o.title == "string" ? o.title : "", D.value = typeof o.logo_url == "string" ? o.logo_url : "", C.value = typeof o.primary_color == "string" ? o.primary_color : "", ae = C.value, K.value = typeof p.home == "string" ? p.home : typeof o.home == "string" ? o.home : "", te.value = ne(), !0;
+        w.value = Array.isArray(o.categories) ? o.categories.map((v) => ({ ...v })) : [], x.value = o.overrides && typeof o.overrides == "object" ? structuredClone(o.overrides) : {}, G.value = typeof o.title == "string" ? o.title : "", D.value = typeof o.logo_url == "string" ? o.logo_url : "";
+        const d = typeof o.primary_color == "string" ? o.primary_color : "";
+        F = d, H.value = d, Y.value = typeof p.home == "string" ? p.home : typeof o.home == "string" ? o.home : "", ne.value = oe();
       } catch (p) {
-        return r.value = c(p, "failed to load"), !1;
+        i.value = c(p, "failed to load");
       } finally {
         e.value = !1;
       }
     }
-    const s = At({ items: h, categories: w, overrides: x, home: K }), {
+    const s = Ut({ items: h, categories: w, overrides: x, home: Y }), {
       setHidden: u,
       setLabel: f,
       setIcon: $,
       hasOverride: B,
       itemsOf: V,
-      editorGroups: U,
-      hiddenItems: oe,
+      editorGroups: A,
+      hiddenItems: ie,
       catByKey: re,
       dragItemId: ye,
       overGroup: de,
-      onItemDragStart: We,
+      onItemDragStart: Ze,
       endDrag: ce,
-      onItemDrop: qe,
-      onGroupDrop: De,
-      onCatDragStart: Je,
-      onCatDrop: Qe,
-      addCategory: Me,
-      removeCategory: et,
-      renameCategory: tt,
-      setCatIcon: nt,
-      isHome: ie,
-      setHome: ot
+      onItemDrop: We,
+      onGroupDrop: Me,
+      onCatDragStart: qe,
+      onCatDrop: Je,
+      addCategory: Ve,
+      removeCategory: Qe,
+      renameCategory: et,
+      setCatIcon: tt,
+      isHome: le,
+      setHome: nt
     } = s;
-    let A = null, Ve = !1, ae = "", xe = null;
-    async function rt() {
+    let N = null, ke = !1, F = null, xe = null;
+    async function ot() {
       try {
         const p = await fetch("/app/css-variables.facade.json", { cache: "no-store" });
         if (!p.ok) return;
@@ -1153,148 +1155,147 @@ const Pt = { class: "ap" }, jt = { class: "ap-body" }, zt = { class: "ap-bar" },
         if (o && typeof o == "object") {
           xe = o;
           const d = o["--p-primary"];
-          typeof d == "string" && (Q.value = d), !C.value.trim() && pe.value !== !1 && Y("");
+          typeof d == "string" && (ee.value = d), F !== null && !ke && !H.value.trim() && pe.value !== !1 && Z("");
         }
       } catch {
       }
     }
     function Be(p, o) {
-      return Le(p, o) || Et(xe, o) || Le(Pe, o);
+      return $e(p, o) || It(xe, o) || $e(Ne, o);
     }
-    function Y(p) {
+    function Z(p) {
       window.dispatchEvent(new CustomEvent("kickside:tone-apply", {
         detail: { hostCss: Be(p, ":root"), shadowCss: Be(p, ":host") }
       }));
     }
-    Ye(() => {
-      Ve = !0, A && clearTimeout(A), Y(ae), Ie?.();
+    Ke(() => {
+      ke = !0, N && clearTimeout(N), F !== null && Z(F), Ie?.();
     });
     async function it() {
-      if (X.value) return;
-      const p = ne(), o = C.value;
-      t.value = !0, r.value = "";
+      if (K.value) return;
+      const p = oe(), o = H.value;
+      t.value = !0, i.value = "";
       try {
-        const { data: d } = await He.put("/api/v1/nav/config", {
-          layout: l.value,
+        const { data: d } = await Le.put("/api/v1/nav/config", {
+          layout: a.value,
           overrides: x.value,
           categories: w.value,
-          title: z.value,
+          title: G.value,
           logo_url: D.value,
-          home: K.value,
-          primary_color: C.value
+          home: Y.value,
+          primary_color: H.value
         });
         if (!d.success) throw new Error(d.error || "save failed");
-        te.value = p, ae = o, Y(Ve || pe.value === !1 ? ae : C.value);
+        ne.value = p, F = o, Z(ke || pe.value === !1 ? F : H.value);
       } catch (d) {
-        r.value = c(d, "save failed");
+        i.value = c(d, "save failed");
       } finally {
         t.value = !1;
       }
     }
     let Ie = null;
-    Ke(() => {
-      m.value = we.getThemeMode?.() ?? "auto", Ie = wt("@theme", (p) => {
-        m.value = p;
-      }), rt();
+    Xe(() => {
+      b.value = Ce.getThemeMode?.() ?? "auto", Ie = kt("@theme", (p) => {
+        b.value = p;
+      }), ot();
     });
-    let Ee = !1;
-    async function at() {
-      Ee && j.value || await ue() && (Ee = !0);
+    async function rt() {
+      F !== null && z.value || await ue();
     }
-    const pe = mt(at);
-    return Ce(C, (p) => {
-      A && clearTimeout(A), A = null, pe.value !== !1 && (A = setTimeout(() => Y(p), 90));
-    }), Ce(pe, (p, o) => {
-      o === !0 && p === !1 ? (A && clearTimeout(A), A = null, Y(ae)) : o === !1 && p === !0 && j.value && Y(C.value);
-    }), (p, o) => (v(), k("div", Pt, [
-      a("div", jt, [
-        a("header", zt, [
-          X.value ? (v(), k("span", Gt, I(ee.value ? "Invalid color" : "Tone unreadable"), 1)) : j.value ? (v(), k("span", Xt, "Unsaved changes")) : S("", !0),
-          a("button", {
+    const pe = vt(rt);
+    return He(H, (p) => {
+      N && clearTimeout(N), N = null, !(F === null || pe.value === !1) && (N = setTimeout(() => Z(p), 90));
+    }), He(pe, (p, o) => {
+      F !== null && (o === !0 && p === !1 ? (N && clearTimeout(N), N = null, Z(F)) : o === !1 && p === !0 && z.value && Z(H.value));
+    }), (p, o) => (m(), k("div", Nt, [
+      l("div", Pt, [
+        l("header", jt, [
+          K.value ? (m(), k("span", zt, I(te.value ? "Invalid color" : "Tone unreadable"), 1)) : z.value ? (m(), k("span", Gt, "Unsaved changes")) : S("", !0),
+          l("button", {
             class: "ap-btn ap-btn-ghost",
-            disabled: !j.value || t.value,
+            disabled: !z.value || t.value,
             onClick: ue
-          }, "Discard", 8, Kt),
-          a("button", {
+          }, "Discard", 8, Xt),
+          l("button", {
             class: "ap-btn ap-btn-primary",
-            disabled: !j.value || t.value || X.value,
+            disabled: !z.value || t.value || K.value,
             onClick: it
           }, [
-            g(i(y), {
+            g(r(y), {
               icon: t.value ? "tabler:loader-2" : "tabler:device-floppy",
-              class: N(t.value && "spin"),
+              class: P(t.value && "spin"),
               "aria-hidden": "true"
             }, null, 8, ["icon", "class"]),
             L(" " + I(t.value ? "Saving…" : "Save"), 1)
-          ], 8, Yt)
+          ], 8, Kt)
         ]),
-        r.value ? (v(), k("div", Zt, I(r.value), 1)) : S("", !0),
-        e.value ? (v(), k("div", Wt, [
-          g(i(y), {
+        i.value ? (m(), k("div", Yt, I(i.value), 1)) : S("", !0),
+        e.value ? (m(), k("div", Zt, [
+          g(r(y), {
             icon: "tabler:loader-2",
             class: "spin"
           }),
           o[13] || (o[13] = L(" Loading…", -1))
-        ])) : (v(), k("div", qt, [
-          a("aside", Jt, [
-            a("section", Qt, [
-              a("header", en, [
-                g(i(y), {
+        ])) : (m(), k("div", Wt, [
+          l("aside", qt, [
+            l("section", Jt, [
+              l("header", Qt, [
+                g(r(y), {
                   icon: "tabler:photo",
                   "aria-hidden": "true"
                 }),
                 o[14] || (o[14] = L(" Branding", -1))
               ]),
-              o[17] || (o[17] = a("p", { class: "ap-sub" }, "Title and logo apply to everyone on this installation — header, login page, and browser tab.", -1)),
-              o[18] || (o[18] = a("label", { class: "ap-blabel" }, "Title", -1)),
-              Fe(a("input", {
-                "onUpdate:modelValue": o[0] || (o[0] = (d) => z.value = d),
+              o[17] || (o[17] = l("p", { class: "ap-sub" }, "Title and logo apply to everyone on this installation — header, login page, and browser tab.", -1)),
+              o[18] || (o[18] = l("label", { class: "ap-blabel" }, "Title", -1)),
+              Re(l("input", {
+                "onUpdate:modelValue": o[0] || (o[0] = (d) => G.value = d),
                 class: "ap-binput",
                 type: "text",
                 maxlength: "60",
                 placeholder: "KickSide"
               }, null, 512), [
-                [_e, z.value]
+                [Fe, G.value]
               ]),
-              o[19] || (o[19] = a("label", { class: "ap-blabel" }, "Logo", -1)),
-              a("div", tn, [
-                a("span", nn, [
-                  D.value ? (v(), k("img", {
+              o[19] || (o[19] = l("label", { class: "ap-blabel" }, "Logo", -1)),
+              l("div", en, [
+                l("span", tn, [
+                  D.value ? (m(), k("img", {
                     key: 0,
                     src: D.value,
                     alt: "Logo preview"
-                  }, null, 8, on)) : (v(), fe(i(y), {
+                  }, null, 8, nn)) : (m(), fe(r(y), {
                     key: 1,
                     icon: "tabler:photo",
                     "aria-hidden": "true"
                   }))
                 ]),
-                a("div", rn, [
-                  a("label", {
-                    class: N(["ap-btn ap-btn-ghost", i(M) && "ap-btn-busy"])
+                l("div", on, [
+                  l("label", {
+                    class: P(["ap-btn ap-btn-ghost", r(M) && "ap-btn-busy"])
                   }, [
-                    g(i(y), {
-                      icon: i(M) ? "tabler:loader-2" : "tabler:upload",
-                      class: N(i(M) && "spin"),
+                    g(r(y), {
+                      icon: r(M) ? "tabler:loader-2" : "tabler:upload",
+                      class: P(r(M) && "spin"),
                       "aria-hidden": "true"
                     }, null, 8, ["icon", "class"]),
-                    L(" " + I(i(M) ? "Uploading…" : "Upload") + " ", 1),
-                    a("input", {
+                    L(" " + I(r(M) ? "Uploading…" : "Upload") + " ", 1),
+                    l("input", {
                       type: "file",
                       accept: ve.value,
                       class: "ap-file",
-                      disabled: i(M) || !R.value,
+                      disabled: r(M) || !R.value,
                       onChange: o[1] || (o[1] = //@ts-ignore
-                      (...d) => i(G) && i(G)(...d))
-                    }, null, 40, an)
+                      (...d) => r(X) && r(X)(...d))
+                    }, null, 40, rn)
                   ], 2),
-                  D.value ? (v(), k("button", {
+                  D.value ? (m(), k("button", {
                     key: 0,
                     class: "ap-btn ap-btn-ghost ap-danger",
                     onClick: o[2] || (o[2] = //@ts-ignore
-                    (...d) => i(J) && i(J)(...d))
+                    (...d) => r(Q) && r(Q)(...d))
                   }, [
-                    g(i(y), {
+                    g(r(y), {
                       icon: "tabler:trash",
                       "aria-hidden": "true"
                     }),
@@ -1302,156 +1303,156 @@ const Pt = { class: "ap" }, jt = { class: "ap-body" }, zt = { class: "ap-bar" },
                   ])) : S("", !0)
                 ])
               ]),
-              a("p", ln, I(me.value), 1),
-              o[20] || (o[20] = a("label", { class: "ap-blabel" }, "Base tone", -1)),
-              a("div", sn, [
-                g(i(Ze), {
+              l("p", ln, I(me.value), 1),
+              o[20] || (o[20] = l("label", { class: "ap-blabel" }, "Base tone", -1)),
+              l("div", an, [
+                g(r(Ye), {
                   modelValue: T.value,
                   "onUpdate:modelValue": o[3] || (o[3] = (d) => T.value = d),
                   format: "hex",
                   class: "ap-tone-swatch",
                   pt: { preview: { class: "ap-tone-preview", "aria-label": "Base tone color", "data-testid": "appearance-base-tone-picker" } }
                 }, null, 8, ["modelValue"]),
-                Fe(a("input", {
-                  "onUpdate:modelValue": o[4] || (o[4] = (d) => C.value = d),
+                Re(l("input", {
+                  "onUpdate:modelValue": o[4] || (o[4] = (d) => H.value = d),
                   class: "ap-binput ap-tone-hex",
                   type: "text",
                   maxlength: "7",
-                  placeholder: Q.value,
+                  placeholder: ee.value,
                   "aria-label": "Base tone hex"
-                }, null, 8, un), [
-                  [_e, C.value]
+                }, null, 8, sn), [
+                  [Fe, H.value]
                 ]),
-                C.value ? (v(), k("button", {
+                H.value ? (m(), k("button", {
                   key: 0,
                   class: "ap-btn ap-btn-ghost",
                   onClick: be
                 }, [
-                  g(i(y), {
+                  g(r(y), {
                     icon: "tabler:rotate",
                     "aria-hidden": "true"
                   }),
                   o[16] || (o[16] = L(" Reset", -1))
                 ])) : S("", !0)
               ]),
-              se.value ? (v(), k("p", dn, [
-                g(i(y), {
+              se.value ? (m(), k("p", un, [
+                g(r(y), {
                   icon: "tabler:alert-triangle",
                   "aria-hidden": "true"
                 }),
                 L(" " + I(se.value), 1)
               ])) : S("", !0),
-              o[21] || (o[21] = a("p", { class: "ap-hint" }, "Primary color for buttons, links and accents. Applies across the app instantly.", -1)),
-              o[22] || (o[22] = a("label", { class: "ap-blabel" }, "Color scheme", -1)),
-              a("div", cn, [
-                (v(), k(Z, null, he([
+              o[21] || (o[21] = l("p", { class: "ap-hint" }, "Primary color for buttons, links and accents. Applies across the app instantly.", -1)),
+              o[22] || (o[22] = l("label", { class: "ap-blabel" }, "Color scheme", -1)),
+              l("div", dn, [
+                (m(), k(W, null, he([
                   { mode: "auto", label: "Auto", icon: "tabler:device-desktop" },
                   { mode: "light", label: "Light", icon: "tabler:sun" },
                   { mode: "dark", label: "Dark", icon: "tabler:moon" }
-                ], (d) => a("button", {
+                ], (d) => l("button", {
                   key: d.mode,
                   type: "button",
-                  class: N(["ap-theme-mode", m.value === d.mode && "ap-theme-mode-on"]),
-                  "aria-pressed": m.value === d.mode,
-                  onClick: (b) => ge(d.mode)
+                  class: P(["ap-theme-mode", b.value === d.mode && "ap-theme-mode-on"]),
+                  "aria-pressed": b.value === d.mode,
+                  onClick: (v) => ge(d.mode)
                 }, [
-                  g(i(y), {
+                  g(r(y), {
                     icon: d.icon,
                     "aria-hidden": "true"
                   }, null, 8, ["icon"]),
                   L(" " + I(d.label), 1)
-                ], 10, pn)), 64))
+                ], 10, cn)), 64))
               ]),
-              o[23] || (o[23] = a("p", { class: "ap-hint" }, "Auto follows your browser or operating system setting. Changes apply immediately.", -1))
+              o[23] || (o[23] = l("p", { class: "ap-hint" }, "Auto follows your browser or operating system setting. Changes apply immediately.", -1))
             ]),
-            a("section", fn, [
-              a("header", hn, [
-                g(i(y), {
+            l("section", pn, [
+              l("header", fn, [
+                g(r(y), {
                   icon: "tabler:layout-2",
                   "aria-hidden": "true"
                 }),
                 o[24] || (o[24] = L(" Layout", -1))
               ]),
-              o[31] || (o[31] = a("p", { class: "ap-sub" }, "Where navigation sits.", -1)),
-              a("div", vn, [
-                a("button", {
-                  class: N(["ap-lo", l.value === "vertical" && "ap-lo-on"]),
-                  onClick: o[5] || (o[5] = (d) => l.value = "vertical")
+              o[31] || (o[31] = l("p", { class: "ap-sub" }, "Where navigation sits.", -1)),
+              l("div", hn, [
+                l("button", {
+                  class: P(["ap-lo", a.value === "vertical" && "ap-lo-on"]),
+                  onClick: o[5] || (o[5] = (d) => a.value = "vertical")
                 }, [
-                  o[26] || (o[26] = a("span", { class: "mock mock-v" }, [
-                    a("span", { class: "mock-rail" }, [
-                      a("i"),
-                      a("i"),
-                      a("i")
+                  o[26] || (o[26] = l("span", { class: "mock mock-v" }, [
+                    l("span", { class: "mock-rail" }, [
+                      l("i"),
+                      l("i"),
+                      l("i")
                     ]),
-                    a("span", { class: "mock-fill" })
+                    l("span", { class: "mock-fill" })
                   ], -1)),
-                  a("span", mn, [
+                  l("span", vn, [
                     o[25] || (o[25] = L("Vertical ", -1)),
-                    l.value === "vertical" ? (v(), fe(i(y), {
+                    a.value === "vertical" ? (m(), fe(r(y), {
                       key: 0,
                       icon: "tabler:circle-check-filled",
                       "aria-hidden": "true"
                     })) : S("", !0)
                   ]),
-                  o[27] || (o[27] = a("span", { class: "ap-lo-desc" }, "Sidebar rail", -1))
+                  o[27] || (o[27] = l("span", { class: "ap-lo-desc" }, "Sidebar rail", -1))
                 ], 2),
-                a("button", {
-                  class: N(["ap-lo", l.value === "horizontal" && "ap-lo-on"]),
-                  onClick: o[6] || (o[6] = (d) => l.value = "horizontal")
+                l("button", {
+                  class: P(["ap-lo", a.value === "horizontal" && "ap-lo-on"]),
+                  onClick: o[6] || (o[6] = (d) => a.value = "horizontal")
                 }, [
-                  o[29] || (o[29] = a("span", { class: "mock mock-h" }, [
-                    a("span", { class: "mock-top" }, [
-                      a("i"),
-                      a("i"),
-                      a("i")
+                  o[29] || (o[29] = l("span", { class: "mock mock-h" }, [
+                    l("span", { class: "mock-top" }, [
+                      l("i"),
+                      l("i"),
+                      l("i")
                     ]),
-                    a("span", { class: "mock-fill" })
+                    l("span", { class: "mock-fill" })
                   ], -1)),
-                  a("span", bn, [
+                  l("span", mn, [
                     o[28] || (o[28] = L("Horizontal ", -1)),
-                    l.value === "horizontal" ? (v(), fe(i(y), {
+                    a.value === "horizontal" ? (m(), fe(r(y), {
                       key: 0,
                       icon: "tabler:circle-check-filled",
                       "aria-hidden": "true"
                     })) : S("", !0)
                   ]),
-                  o[30] || (o[30] = a("span", { class: "ap-lo-desc" }, "Top bar", -1))
+                  o[30] || (o[30] = l("span", { class: "ap-lo-desc" }, "Top bar", -1))
                 ], 2)
               ])
             ]),
-            a("section", gn, [
-              a("header", yn, [
-                g(i(y), {
+            l("section", bn, [
+              l("header", gn, [
+                g(r(y), {
                   icon: "tabler:info-circle",
                   "aria-hidden": "true"
                 }),
                 o[32] || (o[32] = L(" How it works", -1))
               ]),
-              a("ul", kn, [
-                a("li", null, [
-                  g(i(y), {
+              l("ul", yn, [
+                l("li", null, [
+                  g(r(y), {
                     icon: "tabler:grip-vertical",
                     "aria-hidden": "true"
                   }),
                   o[33] || (o[33] = L(" Drag to reorder or move between categories.", -1))
                 ]),
-                a("li", null, [
-                  g(i(y), {
+                l("li", null, [
+                  g(r(y), {
                     icon: "tabler:cursor-text",
                     "aria-hidden": "true"
                   }),
                   o[34] || (o[34] = L(" Click a label to rename it.", -1))
                 ]),
-                a("li", null, [
-                  g(i(y), {
+                l("li", null, [
+                  g(r(y), {
                     icon: "tabler:mood-smile",
                     "aria-hidden": "true"
                   }),
                   o[35] || (o[35] = L(" Click an icon to pick a new Tabler glyph.", -1))
                 ]),
-                a("li", null, [
-                  g(i(y), {
+                l("li", null, [
+                  g(r(y), {
                     icon: "tabler:eye-off",
                     "aria-hidden": "true"
                   }),
@@ -1460,203 +1461,203 @@ const Pt = { class: "ap" }, jt = { class: "ap-body" }, zt = { class: "ap-bar" },
               ])
             ])
           ]),
-          a("section", wn, [
-            a("header", Cn, [
-              g(i(y), {
+          l("section", kn, [
+            l("header", wn, [
+              g(r(y), {
                 icon: "tabler:sitemap",
                 "aria-hidden": "true"
               }),
               o[38] || (o[38] = L(" Structure ", -1)),
-              a("button", {
+              l("button", {
                 class: "ap-btn ap-btn-ghost ap-add",
                 onClick: o[7] || (o[7] = //@ts-ignore
-                (...d) => i(Me) && i(Me)(...d))
+                (...d) => r(Ve) && r(Ve)(...d))
               }, [
-                g(i(y), {
+                g(r(y), {
                   icon: "tabler:folder-plus",
                   "aria-hidden": "true"
                 }),
                 o[37] || (o[37] = L(" Add category", -1))
               ])
             ]),
-            (v(!0), k(Z, null, he(i(U), (d) => (v(), k("div", {
+            (m(!0), k(W, null, he(r(A), (d) => (m(), k("div", {
               key: d.key || "_root",
-              class: N(["ap-group", i(de) === d.key && "ap-group-over"]),
-              onDragover: W((b) => de.value = d.key, ["prevent"]),
-              onDragleave: (b) => i(de) === d.key && (de.value = null),
-              onDrop: W((b) => i(De)(d.key), ["prevent"])
+              class: P(["ap-group", r(de) === d.key && "ap-group-over"]),
+              onDragover: q((v) => de.value = d.key, ["prevent"]),
+              onDragleave: (v) => r(de) === d.key && (de.value = null),
+              onDrop: q((v) => r(Me)(d.key), ["prevent"])
             }, [
-              a("div", {
+              l("div", {
                 class: "ap-group-head",
-                onDragover: o[9] || (o[9] = W(() => {
+                onDragover: o[9] || (o[9] = q(() => {
                 }, ["prevent"])),
-                onDrop: W((b) => d.real ? i(Qe)(d.key) : i(De)(d.key), ["prevent", "stop"])
+                onDrop: q((v) => d.real ? r(Je)(d.key) : r(Me)(d.key), ["prevent", "stop"])
               }, [
-                d.real ? (v(), k("span", {
+                d.real ? (m(), k("span", {
                   key: 0,
                   class: "ap-grip ap-grip-cat",
                   draggable: "true",
                   title: "Drag to reorder category",
-                  onDragstart: (b) => i(Je)(d.key, b),
+                  onDragstart: (v) => r(qe)(d.key, v),
                   onDragend: o[8] || (o[8] = //@ts-ignore
-                  (...b) => i(ce) && i(ce)(...b))
+                  (...v) => r(ce) && r(ce)(...v))
                 }, [
-                  g(i(y), {
+                  g(r(y), {
                     icon: "tabler:grip-vertical",
                     "aria-hidden": "true"
                   })
-                ], 40, $n)) : (v(), k("span", Sn)),
-                d.real ? (v(), k(Z, { key: 2 }, [
-                  g(Ue, {
-                    "model-value": i(re)(d.key)?.icon || "",
+                ], 40, Ln)) : (m(), k("span", $n)),
+                d.real ? (m(), k(W, { key: 2 }, [
+                  g(_e, {
+                    "model-value": r(re)(d.key)?.icon || "",
                     fallback: "tabler:folder",
-                    "onUpdate:modelValue": (b) => i(nt)(d.key, b)
+                    "onUpdate:modelValue": (v) => r(tt)(d.key, v)
                   }, null, 8, ["model-value", "onUpdate:modelValue"]),
-                  a("input", {
-                    value: i(re)(d.key)?.label,
+                  l("input", {
+                    value: r(re)(d.key)?.label,
                     class: "ap-field ap-field-strong",
                     "aria-label": "Category name",
                     placeholder: "Category name",
-                    onInput: (b) => i(tt)(d.key, b.target.value)
-                  }, null, 40, Dn)
-                ], 64)) : (v(), k(Z, { key: 3 }, [
-                  a("span", Mn, [
-                    g(i(y), {
+                    onInput: (v) => r(et)(d.key, v.target.value)
+                  }, null, 40, Sn)
+                ], 64)) : (m(), k(W, { key: 3 }, [
+                  l("span", Dn, [
+                    g(r(y), {
                       icon: "tabler:layout-list",
                       "aria-hidden": "true"
                     })
                   ]),
-                  a("span", Vn, I(d.label), 1)
+                  l("span", Mn, I(d.label), 1)
                 ], 64)),
-                a("span", xn, I(i(V)(d.key).length), 1),
-                d.real ? (v(), k("button", {
+                l("span", Vn, I(r(V)(d.key).length), 1),
+                d.real ? (m(), k("button", {
                   key: 4,
                   class: "ap-icon-btn ap-danger",
                   "aria-label": "Remove category",
                   title: "Remove category",
-                  onClick: (b) => i(et)(d.key)
+                  onClick: (v) => r(Qe)(d.key)
                 }, [
-                  g(i(y), {
+                  g(r(y), {
                     icon: "tabler:trash",
                     "aria-hidden": "true"
                   })
-                ], 8, Bn)) : S("", !0)
-              ], 40, Ln),
-              i(V)(d.key).length === 0 ? (v(), k("div", In, "Drag a surface here")) : S("", !0),
-              (v(!0), k(Z, null, he(i(V)(d.key), (b) => (v(), k("div", {
-                key: b.id,
-                class: N(["ap-row", i(ye) === b.id && "ap-row-dragging"]),
-                onDragover: o[11] || (o[11] = W(() => {
+                ], 8, xn)) : S("", !0)
+              ], 40, Hn),
+              r(V)(d.key).length === 0 ? (m(), k("div", Bn, "Drag a surface here")) : S("", !0),
+              (m(!0), k(W, null, he(r(V)(d.key), (v) => (m(), k("div", {
+                key: v.id,
+                class: P(["ap-row", r(ye) === v.id && "ap-row-dragging"]),
+                onDragover: o[11] || (o[11] = q(() => {
                 }, ["prevent", "stop"])),
-                onDrop: W((F) => i(qe)(b), ["prevent", "stop"])
+                onDrop: q((_) => r(We)(v), ["prevent", "stop"])
               }, [
-                a("span", {
+                l("span", {
                   class: "ap-grip",
                   draggable: "true",
                   title: "Drag to reorder or move",
-                  onDragstart: (F) => i(We)(b, F),
+                  onDragstart: (_) => r(Ze)(v, _),
                   onDragend: o[10] || (o[10] = //@ts-ignore
-                  (...F) => i(ce) && i(ce)(...F))
+                  (..._) => r(ce) && r(ce)(..._))
                 }, [
-                  g(i(y), {
+                  g(r(y), {
                     icon: "tabler:grip-vertical",
                     "aria-hidden": "true"
                   })
-                ], 40, Tn),
-                g(Ue, {
-                  "model-value": b.icon || "",
+                ], 40, En),
+                g(_e, {
+                  "model-value": v.icon || "",
                   fallback: "tabler:square",
-                  "onUpdate:modelValue": (F) => i($)(b, F)
+                  "onUpdate:modelValue": (_) => r($)(v, _)
                 }, null, 8, ["model-value", "onUpdate:modelValue"]),
-                a("input", {
-                  value: b.label,
+                l("input", {
+                  value: v.label,
                   class: "ap-field ap-field-strong",
                   "aria-label": "Surface label",
                   placeholder: "Label",
-                  onInput: (F) => i(f)(b, F.target.value)
-                }, null, 40, On),
-                a("span", Rn, I(b.path), 1),
-                b.source === "custom" ? (v(), k("span", Fn, "custom")) : S("", !0),
-                i(ie)(b) ? (v(), k("span", _n, [
-                  g(i(y), {
+                  onInput: (_) => r(f)(v, _.target.value)
+                }, null, 40, Tn),
+                l("span", On, I(v.path), 1),
+                v.source === "custom" ? (m(), k("span", Rn, "custom")) : S("", !0),
+                r(le)(v) ? (m(), k("span", Fn, [
+                  g(r(y), {
                     icon: "tabler:home",
                     "aria-hidden": "true"
                   }),
                   o[39] || (o[39] = L(" home", -1))
                 ])) : S("", !0),
-                i(B)(b) ? (v(), fe(i(y), {
+                r(B)(v) ? (m(), fe(r(y), {
                   key: 2,
                   icon: "tabler:pencil",
                   class: "ap-edited",
                   title: "Customized — reset the field to revert",
                   "aria-hidden": "true"
                 })) : S("", !0),
-                a("button", {
-                  class: N(["ap-icon-btn", i(ie)(b) && "ap-home-on"]),
-                  "aria-label": i(ie)(b) ? "Home page (click to unset)" : "Set as home page",
-                  title: i(ie)(b) ? "Home page — click to unset" : "Set as home page",
-                  onClick: (F) => i(ot)(b)
+                l("button", {
+                  class: P(["ap-icon-btn", r(le)(v) && "ap-home-on"]),
+                  "aria-label": r(le)(v) ? "Home page (click to unset)" : "Set as home page",
+                  title: r(le)(v) ? "Home page — click to unset" : "Set as home page",
+                  onClick: (_) => r(nt)(v)
                 }, [
-                  g(i(y), {
-                    icon: i(ie)(b) ? "tabler:home-filled" : "tabler:home",
+                  g(r(y), {
+                    icon: r(le)(v) ? "tabler:home-filled" : "tabler:home",
                     "aria-hidden": "true"
                   }, null, 8, ["icon"])
-                ], 10, Un),
-                a("button", {
+                ], 10, _n),
+                l("button", {
                   class: "ap-icon-btn",
                   "aria-label": "Hide",
                   title: "Hide",
-                  onClick: (F) => i(u)(b, !0)
+                  onClick: (_) => r(u)(v, !0)
                 }, [
-                  g(i(y), {
+                  g(r(y), {
                     icon: "tabler:eye",
                     "aria-hidden": "true"
                   })
-                ], 8, An)
-              ], 42, En))), 128))
-            ], 42, Hn))), 128)),
-            i(oe).length ? (v(), k("div", Nn, [
-              a("button", {
+                ], 8, Un)
+              ], 42, In))), 128))
+            ], 42, Cn))), 128)),
+            r(ie).length ? (m(), k("div", An, [
+              l("button", {
                 class: "ap-hidden-h",
                 onClick: o[12] || (o[12] = (d) => E.value = !E.value)
               }, [
-                g(i(y), {
+                g(r(y), {
                   icon: E.value ? "tabler:chevron-down" : "tabler:chevron-right",
                   "aria-hidden": "true"
                 }, null, 8, ["icon"]),
-                g(i(y), {
+                g(r(y), {
                   icon: "tabler:eye-off",
                   "aria-hidden": "true"
                 }),
-                L(" Hidden (" + I(i(oe).length) + ") ", 1)
+                L(" Hidden (" + I(r(ie).length) + ") ", 1)
               ]),
-              E.value ? (v(), k("div", Pn, [
-                (v(!0), k(Z, null, he(i(oe), (d) => (v(), k("div", {
+              E.value ? (m(), k("div", Nn, [
+                (m(!0), k(W, null, he(r(ie), (d) => (m(), k("div", {
                   key: d.id,
                   class: "ap-row ap-row-off"
                 }, [
-                  o[40] || (o[40] = a("span", {
+                  o[40] || (o[40] = l("span", {
                     class: "ap-grip ap-grip-ghost",
                     "aria-hidden": "true"
                   }, null, -1)),
-                  a("span", jn, [
-                    g(i(y), {
+                  l("span", Pn, [
+                    g(r(y), {
                       icon: d.icon || "tabler:square",
                       "aria-hidden": "true"
                     }, null, 8, ["icon"])
                   ]),
-                  a("span", zn, I(d.label), 1),
-                  a("button", {
+                  l("span", jn, I(d.label), 1),
+                  l("button", {
                     class: "ap-icon-btn",
                     "aria-label": "Show",
                     title: "Show",
-                    onClick: (b) => i(u)(d, !1)
+                    onClick: (v) => r(u)(d, !1)
                   }, [
-                    g(i(y), {
+                    g(r(y), {
                       icon: "tabler:eye-plus",
                       "aria-hidden": "true"
                     })
-                  ], 8, Gn)
+                  ], 8, zn)
                 ]))), 128))
               ])) : S("", !0)
             ])) : S("", !0)
@@ -1665,11 +1666,11 @@ const Pt = { class: "ap" }, jt = { class: "ap-body" }, zt = { class: "ap-bar" },
       ])
     ]));
   }
-}), qn = {
-  rootComponent: Xn,
-  plugins: [bt]
+}), Wn = {
+  rootComponent: Gn,
+  plugins: [mt]
 };
 export {
-  qn as mountConfig
+  Wn as mountConfig
 };
-//# sourceMappingURL=lazy-mount-DycIx7Up.js.map
+//# sourceMappingURL=lazy-mount-CH5Q77yz.js.map

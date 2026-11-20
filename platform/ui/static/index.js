@@ -33,7 +33,7 @@ class t extends n {
   static get vueConfig() {
     return {
       lazyConfig: v(
-        () => import("./lazy-mount-DycIx7Up.js").then((r) => r.mountConfig),
+        () => import("./lazy-mount-CH5Q77yz.js").then((r) => r.mountConfig),
         "Could not load Appearance. Reload the page to try again.",
         c
       )
