@@ -178,6 +178,21 @@ entries:
         methods:
           reconfigure: kickside.automation.round.fixture:reconfigure_scheduled
 
+  - name: events_feed
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Round Fixture Event Feed
+    binding: kickside.automation.round.fixture:round_source_kind
+    event: kickside.automation.round.fixture.events:source.received
+    output_schema: '{ "type": "object", "properties": { "directive": { "type": "string" } } }'
+    config_schema:
+      thread_id:
+        type: string
+        title: Feed
+        picker: wc-component-picker
+        class: kickside.test.round
+
   - name: records_binding
     kind: contract.binding
     meta:
