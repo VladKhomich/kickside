@@ -78,10 +78,12 @@ entries:
     meta:
       private: true
     source: file://thread_ingest_reingest.lua
-    modules: [json]
+    modules: [json, funcs, registry, uuid]
     imports:
       thread_ingest_base: kickside.knowledge.injection:thread_ingest_base
       thread_ingest_status: kickside.knowledge.injection:thread_ingest_status
+      component: kickside.component:component
+      uploads: kickside.uploads.persist:upload_read_model
 
   - name: thread_ingest
     kind: library.lua
