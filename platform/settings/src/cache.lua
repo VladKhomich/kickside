@@ -8,7 +8,9 @@ local json = require("json")
 local settings_types = require("settings_types")
 
 local STORE_ID = "kickside.settings:cache"
-local SNAPSHOT_KEY = "snapshot"
+-- Existing snapshots may have dropped JSON nulls during a previous reload.
+-- A new key makes the upgraded reader warm from the stored overrides.
+local SNAPSHOT_KEY = "snapshot-v2"
 
 local M = {}
 
@@ -20,7 +22,7 @@ local function snapshot(): Snapshot?
     local raw = s:get(SNAPSHOT_KEY)
     s:release()
     if raw == nil then return nil end
-    local decoded, derr = json.decode(tostring(raw))
+    local decoded, derr = json.decode_with_nulls(tostring(raw))
     if derr or type(decoded) ~= "table" or type(decoded.revision) ~= "number"
         or type(decoded.overrides) ~= "table" then
         return nil

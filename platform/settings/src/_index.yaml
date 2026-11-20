@@ -137,7 +137,7 @@ entries:
     kind: library.lua
     meta: { comment: Discover kickside.settings:definition entries + coerce values to their declared type. }
     source: file://defs.lua
-    modules: [registry, time]
+    modules: [registry, time, json]
     imports:
       settings_types: kickside.settings:settings_types
 

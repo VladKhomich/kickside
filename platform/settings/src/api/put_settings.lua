@@ -29,7 +29,7 @@ local function handler()
         res:write_json({ success = false, error = "invalid request body" })
         return
     end
-    local body, perr = json.decode(raw)
+    local body, perr = json.decode_with_nulls(raw)
     if perr or type(body) ~= "table" then
         res:set_status(http.STATUS.BAD_REQUEST)
         res:write_json({ success = false, error = "invalid json" })
@@ -55,13 +55,13 @@ local function handler()
     local updated = {}
     for _, item in ipairs(items :: { any }) do
         local it = item :: { namespace: any, key: any, value: any }
-        if type(it.namespace) ~= "string" or type(it.key) ~= "string" then
+        if type(item) ~= "table" or type(it.namespace) ~= "string" or type(it.key) ~= "string" then
             res:set_status(http.STATUS.BAD_REQUEST)
             res:write_json({ success = false, error = "namespace and key are required" })
             return
         end
         local r
-        if it.value == nil then
+        if it.value == nil or it.value == json.null then
             r = inst:unset({ namespace = it.namespace, key = it.key })
         else
             r = inst:set({ namespace = it.namespace, key = it.key, value = it.value })

@@ -76,6 +76,7 @@ entries:
     parameters:
       - { name: 'kickside.component:target_db', value: 'app:db' }
       - { name: 'kickside.component:api_router', value: 'app:api' }
+      - { name: 'kickside.component:lifecycle_impl', value: 'kickside.core.lifecycle:component_lifecycle_impl' }
 
   - name: dep.kickside.jobs
     kind: ns.dependency
@@ -560,3 +561,46 @@ entries:
       resources: '*'
       actions: [access, contract.get, contract.open, contract.call, contract.implementations, contract.security, funcs.call, funcs.security, registry.get, registry.find, db.get, store.get, store.key.get, store.key.set, store.key.delete, pg.open, pg.broadcast]
       effect: allow
+
+  - name: schema_labels
+    kind: registry.entry
+    meta: { type: kickside.settings:definition }
+    namespace: kickside.settings.schema_fixture
+    key: labels
+    value_type: json
+    default: [default]
+    schema:
+      type: array
+      items: { type: string, minLength: 1 }
+
+  - name: schema_rules
+    kind: registry.entry
+    meta: { type: kickside.settings:definition }
+    namespace: kickside.settings.schema_fixture
+    key: rules
+    value_type: json
+    default: { enabled: true }
+    schema:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        lanes:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string, minLength: 1 }
+        options: { type: object }
+
+  - name: schema_contract_test
+    kind: function.lua
+    meta: { type: test, suite: settings_schema }
+    source: file://schema_contract_test.lua
+    method: run
+    modules: [contract, security, sql, json, store]
+    imports:
+      test: wippy.test:test
+      writer: kickside.settings.persist:settings_writer
