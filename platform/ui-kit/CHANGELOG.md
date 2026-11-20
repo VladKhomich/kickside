@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.4](https://github.com/kicksideai/kickside/compare/ui-kit-v1.7.3...ui-kit-v1.7.4) (2026-11-20)
+
+
+### Bug Fixes
+
+* **ui-kit:** preserve explicit button focus treatments ([#736](https://github.com/kicksideai/kickside/issues/736)) ([50fe5dc](https://github.com/kicksideai/kickside/commit/50fe5dcbe3419dc98f1caa459d25a5460bd4fca0))
+
 ## [1.7.3](https://github.com/kicksideai/kickside/compare/ui-kit-v1.7.2...ui-kit-v1.7.3) (2026-11-19)
 
 
