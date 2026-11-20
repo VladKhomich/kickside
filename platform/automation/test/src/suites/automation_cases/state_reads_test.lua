@@ -11,6 +11,7 @@
 type Map = { [string]: any }
 
 local test = require("test")
+local api_errors = require("api_errors")
 local automation_test_engine = require("automation_test_engine")
 local automations_lib: any = {}
 local active_dependencies: Map = {}
@@ -205,6 +206,45 @@ end
 local function define_tests()
     test.describe("kickside.automation:automation", function()
         test.describe("state helpers", function()
+            test.it("maps an empty READ-scoped public state query to HTTP 404", function()
+                with_loaded_modules({
+                    component = { ACCESS = { READ = 1, WRITE = 2 }, query = function(args)
+                        test.eq(args.component_ids[1], "auto-1")
+                        test.eq(args.access_mask, 1)
+                        return {}, nil
+                    end },
+                    registry = { get = function() error("no binding should be loaded for an invisible row") end },
+                }, function()
+                    local state, err = automations_lib.read_public_state("auto-1")
+                    test.is_nil(state)
+                    local status, payload = api_errors.status(err, "read_state_failed", "read state failed")
+                    test.eq(status, 404)
+                    test.eq(payload.code, "not_found")
+                end)
+            end)
+
+            test.it("preserves authorization and storage failures from the public state query", function()
+                for _, case in ipairs({
+                    { kind = errors.PERMISSION_DENIED, status = 403, code = "access_denied" },
+                    { kind = errors.INTERNAL, status = 500, code = "read_state_failed" },
+                }) do
+                    local query_err = errors.new({ kind = case.kind, message = "component query failed" })
+                    with_loaded_modules({
+                        component = { ACCESS = { READ = 1, WRITE = 2 }, query = function()
+                            return nil, query_err
+                        end },
+                        registry = { get = function() error("no binding should be loaded after a query failure") end },
+                    }, function()
+                        local state, err = automations_lib.read_public_state("auto-1")
+                        test.is_nil(state)
+                        test.is_true(err == query_err)
+                        local status, payload = api_errors.status(err, "read_state_failed", "read state failed")
+                        test.eq(status, case.status)
+                        test.eq(payload.code, case.code)
+                    end)
+                end
+            end)
+
             test.it("returns a typed invalid request for config on a non-reconfigurable type", function()
                 with_loaded_modules({
                     registry = { get = function()

@@ -189,7 +189,7 @@ function part.attach(M: any, dependencies: any, P: any): ()
         if query_err then return nil, nil, query_err end
         local row = rows and rows[1]
         if not row or type(row.impl_id) ~= "string" or row.impl_id == "" then
-            return nil, nil, "automation not found"
+            return nil, nil, errors.new({ kind = errors.NOT_FOUND, message = "automation not found" })
         end
         local schema, schema_err = public_state_schema_for_impl(registry, row.impl_id)
         if schema_err then return nil, nil, schema_err end
