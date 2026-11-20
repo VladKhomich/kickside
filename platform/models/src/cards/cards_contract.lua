@@ -51,4 +51,12 @@ function M.disable_card(args: any): any
     return respond(card_service.disable(args.name))
 end
 
+-- delete_card({ name }) -> { success, error? }. Deletes a disabled stored card.
+function M.delete_card(args: any): any
+    if type(args) ~= "table" then return { success = false, error = "request must be an object" } end
+    local ok, err = card_service.delete(args.name)
+    if not ok then return { success = false, error = tostring(err) } end
+    return { success = true }
+end
+
 return M

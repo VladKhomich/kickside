@@ -22,4 +22,12 @@ function M.disable(name: any): (any?, any?)
     return models_repo.disable_card(name)
 end
 
+-- Deletes the stored card named name once it is disabled. An enabled card is in
+-- use (it resolves by name and class), so deleting one is refused; a caller
+-- retires it with disable first.
+function M.delete(name: any): (boolean, any?)
+    if type(name) ~= "string" or name == "" then return false, "Model name is required" end
+    return models_repo.delete_disabled_card(name)
+end
+
 return M

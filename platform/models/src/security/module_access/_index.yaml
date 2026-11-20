@@ -122,8 +122,10 @@ entries:
     - kickside.models.cards:cards_binding
     - kickside.models.cards:upsert_card
     - kickside.models.cards:disable_card
+    - kickside.models.cards:delete_card
     - upsert_card
     - disable_card
+    - delete_card
     actions:
     - contract.get
     - contract.open
