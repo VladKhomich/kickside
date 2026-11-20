@@ -17,12 +17,19 @@
  * Note for adopters: a CSS `@import` must precede all other rules, so this sheet
  * lands first in the cascade and a module's own rule wins at equal specificity.
  * Adopting a helper therefore means DELETING the local rule, not just importing.
+ *
+ * PrimeVue styles can arrive later as adopted stylesheets. On a PrimeVue
+ * button, an explicit helper outranks the facade's filled, text, and link
+ * focus rules at each light and dark scope.
  */
 
 /* The element draws a border at rest, so the ring is that border going primary
    plus the shared halo. Filled controls count: their border is transparent until
    focus, which is what it is there for. */
-.kx-focus-halo:focus-visible {
+.kx-focus-halo:focus-visible,
+.p-button.p-button.kx-focus-halo.kx-focus-halo:focus-visible,
+.p-button.p-button.kx-focus-halo.kx-focus-halo:focus-visible:not(.w-theme-light *):not(.w-theme-light),
+.p-button.p-button.kx-focus-halo.kx-focus-halo:focus-visible:is(.w-theme-dark, .w-theme-dark *) {
   border-color: var(--p-focus-ring-color);
   outline: none;
   box-shadow: var(--p-focus-ring-shadow);
@@ -30,7 +37,10 @@
 
 /* The element draws no box, so there is no border to light: the ring is an offset
    outline, and no halo - a halo with no edge to hug reads as a smudge. */
-.kx-focus-outline:focus-visible {
+.kx-focus-outline:focus-visible,
+.p-button.p-button.kx-focus-outline.kx-focus-outline:focus-visible,
+.p-button.p-button.kx-focus-outline.kx-focus-outline:focus-visible:not(.w-theme-light *):not(.w-theme-light),
+.p-button.p-button.kx-focus-outline.kx-focus-outline:focus-visible:is(.w-theme-dark, .w-theme-dark *) {
   outline: var(--p-focus-ring-width) var(--p-focus-ring-style) var(--p-focus-ring-color);
   outline-offset: var(--p-focus-ring-offset);
   box-shadow: none;
