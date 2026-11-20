@@ -5,22 +5,28 @@ local function entry(placement: any): any
     return { id = "app:placement_child", kind = "contract.binding", meta = { placement = placement } }
 end
 
+local function admits(parent: string, child: string, producer: string, plugin: string?): boolean
+    local allowed, err = rules.admits_owned_child(parent, child, producer, plugin)
+    test.is_nil(err, tostring(err))
+    return allowed
+end
+
 local run_cases = test.run_cases(function()
     test.describe("placement declaration validation", function()
         test.it("matches an owned child to the installed parent's exact producer and implementation", function()
             local producer = "app.component_suites.binding:register_test_child"
-            test.is_true(rules.admits_owned_child("app:placement_parent", "app:placement_child", producer))
-            test.is_false(rules.admits_owned_child("app:placement_parent", "app:placement_root", producer))
-            test.is_false(rules.admits_owned_child("app:placement_parent", "app:placement_child", "app:placement_rules_test"))
-            test.is_false(rules.admits_owned_child("app:placement_root", "app:placement_child", producer))
+            test.is_true(admits("app:placement_parent", "app:placement_child", producer))
+            test.is_false(admits("app:placement_parent", "app:placement_root", producer))
+            test.is_false(admits("app:placement_parent", "app:placement_child", "app:placement_rules_test"))
+            test.is_false(admits("app:placement_root", "app:placement_child", producer))
         end)
         test.it("matches the installed plugin type, declared attachment and producer for root custody", function()
             local producer = "app.component_suites.binding:register_test_child"
             local plugin = "app:root_attachment_plugin"
-            test.is_true(rules.admits_owned_child("app:placement_parent", "app:placement_root", producer, plugin))
-            test.is_false(rules.admits_owned_child("app:placement_parent", "app:placement_child", producer, plugin))
-            test.is_false(rules.admits_owned_child("app:placement_parent", "app:placement_root", producer, "app:placement_child"))
-            test.is_false(rules.admits_owned_child("app:placement_parent", "app:placement_root", "app:placement_rules_test", plugin))
+            test.is_true(admits("app:placement_parent", "app:placement_root", producer, plugin))
+            test.is_false(admits("app:placement_parent", "app:placement_child", producer, plugin))
+            test.is_false(admits("app:placement_parent", "app:placement_root", producer, "app:placement_child"))
+            test.is_false(admits("app:placement_parent", "app:placement_root", "app:placement_rules_test", plugin))
         end)
         test.it("accepts installed kind ids, root and an omitted fixed flag", function()
             local parsed, err = rules.validate_binding(entry({ parents = { "app:placement_parent", "root" } }))

@@ -37,6 +37,8 @@ type ReaderState = {
 
 M.ReaderState = ReaderState
 
+local META_MATCH = "SELECT component_id FROM " .. component_types.TABLES.META .. " WHERE key = ? AND value = ?"
+
 -- Build a parameterized IN clause as { sql_fragment, value1, value2, ... }.
 local function create_in_clause(field: string, values: string[]?): any[]?
     if not values or #values == 0 then
@@ -78,10 +80,20 @@ end
 -- subjects' direct grants on the component and on every ancestor). When the
 -- caller scopes to specific component ids, the filter is pushed into the reach
 -- rows so single-component reads stay bounded.
-local function apply_access_join(query_builder: any, subjects: any, prefixes: {string}?, component_ids: string[]?, access_mask_filter: integer?): any
+local function apply_access_join(query_builder: any, subjects: any, prefixes: {string}?, component_ids: string[]?,
+    access_mask_filter: integer?, meta_key: string?, meta_value: string?): any
     local reach, args = access_subjects.reach_rows(subjects, component_ids)
+    local metadata_join = ""
+    if meta_key ~= nil then
+        -- A component has at most one row per metadata key. Filter reached
+        -- components before grouping without multiplying or dropping grants.
+        metadata_join = " INNER JOIN (" .. META_MATCH .. ") m ON m.component_id = x.component_id"
+        args[#args + 1] = meta_key
+        args[#args + 1] = meta_value
+    end
     local join_sql = "(SELECT x.component_id AS component_id, " .. access_subjects.EFFECTIVE_MASK
-        .. " AS access_mask FROM (" .. reach .. ") x GROUP BY x.component_id) ca ON c.component_id = ca.component_id"
+        .. " AS access_mask FROM (" .. reach .. ") x" .. metadata_join
+        .. " GROUP BY x.component_id) ca ON c.component_id = ca.component_id"
     query_builder = query_builder:inner_join(join_sql, unpack(args))
 
     if access_mask_filter then
@@ -162,7 +174,7 @@ local function apply_placement_filters(state: ReaderState, query_builder: any): 
 end
 
 -- Apply id / impl / meta / text filters shared by main and count queries.
-local function apply_filters(state: ReaderState, query_builder: any): any
+local function apply_filters(state: ReaderState, query_builder: any, joined_meta_key: string?): any
     local self = state
     if self._after_component_id then
         query_builder = query_builder:where("c.component_id > ?", self._after_component_id)
@@ -191,10 +203,9 @@ local function apply_filters(state: ReaderState, query_builder: any): any
 
     if self._meta_filters then
         for key, value in pairs(self._meta_filters) do
-            query_builder = query_builder:where(sql.builder.expr(
-                "c.component_id IN (SELECT component_id FROM " .. component_types.TABLES.META .. " WHERE key = ? AND value = ?)",
-                key, value
-            ))
+            if key ~= joined_meta_key then
+                query_builder = query_builder:where(sql.builder.expr("c.component_id IN (" .. META_MATCH .. ")", key, value))
+            end
         end
     end
 
@@ -221,12 +232,18 @@ end
 -- projection, ordering, or aggregation after this point.
 local function filtered_query(state: ReaderState, fields: { string }): any
     local query_builder = sql.builder.select(unpack(fields)):from(component_types.TABLES.COMPONENTS .. " c")
+    local meta_key: string? = nil
     if state._user_id then
         local subjects = access_subjects.resolve(state._user_id)
         local prefixes = access_subjects.access_filter(state._user_id)
-        query_builder = apply_access_join(query_builder, subjects, prefixes, access_component_ids(state), state._access_mask_filter)
+        local meta_value: string?
+        -- One metadata join lets the index scope the grant aggregation without
+        -- growing the join list with the number of caller-supplied filters.
+        if state._meta_filters then meta_key, meta_value = next(state._meta_filters) end
+        query_builder = apply_access_join(query_builder, subjects, prefixes, access_component_ids(state),
+            state._access_mask_filter, meta_key, meta_value)
     end
-    return apply_filters(state, query_builder)
+    return apply_filters(state, query_builder, meta_key)
 end
 
 M.filtered_query = filtered_query
