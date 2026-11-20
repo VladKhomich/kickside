@@ -394,7 +394,8 @@ end
 -- existing cursor. Lifecycle attachments start new cursors at the retained boundary.
 -- Component-backed registration supplies authorization for the locked thread read.
 function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table,
-    mode: string?, declaration_impl_id: string?, source: table?): (RegisterResult?, error?)
+    mode: string?, declaration_impl_id: string?, source: table?,
+    validate_system_worker: (() -> error?)?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -712,7 +713,8 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     local cursor_id: string
     local generation = 1
-    local cursor_rows, cursor_query_err = sql.builder.select("id", "last_seq", "generation", "job_id", "debounce_idle_ms", "debounce_max_ms")
+    local cursor_rows, cursor_query_err = sql.builder.select("id", "last_seq", "generation", "job_id", "debounce_idle_ms",
+        "debounce_max_ms", "actor_id", "execution_identity_json")
         :from("kickside_projection_cursor")
         :where(sql.builder.eq({ projection_id = projection_id, cursor_key = cursor_key }))
         :limit(1):run_with(tx):query()
@@ -720,18 +722,29 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         "failed to load cursor", "cursor.rows", 0, 1, response_error)
     if cursor_query_err then return nil, cursor_query_err end
     if not cursor_rows then return nil, response_error("cursor.rows") end
-    local cursor_head = checkpoint
-    if #cursor_rows > 0 then
-        local cursor = cursor_rows[1]
-        if convergence and (tonumber(cursor.debounce_idle_ms) ~= debounce_idle_ms
-            or tonumber(cursor.debounce_max_ms) ~= debounce_max_ms) then
-            return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
+    local cursor = cursor_rows[1]
+    if cursor and convergence and (tonumber(cursor.debounce_idle_ms) ~= debounce_idle_ms
+        or tonumber(cursor.debounce_max_ms) ~= debounce_max_ms) then
+        return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
+    end
+    if validate_system_worker then
+        -- Ensure preserves the identity stored on an existing cursor. A new
+        -- cursor or one without a principal needs an admitted installed worker.
+        if cursor and (cursor.actor_id ~= nil or cursor.execution_identity_json ~= nil) then
+            local _, identity_err = execution_identity.from_row(cursor.actor_id, cursor.execution_identity_json)
+            if identity_err then return nil, identity_err end
+        else
+            local admission_err = validate_system_worker()
+            if admission_err then return nil, admission_err end
         end
-        cursor_id = tostring(cursor_rows[1].id)
-        cursor_head = reset and start_seq or tonumber(cursor_rows[1].last_seq)
+    end
+    local cursor_head = checkpoint
+    if cursor then
+        cursor_id = tostring(cursor.id)
+        cursor_head = reset and start_seq or tonumber(cursor.last_seq)
         if cursor_head == nil then return fail("projection cursor position is missing", errors.INTERNAL) end
         if cursor_head < pruned_seq then return fail("projection cursor is behind pruned history", errors.CONFLICT) end
-        local prior_generation = tonumber(cursor_rows[1].generation)
+        local prior_generation = tonumber(cursor.generation)
         if prior_generation == nil then return fail("projection cursor generation is missing", errors.INTERNAL) end
         generation = prior_generation
         if params.ensure ~= true then
@@ -830,11 +843,12 @@ end
 -- committing its own transaction off db. On error it rolls back and returns
 -- the error. Delegates to register_projection_tx for the core SQL.
 function writer.register_projection(db: sql.DB, thread_id: string, params: table, mode: string?,
-    declaration_impl_id: string?, source: table?): (RegisterResult?, error?)
+    declaration_impl_id: string?, source: table?, validate_system_worker: (() -> error?)?): (RegisterResult?, error?)
     local dbtype, dbtype_err = sql_boundary.database_type(db, "failed to resolve db type", "database.type", response_error)
     if dbtype_err then return nil, dbtype_err end
     local result, err = sql_boundary.transaction(db, function(tx: sql.Transaction): (any?, error?)
-        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id, source)
+        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id, source,
+            validate_system_worker)
     end, "projection registration", response_error)
     if err then return nil, err end
     if result and (result.transitioned or result.deferred) then return result, nil end
