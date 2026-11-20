@@ -26,7 +26,7 @@ class KicksideWebhookDetailElement extends WippyVueElement<ComponentProps, Event
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/WebhookSourceDetail.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading webhook details…', failed: 'Could not load the webhook details. Reload the page to try again.', delay: true ? 0 : 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/WebhookSourceDetail.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading webhook details…', failed: 'Could not load the webhook details. Reload the page to try again.', delay: 0, timeout: 30000 })
   }
 }
 

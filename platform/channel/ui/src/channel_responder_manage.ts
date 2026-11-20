@@ -31,7 +31,7 @@ class KicksideChannelResponderManageElement extends WippyVueElement<Props, Event
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/ChannelResponderManage.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading channel responder settings…', failed: 'Could not load the channel responder settings. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/ChannelResponderManage.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading channel responder settings…', failed: 'Could not load the channel responder settings. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

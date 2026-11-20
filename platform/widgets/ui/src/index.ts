@@ -18,7 +18,7 @@ class KicksideIconPickerElement extends WippyVueElement<ComponentProps, Events> 
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/IconPicker.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading icon picker…', failed: 'Could not load the icon picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/IconPicker.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading icon picker…', failed: 'Could not load the icon picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
   }
 }
 

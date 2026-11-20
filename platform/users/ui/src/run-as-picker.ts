@@ -18,7 +18,7 @@ class KicksideRunAsPickerElement extends WippyVueElement<Props, Events> {
   static get wippyConfig(): WippyElementConfig<Props> {
     return { propsSchema, hostCssKeys: ['themeConfigUrl', 'primeVueCssUrl'] as const, inlineCss: stylesText }
   }
-  static get vueConfig() { return lazyVueConfig(() => (() => import('./app/RunAsPickerElement.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading run-as picker…', failed: 'Could not load the run-as picker. Reload the page to try again.', delay: 200, timeout: 30000 }) }
+  static get vueConfig() { return lazyVueConfig(() => import('./app/RunAsPickerElement.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading run-as picker…', failed: 'Could not load the run-as picker. Reload the page to try again.', delay: 200, timeout: 30000 }) }
 }
 export async function webComponent() { return KicksideRunAsPickerElement }
 define(import.meta.url, KicksideRunAsPickerElement)

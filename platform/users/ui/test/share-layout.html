@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Share layout test</title>
+  <link rel="stylesheet" href="./share-host.css">
+  <link rel="stylesheet" href="./facade.css">
+</head>
+<body>
+  <div id="host"></div>
+  <script type="module">
+    import { createApp, h } from 'vue'
+    import PrimeVue from 'primevue/config'
+    import ConfirmDialog from 'primevue/confirmdialog'
+    import ConfirmationService from 'primevue/confirmationservice'
+
+    const host = createApp({
+      render: () => h(ConfirmDialog, null, {
+        message: ({ message }) => h('div', [h('p', message.message)]),
+      }),
+    })
+    host.use(PrimeVue, { theme: 'none' }).use(ConfirmationService).mount('#host')
+
+    window.__WIPPY_APP_CONFIG__ = {}
+    window.__WIPPY_APP_API__ = {
+      config: {},
+      api: {
+        async get(url) {
+          const response = await fetch(url)
+          return { data: await response.json() }
+        },
+      },
+      host: {
+        confirm: options => new Promise(resolve => host.config.globalProperties.$confirm.require({
+          ...options,
+          accept: () => resolve(true),
+          reject: () => resolve(false),
+        })),
+      },
+      state: { get: () => null, subscribe: () => () => {} },
+      on: () => () => {},
+      logger: console,
+    }
+    await import('../src/share.ts?declare-tag=kickside-share')
+    const widget = document.createElement('kickside-share')
+    widget.setAttribute('config', JSON.stringify({
+      resource_id: 'release-board',
+      title: 'Release board',
+      access_url: '/api/test/access',
+      share_url: '/api/test/share',
+    }))
+    document.body.append(widget)
+  </script>
+</body>
+</html>

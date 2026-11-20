@@ -35,10 +35,10 @@ entries:
     component: kickside/execution
 
   - name: dep.kickside.contract
-    version: '>=0.3.9'
+    version: '>=0.3.12'
     kind: ns.dependency
     meta:
-      comment: Defines component, data, memory, and KB lifecycle contract surfaces.
+      comment: Defines component, data, memory, and KB lifecycle contracts, including resumable writable delivery.
     component: kickside/contract
 
   - name: dep.kickside.core
@@ -49,7 +49,7 @@ entries:
     component: kickside/core
 
   - name: dep.kickside.uploads
-    version: '*'
+    version: '>=0.3.31'
     kind: ns.dependency
     meta:
       comment: Supplies upload tokens, artifact lookup, upload ingestion, and URL safety policy.
@@ -107,6 +107,10 @@ entries:
       - entry: kickside.knowledge.api:create_kb.endpoint
         path: .meta.router
       - entry: kickside.knowledge.api:get_kb.endpoint
+        path: .meta.router
+      - entry: kickside.knowledge.api:drive_folder_availability.endpoint
+        path: .meta.router
+      - entry: kickside.knowledge.api:browse_drive_folders.endpoint
         path: .meta.router
       - entry: kickside.knowledge.api:delete_kb.endpoint
         path: .meta.router

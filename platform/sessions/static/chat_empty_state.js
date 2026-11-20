@@ -1,17 +1,27 @@
-import { W as o, m as i } from "./wc-runtime-RWZ7nf8c.js";
-import { s as n } from "./styles-BHCP8M7N.js";
+import { W as s, m as o } from "./wc-runtime-D-UdhneU.js";
+import { s as i } from "./styles-D8_BcasK.js";
 import { define as r } from "@wippy-fe/proxy";
-class e extends o {
+class e extends s {
   static get wippyConfig() {
     return {
-      propsSchema: { type: "object", properties: {} },
+      propsSchema: {
+        type: "object",
+        properties: {
+          surface: {
+            type: "string",
+            enum: ["sessions", "sidebar"],
+            default: "sidebar",
+            description: "Selects the empty-chat profile for the Sessions page or the host sidebar."
+          }
+        }
+      },
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: n
+      inlineCss: i
     };
   }
   static get vueConfig() {
-    return i(
-      () => import("./chat_empty_state-mount-B-LCYZD0.js").then((t) => t.mountConfig),
+    return o(
+      () => import("./chat_empty_state-mount-D39frekm.js").then((t) => t.mountConfig),
       {
         surface: "page",
         loading: "Loading…",

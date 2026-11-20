@@ -1,5 +1,5 @@
 import { W as o, l as s } from "./wc-runtime-BREvwtdZ.js";
-import { s as i } from "./styles-CZoHAEY8.js";
+import { s as i } from "./styles-5upERzQv.js";
 import { define as n } from "@wippy-fe/proxy";
 const p = { props: { type: "object", properties: {} } }, r = {
   wippy: p

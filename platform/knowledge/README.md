@@ -55,6 +55,47 @@ commit regenerated tracked assets with the source.
 
 Create a knowledge base with an installed engine, ingest content, and inspect processing state before querying it. Select the base on an agent capability and share it with the execution principal. The engine owns document, graph, and embedding storage; Knowledge owns the base lifecycle and engine-neutral interfaces.
 
+### Recover a document from its original upload
+
+After indexing resumes, compare the expected upload IDs with the documents in the
+knowledge base. For a document still missing from search, the original uploader
+can request re-ingestion if they have write access to that knowledge base.
+
+Send `POST /api/v1/knowledge/{id}/ingest-upload` with an `Idempotency-Key` header
+and a JSON body such as `{"upload_id":"<upload-id>","reingest":true}`. For a batch,
+send `upload_ids` with up to 50 IDs. Reuse the same key when retrying the same
+request. Check each entry in `results`, then verify that each accepted document
+finishes indexing and appears in search. A batch can return HTTP 200 with individual
+failures.
+
+Re-ingestion requires the retained upload and its matching source event. A newer
+deletion, a superseding source version, or a changed artifact produces a conflict.
+If the upload never reached the knowledge base, the ordinary ingest request uses
+the same endpoint with `upload_id` and no `reingest` flag.
+
+### Link a Google Drive folder
+
+On an existing KickSide install, update the App to 0.2.49 or later before
+updating the Drive modules. On a custom host, upgrade Automation to 0.2.37 or
+later before installing Sync 0.1.101 or later. The Drive UI also requires Google
+0.1.34 or later and Knowledge 0.1.100 or later. The Drive import, search, and
+original-file link were verified with App 0.2.50, Uploads 0.3.31, and KB10 0.2.32.
+
+1. Configure the Google OAuth application and connect an account with the
+   `https://www.googleapis.com/auth/drive.readonly` scope. Choose an account that
+   can read the folder and its files.
+2. Open **Knowledge**, edit the target knowledge base, and find **Google Drive
+   source**. Select the connection, choose **My Drive** or **Shared drives**,
+   and open the folder you want to import. Select **Link this folder**. This
+   requires write access to the knowledge base and read access to the connection.
+3. The link creates a Data Sync that imports and reconciles the folder. It polls
+   every 15 minutes. Select **Sync now** to request an immediate collection, or
+   **Show failed files** to see failed deliveries and their reasons when you have
+   access to the sync history. Open **Automations** to manage the link.
+4. Open the KB10 knowledge base and search for text from an imported file. Open
+   the search result and choose **Source** in the reader to view the original in
+   Google Drive.
+
 ## Reference
 
 - [Module reference](src/README.md)

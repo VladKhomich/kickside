@@ -296,8 +296,9 @@ entries:
   - name: placement_ops
     kind: library.lua
     source: file://placement_ops.lua
-    modules: [sql, time, uuid, json, security]
+    modules: [sql, time, uuid, json, security, process]
     imports:
+      access_ops: kickside.component.persist:access_ops
       kind_authority: kickside.component:kind_authority
       secrets_document: kickside.component:secrets_document
       placement_rules: kickside.component:placement_rules

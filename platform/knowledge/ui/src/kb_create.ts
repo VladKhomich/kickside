@@ -27,7 +27,7 @@ class KicksideKbCreateElement extends WippyVueElement<KbCreateProps> {
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/KbCreate.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading the new knowledge base dialog…', failed: 'Could not load the new knowledge base dialog. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/KbCreate.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading the new knowledge base dialog…', failed: 'Could not load the new knowledge base dialog. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

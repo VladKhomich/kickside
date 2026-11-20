@@ -373,7 +373,7 @@ entries:
           "properties": {
             "success": {"type": "boolean", "const": true},
             "mode": { "type": "string", "const": "query", "description": "Present when Ask returns query results without answer generation." },
-            "answer": { "type": "string", "description": "The grounded answer, or the reason and numbered source passages in query mode. In answer mode, empty when retrieval finds no passages." },
+            "answer": { "type": "string", "minLength": 1, "description": "The grounded answer, a clear no-answer message, or the reason and any numbered source passages in query mode." },
             "count": { "type": "integer", "description": "Number of source passages." },
             "sources": {
               "type": "array",
@@ -579,17 +579,13 @@ entries:
         }
       llm_alias: Knowledge
       llm_description: >-
-        Discover installed knowledge engines and list, create, reuse, delete,
-        resummarize, or re-embed knowledge bases through the Knowledge-owned
-        registry. To add a file or text to a base, activate Knowledge Base
-        Writer with Capabilities and use EmbedToKB. Omit kb_id when one KB is
-        bound. If several are bound, pass the exact selected KB ID.
-        resummarize_knowledge_base and reembed_knowledge_base schedule the run on
-        the knowledge engine and answer a receipt with job_id rather than
-        waiting (a whole knowledge base takes minutes to hours; resummarize
-        also costs model calls); knowledge_base_maintenance reports the latest
-        run of each type and whether it is still in flight. Failures return no
-        result and a typed tool error with a clear message.
+        Manage knowledge bases. Choose an action to discover installed engines,
+        list bases, create or update a base by name, or delete a base.
+        Use component_id for deletion and maintenance. The
+        resummarize_knowledge_base and reembed_knowledge_base actions schedule
+        jobs and return a job_id. The knowledge_base_maintenance action reports
+        the latest run of each type and whether it is still in flight.
+        Failures return a typed tool error.
     source: file://knowledge_manager.lua
     method: handler
     modules: [contract, security]

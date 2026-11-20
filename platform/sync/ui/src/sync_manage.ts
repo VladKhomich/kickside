@@ -33,7 +33,7 @@ class KicksideSyncManageElement extends WippyVueElement<SyncManageProps, SyncMan
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/SyncManage.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading data sync…', failed: 'Could not load the data sync. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/SyncManage.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading data sync…', failed: 'Could not load the data sync. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

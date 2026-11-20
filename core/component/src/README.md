@@ -41,6 +41,33 @@ consuming component does not substitute for a deleted or revoked root. Changing
 the component's stored execution identity requires the existing authenticated
 `set_execution_identity` command and its ADMIN and delegation checks.
 
+### Component custody for a new child
+
+An owning service can statically import `kickside.component.binding:child_registration`
+and call `register_owned_child(request)` after admitting its operation. The request
+uses the existing registration fields and requires a placement parent. The
+installed **parent kind** declares the exact child implementation and producer
+function IDs in `meta.owned_child_producers`:
+
+```yaml
+owned_child_producers:
+  example.binding:view:
+    - example.service:create_view
+```
+
+Static invocation uses the owning service's existing actor and scope. The
+service must be able to open Component, call its ordinary register method and
+perform the registration work required by the child kind. Work board views are
+the first qualified consumer.
+
+The Component writer obtains the enclosing function ID from `process.id()`,
+checks it against the declaration, and verifies the authenticated creator can
+write to the live parent. Registration records the parent's ID in the existing
+owner row together with ordinary placement, the direct creator grant and the
+creator's captured execution identity. The result has the normal registration
+envelope. An existing component ID produces the ordinary creation conflict.
+The regular registration contract continues to record the creator as owner.
+
 ## Kind mutation admission (SPEC)
 
 A component kind binding declares `meta.mutation: open` or `closed`. An absent

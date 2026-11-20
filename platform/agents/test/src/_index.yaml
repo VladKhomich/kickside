@@ -49,7 +49,7 @@ entries:
 
   - name: reordered_trait_probe
     kind: registry.entry
-    meta: { type: agent.trait, title: Trait probe public, public: true }
+    meta: { type: agent.trait, title: Trait probe public, comment: Tests capability discovery with reordered query words., icon: tabler:test-pipe, public: true }
 
   - name: internal_trait_probe
     kind: registry.entry

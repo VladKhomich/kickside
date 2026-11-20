@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.16](https://github.com/kicksideai/kickside/compare/ui-v0.2.15...ui-v0.2.16) (2026-11-20)
+
+
+### Features
+
+* configure new chat appearance (EE2-2867) ([#735](https://github.com/kicksideai/kickside/issues/735)) ([7c070b2](https://github.com/kicksideai/kickside/commit/7c070b269e74339831ae25c34faa5a43631b423a))
+
+## [0.2.15](https://github.com/kicksideai/kickside/compare/ui-v0.2.14...ui-v0.2.15) (2026-11-20)
+
+
+### Bug Fixes
+
+* **ui:** preserve the saved accent while Appearance loads ([#726](https://github.com/kicksideai/kickside/issues/726)) ([90f543c](https://github.com/kicksideai/kickside/commit/90f543cde3b0d12fe103264aa80698e3d15228b7))
+
 ## [0.2.14](https://github.com/kicksideai/kickside/compare/ui-v0.2.13...ui-v0.2.14) (2026-11-19)
 
 

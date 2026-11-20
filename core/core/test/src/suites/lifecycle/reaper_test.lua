@@ -16,6 +16,8 @@ local provision = require("provision")
 local lifecycle_consts = require("lifecycle_consts")
 local projection_worker = require("projection_worker")
 local framework_events = require("framework_events")
+local claim = require("claim")
+local time = require("time")
 
 local COMPONENT_SERVICE = "kickside.component:component_service"
 local TEST_IMPL = "kickside.test:reap"
@@ -285,6 +287,79 @@ local function define_tests()
             test.eq(#rows, 1)
             test.eq(rows[1].role, "system")
             test.eq(rows[1].type, "kickside.lifecycle.events:principal.deleted")
+        end)
+
+        test.it("repairs a legacy lifecycle binding and advances the existing actorless reaper", function()
+            local thread_id = lifecycle_thread_id()
+            local principal = "queued-report-" .. suffix
+            local actor = security.new_actor("report-admin-" .. suffix, { security_groups = { "app.security:admin" } })
+            local reported = assert(funcs.new():with_actor(actor):with_scope(admin_scope())
+                :call("kickside.core.lifecycle:reaper_report_probe", { subject_id = principal }))
+            test.is_true(reported.reported, tostring(reported.error))
+
+            local lifecycle_actor = assert(security.new_actor(lifecycle_consts.SYSTEM_ACTOR,
+                {system = true, groups = {"system", "lifecycle"}}))
+            local dispatcher_scope = assert(security.named_scope(lifecycle_consts.SYSTEM_SCOPE))
+            local _, converge_err = provision.converge(lifecycle_actor, dispatcher_scope)
+            test.is_nil(converge_err)
+
+            local db = assert(sql.get("app:db"))
+            local cursor = assert(db:query([[SELECT k.id,k.job_id,k.last_seq,k.generation,k.actor_id,k.execution_identity_json
+                FROM kickside_projection_cursor k JOIN kickside_projection p ON p.id=k.projection_id
+                WHERE p.thread_id=$1 AND p.kind='lifecycle.reap']], {thread_id}))[1]
+            local report = assert(db:query([[SELECT id,seq FROM kickside_event
+                WHERE thread_id=$1 AND external_source='lifecycle' AND external_id=$2]],
+                {thread_id, "kickside.lifecycle.events:principal.deleted:" .. principal}))[1]
+            assert(db:execute("UPDATE kickside_components SET impl_id='kickside.core:thread' WHERE component_id=$1", {thread_id}))
+            assert(db:execute([[UPDATE kickside_projection_cursor SET status='invalid',
+                last_error='thread_event_read_denied: access denied' WHERE id=$1]], {cursor.id}))
+            assert(db:execute("UPDATE kickside_projection SET state='invalid' WHERE thread_id=$1 AND kind='lifecycle.reap'", {thread_id}))
+            assert(db:release())
+
+            local migration = "kickside.core.migrations:18_lifecycle_binding"
+            local result, migration_err = funcs.call(migration, {database_id="app:db", id=migration .. ":test:" .. suffix})
+            test.is_nil(migration_err, tostring(migration_err))
+            test.eq(result.status, "complete", tostring(result.error))
+
+            db = assert(sql.get("app:db"))
+            local repaired = assert(db:query([[SELECT c.impl_id,k.status,k.last_seq,k.job_id,k.generation,k.last_error
+                FROM kickside_projection_cursor k JOIN kickside_components c ON c.component_id=k.thread_id
+                WHERE k.id=$1]], {cursor.id}))[1]
+            test.eq(repaired.impl_id, "kickside.core.lifecycle:system_lifecycle")
+            test.eq(repaired.status, "active")
+            test.eq(repaired.job_id, cursor.job_id)
+            test.eq(tonumber(repaired.last_seq), tonumber(cursor.last_seq))
+            test.eq(tonumber(repaired.generation), assert(tonumber(cursor.generation)) + 1)
+            test.is_nil(repaired.last_error)
+            local dialect = assert(db:type())
+            local tx = assert(db:begin())
+            local token = uuid.v4()
+            local now = time.now():utc()
+            local lease = assert(claim.lease_row(tx, dialect, cursor.job_id, token,
+                now:add("45s"):format_rfc3339(), now:format_rfc3339()))
+            assert(tx:commit())
+            assert(db:release())
+            test.is_nil(cursor.actor_id)
+            test.is_nil(cursor.execution_identity_json)
+            test.is_true(tonumber(cursor.last_seq) < tonumber(report.seq))
+
+            local jobs_actor = assert(security.new_actor("system:kickside.jobs", {}))
+            local dispatcher = assert(funcs.new():with_actor(jobs_actor):with_scope(dispatcher_scope))
+            local advanced, err = dispatcher:call("kickside.core.projections:advance", {
+                job = {id = cursor.job_id, lease_token = token, execution_seq = tonumber(lease.execution_seq)},
+                payload = {cursor_id = cursor.id},
+            })
+            test.is_nil(err)
+            db = assert(sql.get("app:db"))
+            local saved = assert(db:query("SELECT last_seq,status,last_error FROM kickside_projection_cursor WHERE id=$1",
+                {cursor.id}))[1]
+            local preserved = assert(db:query("SELECT id FROM kickside_event WHERE thread_id=$1 AND seq=$2",
+                {thread_id, report.seq}))[1]
+            assert(db:release())
+            test.eq(saved.status, "active", tostring(saved.last_error))
+            test.is_true(tonumber(saved.last_seq) >= tonumber(report.seq))
+            test.eq(tonumber(advanced.last_seq), tonumber(saved.last_seq))
+            test.eq(preserved.id, report.id)
         end)
 
         test.it("reaps every component the deleted principal owned, idempotently", function()

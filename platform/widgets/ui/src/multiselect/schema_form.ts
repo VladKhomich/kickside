@@ -31,7 +31,7 @@ class KicksideSchemaFormElement extends WippyVueElement<SchemaFormProps, SchemaF
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/SchemaForm.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading schema form…', failed: 'Could not load the schema form. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/SchemaForm.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading schema form…', failed: 'Could not load the schema form. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

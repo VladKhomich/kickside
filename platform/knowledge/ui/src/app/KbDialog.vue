@@ -6,6 +6,7 @@ import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
 import { api as proxyApi, loadByTagName } from '@wippy-fe/proxy'
 import IconField from '@widgets/app/IconField.vue'
+import DriveFolderSource from './DriveFolderSource.vue'
 import { errMsg } from '@kickside/ui-kit/errMsg'
 import type { ConfigValue, ConfigOption, EngineConfigField, EngineConfigSchema, Engine, EmbeddingModel } from './kbDialogTypes'
 
@@ -385,6 +386,8 @@ function isEngineMissing(msg: string): boolean {
         <div class="kx-2p-r">
           <div class="kx-2p-r-head">Configuration</div>
           <div class="kx-2p-r-body">
+            <DriveFolderSource v-if="open && target" :key="target.id" :kb-id="target.id" />
+
             <!-- Engine-supplied config element -->
             <div v-show="hasCustomUi" ref="customHost" class="kx-engine-host"></div>
 

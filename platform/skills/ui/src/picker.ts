@@ -29,7 +29,7 @@ class KicksideSkillPickerElement extends WippyVueElement<PickerProps, PickerEven
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/skill-picker.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading skill picker…', failed: 'Could not load the skill picker. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/skill-picker.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading skill picker…', failed: 'Could not load the skill picker. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

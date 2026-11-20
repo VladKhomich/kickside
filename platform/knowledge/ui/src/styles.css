@@ -23,6 +23,15 @@ wippy-loading, wippy-error { height: 100%; }
 /* The loaded height, reserved while the implementation loads or fails. Width is never reserved. */
 :host(kickside-onboard-knowledge) > div:empty, :host(kickside-onboard-knowledge) > div:has(> [data-lazy-state]) { min-height: 278px; }
 *, *::before, *::after { box-sizing: border-box; }
+/* Drive source settings live inside the existing knowledge dialog. */
+.kx-drive-source { border-bottom: 1px solid var(--p-content-border-color); margin-bottom: 16px; padding-bottom: 16px; }
+.kx-drive-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.kx-drive-folders { list-style: none; margin: 0; padding: 0; min-width: 0; }
+.kx-drive-folders button { text-align: left; overflow-wrap: anywhere; max-width: 100%; }
+.kx-drive-sync { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--p-content-border-color); border-radius: 8px; }
+.kx-drive-failures { display: grid; gap: 8px; margin: 0; padding-left: 16px; }
+.kx-drive-sync a { color: var(--p-primary-color); text-decoration: underline; overflow-wrap: anywhere; }
+
 /* Knowledge control surface. Styled only with the universal --p-* theme
    vocabulary so it renders correctly inside the shadow DOM of any Wippy host
    (no SPA tokens), which is also what makes the implementation swappable per

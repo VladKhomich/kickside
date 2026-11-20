@@ -2,6 +2,7 @@
 @import "@kickside/ui-kit/spin.css";
 @import "@kickside/ui-kit/kx-tag.css";
 @import "@kickside/ui-kit/kx-tokens.css";
+@import "../../../widgets/ui/src/chatIntro.css";
 
 /* Tailwind base. The theme's PrimeVue CSS is @apply-based and assumes
    preflight; without it PrimeVue controls keep UA defaults the theme never
@@ -61,6 +62,7 @@ wippy-loading, wippy-error { height: 100%; }
 
 .ap-card { background: var(--p-content-background); border: 1px solid var(--p-content-border-color); border-radius: 14px; padding: 16px 18px; }
 .ap-structure { min-height: 0; }
+.ap-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .ap-h { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; color: var(--p-text-color); letter-spacing: -.2px; }
 .ap-h svg { width: 17px; height: 17px; color: var(--p-text-muted-color); }
 .ap-add { margin-left: auto; height: 30px; padding: 0 10px; }
@@ -185,3 +187,92 @@ wippy-loading, wippy-error { height: 100%; }
 .ap-hidden-h svg { width: 15px; height: 15px; }
 .ap-hidden-list { border: 1px dashed var(--p-content-border-color); border-radius: 14px; margin-top: 4px; overflow: hidden; }
 
+.chat-appearance { display: grid; gap: 1rem; }
+.chat-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+  gap: 1rem;
+}
+.chat-appearance > h2 { margin: 0; font-family: var(--kx-font-heading); font-size: 1.25rem; }
+.chat-settings {
+  display: grid;
+  align-content: start;
+  gap: .875rem;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: var(--kx-radius-14);
+}
+.chat-settings-legend {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.chat-settings-title {
+  display: flex;
+  align-items: center;
+  gap: .625rem;
+  color: var(--p-text-color);
+  font-family: var(--kx-font-heading);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.chat-settings-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: var(--kx-control-height);
+  block-size: var(--kx-control-height);
+  border-radius: var(--kx-radius-10);
+  background: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
+  color: var(--p-primary-color);
+}
+.chat-settings-icon svg { inline-size: 1.125rem; block-size: 1.125rem; }
+.chat-nav-settings {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--kx-surface-1);
+}
+.chat-nav-settings .chat-settings-title { flex: 1 1 13rem; }
+.chat-nav-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; min-inline-size: 0; }
+.chat-nav-visibility { display: flex; align-items: center; gap: .5rem; }
+.chat-nav-visibility label { cursor: pointer; }
+.chat-placement { grid-template-columns: auto minmax(0, 1fr); align-items: center; inline-size: 12rem; max-inline-size: 100%; }
+.chat-setting-toggles { display: grid; }
+.chat-setting-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  min-block-size: 2.75rem;
+  padding: .25rem .625rem;
+  color: var(--p-text-color);
+  font-size: 1rem;
+}
+.chat-setting-toggle label { cursor: pointer; }
+.chat-setting-toggle + .chat-setting-toggle { border-block-start: 1px solid var(--p-content-border-color); }
+.chat-intro-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: .875rem;
+}
+.chat-field {
+  display: grid;
+  gap: .375rem;
+  min-inline-size: 0;
+  color: var(--p-text-muted-color);
+  font-size: 1rem;
+  font-weight: 500;
+}
+.chat-preview summary { cursor: pointer; color: var(--p-text-muted-color); font-size: 1rem; }
+.chat-preview .kx-chat-intro-markdown {
+  margin-block-start: .5rem;
+  padding: .75rem;
+  border-radius: var(--kx-radius-8);
+  background: var(--kx-surface-1);
+}

@@ -2,6 +2,7 @@ local http = require("http")
 local security = require("security")
 local component = require("component")
 local http_errors = require("http_errors")
+local canonical_json = require("canonical_json")
 local engines = require("engines")
 local stores = require("stores")
 
@@ -105,7 +106,7 @@ local function handler()
                 statistics = type(store_row.stats) == "table" and store_row.stats or meta
             end
             embedding_model = store_row.embedding_model or embedding_model
-            config = store_row.config
+            if store_row.config ~= nil then config = canonical_json.object(store_row.config) end
             kb_type = store_row.kb_type or kb_type
             enrichment_agent_id = store_row.enrichment_agent_id
             if type(kb_type) == "string" and kb_type ~= "" then

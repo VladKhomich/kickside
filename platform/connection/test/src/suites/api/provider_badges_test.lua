@@ -1,14 +1,23 @@
 local test = require("test")
 local provider_badges = require("provider_badges")
 
-local function binding(provider, title, icon)
+local function binding(provider, title, icon, id)
     return {
+        id = id,
         kind = "contract.binding",
         meta = { provider = provider, title = title, icon = icon },
     }
 end
 
-local function request(entries, lookup_error)
+local function oauth_provider(provider, title, icon)
+    return {
+        kind = "registry.entry",
+        meta = { oauth_provider = provider, title = title, component = { icon = icon } },
+    }
+end
+
+local function request(entries, options)
+    options = options or {}
     local written, status
     local response = {
         set_content_type = function() end,
@@ -17,8 +26,13 @@ local function request(entries, lookup_error)
     }
     local instance = provider_badges.new(
         function(query)
-            test.eq(query[".kind"], "contract.binding")
-            return entries, lookup_error
+            if query[".kind"] == "contract.binding" then
+                test.eq(query["*meta.provider"], "")
+                return entries, options.binding_error
+            end
+            test.eq(query[".kind"], "registry.entry")
+            test.eq(query["*meta.oauth_provider"], "")
+            return options.oauth_providers, options.oauth_error
         end,
         function() return response end,
         { error = function() end }
@@ -66,11 +80,43 @@ local function define_tests()
             test.eq(out[1].icon, "tabler:brand-discord")
         end)
 
+        test.it("uses the OAuth provider brand regardless of binding order", function()
+            local drive = binding("google", "Google Drive folder", "tabler:brand-google-drive", "google:drive")
+            local calendar = binding("google", "Google Calendar upcoming events", "tabler:brand-google", "google:calendar")
+            local options = { oauth_providers = {
+                oauth_provider("google", "Google", "tabler:brand-google"),
+                oauth_provider("unbound", "OAuth without a binding", "tabler:plug"),
+            } }
+            for _, entries in ipairs({ { drive, calendar }, { calendar, drive } }) do
+                local result = request(entries, options)
+                test.eq(#result.providers, 1)
+                local badge = result.providers[1]
+                test.eq(badge.provider, "google")
+                test.eq(badge.title, "Google")
+                test.eq(badge.icon, "tabler:brand-google")
+                test.is_nil(badge.entry_id)
+            end
+        end)
+
+        test.it("uses registry IDs as a stable tie-breaker for equally valid binding icons", function()
+            local first = binding("example", "First product", "tabler:brand-google", "example:first")
+            local second = binding("example", "Second product", "tabler:brand-google-drive", "example:second")
+            local options = { oauth_providers = { oauth_provider("example", "Unsafe descriptor", "javascript:alert(1)") } }
+            for _, entries in ipairs({ { first, second }, { second, first } }) do
+                local result = request(entries, options)
+                test.eq(result.providers[1].title, "First product")
+                test.eq(result.providers[1].icon, "tabler:brand-google")
+            end
+        end)
+
         test.it("uses a stable public error instead of a raw registry failure", function()
-            local result, status = request(nil, "private registry failure")
-            test.eq(status, 500)
-            test.is_false(result.success)
-            test.eq(result.error, "provider catalogue unavailable")
+            local failures = { { binding_error = "private binding lookup failure" }, { oauth_error = "private OAuth lookup failure" } }
+            for _, options in ipairs(failures) do
+                local result, status = request(nil, options)
+                test.eq(status, 500)
+                test.is_false(result.success)
+                test.eq(result.error, "provider catalogue unavailable")
+            end
         end)
     end)
 end

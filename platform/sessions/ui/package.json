@@ -68,6 +68,7 @@
     }
   },
   "scripts": {
+    "test": "vitest run --environment happy-dom",
     "build": "vite build",
     "dev": "vite build --watch"
   },

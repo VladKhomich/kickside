@@ -45,7 +45,7 @@ class KicksideMasterNamespacePickerElement extends WippyVueElement<MasterPickerP
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/MasterNamespacePicker.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading capability scope picker…', failed: 'Could not load the capability scope picker. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/MasterNamespacePicker.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading capability scope picker…', failed: 'Could not load the capability scope picker. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

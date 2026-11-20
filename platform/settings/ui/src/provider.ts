@@ -31,7 +31,7 @@ class KicksideSettingsProviderElement extends WippyVueElement<ProviderProps, Pro
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/provider.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading provider settings…', failed: 'Could not load the provider settings. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/provider.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading provider settings…', failed: 'Could not load the provider settings. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

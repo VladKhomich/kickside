@@ -50,7 +50,7 @@ export default defineConfig({
         chat_coordinator: resolve(__dirname, 'src/chat_coordinator.ts'),
         chat_empty_state: resolve(__dirname, 'src/chat_empty_state.ts'),
       },
-      external: hostExternals,
+      external: [...hostExternals, 'markdown-it'],
       output: {
         manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',

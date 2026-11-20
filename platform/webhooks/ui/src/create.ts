@@ -18,7 +18,7 @@ class KicksideWebhookCreateElement extends WippyVueElement<ComponentProps, Event
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/WebhookCreate.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading webhook form…', failed: 'Could not load the webhook form. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/WebhookCreate.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading webhook form…', failed: 'Could not load the webhook form. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

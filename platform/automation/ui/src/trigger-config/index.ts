@@ -56,7 +56,7 @@ class KicksideTriggerConfigElement extends WippyVueElement<TriggerConfigProps, T
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/TriggerConfig.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading trigger editor…', failed: 'Could not load the trigger editor. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/TriggerConfig.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading trigger editor…', failed: 'Could not load the trigger editor. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

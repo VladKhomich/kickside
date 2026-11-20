@@ -42,12 +42,13 @@ entries:
   - name: attachment_ingest
     kind: library.lua
     meta:
-      comment: Download a remote attachment reference and push it into the upload pipeline, tagged with its thread.
+      comment: Ingest remote attachments and admit versioned delivery through an authenticated provider.
     source: file://../attachment_ingest.lua
-    modules: [funcs, http_client, registry]
+    modules: [funcs, http_client, registry, security, hash]
     imports:
       upload_lib: kickside.uploads:uploads
       metadata_sanitizer: kickside.uploads:metadata_sanitizer
+      canonical_json: kickside.contract:canonical_json
 
   - name: trusted_reader
     kind: library.lua

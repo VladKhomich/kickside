@@ -56,6 +56,21 @@ function M.for_impl(impl_id: string): (Rule?, error?)
     return M.validate_binding(entry)
 end
 
+-- The installed parent kind admits the exact child kind and enclosing producer.
+-- Ordinary registration and placement never consult this declaration.
+function M.admits_owned_child(parent_kind: string, child_kind: string, producer: string): (boolean, error?)
+    local entry, err = registry.get(parent_kind)
+    if err then return false, err end
+    local declarations = entry and entry.kind == "contract.binding" and entry.meta and entry.meta.owned_child_producers
+    local producers = type(declarations) == "table" and declarations[child_kind]
+    if type(producers) == "table" then
+        for _, id in ipairs(producers) do
+            if id == producer then return true, nil end
+        end
+    end
+    return false, nil
+end
+
 function M.check(rule: Rule?, kind: string, parent_kind: string, parent_changed: boolean): error?
     if not rule then return nil end
     if rule.fixed and parent_changed then

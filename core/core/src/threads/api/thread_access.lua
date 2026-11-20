@@ -31,7 +31,7 @@ end
 -- access at required_mask. The first four results retain the status/display
 -- tuple; the optional fifth result carries the native failure for transport.
 -- Allowed requests return (true, 200, nil, component_id, nil).
-function access.gate_thread_access(db: Executor, thread_id: string, required_mask: integer, lifecycle_registration: boolean?): (boolean, integer, string?, string?, error?)
+function access.gate_thread_access(db: Executor, thread_id: string, required_mask: integer): (boolean, integer, string?, string?, error?)
     local failure: error? = nil
     local display: string? = nil
     local component_id: string? = nil
@@ -45,13 +45,6 @@ function access.gate_thread_access(db: Executor, thread_id: string, required_mas
             failure = errors.wrap(load_err, "failed to load thread")
             display = "failed to load thread: " .. tostring(load_err)
         elseif not component_id then
-            if lifecycle_registration then
-                local thread, lifecycle_err = reader.gate_read(db, thread_id, required_mask, true)
-                if thread then return true, 200, nil, nil end
-                if lifecycle_err and not errors.is(lifecycle_err, errors.NOT_FOUND) then
-                    return false, (http_errors.classify(lifecycle_err)), lifecycle_err:message(), nil, lifecycle_err
-                end
-            end
             failure = not_found()
             display = "thread not found"
         else
@@ -70,6 +63,11 @@ function access.gate_thread_access(db: Executor, thread_id: string, required_mas
         return false, (http_errors.classify(failure)), display or failure:message(), nil, failure
     end
     return true, 200, nil, component_id
+end
+
+function access.gate_projection_registration(db: Executor, thread_id: string): (table?, error?)
+    if not uuid.validate(thread_id) then return nil, not_found() end
+    return reader.gate_projection_registration(db, thread_id, true)
 end
 
 function access.release_error(db: sql.DB, primary: error | string?, committed: boolean?): error?

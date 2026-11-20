@@ -36,7 +36,7 @@ class KbPickerElement extends WippyVueElement<PickerProps, PickerEvents> {
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/kb-picker.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading the knowledge base picker…', failed: 'Could not load the knowledge base picker. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/kb-picker.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading the knowledge base picker…', failed: 'Could not load the knowledge base picker. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

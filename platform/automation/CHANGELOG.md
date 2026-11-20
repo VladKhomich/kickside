@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.37](https://github.com/kicksideai/kickside/compare/automation-v0.2.36...automation-v0.2.37) (2026-11-19)
+
+
+### Bug Fixes
+
+* **automation:** honor delays during key enumeration ([#694](https://github.com/kicksideai/kickside/issues/694)) ([8cd23d0](https://github.com/kicksideai/kickside/commit/8cd23d08f69dd4b0835825787cee77fc0d554b65))
+
+## [0.2.36](https://github.com/kicksideai/kickside/compare/automation-v0.2.35...automation-v0.2.36) (2026-11-19)
+
+
+### Bug Fixes
+
+* **automation:** resume pending writable effects without spending delivery attempts ([#684](https://github.com/kicksideai/kickside/issues/684)) ([10e71ab](https://github.com/kicksideai/kickside/commit/10e71abf8ea8ae2e5ec3d43286edfe126b5f8760))
+
+## [0.2.35](https://github.com/kicksideai/kickside/compare/automation-v0.2.34...automation-v0.2.35) (2026-11-19)
+
+
+### Bug Fixes
+
+* **automation:** show a refused delete inside the confirm dialog ([#676](https://github.com/kicksideai/kickside/issues/676)) ([84fc7b3](https://github.com/kicksideai/kickside/commit/84fc7b3599e853e06da1e9825d1101f462d7f4ba))
+
 ## [0.2.34](https://github.com/kicksideai/kickside/compare/automation-v0.2.33...automation-v0.2.34) (2026-11-19)
 
 

@@ -37,7 +37,7 @@ WIDGET_SOURCE_CONSUMERS := agents automation channel connection hub identity inb
 
 FE_MODULES := app-main plugin-template $(patsubst platform/%/ui/package.json,%,$(wildcard platform/*/ui/package.json))
 
-.PHONY: help install build release-build-inputs watch cleaninstall lockrefresh typecheck typecheck-shared test ui-kit facade-css facade-css-check facade-css-watch install-all build-all cleaninstall-all lockrefresh-all typecheck-all test-all
+.PHONY: help install build release-build-app-main release-build-inputs watch cleaninstall lockrefresh typecheck typecheck-shared test ui-kit facade-css facade-css-check facade-css-watch install-all build-all cleaninstall-all lockrefresh-all typecheck-all test-all
 
 help:
 	@echo "kickside FE build interface"
@@ -76,6 +76,11 @@ build:
 	@test -n "$(MOD)" || { echo "build needs MOD=<module> (or use build-all)"; exit 1; }
 	@case " $(UI_KIT_CONSUMERS) " in *" $(MOD) "*) $(MAKE) ui-kit MOD=$(MOD) || exit 1;; esac
 	cd $(call fe_dir,$(MOD)) && { [ -d node_modules ] || npm install --no-audit --no-fund; } && npm run build $(call fe_build_args,$(MOD))
+
+release-build-app-main:
+	@test -s "$(UI_KIT_BUILD_INPUTS)/wippy.lock" || { echo "Application release requires $(UI_KIT_BUILD_INPUTS)/wippy.lock" >&2; exit 1; }
+	cd "$(UI_KIT_BUILD_INPUTS)" && "$(WIPPY_BIN)" install kickside/ui-kit --set "artifact.materialization_root=$(CURDIR)/$(call fe_dir,app-main)/.wippy"
+	cd "$(call fe_dir,app-main)" && node "$(CURDIR)/scripts/wire-ui-kit.mjs" --locked && npm ci --no-audit --no-fund && npm run build $(call fe_build_args,app-main)
 
 release-build-inputs:
 	@case " $(UI_KIT_CONSUMERS) " in *" $(MOD) "*) printf '%s\n' "$(UI_KIT_BUILD_INPUTS)/src";; esac

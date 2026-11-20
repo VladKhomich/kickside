@@ -116,6 +116,8 @@ local function handler()
     if read_err then return nil, read_err end
     if not settings.success then return nil, settings.error end
     local cfg: any = settings.values
+    local appearance = cfg.chat_appearance
+    local new_chat = type(appearance) == "table" and appearance.navigation or nil
 
     if cfg.logo_url then cfg.logo_url = branding.resolve_url(cfg.logo_url) end
 
@@ -164,6 +166,7 @@ local function handler()
         items = result.items,
         count = #result.items,
         home = ui_types.safe_home_path(cfg.home),
+        new_chat = new_chat,
         config = include_hidden and cfg or nil,
         logo_upload = include_hidden and ui_types.BRANDING_UPLOAD or nil,
         -- The full-screen splash (if any) the user has not yet seen; nil otherwise.

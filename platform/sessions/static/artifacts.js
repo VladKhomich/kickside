@@ -1,5 +1,5 @@
-import { W as o, m as i } from "./wc-runtime-RWZ7nf8c.js";
-import { s as r } from "./styles-BHCP8M7N.js";
+import { W as o, m as i } from "./wc-runtime-D-UdhneU.js";
+import { s as r } from "./styles-D8_BcasK.js";
 import { define as n } from "@wippy-fe/proxy";
 class e extends o {
   static get wippyConfig() {
@@ -11,7 +11,7 @@ class e extends o {
   }
   static get vueConfig() {
     return {
-      ...i(() => import("./artifacts-mount-zPDGwj6n.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the artifact gallery. Reload the page to try again.", timeout: 3e4 })
+      ...i(() => import("./artifacts-mount-CAnP6Vr4.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load the artifact gallery. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }

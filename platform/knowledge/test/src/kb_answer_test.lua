@@ -118,13 +118,17 @@ local function define_tests()
             end
         end)
 
-        test.it("types an empty generation as an internal error", function()
-            with_llm({
-                generate = function(): (any, any) return { result = "" }, nil end,
-            }, function()
-                local _, err = kb_answer._synthesize("q", items(1), "m", nil)
-                test.is_true(errors.is(err, errors.INTERNAL), tostring(err))
-            end)
+        test.it("types empty or whitespace-only generation as an internal error", function()
+            for _, output in ipairs({ "", " \n\t " }) do
+                with_llm({
+                    generate = function(): (any, any) return { result = output }, nil end,
+                }, function()
+                    local value, err = kb_answer._synthesize("q", items(1), "m", nil)
+                    test.is_nil(value)
+                    test.is_true(errors.is(err, errors.INTERNAL), tostring(err))
+                    test.contains(tostring(err), "answer generation returned empty content")
+                end)
+            end
         end)
 
         test.it("returns nil without a model or passages (passages-only mode)", function()
@@ -148,6 +152,33 @@ local function define_tests()
     end)
 
     test.describe("kb_answer query mode", function()
+        test.it("reports no answer for an empty search without calling single-shot synthesis", function()
+            for _, case in ipairs({
+                { model = "configured-model" },
+                { model = false, reason = "Answers are disabled." },
+                { model = "class:fast", reason = "No answer model is available." },
+            }) do
+                local previous = kb_answer._kb_search
+                kb_answer._kb_search = {
+                    config = function() return { analysis_model = case.model }, {} end,
+                    query = function() return { items = {}, retrieval = { analysis = {
+                        status = "unavailable", reason = "no_models_for_class", model = "class:fast",
+                    } } }, nil end,
+                }
+                with_llm({ generate = function() error("must not invoke synthesis without sources") end }, function()
+                    local ok, result, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
+                    kb_answer._kb_search = previous
+                    if not ok then error(result) end
+                    test.is_nil(err)
+                    test.eq(result.count, 0)
+                    test.eq(#result.results, 0)
+                    local notice = "No answer found. No source passages matched the question."
+                    test.eq(result.mode, case.reason and "query" or nil)
+                    test.eq(result.answer, case.reason and case.reason .. " " .. notice or notice)
+                end)
+            end
+        end)
+
         test.it("resolves the default model in a member scope without catalog permissions", function()
             local scope = assert(security.new_scope({
                 assert(security.policy("kickside.knowledge.retrieval:member_ask_call")),
@@ -286,6 +317,21 @@ local function define_tests()
             test.is_true(errors.is(err, errors.UNAVAILABLE), tostring(err))
             test.contains(tostring(err), "agentic answer failed")
             test.contains(tostring(err), "agent model is not registered")
+        end)
+
+        test.it("rejects whitespace-only agent output even when there are sources", function()
+            local previous_search, previous_funcs = kb_answer._kb_search, kb_answer._funcs
+            kb_answer._kb_search = {
+                config = function() return { analysis_model = "model", query_driver = "agentic" }, {} end,
+                query = function() return { items = items(2) }, nil end,
+            }
+            kb_answer._funcs = { call = function() return { answer = " \t\n " }, nil end }
+            local ok, value, err = pcall(kb_answer.ask, "kb-id", { query = "question" })
+            kb_answer._kb_search, kb_answer._funcs = previous_search, previous_funcs
+            if not ok then error(value) end
+            test.is_nil(value)
+            test.is_true(errors.is(err, errors.INTERNAL), tostring(err))
+            test.contains(tostring(err), "agentic answer returned empty content")
         end)
 
         test.it("does not invoke generation when Search analysis is off and Fast is unassigned", function()

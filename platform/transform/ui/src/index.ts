@@ -19,7 +19,7 @@ class KicksideTransformAssistElement extends WippyVueElement<ComponentProps, Eve
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/assist.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading the transform assistant…', failed: 'Could not load the transform assistant. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/assist.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading the transform assistant…', failed: 'Could not load the transform assistant. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

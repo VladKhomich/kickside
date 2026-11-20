@@ -140,6 +140,10 @@ eligibility change. Grant the producer the existing
 authority. The notification lets a new earlier deadline rearm an idle sweeper;
 a missing sweeper discovers durable work on its boot recovery pass.
 
+The sweeper receives lifecycle events during retention work and handles queued
+control events before the next wake. On cancellation it releases its database
+handle and listeners. Boot recovery picks up durable work after restart.
+
 ## Testing
 
 From the module root:
@@ -177,6 +181,11 @@ pages raw pins before checking local cursor ownership by primary key, so pages
 advance through local pins with bounded work.
 
 ## Declared projection convergence
+
+At startup, Core's post-migration hook materializes the declared system
+components and applies their grants before the bootloader releases dependent
+services. A provisioning or grant error fails startup. Later provisioning passes
+repair drifted grants and retention policies and skip updates to matching rows.
 
 After Core's migrations are current, lifecycle boot checks declared projections
 on the component's primary thread or, for `on: lifecycle`, its lifecycle thread.

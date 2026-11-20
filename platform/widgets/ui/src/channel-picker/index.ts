@@ -29,7 +29,7 @@ class KicksideChannelPickerElement extends WippyVueElement<ComponentProps, Event
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/ChannelPicker.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading channel picker…', failed: 'Could not load the channel picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/ChannelPicker.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading channel picker…', failed: 'Could not load the channel picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
   }
 }
 

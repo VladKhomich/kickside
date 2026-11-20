@@ -41,6 +41,7 @@ platform/transform/eval/code_exec/run_code.lua
 /CLAUDE.md
 /.local/
 /app/wippy.lock.*
+/build-inputs/wippy.lock.runtime.lock
 /platform/*/test/storage/uploads/*
 # ephemeral skill artifact storage written by the skills harness suites
 /platform/*/test/storage/skillport/*

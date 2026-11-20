@@ -2,16 +2,20 @@ local http = require("http")
 local http_errors = require("http_errors")
 local security = require("security")
 local json = require("json")
+local logger = require("logger")
 
 local upload_lib = require("upload_lib")
 local metadata_sanitizer = require("metadata_sanitizer")
 local upload_types = require("types")
+
+local upload_log = logger:named("uploads.api")
 
 local function new(dependencies: any?): any
     local deps = dependencies or {}
     local http = deps.http or http
     local security = deps.security or security
     local upload_lib = deps.upload_lib or upload_lib
+    local log = deps.log or upload_log
 
 local function form_value(values, key): string?
     if type(values) ~= "table" then
@@ -186,7 +190,23 @@ local function handler()
     )
 
     if err then
-        res:set_status((http_errors.classify(err)))
+        local status, classified = http_errors.classify(err)
+        local details = classified.details
+        local sqlstate = type(details) == "table" and details.sqlstate or nil
+        if type(sqlstate) ~= "string" or #sqlstate ~= 5 or not sqlstate:match("^[A-Z0-9]+$") then
+            sqlstate = nil
+        end
+        local sqlite_code = type(details) == "table" and details.sqlite_code or nil
+        local sqlite_busy_or_locked = sqlite_code == 5 or sqlite_code == 6
+        local retryable = classified.retryable == true
+        if status >= 500 or (status == 409 and retryable and (sqlstate ~= nil or sqlite_busy_or_locked)) then
+            log:warn("upload creation failed", {
+                operation = "create_upload", status = status, kind = classified.kind or errors.UNKNOWN,
+                retryable = retryable, sqlstate = sqlstate,
+                sqlite_code = sqlite_busy_or_locked and sqlite_code or nil,
+            })
+        end
+        res:set_status(status)
         res:write_json({
             success = false,
             error = "Failed to upload file",

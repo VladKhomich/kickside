@@ -12,7 +12,7 @@ const propsSchema = { type: 'object', properties: {
 
 class KicksidePrincipalPickerElement extends WippyVueElement<P, E> {
   static get wippyConfig(): WippyElementConfig<P> { return { propsSchema, hostCssKeys: ['themeConfigUrl'] as const, inlineCss: stylesText } }
-  static get vueConfig() { return lazyVueConfig(() => (() => import('./app/PrincipalPickerElement.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading person picker…', failed: 'Could not load the person picker. Reload the page to try again.', delay: 200, timeout: 30000 }) }
+  static get vueConfig() { return lazyVueConfig(() => import('./app/PrincipalPickerElement.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading person picker…', failed: 'Could not load the person picker. Reload the page to try again.', delay: 200, timeout: 30000 }) }
 }
 export async function webComponent() { return KicksidePrincipalPickerElement }
 define(import.meta.url, KicksidePrincipalPickerElement)

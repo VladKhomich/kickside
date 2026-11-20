@@ -31,7 +31,7 @@ class ConnectionTraitPickerElement extends WippyVueElement<Props, Events> {
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/ConnectionTraitPicker.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading connection picker…', failed: 'Could not load the connection picker. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/ConnectionTraitPicker.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading connection picker…', failed: 'Could not load the connection picker. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

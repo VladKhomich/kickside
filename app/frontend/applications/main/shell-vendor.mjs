@@ -7,9 +7,10 @@ const importMapPattern = /<script\b[^>]*type="importmap"[^>]*>[\s\S]*?<\/script>
 // Vue and the modules bound to it come from the Web Host import map, as they do for every module
 // web component. The shell and the surfaces it mounts then share one Vue, PrimeVue and Iconify
 // instance, so the icon collections the shell registers reach every surface (EE2-2845).
-// The snapshot is the same Host import map contract that module web components build against.
+// The plugin template's Host snapshot has the same specifiers as Facade's Web Host 1.0.70.
+// Use only its keys here. Facade supplies the URLs for the deployed Host version.
 const hostImportMap = JSON.parse(readFileSync(
-  new URL('../../../../platform/workflows/ui/web-host.import-map.snapshot.json', import.meta.url), 'utf8'))
+  new URL('../../../templates/plugin/ui/web-host.import-map.snapshot.json', import.meta.url), 'utf8'))
 const vueBound = id => ['vue', 'pinia', 'vue-router', '@iconify/vue', 'primevue'].includes(id)
   || id.startsWith('primevue/')
 export const hostModules = Object.keys(hostImportMap.imports).filter(vueBound)
@@ -107,8 +108,11 @@ export function shellVendor() {
               source: readFileSync(join(root, key, name)) })
           }
         }
-        const files = Object.fromEntries(Object.entries(bundle).map(([name, entry]) =>
-          [name, sri(entry.type === 'chunk' ? entry.code : entry.source)]))
+        const files = {}
+        for (const name of Object.keys(bundle).sort()) {
+          const entry = bundle[name]
+          files[name] = sri(entry.type === 'chunk' ? entry.code : entry.source)
+        }
         this.emitFile({ type: 'asset', fileName: 'vendor/manifest.json',
           source: JSON.stringify({ imports, packages: Object.fromEntries(Object.entries(packages).sort()), files }, null, 2) + '\n' })
       },

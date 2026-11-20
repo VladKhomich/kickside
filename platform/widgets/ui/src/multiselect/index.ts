@@ -39,7 +39,7 @@ class KicksideMultiselectElement extends WippyVueElement<ComponentProps, Events>
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/MultiSelect.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading multiselect…', failed: 'Could not load the multiselect. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/MultiSelect.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading multiselect…', failed: 'Could not load the multiselect. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

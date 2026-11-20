@@ -33,7 +33,7 @@ class KicksideAgentBlockConfigElement extends WippyVueElement<Props, Events> {
       inlineCss: stylesText,
     }
   }
-  static get vueConfig() { return lazyVueConfig(() => (() => import('./app/AgentBlockConfig.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading agent block settings…', failed: 'Could not load the agent block settings. Reload the page to try again.', delay: 200, timeout: 30000 }) }
+  static get vueConfig() { return lazyVueConfig(() => import('./app/AgentBlockConfig.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading agent block settings…', failed: 'Could not load the agent block settings. Reload the page to try again.', delay: 200, timeout: 30000 }) }
 }
 
 export async function webComponent() { return KicksideAgentBlockConfigElement }

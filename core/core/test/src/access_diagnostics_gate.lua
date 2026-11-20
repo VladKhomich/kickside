@@ -7,6 +7,10 @@ return {release_error = function(db: any, primary: error?, committed: boolean?):
         end
         return status :: integer, payload
     end, ADMIN = 8, WRITE = 2, gate_thread_access = function(...) return fixture.gate.gate_thread_access(...) end,
+    gate_projection_registration = function(db: any, thread_id: string): (table?, error?)
+        local allowed, _, _, component_id, err = fixture.gate.gate_thread_access(db, thread_id, 8)
+        return allowed and {binding = {component_id = component_id}} or nil, err
+    end,
     failure_response = function(db: any, primary: error, display: string?): (integer, table)
         local status, payload = fixture.gate.failure_response(db, primary, display)
         if type(status) ~= "number" or status % 1 ~= 0 or type(payload) ~= "table" then

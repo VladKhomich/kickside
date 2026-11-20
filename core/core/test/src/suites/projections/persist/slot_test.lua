@@ -241,8 +241,8 @@ local function define_tests()
             test.is_nil(db_err)
             local thread_id = uuid.v7()
             local _, thread_err = (db :: sql.DB):execute(
-                "INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test',$2,1)",
-                { thread_id, thread_id })
+                "INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test','',1)",
+                { thread_id })
             test.is_nil(thread_err)
             local event_id = uuid.v7()
             local body = json.encode({ text = "one" })
@@ -298,8 +298,8 @@ local function define_tests()
             test.is_nil(db_err)
             local thread_id = uuid.v7()
             local _, thread_err = (db :: sql.DB):execute(
-                "INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test',$2,1)",
-                { thread_id, thread_id })
+                "INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test','',1)",
+                { thread_id })
             test.is_nil(thread_err)
             local _, event_err = (db :: sql.DB):execute(
                 "INSERT INTO kickside_event (id,thread_id,type,role,body,seq) VALUES ($1,$2,'test:event','user',$3,1)",

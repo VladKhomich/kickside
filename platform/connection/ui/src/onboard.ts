@@ -22,7 +22,7 @@ class KicksideOnboardConnectionsElement extends WippyVueElement<ComponentProps, 
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/Onboard.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading services…', failed: 'Could not load the connections step. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/Onboard.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading services…', failed: 'Could not load the connections step. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

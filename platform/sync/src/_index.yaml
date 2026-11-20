@@ -394,10 +394,10 @@ entries:
           delete: kickside.automation:noop_delete
 
   - name: dep.kickside.automation
-    version: '*'
+    version: '>=0.2.37'
     kind: ns.dependency
     meta:
-      comment: The automation engine and round that install, drive and deliver the Data Sync.
+      comment: The Automation round must honor retry delays during reconcile key enumeration.
     component: kickside/automation
 
   - name: dep.kickside.component

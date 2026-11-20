@@ -31,7 +31,7 @@ class RenderCodeElement extends WippyVueElement<Props> {
       inlineCss: `${stylesText}\n${hostCss}`,
     }
   }
-  static get vueConfig() { return lazyVueConfig(() => (() => import('./app/RenderCode.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading the code viewer…', failed: 'Could not load the code viewer. Reload the page to try again.', delay: 200, timeout: 30000 }) }
+  static get vueConfig() { return lazyVueConfig(() => import('./app/RenderCode.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading the code viewer…', failed: 'Could not load the code viewer. Reload the page to try again.', delay: 200, timeout: 30000 }) }
 }
 
 export async function webComponent() { return RenderCodeElement }

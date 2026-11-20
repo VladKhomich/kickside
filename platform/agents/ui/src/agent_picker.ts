@@ -39,7 +39,7 @@ class KicksideAgentPickerElement extends WippyVueElement<AgentPickerProps, Agent
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/AgentPicker.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading agent picker…', failed: 'Could not load the agent picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/AgentPicker.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading agent picker…', failed: 'Could not load the agent picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
   }
 }
 

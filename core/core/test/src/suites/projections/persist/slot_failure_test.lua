@@ -14,8 +14,8 @@ local disabled_slots_migration = require("disabled_slots_migration")
 -- A thread with `events` stored events and no projection.
 local function thread_with_events(db: sql.DB, events: integer, body: string?): string
     local id = uuid.v7()
-    local _, thread_err = db:execute("INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test',$2,$3)",
-        { id, id, events })
+    local _, thread_err = db:execute("INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test','',$2)",
+        { id, events })
     if thread_err then error("thread insert failed: " .. tostring(thread_err)) end
     for seq = 1, events do
         local _, event_err = db:execute("INSERT INTO kickside_event (id,thread_id,type,role,body,seq) VALUES ($1,$2,'test:event','user',$3,$4)",

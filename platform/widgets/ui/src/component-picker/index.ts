@@ -32,7 +32,7 @@ class KicksideComponentPickerElement extends WippyVueElement<ComponentProps, Eve
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/ComponentPicker.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading component picker…', failed: 'Could not load the component picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/ComponentPicker.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading component picker…', failed: 'Could not load the component picker. Reload the page to try again.', iconOnly: true, delay: 200, timeout: 30000 })
   }
 }
 

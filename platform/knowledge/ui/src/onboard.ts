@@ -21,7 +21,7 @@ class KicksideOnboardKnowledgeElement extends WippyVueElement<ComponentProps, Ev
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/Onboard.vue'))().then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading the knowledge step…', failed: 'Could not load the knowledge step. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/Onboard.vue').then(module => ({ rootComponent: module.default })), { surface: 'compact', loading: 'Loading the knowledge step…', failed: 'Could not load the knowledge step. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

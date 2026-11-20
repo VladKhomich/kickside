@@ -33,7 +33,7 @@ class KicksideAgentTraitPickerElement extends WippyVueElement<AgentTraitPickerPr
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/AgentTraitPicker.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading capability picker…', failed: 'Could not load the capability picker. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/AgentTraitPicker.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading capability picker…', failed: 'Could not load the capability picker. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

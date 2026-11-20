@@ -18,7 +18,7 @@ class KicksideOnboardModulesElement extends WippyVueElement<ComponentProps, Even
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/OnboardRecommendations.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading module recommendations…', failed: 'Could not load module recommendations. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/OnboardRecommendations.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading module recommendations…', failed: 'Could not load module recommendations. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 

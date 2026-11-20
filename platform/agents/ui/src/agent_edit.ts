@@ -35,7 +35,7 @@ class KicksideAgentEditElement extends WippyVueElement<AgentEditProps> {
   }
 
   static get vueConfig() {
-    return lazyVueConfig(() => (() => import('./app/AgentEdit.vue'))().then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading agent editor…', failed: 'Could not load the agent editor. Reload the page to try again.', delay: 200, timeout: 30000 })
+    return lazyVueConfig(() => import('./app/AgentEdit.vue').then(module => ({ rootComponent: module.default, plugins: [PrimeVuePlugin] })), { surface: 'compact', loading: 'Loading agent editor…', failed: 'Could not load the agent editor. Reload the page to try again.', delay: 200, timeout: 30000 })
   }
 }
 
