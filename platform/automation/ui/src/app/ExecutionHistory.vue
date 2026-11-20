@@ -7,11 +7,16 @@ import { errMsg } from '@kickside/ui-kit/errMsg'
 import { resolvePrincipals, type Principal, type PrincipalRef } from '../../../../users/ui/src/principals'
 
 interface Subject { kind: string; id: string }
+interface WorkflowRun {
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'terminated'
+  error?: string
+}
 interface Delivery {
   drive_key: string; round_token: string; source_port: string; item_key: string; identity_key: string
   state: string; round_at: string; evidence_status: 'recorded' | 'absent' | 'inferred' | 'unresolved'
   evidence?: { identity?: { principal: Subject; authorized_by?: Subject } }
   error?: unknown
+  workflow_run?: WorkflowRun
 }
 interface Control {
   generation: number; request_id: string; state: string; created_at: string; completed_at?: string
@@ -42,20 +47,24 @@ function runAccount(row: Delivery) {
 }
 function outcome(state: string) {
   const labels: Record<string, string> = {
-    resolved: 'Completed', waiting: 'Waiting to retry', uncertain: 'Needs attention',
+    resolved: 'Delivered', waiting: 'Waiting to retry', uncertain: 'Needs attention',
     failed: 'Failed', filtered: 'Skipped', superseded: 'Replaced',
     succeeded: 'Accepted', pending: 'Updating…',
   }
   return labels[state] || 'Outcome unavailable'
 }
+const workflowOutcomes: Record<WorkflowRun['status'], string> = {
+  pending: 'Pending', running: 'Running', completed: 'Completed',
+  failed: 'Failed', cancelled: 'Cancelled', terminated: 'Terminated',
+}
 const history = computed(() => [
   ...deliveries.value.map(row => ({ key: deliveryKey(row), at: row.round_at, state: row.state,
     account: runAccount(row), role: 'Run by', authorizer: row.evidence?.identity?.authorized_by
       ? historicalAccount(row, row.evidence.identity.authorized_by) : undefined,
-    error: errorMessage(row.error) })),
+    error: errorMessage(row.error), workflowRun: row.workflow_run })),
   ...controls.value.map(row => ({ key: `${row.generation}:${row.request_id}`, at: row.created_at, state: row.state,
     account: row.initiation ? subject({ kind: 'user', id: row.initiation.actor_id }) : 'Account not recorded',
-    role: 'Requested by', authorizer: undefined, error: '' })),
+    role: 'Requested by', authorizer: undefined, error: '', workflowRun: undefined })),
 ].sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key)))
 function deliveryKey(row: Delivery) {
   return JSON.stringify([row.drive_key, row.round_token, row.source_port, row.item_key, row.identity_key])
@@ -139,8 +148,12 @@ onBeforeUnmount(() => { sequence += 1 })
           <template v-if="row.authorizer">
             <dt class="kx-dfact-k">Authorized by</dt><dd class="kx-history-v" aria-label="Authorized by">{{ row.authorizer }}</dd>
           </template>
+          <template v-if="row.workflowRun">
+            <dt class="kx-dfact-k">Workflow run</dt><dd class="kx-history-v">{{ workflowOutcomes[row.workflowRun.status] }}</dd>
+          </template>
         </dl>
         <p v-if="row.error" class="kx-dmsg is-err">{{ row.error }}</p>
+        <p v-if="row.workflowRun?.error" class="kx-dmsg is-err">{{ row.workflowRun.error }}</p>
       </article>
       <Button v-if="deliveryCursor || controlCursor" label="More history" severity="secondary" :disabled="busy" @click="more" />
     </template>

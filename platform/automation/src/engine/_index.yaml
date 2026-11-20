@@ -219,6 +219,19 @@ entries:
       engine_support: kickside.automation.engine:support
       history_reader: kickside.automation.engine:history_reader
 
+  - name: workflow_history_reader
+    kind: ns.requirement
+    meta:
+      value_kind: library.lua
+    default: kickside.automation.engine:no_workflow_history
+    targets:
+      - entry: kickside.automation.engine:observe
+        path: .imports.workflow_history
+
+  - name: no_workflow_history
+    kind: library.lua
+    source: file://no_workflow_history.lua
+
   - name: history_reader
     kind: library.lua
     source: file://history.lua
