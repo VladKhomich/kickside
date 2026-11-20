@@ -258,7 +258,7 @@ entries:
     - name: kickside.agents:ui_server
       value: app:gateway
 
-  - version: ">=0.2.37"
+  - version: ">=0.2.38"
     name: kickside_automation
     kind: ns.dependency
     meta: {}
@@ -295,7 +295,7 @@ entries:
         value: app:gateway
 
   # app.deps:kickside_component
-  - version: ">=0.3.1"
+  - version: ">=0.3.28"
     name: kickside_component
     kind: ns.dependency
     meta: {}
@@ -330,7 +330,7 @@ entries:
     - name: kickside.contract.http:user_security_scope
       value: app.security:unassigned_endpoints
 
-  - version: ">=0.3.35"
+  - version: ">=0.3.38"
     name: kickside_core
     kind: ns.dependency
     meta: {}

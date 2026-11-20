@@ -55,7 +55,7 @@ entries:
     - name: kickside.inbox:ui_server
       value: app:gateway
 
-  - version: ">=0.1.68"
+  - version: ">=0.1.89"
     name: kickside_models
     kind: ns.dependency
     meta: {}

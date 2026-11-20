@@ -12,8 +12,8 @@ modules:
       version: 0.2.23
       hash: 805cea6cd5a3339f5519dc76b154301c41619060fde8a3b7d0a6a78c99952f55
     - name: kickside/automation
-      version: 0.2.37
-      hash: 57bf9af1f5344ef5cae09732487fcbb9518c6a162a46394aa2ece6114f9f93dd
+      version: 0.2.38
+      hash: 304e293561b891b03dd29781647eb5ed765d4380792a14a67c3993046f630519
     - name: kickside/blocks
       version: 0.1.38
       hash: a62227aa2e735eef7a051e3daf0c66164d282d2d5b19c7d4d8d28b23f3965373
@@ -21,8 +21,8 @@ modules:
       version: 0.2.5
       hash: bac918b81014fadb3dd41e20da2d0eff59a1bb8fd54e9d8e3fb22af460ee077d
     - name: kickside/component
-      version: 0.3.26
-      hash: 49d3d01669f4695342a5c63fb8f78b67208bf1096f0e2c457e220ee8c67977e2
+      version: 0.3.28
+      hash: 689ac0c21b33bd89912e8213acb58cf70991fc44be96a3a273c44a9db61cce33
     - name: kickside/connection
       version: 0.5.0
       hash: 169cb8259da3da1e50d01ea8b2022b17af0b9adc5e847fe444141f5b5005315f
@@ -30,8 +30,8 @@ modules:
       version: 0.3.12
       hash: ee99d200098d260c7dc4673849ac386256b446c8e5db880d903bd89eeff7fa9b
     - name: kickside/core
-      version: 0.3.37
-      hash: b1e5a64bd4e37183e2c32964969b4751f5460d4bb05cf4bddbbe8416bc0be3f5
+      version: 0.3.38
+      hash: e4d3a86617e16a4155a83fd8d16b2fd355fabaaa8d1ec5a107ecdc626c276c54
     - name: kickside/dashboard
       version: 0.1.20
       hash: a8e23bf51ce36933c20a4d54ff8bc9fb32774f5c960215135652d82b7903d1a5
@@ -63,8 +63,8 @@ modules:
       version: 0.1.20
       hash: cfa9fe68cfdb0955cb915304fe91695208863f68912132ab853262d2867af0fb
     - name: kickside/models
-      version: 0.1.69
-      hash: a7caaec886d0ea8f66f703b8782632bb79262236c9860533fc87cc1861ccef42
+      version: 0.1.89
+      hash: b08f3c549102b83f30e66beac36792dd91625c8163db8604b24cc343dcb0b919
     - name: kickside/oauth
       version: 0.1.40
       hash: d64c47514c13ebaeeb333602bf9e0ca7ca5429c0d1c51938569dda8943471cb6
