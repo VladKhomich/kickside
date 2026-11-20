@@ -46,6 +46,8 @@ entries:
     kind: contract.binding
     meta:
       class: [placement_parent]
+      owned_child_producers:
+        app:placement_child: [app.component_suites.binding:register_test_child]
     contracts:
       - contract: kickside.contract:component
         methods: { get_status: app:autoinit_test_status }

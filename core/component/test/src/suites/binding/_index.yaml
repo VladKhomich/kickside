@@ -100,9 +100,16 @@ entries:
       comment: Registration through the component_service contract preserves scoped actor identity.
     source: file://canonical_register_test.lua
     method: run
-    modules: [sql, time, uuid, contract, security, json]
+    modules: [sql, time, uuid, contract, security, json, funcs]
     imports:
       test: wippy.test:test
+
+  - name: register_test_child
+    kind: function.lua
+    source: 'local registration = require("registration"); return {run = registration.register_owned_child}'
+    method: run
+    imports:
+      registration: kickside.component.binding:child_registration
 
   - name: runtime_meta_scope_test
     kind: function.lua

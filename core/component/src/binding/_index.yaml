@@ -246,7 +246,8 @@ entries:
       - uuid
       - time
       - security
-    imports:
+      - process
+    imports: &registration_imports
       committed_error: kickside.contract:committed_error
       component_command: kickside.component:component_command
       envelope: kickside.component:envelope
@@ -254,6 +255,13 @@ entries:
       access_policy: kickside.component:access_policy
       component_lifecycle: kickside.component:component_lifecycle
     method: handle
+
+  - name: child_registration
+    kind: library.lua
+    meta: {comment: Register a parent-placed service child inside its owning function frame.}
+    source: file://register_component_func.lua
+    modules: [sql, uuid, time, security, process]
+    imports: *registration_imports
 
   # kickside.component.binding:export_component_func
   - name: export_component_func

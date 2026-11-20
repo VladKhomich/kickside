@@ -1,6 +1,7 @@
 local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
+local process = require("process")
 local security = require("security")
 local ops = require("component_ops")
 local component_command = require("component_command")
@@ -50,7 +51,7 @@ local function validate_additional_access(additional_access): error?
     return nil
 end
 
-local function handle(request_dto)
+local function register(request_dto, owned_child: boolean)
     if not request_dto or type(request_dto) ~= "table" then
         return envelope.fail(VALIDATION_ERRORS.INVALID_REQUEST, errors.INVALID)
     end
@@ -103,6 +104,10 @@ local function handle(request_dto)
         return envelope.fail(VALIDATION_ERRORS.INVALID_PARENT_ID, errors.INVALID)
     end
 
+    if owned_child and (not parent_id or not uuid.validate(parent_id)) then
+        return envelope.fail("owned child registration requires a parent component UUID", errors.INVALID)
+    end
+
     local position = request_dto.position
     if position ~= nil and (type(position) ~= "string" or position == "") then
         return envelope.fail(VALIDATION_ERRORS.INVALID_POSITION, errors.INVALID)
@@ -134,6 +139,7 @@ local function handle(request_dto)
                 private_context = private_context,
                 initial_meta = meta,
                 actor_id = user_id,
+                parent_custody = owned_child,
                 parent_id = parent_id,
                 position = position
             }
@@ -198,4 +204,22 @@ local function handle(request_dto)
     }
 end
 
-return { handle = handle }
+return {
+    handle = function(request_dto)
+        local entry, err = process.id()
+        if err then return envelope.from_error(err) end
+        if entry ~= "kickside.component.binding:register_component_func" then
+            return envelope.fail("ordinary registration requires the Component service", errors.PERMISSION_DENIED)
+        end
+        return register(request_dto, false)
+    end,
+    register_owned_child = function(request_dto)
+        -- The inline producer retains the ordinary register method's admission.
+        local allowed, err = security.can("contract.call", "register")
+        if err then return envelope.from_error(err) end
+        if allowed ~= true then
+            return envelope.fail("not allowed to call method: register", errors.PERMISSION_DENIED)
+        end
+        return register(request_dto, true)
+    end,
+}
