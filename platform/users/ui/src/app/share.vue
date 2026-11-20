@@ -113,16 +113,10 @@ async function loadAccess() {
   }
 }
 
-// The component owns its full popup chrome (backdrop + panel), so every host
-// gets an identically sized share dialog by just mounting the tag. Closing is
-// driven from here: backdrop click, the header close button, or Escape all emit
-// `close` for the host to act on.
-// The modal shell is PrimeVue's Dialog; `dialogOpen` drives its visibility, and any
-// dismissal (mask click, X, or the Escape handler below) flips it false → emitClose.
 const dialogOpen = ref(true)
 const confirmingRevoke = ref(false)
-function emitClose() { emit('close', undefined) }
-function onDialogVisible(v: boolean) { if (!v) emitClose() }
+// Let the host unmount Share after any dismissal, including a local Escape.
+watch(dialogOpen, (visible) => { if (!visible) emit('close', undefined) })
 function onEscape() { dialogOpen.value = false }
 
 onMounted(loadCaps)
@@ -216,8 +210,7 @@ async function revoke(row: AccessRow) {
     :style="{ width: '560px', maxWidth: 'calc(100vw - 48px)' }"
     aria-label="Share"
     class="kxs-dialog"
-    @keydown.esc="onEscape"
-    @update:visible="onDialogVisible"
+    @keydown.esc.stop="onEscape"
   >
     <template #header>
       <Icon icon="tabler:user-share" class="kxs-head-ico" aria-hidden="true" />
