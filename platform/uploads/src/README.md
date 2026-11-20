@@ -239,10 +239,13 @@ reads reject images larger than the requested limit after a bounded storage read
 | `zip` | Container with extracted child uploads, each linked to its parent archive; no container primary |
 
 SVG is markup, so the `kickside/llm-ocr` contract deliberately excludes it from
-raster-image OCR (see that module's README, Quick start). Its artifact-list `primary`
-field contains text content only, and the paginated parts exclude source and primary
-artifacts. The upload metadata exposes `primary_artifact_id`; the artifact raw endpoint
-serves the original SVG image under that ID.
+raster-image OCR (see that module's README, Quick start). The artifact list prefers a
+text primary when text is available. For SVG, `primary` identifies the original
+`image/svg+xml` image artifact and its `content_description.text_available` is
+`false`. The top-level `content_description` describes the uploaded source. The
+paginated parts exclude source and primary artifacts. The upload metadata exposes
+`primary_artifact_id`, and the artifact raw endpoint serves the original SVG bytes
+under that ID.
 The `ai_upload_svg` smoke scenario verifies the exact original image bytes and markup.
 
 Without a completion token, upload records deduplicate identical bytes within one
