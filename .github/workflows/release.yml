@@ -72,6 +72,8 @@ jobs:
       with:
         version: 0.3.66a
         hub-url: https://hub.wippy.ai
+    - name: Install release manifest parser
+      run: python3 -m pip install PyYAML
     - name: Publish companion artifacts from their release tags
       env:
         RELEASE_PATHS_JSON: ${{ needs.release-please.outputs.released_paths }}

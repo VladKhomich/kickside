@@ -119,6 +119,8 @@ jobs:
         path: providers
         token: ${{ secrets.SOURCE_READ_TOKEN || github.token }}
         persist-credentials: false
+    - name: Install release manifest parser
+      run: python3 -m pip install PyYAML
     - name: Check native harness database ownership
       run: python3 -m unittest discover -s tests -p test_public_harnesses.py
     - name: Validate data contract schemas and example payloads

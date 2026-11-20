@@ -56,6 +56,46 @@ class PublicHarnessTests(unittest.TestCase):
                 self.assertEqual((consumer / 'npm/@kickside/ui-kit' / name).read_bytes(),
                                  (ROOT / 'platform/ui-kit/package' / name).read_bytes())
 
+    def test_embedded_files_follow_module_exclusions_after_a_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'ui-kit'
+            shutil.copytree(ROOT / 'platform/ui-kit', source,
+                            ignore=shutil.ignore_patterns('node_modules', '.wippy'))
+            package = source / 'src/assets'
+            (source / 'package').rename(package)
+            declaration = source / 'src/_index.yaml'
+            declaration.write_text(declaration.read_text().replace('directory: ./package', 'directory: ./src/assets'))
+            module = {'path': 'ui-kit', 'name': 'kickside/ui-kit',
+                      'version': json.loads((package / 'package.json').read_text())['version'],
+                      'embed': ['kickside.ui_kit:package_fs']}
+            manifest = source / 'wippy.yaml'
+            manifest.write_text(manifest.read_text().replace('exclude:\n', 'exclude:\n'
+                                '  - "**/*.js.map"\n  - "src/assets/*.css.map"\n'))
+            assets = {'asset.js': 'javascript', 'chunks/deep/theme.css': 'styles',
+                      'chunks/theme.css.map': 'required map', 'map.json': '{}'}
+            for name, content in assets.items():
+                path = package / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+            with prepared_artifact(root, module, 'wippy') as archive:
+                clean = archive.read_bytes()
+
+            maps = ['asset.js.map', 'chunks/deep/asset.js.map', 'theme.css.map']
+            for name in maps:
+                (package / name).write_text('generated')
+            with prepared_artifact(root, module, 'wippy') as archive:
+                consumer = root / 'consumer'
+                subprocess.run(['wippy', 'artifacts', 'materialize', str(archive), module['embed'][0],
+                                '--root', str(consumer)], cwd=root, check=True, capture_output=True)
+                installed = consumer / 'npm/@kickside/ui-kit'
+                for name in maps:
+                    self.assertFalse((installed / name).exists(), name)
+                    self.assertEqual((package / name).read_text(), 'generated')
+                for name, content in assets.items():
+                    self.assertEqual((installed / name).read_text(), content)
+                self.assertEqual(archive.read_bytes(), clean)
+
     def test_root_make_test_runs_each_package_test_script(self):
         for module, directory in (('workflows', 'platform/workflows/ui'), ('app-main', 'app/frontend/applications/main')):
             with self.subTest(module=module):
