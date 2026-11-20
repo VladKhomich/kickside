@@ -165,7 +165,7 @@ local function seed_upload_with_empty_primary(upload_id: string, owner: string):
     if err or not artifact then error("artifact insert failed: " .. tostring(err)) end
 end
 
-local function seed_upload_delivery(owner: string, storage_id: string): (string, string)
+local function seed_upload_delivery(owner: string, storage_id: string, path: string?, original_only: boolean?): (string, string)
     local kb_id, upload_id = uuid.v7(), uuid.v7()
     fixtures[#fixtures + 1] = kb_id
     upload_fixtures[#upload_fixtures + 1] = upload_id
@@ -176,12 +176,13 @@ local function seed_upload_delivery(owner: string, storage_id: string): (string,
     local _, ensure_err = threads:ensure_thread({ component_id = kb_id,
         impl_id = "app:test_engine_files", thread_class = "kickside.knowledge.injection" })
     test.is_nil(ensure_err, tostring(ensure_err))
-    seed_upload_without_primary(upload_id, owner, "text/plain", upload_id)
+    seed_upload_without_primary(upload_id, owner, "text/plain", path or upload_id)
     local d = db()
     local _, update_err = d:execute("UPDATE kickside_uploads SET storage_state=$1, storage_id=$2 WHERE uuid=$3",
         {"completed", storage_id, upload_id})
     d:release()
     test.is_nil(update_err, tostring(update_err))
+    if original_only then return kb_id, upload_id end
     local _, artifact_err = artifact_content_repo.create_artifact({
         upload_id = upload_id, kind = "text", role = "primary", mime_type = "text/plain",
         locator = { type = "upload.original" }, metadata = { filename = "fixture.txt" },
@@ -261,7 +262,7 @@ local function define_tests()
                     test.is_nil(result)
                     test.is_true(errors.is(call_err, errors.UNAVAILABLE), tostring(call_err))
                     test.is_true(call_err:retryable())
-                    test.eq(call_err:details().code, "test_storage_unavailable")
+                    test.eq(call_err:details().code, "storage_unavailable")
                 else
                     test.is_nil(call_err, tostring(call_err))
                     test.eq(result.success, true)
@@ -311,6 +312,26 @@ local function define_tests()
             test.is_nil(next(hidden_err:details() or {}))
             test.is_nil(next(unknown_err:details() or {}))
         end)
+
+        for _, mode in ipairs({"original", "primary"}) do
+            test.it("keeps private storage locators out of " .. mode .. " EmbedToKB errors", function()
+                local owner = uuid.v4()
+                local marker = "private-locator-fixture-" .. uuid.v4()
+                local kb_id, upload_id = seed_upload_delivery(owner, "app:uploads", marker .. "/file.txt", mode == "original")
+                local exec = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(scope())
+                    :with_context({ kb_ids = { kb_id } })
+                local result, err = exec:call(EMBED_TOOL, { upload_id = upload_id })
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.NOT_FOUND), tostring(err))
+                test.is_false(err:retryable() == true)
+                local serialized = assert(json.encode({
+                    message = err:message(), kind = err:kind(), retryable = err:retryable(), details = err:details(),
+                }))
+                test.is_true(serialized:find(marker, 1, true) == nil, mode .. " read exposes a private storage locator")
+                test.is_nil(err:details().cause)
+                test.eq(err:details().code, mode == "original" and "upload_content_read_failed" or "artifact_read_failed")
+            end)
+        end
 
         test.it("queues a member's processed upload through EmbedToKB", function()
             local owner = uuid.v4()
