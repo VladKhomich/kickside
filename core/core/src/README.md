@@ -76,6 +76,12 @@ checks their event heads, and shares the configured event deletion cap across
 the page. It then runs receipt cleanup and owner hooks. An append wake on a
 sparse installation still reads only one candidate page.
 
+Component deletion leaves its lifecycle audit thread open. Its events inherit
+the event retention window (30 days by default), subject to the same pins and
+projection cursors as other threads. After the events expire, Core keeps the
+thread ID and sequence boundary. Recreating the same component ID reuses this
+thread. The sweeper includes its header in subsequent rotations.
+
 Boot recovery starts a rotation immediately. The service keeps the last
 visited ID and the rotation's highest ID in memory. It schedules the next
 page immediately until it reaches the endpoint. For a stable set of threads,
