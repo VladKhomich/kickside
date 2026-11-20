@@ -103,7 +103,7 @@ const snapshot = () => JSON.stringify({
 })
 const dirty = computed(() => snapshot() !== baseline.value)
 
-async function load(): Promise<boolean> {
+async function load() {
   loading.value = true
   error.value = ''
   try {
@@ -119,14 +119,13 @@ async function load(): Promise<boolean> {
     overrides.value = (cfg.overrides && typeof cfg.overrides === 'object') ? structuredClone(cfg.overrides) : {}
     title.value = typeof cfg.title === 'string' ? cfg.title : ''
     logoUrl.value = typeof cfg.logo_url === 'string' ? cfg.logo_url : ''
-    primaryColor.value = typeof cfg.primary_color === 'string' ? cfg.primary_color : ''
-    committedTone = primaryColor.value // baseline tone an unsaved preview reverts to
+    const savedTone: string = typeof cfg.primary_color === 'string' ? cfg.primary_color : ''
+    committedTone = savedTone
+    primaryColor.value = savedTone
     home.value = typeof data.home === 'string' ? data.home : (typeof cfg.home === 'string' ? cfg.home : '')
     baseline.value = snapshot()
-    return true
   } catch (e: any) {
     error.value = apiError(e, 'failed to load')
-    return false
   } finally {
     loading.value = false
   }
@@ -152,7 +151,7 @@ const {
 // leave we re-emit the last committed (saved) tone so unsaved edits revert.
 let toneTimer: ReturnType<typeof setTimeout> | null = null
 let disposed = false
-let committedTone = '' // the last saved tone; what an unsaved preview reverts to on leave
+let committedTone: string | null = null // null until the saved setting is loaded
 // The facade's static default css-variables (served at /app), used to preview/apply the
 // built-in ramp on "Reset to default" — clearing the overlay would only revert to the
 // boot-delivered SAVED tone, not the default. Fetched once; falls back to the seed ramp.
@@ -169,7 +168,7 @@ async function loadDefaultTone() {
       if (typeof seed === 'string') defaultTone.value = seed
       // If we're already showing the default (no custom tone set), re-emit now that we have
       // the exact static seed (this fetch may finish after the initial emit).
-      if (!primaryColor.value.trim() && hostVisible.value !== false) emitTone('')
+      if (committedTone !== null && !disposed && !primaryColor.value.trim() && hostVisible.value !== false) emitTone('')
     }
   } catch { /* keep the fallback default seed */ }
 }
@@ -190,7 +189,7 @@ function emitTone(hex: string) {
 onBeforeUnmount(() => {
   disposed = true
   if (toneTimer) clearTimeout(toneTimer)
-  emitTone(committedTone) // revert any unsaved preview to the last saved tone
+  if (committedTone !== null) emitTone(committedTone)
   unsubscribeTheme?.()
 })
 
@@ -234,10 +233,9 @@ onMounted(() => {
 // draft across that transition, but never leave its global tone preview applied to
 // unrelated pages. Clean surfaces refresh from the server when they are revealed;
 // dirty surfaces keep their draft and re-apply its preview when the user returns.
-let hasLoaded = false
 async function refreshAppearance() {
-  if (hasLoaded && dirty.value) return
-  if (await load()) hasLoaded = true
+  if (committedTone !== null && dirty.value) return
+  await load()
 }
 
 const hostVisible = useHostVisibilityRefresh(refreshAppearance)
@@ -247,11 +245,12 @@ const hostVisible = useHostVisibilityRefresh(refreshAppearance)
 watch(primaryColor, (hex) => {
   if (toneTimer) clearTimeout(toneTimer)
   toneTimer = null
-  if (hostVisible.value === false) return
+  if (committedTone === null || hostVisible.value === false) return
   toneTimer = setTimeout(() => emitTone(hex), 90)
 })
 
 watch(hostVisible, (visible, previous) => {
+  if (committedTone === null) return
   if (previous === true && visible === false) {
     if (toneTimer) clearTimeout(toneTimer)
     toneTimer = null

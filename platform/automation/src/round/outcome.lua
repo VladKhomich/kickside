@@ -77,10 +77,11 @@ end
 function M.merge_items(d: Map, redelivery: { Map }, page: { Map }): { Map }
     local items: { Map } = {}
     local seen: { [string]: boolean } = {}
-    for _, list in ipairs({ redelivery, page }) do
+    for index, list in ipairs({ redelivery, page }) do
         for _, raw in ipairs(list) do
             local item: Map = {}
             for k, v in pairs(raw) do item[k] = v end
+            if index == 2 then item.pending_effect = nil end
             item.item_key = tostring(item.item_key or item.dedup_key or "")
             item.dedup_key = tostring(item.dedup_key or item.item_key)
             item.attempts = math.floor(tonumber(item.attempts) or 0)
@@ -119,12 +120,15 @@ function M.ledger_outcomes(items: { Map }, outcomes: Map, delivery: Map): ({ Map
     end
     for _, o in ipairs(outcomes.waiting :: { Map }) do
         local wait_ms = math.max(math.floor(tonumber(o.retry_after_ms) or 0), delivery.retry_after_ms)
+        local failure=o.error or {code="capacity",message="destination capacity",retriable=true}
+        if failure.code == failure_classification.EFFECT_PENDING then
+            wait_ms = math.min(wait_ms, delivery.max_delay_ms)
+        end
         local next_at: string? = nil
         local floor = failure_classification.capacity_floor(o.error)
         if not o.parked then
             next_at = floor ~= nil and drive.utc_at_ms(floor) or o.next_attempt_at or drive.utc_after(wait_ms)
         end
-        local failure=o.error or {code="capacity",message="destination capacity",retriable=true}
         partial_effect(o,by_key[o.key] :: Map,failure)
         recorded[#recorded + 1] = {item=by_key[o.key],state=ledger.STATE.WAITING,next_attempt_at=next_at,error=failure}
     end

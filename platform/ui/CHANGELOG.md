@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/kicksideai/kickside/compare/ui-v0.2.14...ui-v0.2.15) (2026-11-20)
+
+
+### Bug Fixes
+
+* **ui:** preserve the saved accent while Appearance loads ([#726](https://github.com/kicksideai/kickside/issues/726)) ([90f543c](https://github.com/kicksideai/kickside/commit/90f543cde3b0d12fe103264aa80698e3d15228b7))
+
 ## [0.2.14](https://github.com/kicksideai/kickside/compare/ui-v0.2.13...ui-v0.2.14) (2026-11-19)
 
 

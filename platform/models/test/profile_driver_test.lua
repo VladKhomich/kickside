@@ -31,7 +31,10 @@ local function define_tests()
                 elseif boundary == "open details" then fixture.open_error = failure
                 elseif boundary == "method string" then fixture.failure = message
                 elseif boundary == "method details" then fixture.failure = failure
-                else fixture.response = {success = true, result = {content = "ok"}, metadata = details} end
+                else
+                    local data = assert(json.decode('{"empty_array":[],"empty_object":{},"rows":[{"book":null},{"page":"7"}]}'))
+                    fixture.response = {success = true, result = {content = "ok", data = data}, metadata = details}
+                end
                 local ok, err = pcall(function()
                     for _, method in ipairs({"status", "generate", "embed", "structured_output", "evaluate"}) do
                         local response, call_err = driver[method]({})
@@ -39,6 +42,11 @@ local function define_tests()
                         if boundary == "response metadata" then
                             test.is_nil(call_err)
                             test.eq(response.result.content, "ok")
+                            local data = response.result.data
+                            test.eq(json.encode(data.empty_array), "[]")
+                            test.eq(json.encode(data.empty_object), "{}")
+                            test.eq(json.encode(data.rows[1]), "{}")
+                            test.eq(data.rows[2].page, "7")
                             test.eq(response.metadata.status, 401)
                             test.eq(response.metadata.retryable, false)
                             diagnostic = json.encode(response)

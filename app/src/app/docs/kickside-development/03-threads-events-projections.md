@@ -162,6 +162,8 @@ execution identity. Do not synthesize an actor or scope in the worker.
 
 A durable writer that needs projection acknowledgment can call
 `catch_up_projection({ thread_id = id, kind = kind, deadline = deadline })`.
+Pass `target_seq` to wait for a committed sequence. The default is the thread
+head sampled at entry, and a target above that head returns InvalidArgument.
 `deadline` is an RFC3339 instant; pass the enclosing job or round's work deadline
 so the blocking wait ends within its execution ceiling. The wait wakes the
 projection slot and observes its cursor; it does not execute the projection in

@@ -107,6 +107,7 @@ const install = useInstallFlow({
 const confirmTarget = ref<Automation | null>(null)
 const deleteChoices = ref<Record<string, boolean>>({})
 const deleting = ref(false)
+const deleteError = ref('')
 
 // Kind-specific manage flow. A type declares meta.component.manage.view; the
 // backend resolves it to component.manage_ui and the edit action mounts it here.
@@ -216,6 +217,7 @@ async function toggleEnabled(a: Automation) {
 // ─── Uninstall flow ────────────────────────────────────────────────────
 function askRemove(a: Automation) {
   confirmTarget.value = a
+  deleteError.value = ''
   const t = typeFor(a)
   const choices: Record<string, boolean> = {}
   for (const opt of t?.delete_options || []) choices[opt.key] = !!opt.default
@@ -237,7 +239,7 @@ async function doRemove() {
   const a = confirmTarget.value
   if (!a) return
   deleting.value = true
-  error.value = ''
+  deleteError.value = ''
   try {
     const opts = deleteOptions(a)
     const body = opts.length ? { options: { ...deleteChoices.value } } : {}
@@ -247,10 +249,10 @@ async function doRemove() {
       confirmTarget.value = null
       await fetchAutomations()
     } else {
-      error.value = errMsg({ response: { data } }, 'failed to delete automation')
+      deleteError.value = errMsg({ response: { data } }, 'failed to delete automation')
     }
   } catch (e) {
-    error.value = errMsg(e, 'failed to delete automation')
+    deleteError.value = errMsg(e, 'failed to delete automation')
   } finally {
     deleting.value = false
   }
@@ -494,6 +496,7 @@ const {acceptDeletion} = useComponentDeletion(automations, row => row.id, undefi
             </span>
           </label>
         </div>
+        <div v-if="deleteError" class="kx-err inline" role="alert" data-testid="automations-delete-error">{{ deleteError }}</div>
       </div>
       <template #footer>
         <Button type="button" label="Cancel" severity="secondary" outlined :disabled="deleting" @click="confirmTarget = null" />

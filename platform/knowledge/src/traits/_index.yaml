@@ -373,7 +373,7 @@ entries:
           "properties": {
             "success": {"type": "boolean", "const": true},
             "mode": { "type": "string", "const": "query", "description": "Present when Ask returns query results without answer generation." },
-            "answer": { "type": "string", "description": "The grounded answer, or the reason and numbered source passages in query mode. In answer mode, empty when retrieval finds no passages." },
+            "answer": { "type": "string", "minLength": 1, "description": "The grounded answer, a clear no-answer message, or the reason and any numbered source passages in query mode." },
             "count": { "type": "integer", "description": "Number of source passages." },
             "sources": {
               "type": "array",

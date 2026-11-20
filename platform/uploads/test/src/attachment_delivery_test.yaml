@@ -1,0 +1,62 @@
+version: "1.0"
+namespace: app
+entries:
+  - name: attachment_delivery_test
+    kind: function.lua
+    meta: {type: test, suite: upload_attachment_delivery, timeout: 55s}
+    source: file://attachment_delivery_test.lua
+    method: run
+    modules: &modules [channel, funcs, fs, process, security, sql, time, uuid]
+    imports: &imports
+      attachment_ingest: kickside.uploads:attachment_ingest
+      provision: kickside.core.threads:provision
+      test: wippy.test:test
+
+  - name: attachment_delivery_admit
+    kind: function.lua
+    source: file://attachment_delivery_test.lua
+    method: admit
+    modules: *modules
+    imports: *imports
+
+  - name: attachment_delivery_process
+    kind: process.lua
+    source: file://attachment_delivery_test.lua
+    method: admit_process
+    modules: *modules
+    imports: *imports
+
+  - name: attachment_delivery_verify
+    kind: function.lua
+    source: file://attachment_delivery_test.lua
+    method: verify_attachment
+    modules: *modules
+    imports: *imports
+
+  - name: attachment_delivery_fixture_fetch
+    kind: function.lua
+    source: file://attachment_delivery_test.lua
+    method: fetch
+    pool: {type: static, size: 4}
+    modules: *modules
+    imports: *imports
+
+  - name: attachment_delivery_fixture_verify
+    kind: function.lua
+    source: file://attachment_delivery_test.lua
+    method: verify
+    modules: *modules
+    imports: *imports
+
+  - name: attachment_delivery_versioned_fixture
+    kind: registry.entry
+    meta: {type: attachment.fetcher}
+    provider: versioned-fixture
+    fetch_func: app:attachment_delivery_fixture_fetch
+    verify_func: app:attachment_delivery_fixture_verify
+
+  - name: attachment_delivery_fetch_only_fixture
+    kind: registry.entry
+    meta: {type: attachment.fetcher}
+    provider: fetch-only-fixture
+    fetch_func: app:attachment_delivery_fixture_fetch

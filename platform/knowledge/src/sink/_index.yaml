@@ -7,6 +7,59 @@ namespace: kickside.knowledge.sink
 # composing form mounts it to choose the destination KB.
 
 entries:
+  - name: kb_upload_write
+    kind: function.lua
+    source: file://kb_upload_sink.lua
+    method: write
+    modules: [security, uuid, registry, funcs]
+    security:
+      policies:
+        - kickside.knowledge.security:sink_output_publish
+        - kickside.knowledge.security:content_upserted_publish
+    imports:
+      thread_ingest_base: kickside.knowledge.injection:thread_ingest_base
+      thread_ingest_status: kickside.knowledge.injection:thread_ingest_status
+      thread_ingest: kickside.knowledge.injection:thread_ingest
+      ingest_upload: kickside.knowledge.api:ingest_upload
+      upload_read_model: kickside.uploads.persist:upload_read_model
+      attachment_ingest: kickside.uploads:attachment_ingest
+      writable_sink: kickside.data:writable_sink
+      component: kickside.component:component
+
+  - name: kb_upload_sink
+    kind: contract.binding
+    meta:
+      title: Add an upload to Knowledge Base
+      group: Knowledge
+      delivery: exactly_once
+      input_shape: record
+      resumes_effect: true
+    contracts:
+      - contract: kickside.data:writable
+        methods:
+          write: kickside.knowledge.sink:kb_upload_write
+
+  - name: kb_upload
+    kind: registry.entry
+    meta:
+      type: kickside.automation.port
+      title: Add an upload to Knowledge Base
+      comment: Store the processed result of an upload owned by the sync's actor.
+      icon: tabler:books
+    binding: kickside.knowledge.sink:kb_upload_sink
+    operations:
+      upsert: {}
+      delete: { requires_dest_ref: true }
+    input_schema: |
+      {"type":"object","properties":{"upload_id":{"type":"string"},
+        "source_version":{"type":"string","maxLength":128},
+        "attachment":{"type":"object","properties":{"source":{"type":"string"},
+          "component_id":{"type":"string"},"ref":{"type":"object"}},
+          "required":["source","component_id","ref"]}},
+        "oneOf":[{"required":["upload_id"]},{"required":["attachment","source_version"]}]}
+    config_schema:
+      kb_id: { picker: wc-kb-picker, required: true, title: Knowledge base }
+
   - name: kb_embed_runtime
     kind: library.lua
     source: file://kb_embed_sink.lua

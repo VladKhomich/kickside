@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local base64 = require("base64")
 local ctx = require("ctx")
+local json = require("json")
 local registry = require("registry")
 local model_catalog = require("model_catalog")
 local models_repo = require("models_repo")
@@ -74,6 +75,11 @@ local function redact_returns(context: any): (any) -> any
         elseif type(value) == "table" then
             if seen[value] then return seen[value] end
             local out = {}
+            -- JSON objects can be empty after decoding null members. Keep their
+            -- map allocation so callers can still distinguish them from arrays.
+            if next(value) == nil and json.encode(value) == "{}" then
+                out = table.create(0, 1)
+            end
             seen[value] = out
             for key, child in pairs(value) do out[redact(key)] = redact(child) end
             return out

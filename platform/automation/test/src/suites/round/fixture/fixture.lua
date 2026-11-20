@@ -342,6 +342,10 @@ function M.write(request: any): (any, any)
         if err then return nil, err end
     end
     if r.sink_op == "delete" then
+        if json.encode(r.input) == "[]" or json.encode(r.config) == "[]" then
+            return { success = false, error = { code = "invalid_request", scope = "item",
+                retriable = false, message = "writable input and config must be objects" } }, nil
+        end
         if type(r.dest_ref) == "table" and (r.dest_ref :: Map).id == "fail-delete" then
             return { success = false, error = { code = "provider_unavailable", retriable = true,
                 message = "destination deletion has no acknowledgment" } }, nil
@@ -363,6 +367,9 @@ function M.write(request: any): (any, any)
         return { accepted = true, dest_ref = { id = "rec:" .. tostring(r.identity_key) } }, nil
     elseif what == "capacity" then
         return { success = false, error = { code = "rate_limited", scope = "capacity", retry_after_ms = 30000, retriable = true, message = "busy" } }, nil
+    elseif what == "effect_pending" then
+        return { success = false, error = { code = "effect_pending", scope = "item", retry_after_ms = 2000,
+            retriable = true, message = "accepted effect is processing" } }, nil
     elseif what == "timeout" then
         return { success = false, error = { code = "provider_unavailable", retriable = true, message = "timed out" } }, nil
     elseif what == "invalid" then
@@ -439,7 +446,8 @@ function M.record_keys(request: any): (any, any)
         keys[#keys + 1] = item.key
     end
     local next_cursor = from + #keys
-    return { success = true, keys = keys, next_cursor = next_cursor, has_more = next_cursor < #all }, nil
+    return { success = true, keys = keys, next_cursor = next_cursor, has_more = next_cursor < #all,
+        retry_after_ms = config.retry_after_ms }, nil
 end
 
 

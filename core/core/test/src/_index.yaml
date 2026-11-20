@@ -739,6 +739,8 @@ entries:
       projections:
         - kind: test.reap
           worker_ref: "func://app:test_count_worker"
+      retention:
+        event_days: 7
       events:
         input:
           - type: app:threads_sys_reap
@@ -746,6 +748,18 @@ entries:
       - contract: kickside.contract:component
         methods:
           get_status: kickside.core.threads:thread_status
+
+  - name: system_component_startup_test
+    kind: function.lua
+    meta:
+      type: bootloader
+      order: 41
+      requires: [kickside.core.lifecycle:migrations_applied]
+    source: file://system_component_startup_test.lua
+    method: run
+    modules: [contract, security]
+    imports:
+      autoinit: kickside.component:autoinit
 
   - name: provision_test
     kind: function.lua
@@ -2509,10 +2523,37 @@ entries:
     meta: {type: test, suite: core_retention_process_native}
     source: file://retention_process_native_test.lua
     method: run
+    modules: [process, channel, time]
     imports:
       test: wippy.test:test
       source: app:retention_process_native_source
       fixture: app:retention_process_native_fixture
+
+  - name: retention_shutdown_fixture
+    kind: library.lua
+    source: file://retention_shutdown_fixture.lua
+    modules: [process, channel, sql]
+    imports:
+      notifier: kickside.core.retention:notifier
+
+  - name: retention_shutdown_process
+    kind: process.lua
+    source: file://retention_process_native_source.lua
+    method: main
+    modules: [channel, time, events, sql]
+    imports:
+      process: app:retention_shutdown_process_adapter
+      runner: app:retention_shutdown_fixture
+      proc_supervisor: kickside.core.jobs:proc_supervisor
+      core_db: kickside.core:db
+      notifier: kickside.core.retention:notifier
+      lease_release: kickside.core.jobs:lease_release
+
+  - name: retention_shutdown_process_adapter
+    kind: library.lua
+    source: file://retention_shutdown_process_adapter.lua
+    imports:
+      fixture: app:retention_shutdown_fixture
 
   - name: retention_process_response_test
     kind: function.lua
@@ -4443,8 +4484,10 @@ entries:
   - name: migration_wake_source
     kind: library.lua
     source: file://migration_wake_source.lua
+    modules: [security]
     imports:
       process: app:migration_wake_fixture
+      provision: app:migration_wake_provision
       retention_notifier: app:migration_wake_notifier
       lifecycle_consts: kickside.core.lifecycle:consts
   - name: migration_wake_test
@@ -4460,6 +4503,12 @@ entries:
   - name: migration_wake_notifier
     kind: library.lua
     source: file://migration_wake_notifier.lua
+    imports:
+      fixture: app:migration_wake_fixture
+
+  - name: migration_wake_provision
+    kind: library.lua
+    source: file://migration_wake_provision.lua
     imports:
       fixture: app:migration_wake_fixture
 

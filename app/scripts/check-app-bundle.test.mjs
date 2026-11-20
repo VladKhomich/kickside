@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { shellVendor } from '../frontend/applications/main/shell-vendor.mjs'
 import { checkAppBundle } from './check-app-bundle.mjs'
 
 async function fixture(t) {
@@ -101,4 +102,19 @@ test('rejects paths escaping the application bundle', async t => {
   manifest.files['../outside.js'] = 'sha256-unsafe'
   await writeFile(join(bundle, 'vendor/manifest.json'), JSON.stringify(manifest))
   await assert.rejects(checkAppBundle(root), /invalid local asset path/)
+})
+
+test('vendor file integrity manifest is stable across Rollup output orders', () => {
+  function manifest(names) {
+    const bundle = Object.fromEntries(names.map(name => [name, {
+      type: 'asset',
+      source: name === 'app.html' ? '<head><script type="importmap">{}</script></head>' : name,
+    }]))
+    let source
+    const context = { getModuleIds: () => [], emitFile: file => { source = file.source } }
+    shellVendor().generateBundle.handler.call(context, {}, bundle)
+    return source
+  }
+
+  assert.equal(manifest(['app.html', 'app.css']), manifest(['app.css', 'app.html']))
 })

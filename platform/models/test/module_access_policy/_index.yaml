@@ -13,6 +13,7 @@ entries:
   - security
   - funcs
   - json
+  - sql
   - store
   - ctx
   imports:

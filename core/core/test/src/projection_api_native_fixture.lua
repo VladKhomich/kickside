@@ -5,6 +5,8 @@ function M.reset(stage: string, source: error?, release_source: error?): ()
     M.opens, M.releases, M.closes, M.effects = 0, 0, 0, 0
     M.progress_release_source = nil
     M.effect_id = nil
+    M.target_seq = nil
+    M.waits = 0
 end
 local function failure(stage: string): error?
     if M.stage == stage then return M.source end
@@ -31,7 +33,8 @@ function M.open_db(): (any, error?)
         query = function(_self: any, query: string, args: table): (any, error?)
             local err = failure("progress_read")
             if err then return nil, err end
-            return {{last_seq = 1, status = "active", generation = M.stage == "changed_progress" and 2 or 1,
+            local seq = M.stage == "target" and M.waits == 0 and 0 or 1
+            return {{last_seq = seq, status = "active", generation = M.stage == "changed_progress" and 2 or 1,
                 job_id = "job"}}, nil
         end,
     }, nil
@@ -84,11 +87,17 @@ function M.find_projection_cursor(...: any): (any, error?)
 end
 function M.select_projection_cursor(...: any): (any, error?, number)
     return {id = "cursor", projection_id = "projection", job_id = "job", status = "active", generation = 1, last_seq = 0},
-        failure("gate") or failure("select"), 1
+        failure("gate") or failure("select"), M.stage == "target" and 2 or 1
 end
-function M.begin_wait(...: any): (any, error?) return {}, failure("begin_wait") end
+function M.begin_wait(_cursor_id: string, target_seq: integer, _timeout_ms: integer): (any, error?)
+    M.target_seq = target_seq
+    return {}, failure("begin_wait")
+end
 function M.close_wait(...: any): () M.closes = M.closes + 1 end
-function M.wait_until_reached(...: any): (any, boolean, error?) return true, false, failure("wait") end
+function M.wait_until_reached(...: any): (any, boolean, error?)
+    M.waits = M.waits + 1
+    return true, false, failure("wait")
+end
 function M.wake_job(...: any): (any, error?) return true, failure("wake") end
 M.wake_catch_up = M.wake_job
 function M.catch_up_progress(db: any, _thread_id: string, selected: table, _authorize: table): (any, error?)

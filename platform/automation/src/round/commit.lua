@@ -124,7 +124,7 @@ local function record_receipts_tx(tx: any, round: Map, delivered: { Map }, pass_
             local observed=type(item.delivery_key) == "string" and r.delivery_key == item.delivery_key
             if not observed or completed[item.delivery_key] or (type(pass_id) == "string" and r.pass_id ~= pass_id) then
                 if r.removed == true then
-                    removals[#removals + 1] = { item.item_key, r.map_slot or "" }
+                    removals[#removals + 1] = { item.item_key, r.map_slot or "", r.expected_dest_version }
                 elseif r.dest_ref ~= nil and type(r.identity_key) == "string" then
                     local is_completed = completed[item.delivery_key] == true
                     local delivery_key = is_completed and item.delivery_key or r.delivery_key
@@ -222,9 +222,15 @@ local function record_receipts_tx(tx: any, round: Map, delivered: { Map }, pass_
         local params: { any } = { round.automation_id, round.receipt_port }
         local slots: { string } = {}
         for index = first, math.min(#removals, first + CHUNK - 1) do
-            params[#params + 1] = removals[index][1]
-            params[#params + 1] = removals[index][2]
-            slots[#slots + 1] = "(item_key = $" .. tostring(#params - 1) .. " AND map_slot = $" .. tostring(#params) .. ")"
+            local removal = removals[index]
+            params[#params + 1] = removal[1]
+            params[#params + 1] = removal[2]
+            local matching = "item_key = $" .. tostring(#params - 1) .. " AND map_slot = $" .. tostring(#params)
+            if type(removal[3]) == "string" then
+                params[#params + 1] = removal[3]
+                matching = matching .. " AND dest_version = $" .. tostring(#params)
+            end
+            slots[#slots + 1] = "(" .. matching .. ")"
         end
         local deleted, err = tx:execute("DELETE FROM kickside_automation_receipt WHERE owner_id = $1 AND source_port = $2 AND ("
             .. table.concat(slots, " OR ") .. ")", params)
