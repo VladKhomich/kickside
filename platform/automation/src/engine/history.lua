@@ -22,6 +22,18 @@ local function decoded(raw: string, field: string): (Map?,error?)
     return value,nil
 end
 
+local function publication_ref(raw: any): (Map?,error?)
+    if raw == nil then return nil,nil end
+    local ref,err=decoded(tostring(raw),"publication reference")
+    if err or not ref then return nil,err end
+    for _,key in ipairs({"kb_id","external_id","publication_id"}) do
+        if type(ref[key]) ~= "string" or ref[key] == "" then
+            return nil,internal("invalid retained publication reference",nil)
+        end
+    end
+    return {kb_id=ref.kb_id,external_id=ref.external_id,publication_id=ref.publication_id},nil
+end
+
 local function admission(raw: any, id: string, validate: any): (Map?,string?,error?)
     if raw == nil then return nil,"absent",nil end
     local evidence,err=provenance.decode(raw)
@@ -87,7 +99,7 @@ function M.list(db: any, id: string, opts: any, validate: any): (Map?,error?)
     for _,key in ipairs(keys) do order[#order+1]=key .. " DESC" end
     params[#params+1]=size+1
     local columns=kind == "deliveries"
-        and "round_at,drive_key,round_token,source_port,item_key,identity_key,state,execution_identity_json,error_json"
+        and "round_at,drive_key,round_token,source_port,item_key,identity_key,state,execution_identity_json,error_json,publication_ref_json"
         or "generation,request_id,state,created_at,completed_at,target_receipts_json"
     local name=kind == "deliveries" and "kickside_automation_delivery_history" or "kickside_automation_op"
     local rows,read_err=db:query("SELECT " .. columns .. " FROM " .. name .. " WHERE " .. predicate
@@ -102,6 +114,9 @@ function M.list(db: any, id: string, opts: any, validate: any): (Map?,error?)
             local evidence,status,evidence_err=admission(row.execution_identity_json,id,validate)
             if evidence_err then return nil,evidence_err end
             entry.evidence=evidence;entry.evidence_status=status
+            local ref,ref_err=publication_ref(row.publication_ref_json)
+            if ref_err then return nil,ref_err end
+            entry.publication_ref=ref
             if row.error_json ~= nil then
                 local failure,failure_err=json.decode(row.error_json)
                 if failure_err then return nil,internal("invalid retained delivery error",failure_err) end

@@ -319,7 +319,7 @@ function M.commit_tx(tx: any, round: Map, result: Map): (Map?, error?)
     local delta, ledger_err, retention_work, prior = ledger.record_tx(tx, round.automation_id, round.source_port, result.outcomes or {},
         round.now, round.resolved_expires_at, round)
     if ledger_err then return nil, ledger_err end
-    local history_err=history.record_tx(tx,round,result.outcomes or {},result.deliveries,prior)
+    local history_err=history.record_tx(tx,round,result.outcomes or {},result.deliveries,prior,result.receipts)
     if history_err then return nil,history_err end
     local receipt_err = record_receipts_tx(tx, round, result.receipts or {}, pass_id, result.deliveries,
         d.applied_hash, d.source_kind)
