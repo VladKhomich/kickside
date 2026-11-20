@@ -9,7 +9,7 @@ entries:
     component: kickside/blocks
 
   - name: dep.kickside.automation
-    version: '*'
+    version: '>=0.2.39'
     kind: ns.dependency
     meta:
       comment: Generic trigger, binding, Flow runtime contract, and Automation web-component surfaces consumed by Workflows.
@@ -17,3 +17,5 @@ entries:
     parameters:
       - name: kickside.automation.binding:delete_admission_library
         value: kickside.workflows.binding:automation_delete_admission
+      - name: kickside.automation.engine:workflow_history_reader
+        value: kickside.workflows.binding:automation_history

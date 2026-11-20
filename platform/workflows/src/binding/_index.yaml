@@ -4,6 +4,15 @@ namespace: kickside.workflows.binding
 # Deletable + status functions for the workflow component kind.
 
 entries:
+  - name: automation_history
+    kind: library.lua
+    source: file://automation_history.lua
+    modules: [json]
+    imports:
+      workflow_store: kickside.workflows.store:store
+      component: kickside.component:component
+      types: kickside.workflows:types
+
   - name: automation_delete_admission
     kind: library.lua
     source: file://automation_delete_admission.lua
