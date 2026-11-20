@@ -120,10 +120,11 @@ async function loadAccess() {
 // The modal shell is PrimeVue's Dialog; `dialogOpen` drives its visibility, and any
 // dismissal (mask click, X, or the Escape handler below) flips it false → emitClose.
 const dialogOpen = ref(true)
+let confirmingRevoke = false
 function emitClose() { emit('close', undefined) }
 function onDialogVisible(v: boolean) { if (!v) emitClose() }
 function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
+  if (e.key !== 'Escape' || confirmingRevoke) return
   dialogOpen.value = false
 }
 
@@ -178,13 +179,32 @@ async function toggleRow(row: AccessRow, bit: number) {
     return
   }
   const next = toggleBit(row.access_mask, bit)
-  if (next === 0) { await apply(row.id, row.type, 0, true); return }
+  if (next === 0) { await revoke(row); return }
   await apply(row.id, row.type, next)
 }
 
 async function revoke(row: AccessRow) {
-  if (row.owner) return
-  await apply(row.id, row.type, 0, true)
+  const { share_url: shareUrl, resource_id: resourceId, title } = cfg.value
+  if (row.owner || confirmingRevoke || !shareUrl) return
+  const name = title?.trim() || resourceId
+  const resource = name ? `“${name}”` : 'this resource'
+
+  confirmingRevoke = true
+  try {
+    const accepted = await host.confirm({
+      header: 'Remove access',
+      message: `Remove ${row.label}’s access to ${resource}?`,
+      icon: 'tabler:user-minus',
+      acceptLabel: 'Remove access',
+      rejectLabel: 'Cancel',
+      acceptClass: 'p-button-danger',
+    })
+    if (accepted && dialogOpen.value && cfg.value.share_url === shareUrl) {
+      await apply(row.id, row.type, 0, true)
+    }
+  } finally {
+    confirmingRevoke = false
+  }
 }
 </script>
 
