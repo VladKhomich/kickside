@@ -232,3 +232,23 @@ entries:
       core_db: kickside.core:db
       jobs_config: kickside.core.jobs:config
     method: migrate
+
+  - name: 18_lifecycle_binding
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Restore the lifecycle singleton's declared binding and rearm its existing reaper.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-19T00:00:18Z"
+    modules: [sql]
+    source: file://18_lifecycle_binding.lua
+    imports:
+      migration: wippy.migration:migration
+      lifecycle: kickside.core.lifecycle:consts
+      threads_consts: kickside.core.threads:consts
+      threads_writer: kickside.core.threads.persist:writer
+      retention_pin: kickside.core.retention:pin
+      persisted_json: kickside.contract:persisted_json
+      clock: kickside.core.jobs:clock
+    method: migrate

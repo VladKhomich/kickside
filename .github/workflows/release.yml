@@ -17,6 +17,7 @@ jobs:
       app_version: ${{ steps.release.outputs['app--version'] }}
       released_paths: ${{ steps.release.outputs.paths_released }}
       released_commit: ${{ steps.release-commit.outputs.released_commit }}
+      publication: ${{ steps.release-commit.outputs.publication }}
     permissions:
       contents: write
       issues: write
@@ -53,7 +54,7 @@ jobs:
         done
   publish-modules:
     needs: release-please
-    if: needs.release-please.outputs.released_paths != '' && needs.release-please.outputs.released_paths != '[]'
+    if: needs.release-please.outputs.publication == 'hosted' && needs.release-please.outputs.released_paths != '' && needs.release-please.outputs.released_paths != '[]'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -82,7 +83,7 @@ jobs:
         python3 scripts/publish-release-modules.py --repository . --wippy wippy
   publish-app:
     needs: [release-please, publish-modules]
-    if: needs.release-please.outputs.app_created == 'true'
+    if: needs.release-please.outputs.publication == 'hosted' && needs.release-please.outputs.app_created == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

@@ -9,6 +9,7 @@ local trim = require("text_trim").trim
 -- errors are returned as values; nothing is raised.
 
 local sql = require("sql")
+local event_access = require("event_access")
 local json = require("json")
 local persisted_json = require("persisted_json")
 local funcs = require("funcs")
@@ -258,7 +259,7 @@ function worker.requires_checkpoint_declaration(err: error): boolean
     return type(details) == "table" and details.code == CHECKPOINT_DECLARATION_REQUIRED
 end
 
-function worker.admit_declared_checkpoint(binding: table, cursor: table): (Binding?, error?)
+function worker.admit_declared_checkpoint(binding: table, cursor: table): (Binding?, error?, table?)
     local revision, registry_err = registry_revision()
     if not revision then return nil, registry_err end
     local meta = cursor.body and cursor.body.meta
@@ -268,6 +269,13 @@ function worker.admit_declared_checkpoint(binding: table, cursor: table): (Bindi
     end
     local err = checkpoint_declaration.check(cursor, revision)
     if err then return nil, err end
+    local generation = tonumber(cursor.component_identity_generation)
+    if generation == nil or type(cursor.component_incarnation) ~= "string" then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "private checkpoint requires an observed component identity generation"})
+    end
+    local owner = {component_id = cursor.component_id, incarnation = cursor.component_incarnation,
+        generation = generation}
     local admitted, admit_err = validate(binding, false, revision)
     if not admitted then return nil, admit_err end
     if not admitted.checkpointed_apply or admitted.worker_ref ~= meta.worker_ref then
@@ -278,8 +286,8 @@ function worker.admit_declared_checkpoint(binding: table, cursor: table): (Bindi
     actor_binding.actor_id = cursor.actor_id
     actor_binding.actor_context = cursor.execution_identity_json
     declared_checkpoints[actor_binding] = {revision = revision, worker_ref = admitted.worker_ref,
-        actor_id = actor_binding.actor_id, actor_context = actor_binding.actor_context}
-    return admitted, nil
+        actor_id = actor_binding.actor_id, actor_context = actor_binding.actor_context, cursor_id = cursor.id, owner = owner}
+    return admitted, nil, owner
 end
 
 -- Optional notification worker is declared on the fold worker, never supplied
@@ -321,7 +329,8 @@ end
 -- ride along so a worker can route an event to the right per-source handler. body
 -- is stored as a JSON string; it is decoded to a table here so a worker folds the
 -- structured event without re-decoding the storage encoding.
-function worker.query_event_rows(db_or_tx: Executor, thread_id: string, from_seq: number, to_seq: number, limit: number, event_types: { string }?): (table[]?, error?)
+function worker.query_event_rows(db_or_tx: Executor, thread_id: string, from_seq: number, to_seq: number,
+    limit: number, event_types: { string }?, fence: any?): (table[]?, error?)
     local query = sql.builder.select(
         "id", "seq", "type", "role", "body", "created_at",
         "external_source", "external_id", "external_version",
@@ -336,13 +345,27 @@ function worker.query_event_rows(db_or_tx: Executor, thread_id: string, from_seq
         for i = 1, #event_types do marks[i] = "?" end
         query = query:where("type IN (" .. table.concat(marks, ",") .. ")", unpack(event_types))
     end
-    local rows, err = query
-        :order_by("seq ASC")
-        :limit(limit)
-        :run_with(db_or_tx)
-        :query()
-    if err then
-        return nil, errors.wrap(err, "failed to fetch events for catchup")
+    query = query:order_by("seq ASC")
+    local rows, err
+    if fence then
+        local fence_sql, fence_args = fence:to_sql()
+        local event_sql, event_args = event_access.limit_payload(query, limit):to_sql()
+        local page = sql.builder.select("source.payload_allowed", "batch.*"):from("source")
+            :left_join("(" .. event_sql .. ") batch ON TRUE", table.unpack(event_args))
+            :order_by("batch.seq")
+        rows, err = event_access.raw_with(db_or_tx, "WITH source AS MATERIALIZED (" .. fence_sql ..
+            "), eligible AS MATERIALIZED (SELECT 1 FROM source WHERE payload_allowed = 1)", fence_args, page)
+        if err then return nil, errors.wrap(err, "failed to fetch fenced projection events") end
+        if type(rows) ~= "table" then return nil, nil end
+        if #rows == 0 then
+            return nil, errors.new({kind = errors.CONFLICT, retryable = true, message = "projection input changed"})
+        end
+        if rows[1].payload_allowed ~= 1 then return nil, event_access.denied() end
+        if rows[1].id == nil then return {}, nil end
+        for _, row in ipairs(rows) do row.payload_allowed = nil end
+    else
+        rows, err = query:limit(limit):run_with(db_or_tx):query()
+        if err then return nil, errors.wrap(err, "failed to fetch events for catchup") end
     end
     for _, row in ipairs(rows or {} :: table[]) do
         local decoded, decode_err = persisted_json.decode_table(row.body, "kickside_event.body")
@@ -415,7 +438,8 @@ end
 -- run_proc_supervised so their execution is bounded and terminable. A proc binding
 -- reaching this path is a wiring fault, surfaced as a hard error rather than run
 -- unsupervised.
-function worker.run(binding: table, worker_input: table): (table?, error?)
+function worker.run(binding: table, worker_input: table, before_dispatch: (() -> error?)?,
+    execution_frame: table?): (table?, error?)
     local target_id = tostring(binding.target_id)
     local runtime = tostring(binding.worker_runtime)
     local worker_ref = tostring(binding.worker_ref)
@@ -430,10 +454,10 @@ function worker.run(binding: table, worker_input: table): (table?, error?)
     local validated, validate_err = worker.validate(binding, binding.system_identity == true)
     if validate_err or not validated then return nil, validate_err end
 
-    local actor, scope, ident_err = resolve_binding_identity(binding)
-    if ident_err then
-        return nil, ident_err
-    end
+    local actor, scope, ident_err
+    if execution_frame then actor, scope = execution_frame.actor, execution_frame.scope
+    else actor, scope, ident_err = resolve_binding_identity(binding) end
+    if ident_err then return nil, ident_err end
 
     local executor: any = funcs.new()
     local executor_err: error? = nil
@@ -445,6 +469,8 @@ function worker.run(binding: table, worker_input: table): (table?, error?)
     end
     executor, executor_err = executor_response("options", executor:with_options({retry = {max_attempts = 1}}))
     if executor_err then return nil, executor_err end
+    local fence_err = before_dispatch and before_dispatch()
+    if fence_err then return nil, fence_err end
     local result, run_err = executor:call(target_id, worker_input)
 
     if run_err then
@@ -507,6 +533,8 @@ end
 -- committed revocation and lease expiry; this child owns its hard deadline.
 type SupervisedOpts = {
     proc_host: string?,
+    before_dispatch: (() -> error?)?,
+    execution_frame: table?,
 }
 
 -- run_proc_supervised runs a proc:// projection worker as a MONITORED child under
@@ -536,10 +564,11 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
     if host == "" then
         return nil, (errors.new({ message = "proc:// projection worker requires a process host", kind = errors.INVALID }) :: error)
     end
-    local actor, scope, ident_err = resolve_binding_identity(binding)
-    if ident_err then
-        return nil, ident_err
-    end
+    local execution_frame = options.execution_frame
+    local actor, scope, ident_err
+    if execution_frame then actor, scope = execution_frame.actor, execution_frame.scope
+    else actor, scope, ident_err = resolve_binding_identity(binding) end
+    if ident_err then return nil, ident_err end
 
     local pol, pol_err = projection_policy.policy()
     if pol_err or not pol then return nil, pol_err end
@@ -551,10 +580,19 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
         spawn = function(): (string?, error?)
             local admission_err = admit_process(actor, target_id, host)
             if admission_err then return nil, admission_err end
-            local builder = process.with_context({})
+            local context = {}
+            if proof then
+                local assignment = worker_input.checkpoint
+                local job = assignment.job
+                context["kickside.core.projection_checkpoint"] = {owner = proof.owner, cursor_id = proof.cursor_id,
+                    job_id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq}
+            end
+            local builder = process.with_context(context)
             if actor then
                 builder = builder:with_actor(actor):with_scope(scope)
             end
+            local fence_err = options.before_dispatch and options.before_dispatch()
+            if fence_err then return nil, fence_err end
             local input = {}
             for key, value in pairs(worker_input) do input[key] = value end
             deadline = time.now():add(max_execution_ms * time.MILLISECOND)

@@ -6,6 +6,7 @@
 -- threads.persist.teardown.
 
 local sql = require("sql")
+local event_access = require("event_access")
 local sql_boundary = require("sql_boundary")
 local error_envelope = require("error_envelope")
 local committed_error = require("committed_error")
@@ -47,7 +48,7 @@ local function thread_key(dbtype: string, id: string): string
     return dbtype == sql.type.POSTGRES and string.lower(id) or id
 end
 
-function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_ids: { string }): ({ [string]: table }?, error?)
+function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_ids: { string }, with_binding: boolean?): ({ [string]: table }?, error?)
     local seen: { [string]: boolean } = {}
     local ordered: { string } = {}
     for _, raw in ipairs(thread_ids) do
@@ -60,8 +61,17 @@ function writer.lock_thread_rows_tx(tx: sql.Transaction, dbtype: string, thread_
     local marks: { string } = {}
     for index in ipairs(ordered) do marks[#marks + 1] = "$" .. tostring(index) end
     local lock = lock_suffix(dbtype)
-    local rows, err = tx:query("SELECT id,event_count,max_pruned_seq,deleting_at FROM kickside_thread WHERE id IN ("
-        .. table.concat(marks, ",") .. ") ORDER BY id ASC " .. lock, ordered)
+    local columns, source, id_field = "id,event_count,max_pruned_seq,deleting_at", "kickside_thread", "id"
+    if with_binding then
+        local key, key_err = event_access.component_key(tx, dbtype)
+        if key_err then return nil, key_err end
+        columns = "t.id,t.event_count,t.max_pruned_seq,t.deleting_at," .. table.concat(event_access.binding_columns, ",")
+        source = "kickside_thread t LEFT JOIN " .. event_access.component_join(key :: string)
+        id_field = "t.id"
+        if lock ~= "" then lock = lock .. " OF t" end
+    end
+    local rows, err = tx:query("SELECT " .. columns .. " FROM " .. source .. " WHERE " .. id_field .. " IN ("
+        .. table.concat(marks, ",") .. ") ORDER BY " .. id_field .. " ASC " .. lock, ordered)
     rows, err = sql_boundary.rows(rows, err, "failed to lock thread", "lock.rows", response_error)
     if err then return nil, err end
     for _, row in ipairs(rows :: table[]) do
@@ -130,7 +140,7 @@ type BatchResult = { [string]: any }
 -- whole transaction. Waking each thread inline would interleave wake and job locks
 -- per thread and break that global order. Returns the per-thread BatchResults
 -- (each carries its thread_id).
-function writer.ingest_multi(db: DB, writes: { table }, actor_id: string?, system: boolean?): ({ BatchResult }?, error?)
+function writer.ingest_multi(db: DB, writes: { table }, actor_id: string?, system: boolean?, exposed: boolean?): ({ BatchResult }?, error?)
     if type(writes) ~= "table" or #writes == 0 then
         return nil, (errors.new({ message = "writes array is required", kind = errors.INVALID, retryable = false, details = {code = "thread_ingest_writes_required"} }) :: error)
     end
@@ -169,7 +179,7 @@ function writer.ingest_multi(db: DB, writes: { table }, actor_id: string?, syste
 
     local thread_ids: { string } = table.create(#ordered, 0)
     for i, w in ipairs(ordered) do thread_ids[i] = trim(w.thread_id) end
-    local snapshots, lock_err = writer.lock_thread_rows_tx(transaction, dt, thread_ids)
+    local snapshots, lock_err = writer.lock_thread_rows_tx(transaction, dt, thread_ids, exposed)
     if lock_err then
         return nil, rollback(transaction, lock_err)
     end
@@ -178,10 +188,12 @@ function writer.ingest_multi(db: DB, writes: { table }, actor_id: string?, syste
     local wake_keys: { string } = {}
     for _, w in ipairs(ordered) do
         local snapshot = snapshots[thread_key(dt, trim(w.thread_id))]
-        local result, append_err = append.append_events_tx(transaction, trim(w.thread_id), (w.events :: { table }), { defer_wake = true, expect = w.expect, locked_thread = snapshot })
+        local result, append_err = append.append_events_tx(transaction, trim(w.thread_id), (w.events :: { table }),
+            {defer_wake = true, expect = w.expect, locked_thread = snapshot, check_receipts = exposed and not system})
         result, append_err = error_envelope.binding(result, append_err, nil, "append event ingest", "thread_writer_response")
         if append_err then return nil, rollback(transaction, append_err) end
         if snapshot then snapshot.event_count = result.max_seq end
+        if exposed then result.binding = snapshot end
         results[#results + 1] = result :: BatchResult
         if (result :: BatchResult).inserted > 0 then
             wake_keys[#wake_keys + 1] = "thread:" .. trim(w.thread_id)

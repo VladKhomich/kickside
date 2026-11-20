@@ -12,4 +12,5 @@ function M.remove_thread_component(): error?
     return nil
 end
 
+function M.convergence_kind(_component_id: string, requested: string): (string, error?) return requested, nil end
 return M

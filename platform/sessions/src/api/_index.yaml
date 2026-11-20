@@ -25,8 +25,9 @@ entries:
     meta:
       comment: Toggle a session favorite flag (stored in the session public_meta).
     source: file://favorite.lua
-    modules: [http, security]
+    modules: [http, security, logger]
     imports:
+      upstream: wippy.session.process:upstream
       session_writer: wippy.session.persist:writer
       session_repo: wippy.session.persist:session_repo
       http_errors: kickside.contract:http_errors

@@ -144,6 +144,7 @@ entries:
     modules: [http, json, security, contract]
     imports:
       ui_types: kickside.ui:types
+      chat_appearance: kickside.ui:chat_appearance
     security:
       policies:
         - kickside.ui.api:nav_changed_broadcast

@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local test = require("test")
 local http = require("http")
+local json = require("json")
 local get_kb = require("get_kb")
 local engines = require("engines")
 local stores = require("stores")
@@ -8,7 +9,7 @@ local stores = require("stores")
 local function exercise(row: any, store_contract: string?): (any, any, any)
     local status, response
     local calls = { open = 0, get = 0 }
-    local engine = { kb_type = "records", store_contract = store_contract, stats_spec = {
+    local engine = { kb_type = "records", store_contract = store_contract, default_config = { chunk_size = 1000 }, stats_spec = {
         { path = "document_count", singular = "document", plural = "documents" },
     } }
     local original_resolve, original_open = engines.resolve, stores.open_engine_store
@@ -65,6 +66,11 @@ return { run = test.run_cases(function()
             test.eq(response.stat_items[1].value, 0)
             test.eq(calls.get, 1)
         end)
+        test.it("serializes empty configuration overrides as a JSON object", function()
+            local status, response = exercise({ config = {} }, "test:store")
+            test.eq(status, 200)
+            test.eq((json.encode(response.config)), "{}")
+        end)
         test.it("retains public statistics when an older store omits the statistics field", function()
             local status, response, calls = exercise({ config = {} }, "test:store")
             test.eq(status, 200)
@@ -78,6 +84,7 @@ return { run = test.run_cases(function()
             test.eq(response.document_count, 20)
             test.eq(calls.open, 0)
             test.eq(calls.get, 0)
+            test.is_nil(response.config)
         end)
     end)
 end) }

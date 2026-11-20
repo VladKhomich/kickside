@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.12](https://github.com/kicksideai/kickside/compare/connection-v0.5.11...connection-v0.5.12) (2026-11-20)
+
+
+### Bug Fixes
+
+* **connection:** use canonical OAuth provider badges ([74f1166](https://github.com/kicksideai/kickside/commit/74f1166e7c791060f8ea48b164c2519be5a09014))
+
+## [0.5.11](https://github.com/kicksideai/kickside/compare/connection-v0.5.10...connection-v0.5.11) (2026-11-19)
+
+
+### Bug Fixes
+
+* **connection:** require Component support for encrypted credentials ([#663](https://github.com/kicksideai/kickside/issues/663)) ([d572abf](https://github.com/kicksideai/kickside/commit/d572abf378208172a75c8aa757dcb1d6c7ae125d))
+
 ## [0.5.10](https://github.com/kicksideai/kickside/compare/connection-v0.5.9...connection-v0.5.10) (2026-11-19)
 
 

@@ -163,6 +163,39 @@ local function define_tests()
             d2:release()
         end)
 
+        test.it("preserves prior receipts and starts teardown at a fresh page for a replacement", function()
+            local jobs = require("jobs")
+            local teardown = require("threads_teardown")
+            local owner_id = "replacement-" .. uuid.v4()
+            local owner = assert(security.new_actor(owner_id, {}))
+            local id = autoinit.component_id(owner_id, "test_ws")
+            assert(provision.ensure_user(owner, scope(), owner_id))
+
+            local d = db()
+            test.is_true(assert(teardown.purge_thread(d, id, owner_id)).purged)
+            test.eq(count(d, "kickside_components", "component_id", id), 1)
+            test.eq(count(d, "kickside_thread", "id", id), 0)
+            assert(d:release())
+            local first = assert(jobs.cleanup_thread_page(id, 0))
+            test.eq(first.discarded.kickside_job, 1)
+            assert(provision.ensure_user(owner, scope(), owner_id))
+            assert(jobs.ack_thread_cleanup_page(id, 0, true))
+
+            d = db()
+            test.eq(count(d, "kickside_projection", "thread_id", id), 1)
+            test.eq(count(d, "kickside_job", "owner_id", id), 1)
+            local active_fence = assert(d:query([[SELECT 1 FROM kickside_job_thread_cleanup
+                WHERE thread_id=$1 AND started=FALSE AND next_page_seq=1 AND completed_at IS NULL]], {id}))
+            test.eq(#active_fence, 1)
+            test.is_true(assert(teardown.purge_thread(d, id, owner_id)).purged)
+            test.eq(count(d, "kickside_thread", "id", id), 0)
+            test.eq(count(d, "kickside_job", "owner_id", id), 0)
+            test.eq(count(d, "kickside_job_thread_cleanup_receipt", "thread_id", id), 2)
+            local second = assert(jobs.cleanup_thread_page(id, 1))
+            test.eq(second.discarded.kickside_job, 1)
+            assert(d:release())
+        end)
+
         test.it("concurrent first provisioning converges on one owned thread", function()
             local id = "prov-race-" .. uuid.v4()
             local owner = security.new_actor(id, { security_groups = {} })
@@ -802,6 +835,75 @@ local function define_tests()
             local d2 = db()
             test.eq(count(d2, "kickside_thread", "id", cid), 1)
             d2:release()
+        end)
+
+        test.it("ensure_system writes only drifted grants and retention policies", function()
+            local cid = autoinit.component_id(autoinit.SYSTEM_SCOPE_KEY, "test_sys")
+            local sys_actor = security.new_actor("system:lifecycle", { security_groups = {} })
+            assert(provision.ensure_system(sys_actor, scope()))
+
+            local d = db()
+            local postgres = tostring(d:type()) == sql.type.POSTGRES
+            local targets = {
+                { table_name = "kickside_component_access", owner_column = "component_id", trigger = "test_system_grant_update" },
+                { table_name = "kickside_retention_policy", owner_column = "thread_id", trigger = "test_system_retention_update" },
+            }
+            local function execute(statement: string, args: {any}?)
+                local _, err = d:execute(statement, args)
+                if err then error(tostring(err)) end
+            end
+            local function updates(target: string): number
+                local rows = assert(d:query("SELECT COUNT(*) AS n FROM test_system_provision_updates WHERE target=$1", { target }))
+                return assert(tonumber(rows[1].n))
+            end
+
+            local ok, failure = pcall(function()
+                execute("CREATE TABLE test_system_provision_updates (target TEXT NOT NULL)")
+                if postgres then
+                    execute([[CREATE FUNCTION test_system_provision_update() RETURNS trigger LANGUAGE plpgsql AS $$
+                        BEGIN
+                            INSERT INTO test_system_provision_updates (target) VALUES (TG_TABLE_NAME);
+                            RETURN NEW;
+                        END; $$]])
+                end
+                for _, target in ipairs(targets) do
+                    local action = postgres and " EXECUTE FUNCTION test_system_provision_update()"
+                        or (" BEGIN INSERT INTO test_system_provision_updates (target) VALUES ('" .. target.table_name .. "'); END")
+                    execute("CREATE TRIGGER " .. target.trigger .. " AFTER UPDATE ON " .. target.table_name
+                        .. " FOR EACH ROW WHEN (NEW." .. target.owner_column .. " = '" .. cid .. "')" .. action)
+                end
+
+                assert(provision.ensure_system(sys_actor, scope()))
+                local converged_grants = updates("kickside_component_access")
+                local converged_policies = updates("kickside_retention_policy")
+
+                local grant_where = [[ WHERE component_id=$1 AND source_component_id=$2
+                    AND subject_type='group' AND subject_id='app.security:admin']]
+                execute("UPDATE kickside_component_access SET access_mask=0" .. grant_where, { cid, cid })
+                execute("UPDATE kickside_retention_policy SET event_hot_retention_days=NULL WHERE thread_id=$1", { cid })
+                execute("DELETE FROM test_system_provision_updates")
+
+                assert(provision.ensure_system(sys_actor, scope()))
+                local repaired_grants = updates("kickside_component_access")
+                local repaired_policies = updates("kickside_retention_policy")
+                local grant = assert(d:query("SELECT access_mask FROM kickside_component_access" .. grant_where, { cid, cid }))
+                local policy = assert(d:query(
+                    "SELECT event_hot_retention_days FROM kickside_retention_policy WHERE thread_id=$1", { cid }))
+
+                test.eq(converged_grants + converged_policies, 0,
+                    "converged updates (grants: " .. converged_grants .. ", retention: " .. converged_policies .. ")")
+                test.eq(repaired_grants, 1, "drifted grant updates")
+                test.eq(repaired_policies, 1, "drifted retention updates")
+                test.eq(tonumber(grant[1].access_mask), 1)
+                test.eq(tonumber(policy[1].event_hot_retention_days), 7)
+            end)
+            for _, target in ipairs(targets) do
+                execute("DROP TRIGGER IF EXISTS " .. target.trigger .. (postgres and " ON " .. target.table_name or ""))
+            end
+            if postgres then execute("DROP FUNCTION IF EXISTS test_system_provision_update()") end
+            execute("DROP TABLE IF EXISTS test_system_provision_updates")
+            d:release()
+            if not ok then error(failure) end
         end)
 
         test.it("exposes committed projection bodies without history or cursor controls", function()

@@ -59,14 +59,41 @@ local function define_tests()
 
         -- reconcile_drive installs the automation's one reconcile drive, replacing
         -- a previous test's.
-        local function reconcile_drive(keys: { string }, page_size: integer?): ()
+        local function reconcile_drive(keys: { string }, page_size: integer?, retry_after_ms: integer?): ()
             local key = "reconcile"
             h.exec("DELETE FROM kickside_automation_drive WHERE automation_id = $1 AND drive_key = 'reconcile'", { automation_id })
             new_drive({ automation_id = automation_id, drive_key = key, source_kind = "reconcile", applied = { sink_port = STORE },
-                action = { source_ref = RECORDS, config = { items = items(keys) }, pull_keys = "kickside.automation.round.fixture:record_keys" },
+                action = { source_ref = RECORDS, config = { items = items(keys), retry_after_ms = retry_after_ms },
+                    pull_keys = "kickside.automation.round.fixture:record_keys" },
                 policy = { round = { page_size = page_size or 100 } } })
             set_drive(automation_id, key, "reconcile_next_at = $1", { PAST })
         end
+
+        test.it("persists the enumeration delay before the next page or sweep", function()
+            deliver_main("paced_main", { "paced-first", "paced-last", "paced-stale" })
+            reconcile_drive({ "paced-first", "paced-last" }, 1, 60000)
+            local floor = drive.utc_after(60000)
+            local _, first_err = run(automation_id, "reconcile")
+            test.is_nil(first_err, tostring(first_err))
+            local first = read_drive(automation_id, "reconcile")
+            test.is_true(first.reconcile_next_at >= floor)
+            test.is_false(first.sweep_pending)
+            test.eq(json.decode(first.cursor), 1)
+
+            local _, early_err = run(automation_id, "reconcile")
+            test.is_nil(early_err, tostring(early_err))
+            local waiting = read_drive(automation_id, "reconcile")
+            test.eq(waiting.round_seq, first.round_seq)
+            test.eq(waiting.reconcile_next_at, first.reconcile_next_at)
+            test.eq(#receipts("paced-"), 3)
+
+            set_drive(automation_id, "reconcile", "reconcile_next_at = $1", { PAST })
+            local _, next_err = run(automation_id, "reconcile")
+            test.is_nil(next_err, tostring(next_err))
+            test.is_true(read_drive(automation_id, "reconcile").sweep_pending)
+            run(automation_id, "reconcile")
+            test.eq(json.encode(receipts("paced-")), (json.encode({ "paced-first", "paced-last" })))
+        end)
 
         test.it("deletes the destinations whose source keys vanished and keeps the rest", function()
             local before = receipt_rows()
@@ -99,6 +126,36 @@ local function define_tests()
             test.is_true(done.reconcile_next_at > drive.utc_now())
             test.eq(json.encode(receipts("rv-")), (json.encode({ "rv-a", "rv-c" })))
             test.eq(receipt_rows(), before + 2, "a repeated reconciliation does not mint receipts")
+        end)
+
+        test.it("delivers a new delete when the same source key is restored and removed again", function()
+            local key = "restored-file"
+            deliver_main("restore_main", { key })
+            reconcile_drive({})
+
+            local function sweep(): string
+                run(automation_id, "reconcile") -- enumerate
+                run(automation_id, "reconcile") -- delete
+                run(automation_id, "reconcile") -- finish this pass
+                test.eq(#receipts(key), 0)
+                local identity = round_write.keys({ automation_id = automation_id, source_port = RECORDS },
+                    { item_key = key }).identity_key
+                local writes = h.query("SELECT detail_json FROM round_fixture_log WHERE drive_key = 'sink'"
+                    .. " AND item_key = $1 ORDER BY id DESC LIMIT 1", { identity })
+                local deletion = json.decode(writes[1].detail_json)
+                test.eq(deletion.dest_ref.id, "rec:" .. identity)
+                return deletion.idempotency_key
+            end
+
+            local first = sweep()
+            set_drive(automation_id, "restore_main", "action_json = $1, cursor = NULL, next_run_at = $2", {
+                json.encode({ source_ref = RECORDS, config = { items = { { key = key, dedup_key = "restored-revision" } } },
+                    schedule = { type = "interval", expression = "30m" } }), PAST })
+            run(automation_id, "restore_main")
+            test.eq(#receipts(key), 1)
+            set_drive(automation_id, "reconcile", "reconcile_next_at = $1", { PAST })
+            local second = sweep()
+            test.is_true(first ~= second, "a destination must be able to apply both deletions")
         end)
 
         test.it("keeps a destination delivered while its pass runs", function()

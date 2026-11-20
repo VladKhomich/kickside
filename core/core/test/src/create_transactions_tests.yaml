@@ -13,12 +13,15 @@ entries:
   - sql
   - uuid
   imports:
+    event_access: kickside.core.threads:event_access
+    event_declaration: kickside.core.threads:event_declaration
     error_envelope: kickside.contract:error_envelope
     committed_error: kickside.contract:committed_error
     clock: kickside.core.jobs:clock
     threads_consts: kickside.core.threads:consts
     threads_normalize: kickside.core.threads.persist:normalize
     threads_component: app:create_transactions_component
+    component_client: app:create_transactions_fixture
     core_types: kickside.core:types
     autoinit: kickside.component:autoinit
     proj_writer: kickside.core.projections.persist:writer

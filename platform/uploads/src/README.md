@@ -106,6 +106,10 @@ Attach the token as the `upload_token` multipart field of `POST /uploads`, as
 `metadata.__upload_token` for `upload_file`. Several tokens may be attached as
 `metadata.__upload_tokens`.
 
+Multipart `POST /uploads` returns HTTP 400 before storing the file when its
+explicit `upload_token` is malformed or expired. If the field is omitted,
+Uploads admits the file without a completion token.
+
 Uploads admits a durable Jobs job under the identity frozen in the token once
 per upload, token and outcome. The job may retry up to eight attempts, so the
 callback must be idempotent. The function receives:
@@ -235,10 +239,13 @@ reads reject images larger than the requested limit after a bounded storage read
 | `zip` | Container with extracted child uploads, each linked to its parent archive; no container primary |
 
 SVG is markup, so the `kickside/llm-ocr` contract deliberately excludes it from
-raster-image OCR (see that module's README, Quick start). Its artifact-list `primary`
-field contains text content only, and the paginated parts exclude source and primary
-artifacts. The upload metadata exposes `primary_artifact_id`; the artifact raw endpoint
-serves the original SVG image under that ID.
+raster-image OCR (see that module's README, Quick start). The artifact list prefers a
+text primary when text is available. For SVG, `primary` identifies the original
+`image/svg+xml` image artifact and its `content_description.text_available` is
+`false`. The top-level `content_description` describes the uploaded source. The
+paginated parts exclude source and primary artifacts. The upload metadata exposes
+`primary_artifact_id`, and the artifact raw endpoint serves the original SVG bytes
+under that ID.
 The `ai_upload_svg` smoke scenario verifies the exact original image bytes and markup.
 
 Without a completion token, upload records deduplicate identical bytes within one
@@ -284,3 +291,36 @@ errors (a string or a message-only envelope) map to retryable
 An uncached PDF read invokes the adapter once. The current PDF API parses during
 `open()` for page count and again during `render()`; removing those two parses
 requires a converter API change. Uploads adds no separate count call to a read.
+
+### Processing limits
+
+The default hard ceiling `process_max_execution_ms` is 600000 ms (ten minutes).
+`process_heartbeat_timeout_ms` defaults to 600000 ms (ten minutes). A processor
+entry declares `meta.reports_progress: true` when it calls `jobs.heartbeat` through
+the supplied `cancel_ref` between useful batches. A pipeline stage can declare
+`reports_progress` directly; an explicit stage value overrides the processor.
+Pipelines whose every stage declares progress support receive the job-wide
+progress deadline and a default hard ceiling of 7200000 ms (two hours).
+
+An existing explicit hard-ceiling override keeps its effective behavior. Setting
+an explicit progress timeout opts that installation into progress deadlines for
+compatible pipelines. Jobs already queued retain their captured limits; manual
+retry captures current settings. A saved ceiling that differs from the current
+setting also retains its original policy.
+
+### Interrupted processing
+
+A processing job that ends dead delivers its declared outcome and settles the
+upload as failed. For uploads stranded by earlier releases, use Retry in the
+processing preview. Retry preserves stored bytes and queues processing once when
+the previous job is terminal or absent; pending or running work cannot restart.
+This also supports earlier records without processing intents or job pointers.
+A permanent failure to prepare a failure callback is recorded separately as
+`callback_error` on the failure event; it does not undo the failed upload.
+
+New attempts record terminal state, callback jobs, and the outcome event in
+one transaction. Earlier workers could commit terminal storage separately.
+Recovery can restore a provably unpublished outcome event from that storage.
+If an earlier worker could have called an external integration, the recovered
+event records the unverified delivery as `callback_error`. Already-published
+outcomes keep their event and projection.

@@ -5,6 +5,7 @@ local sql = require("sql")
 local json = require("json")
 local clock = require("clock")
 local registry = require("registry")
+local ctx = require("ctx")
 local threads_writer = require("threads_writer")
 local jobs = require("jobs")
 local jobs_wake = require("jobs_wake")
@@ -22,7 +23,7 @@ local job_types = require("job_types")
 local M = {}
 
 type CheckpointWriter = (sql.Transaction, string) -> (boolean?, error?)
-type Checkpoint = { write: CheckpointWriter?, first_seq: number? }
+type Checkpoint = { write: CheckpointWriter?, first_seq: number?, owner: table? }
 
 local function invalid(message: string): error
     return (errors.new({ message = message, kind = errors.INVALID, retryable = false }) :: error)
@@ -125,15 +126,18 @@ local function append_writes(output: table, source_id: string, body: table): (ta
 end
 
 local function next_body(before: table, output: table): (table?, error?)
-    local result: table = before
+    local result: table = {}
     if output.body ~= nil then
         if type(output.body) ~= "table" then return nil, invalid("projection worker body must be an object") end
         result = output.body
-    elseif output.patch ~= nil then
-        if type(output.patch) ~= "table" then return nil, invalid("projection worker patch must be an object") end
-        for key, value in pairs(output.patch) do result[key] = value end
+    else
+        for key, value in pairs(before) do result[key] = value end
+        if output.patch ~= nil then
+            if type(output.patch) ~= "table" then return nil, invalid("projection worker patch must be an object") end
+            for key, value in pairs(output.patch) do result[key] = value end
+        end
     end
-    for _, key in ipairs({ "meta", "worker_config", "events", "drop_notify" }) do
+    for _, key in ipairs({"meta", "worker_config", "events", "drop_notify"}) do
         if result[key] == nil then result[key] = before[key] end
     end
     return result, nil
@@ -220,6 +224,24 @@ local function notify_progress(snapshot: table, last: number, progressed: boolea
     return err
 end
 
+-- Component adoption locks its row before updating the private identity.
+-- Check that row before the thread and cursor acquire their write locks.
+local function check_checkpoint_owner(tx: sql.Transaction, dbtype: string, owner: table): error?
+    local lock = dbtype == sql.type.POSTGRES and " FOR SHARE" or ""
+    local rows, err = tx:query([[SELECT identity_generation,CAST(created_at AS TEXT) AS incarnation,deleting_at
+        FROM kickside_components WHERE component_id=$1]] .. lock, {owner.component_id})
+    if err then return errors.wrap(err, "projection checkpoint owner fence read failed") end
+    if type(rows) ~= "table" then return response_error("checkpoint.owner") end
+    local row = rows[1]
+    if not row or row.deleting_at ~= nil or row.incarnation ~= owner.incarnation
+        or tonumber(row.identity_generation) ~= owner.generation then
+        return errors.new({kind = errors.CONFLICT, retryable = true,
+            message = "projection owner authority changed during execution",
+            details = {code = "projection_checkpoint_owner_changed"}})
+    end
+    return nil
+end
+
 local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table,
         writes: table[], checkpoint: Checkpoint?): (table?, error?)
     local raw_type, type_err = db:type()
@@ -234,6 +256,11 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     if type(tx) ~= "table" and type(tx) ~= "userdata" then return nil, response_error("transaction") end
     local function abort(err: error): (nil, error)
         return nil, rollback(tx, err)
+    end
+    local owner = checkpoint and checkpoint.owner
+    if owner then
+        local owner_err = check_checkpoint_owner(tx, dbtype, owner)
+        if owner_err then return abort(owner_err) end
     end
     local locked_threads, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, ids)
     if lock_err then return abort(lock_err) end
@@ -421,7 +448,7 @@ end
 -- slot. Infrastructure publication also requires the current running lease.
 -- Returns the self-completion of a deterministic failure, else nil.
 function M.fail(db_id: string, job: table, snapshot: table, failure: error, deterministic: boolean,
-        checkpointed: boolean?): (table?, error?)
+        checkpointed: boolean?, owner: table?): (table?, error?)
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection failure DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
@@ -430,11 +457,19 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
     if type(raw_type) ~= "string" or raw_type == "" then return nil, release(db, response_error("database.type")) end
     local dbtype = raw_type :: string
     local message = tostring(failure)
+    local details = failure:details()
+    if details and details.code == "thread_event_read_denied" then
+        message = details.code .. ": " .. message
+    end
     local tx, begin_err = db:begin()
     if begin_err then return nil, release(db, errors.wrap(begin_err, "projection failure begin failed")) end
     if type(tx) ~= "table" and type(tx) ~= "userdata" then return nil, release(db, response_error("transaction")) end
     local function abort(err: error): (nil, error)
         return nil, release(db, rollback(tx, err)) :: error
+    end
+    if deterministic and owner then
+        local owner_err = check_checkpoint_owner(tx, dbtype, owner)
+        if owner_err then return abort(owner_err) end
     end
     local locked, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, { tostring(snapshot.thread_id) })
     if lock_err then return abort(lock_err) end
@@ -566,10 +601,20 @@ function M.checkpoint(target_db: string, job: table, snapshot: table, prefetched
     local db_id, db_err = shared_db(target_db)
     if not db_id then return nil, db_err end
     if type(write) ~= "function" then return nil, invalid("projection checkpoint requires an owning writer") end
-    return advance(db_id, job, snapshot, prefetched_last, output, {write = write})
+    local proof, proof_err = ctx.get("kickside.core.projection_checkpoint")
+    if proof_err and not errors.is(proof_err, errors.NOT_FOUND) then return nil, proof_err end
+    if proof ~= nil and (type(proof) ~= "table" or type(proof.owner) ~= "table"
+        or type(proof.owner.incarnation) ~= "string" or type(proof.owner.generation) ~= "number"
+        or proof.cursor_id ~= snapshot.id or proof.owner.component_id ~= snapshot.thread_id
+        or proof.job_id ~= job.id or proof.lease_token ~= job.lease_token
+        or tonumber(proof.execution_seq) ~= tonumber(job.execution_seq)) then
+        return nil, invalid("projection checkpoint does not match its admitted owner and lease")
+    end
+    return advance(db_id, job, snapshot, prefetched_last, output, {write = write, owner = proof and proof.owner})
 end
 
-function M.finish_checkpointed(target_db: string, job: table, snapshot: table, first_seq: number): (table?, error?)
+function M.finish_checkpointed(target_db: string, job: table, snapshot: table, first_seq: number,
+        owner: table?): (table?, error?)
     local db_id, db_err = shared_db(target_db)
     if not db_id then return nil, db_err end
     local position = tonumber(snapshot.last_seq)
@@ -577,7 +622,7 @@ function M.finish_checkpointed(target_db: string, job: table, snapshot: table, f
         or first_seq ~= math.floor(first_seq) then
         return nil, invalid("projection checkpoint settlement requires the execution's first position")
     end
-    return advance(db_id, job, snapshot, position, {last_seq = position}, {first_seq = first_seq})
+    return advance(db_id, job, snapshot, position, {last_seq = position}, {first_seq = first_seq, owner = owner})
 end
 
 return M

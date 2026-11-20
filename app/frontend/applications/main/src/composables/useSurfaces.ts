@@ -60,6 +60,10 @@ export interface NavCategory {
 }
 
 export type NavLayout = 'vertical' | 'horizontal'
+export interface NewChatNavigation {
+  visible: boolean
+  placement: 'first' | 'last'
+}
 
 // Renderers the app bundle itself ships, keyed by surface name. These back the
 // app-owned surfaces (and the System tabs). Module-owned surfaces are NOT listed
@@ -222,6 +226,7 @@ const categories = ref<NavCategory[]>([])
 // nav (re)load so a reload never leaks handlers.
 let badgeUnsubs: Array<() => void> = []
 const layout = ref<NavLayout>('vertical')
+const newChat = ref<NewChatNavigation>({ visible: true, placement: 'first' })
 // Admin-configured landing path: where "/" redirects to. Empty = no redirect.
 const home = ref('')
 const loaded = ref(false)
@@ -255,6 +260,10 @@ export function useSurfaces() {
         navItems.value = Array.isArray(data.items) ? data.items : []
         categories.value = Array.isArray(data.categories) ? data.categories : []
         layout.value = data.layout === 'horizontal' ? 'horizontal' : 'vertical'
+        newChat.value = {
+          visible: data.new_chat?.visible !== false,
+          placement: data.new_chat?.placement === 'last' ? 'last' : 'first',
+        }
         home.value = typeof data.home === 'string' ? data.home : ''
         if (requestSplashRevision === splashRevision && !splash.value) {
           splash.value = (data.splash && typeof data.splash.id === 'string') ? data.splash : null
@@ -352,6 +361,7 @@ export function useSurfaces() {
     renderableCategories,
     renderableItems,
     layout,
+    newChat,
     home,
     splash,
     splashError,

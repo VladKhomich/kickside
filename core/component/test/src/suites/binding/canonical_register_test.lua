@@ -5,6 +5,7 @@
 -- dispatcher down to the function execution context.
 
 local test = require("test")
+local funcs = require("funcs")
 local sql = require("sql")
 local time = require("time")
 local uuid = require("uuid")
@@ -118,6 +119,38 @@ local function define_tests()
             local cid = reg.component_id
             test.not_nil(cid)
             test.is_true(owner_access_count(cid) > 0, "the framed owner must hold an access grant from register")
+        end)
+
+        test.it("registers a parent-owned child in the declared producer frame", function()
+            local service = open_as_owner()
+            local parent = assert(service:register({impl_id = "app:placement_parent"}))
+            test.is_true(parent.success)
+            local request = {impl_id = "app:placement_child", parent_id = parent.component_id, private_context = {label = "child"}}
+            local producer = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(test_scope())
+            local child = assert(producer:call("app.component_suites.binding:register_test_child", request))
+            test.is_true(child.success, child.error)
+            test.eq(meta_value(child.component_id, "owner"), parent.component_id)
+            test.eq(private_context(child.component_id)._execution_identity.principal.id, owner)
+            test.is_true(owner_access_count(child.component_id) > 0)
+            local direct = assert(service:register(request))
+            test.is_true(direct.success)
+            test.eq(meta_value(direct.component_id, "owner"), owner)
+        end)
+
+        test.it("records a plugin attachment under its custodian while preserving root placement", function()
+            local service = open_as_owner()
+            local catalog = assert(service:register({impl_id = "app:placement_parent"}))
+            local id = uuid.v7()
+            local producer = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(test_scope())
+            local attachment = assert(producer:call("app.component_suites.binding:register_test_child", {
+                component_id = id, impl_id = "app:placement_root", custodian = catalog.component_id,
+                plugin = "app:root_attachment_plugin", private_context = {label = "attachment"}
+            }))
+            test.is_true(attachment.success, attachment.error)
+            test.is_nil(attachment.parent_id)
+            test.eq(meta_value(id, "owner"), catalog.component_id)
+            test.eq(private_context(id)._execution_identity.principal.id, owner)
+            test.is_true(owner_access_count(id) > 0)
         end)
 
         test.it("preserves authenticated identity restrictions and provenance at registration", function()

@@ -219,11 +219,25 @@ end
 
 local token_flow = require("uploads_tokens")
 
-local function persist_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, processing: boolean)
+local function persist_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, processing: boolean, multipart_token: string?, admission_id: string?)
     metadata = type(metadata) == "table" and metadata or {}
-    local bound_id, bound_err = token_flow.bound_token_upload_id(metadata)
-    if bound_err then return nil, bound_err end
-    local upload_uuid = parent_upload_id and uuid.v4() or (bound_id or uuid.v4())
+    local bound_id, multipart_payload
+    if multipart_token ~= nil then
+        multipart_payload = upload_tokens.unpack(multipart_token)
+        if not multipart_payload then
+            return nil, failure("Invalid or expired upload token", errors.INVALID, "declaration")
+        end
+        bound_id = multipart_payload.upload_id
+        metadata.__upload_token = multipart_token
+    else
+        local bound_err
+        bound_id, bound_err = token_flow.bound_token_upload_id(metadata)
+        if bound_err then return nil, bound_err end
+    end
+    if admission_id and (bound_id or parent_upload_id) then
+        return nil, failure("Delivery uploads cannot bind a callback or parent", errors.INVALID, "declaration")
+    end
+    local upload_uuid = parent_upload_id and uuid.v4() or (admission_id or bound_id or uuid.v4())
     if parent_upload_id then
         local rebind_err = token_flow.rebind_child_tokens(metadata, upload_uuid)
         if rebind_err then return nil, rebind_err end
@@ -249,7 +263,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
     end
 
     metadata.filename = filename
-    local trace_context, trace_err = token_flow.take_trace_context(metadata)
+    local trace_context, trace_err = token_flow.take_trace_context(metadata, multipart_payload)
     if trace_err then return nil, typed(trace_err, errors.INVALID, "declaration", "") end
 
     -- Freeze the uploader's execution identity so the durable job can run pipeline
@@ -314,7 +328,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
     end
     -- A callback token names this upload exactly; content dedup cannot redirect it
     -- to a prior upload with a different UUID.
-    if bound_id then content_sha256 = nil end
+    if bound_id or admission_id then content_sha256 = nil end
 
     -- If this account already holds these exact bytes, drop the just-written copy and
     -- resolve to the existing upload: no second blob, no re-processing. The same file may
@@ -358,9 +372,9 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         content_sha256,
         trace_context,
         processing,
-        processing and process_worker.max_execution_ms() or nil
     }
-    local function create_record(tx)
+    local function create_record(tx, _dbtype, ceiling)
+        create_args[13] = ceiling
         if tx then return upload_record_repo.create_tx(tx, table.unpack(create_args, 1, create_args.n)) end
         return upload_record_repo.create(table.unpack(create_args, 1, create_args.n))
     end
@@ -369,7 +383,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
         local submitted
         submitted, err = process_worker.enqueue_upload_job({ uuid = upload_uuid, actor_id = actor_id,
             mime_type = mime_type, size = size, type_id = type_id, metadata = metadata,
-            trace_context = trace_context, processing_max_execution_ms = process_worker.max_execution_ms() },
+            trace_context = trace_context },
             false, create_record)
         upload = submitted and submitted.upload
     else
@@ -402,8 +416,47 @@ function upload_lib.store_file(actor_id: string, file_data: string | stream.Stre
     return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, false)
 end
 
-function upload_lib.upload_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?)
-    return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, true)
+function upload_lib.upload_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?, multipart_token: string?)
+    return persist_file(actor_id, file_data, filename, size, mime_type, storage_id, metadata, parent_upload_id, true, multipart_token)
+end
+
+local DELIVERY_METADATA = "__attachment_delivery"
+
+local function delivery_upload_id(actor_id: string, delivery_key: string): (string?, error?)
+    local digest = hash.sha256("kickside.uploads.attachment:" .. tostring(#actor_id) .. ":" .. actor_id .. delivery_key)
+    if type(digest) ~= "string" or #digest ~= 64 then
+        return nil, failure("Could not derive attachment delivery identity", errors.INTERNAL, "infrastructure", true)
+    end
+    return table.concat({digest:sub(1, 8), digest:sub(9, 12), "8" .. digest:sub(14, 16),
+        "8" .. digest:sub(18, 20), digest:sub(21, 32)}, "-"), nil
+end
+
+-- Compare the immutable provider descriptor even on replay.
+function upload_lib.find_delivery_upload(actor_id: string, delivery_key: string, signature: string): (any?, error?)
+    local id, id_err = delivery_upload_id(actor_id, delivery_key)
+    if id_err or not id then return nil, id_err end
+    local found, err = upload_query_repo.get(id)
+    if errors.is(err, errors.NOT_FOUND) then return nil, nil end
+    if err or not found then return nil, err end
+    if found.actor_id ~= actor_id or found.metadata[DELIVERY_METADATA] ~= signature then
+        return nil, failure("Upload delivery is already bound to another attachment", errors.CONFLICT, "declaration")
+    end
+    return found, nil
+end
+
+function upload_lib.upload_delivery_file(actor_id: string, delivery_key: string, signature: string,
+        data: string, filename: string, mime_type: string?, metadata: any): (any?, error?)
+    local id, id_err = delivery_upload_id(actor_id, delivery_key)
+    if id_err or not id then return nil, id_err end
+    metadata[DELIVERY_METADATA] = signature
+    local upload, err = persist_file(actor_id, data, filename, #data, mime_type, nil, metadata, nil, true, nil, id)
+    -- Contenders use separate storage paths. Only one UUID/Jobs transaction
+    -- can commit. The normal failed-create path removes a loser's blob.
+    if errors.is(err, errors.CONFLICT) then
+        local winner, read_err = upload_lib.find_delivery_upload(actor_id, delivery_key, signature)
+        if winner or read_err then return winner, read_err end
+    end
+    return upload, err
 end
 
 -- Run the processing of a failed upload again on its stored bytes.
@@ -416,7 +469,9 @@ function upload_lib.retry_upload(uuid)
         return nil, typed(err, errors.UNAVAILABLE, "infrastructure", "")
     end
 
-    local max_ms = math.floor(tonumber(upload.processing_max_execution_ms) or process_worker.max_execution_ms())
+    -- A retry is a new processing attempt under the current processing limits.
+    local max_ms, limits_err = process_worker.max_execution_ms(upload.type_id)
+    if not max_ms then return nil, typed(limits_err, errors.UNAVAILABLE, "infrastructure", "") end
     local marked, mark_err = upload_record_repo.mark_failed_for_retry(upload.uuid, max_ms)
     if mark_err then return nil, typed(mark_err, errors.UNAVAILABLE, "infrastructure", "") end
     if not marked then

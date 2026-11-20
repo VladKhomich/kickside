@@ -59,10 +59,9 @@ local function construct(dependencies: any): any
 local pool = {}
 local pool_time = dependencies.time or time
 
--- There is no idle re-scan. The only job timer is the earliest durable deadline
--- after the dispatch instant: the instant its reclaim and claim already judged.
--- A row that becomes due or expires after that instant arms the timer, so work
--- the claim could not yet see is never left without a dispatch.
+-- There is no idle re-scan. Pending jobs at or before the dispatch instant
+-- already had a chance to be claimed. A running lease remains a deadline
+-- until it is renewed or settled, since an ordinary dispatch skips reclaim.
 local function next_deadline(db: sql.DB, dbtype: string, dispatch_at: string): (number?, string?, error?)
     local due_sql: string
     local lease_sql: string
@@ -71,8 +70,7 @@ local function next_deadline(db: sql.DB, dbtype: string, dispatch_at: string): (
             FROM kickside_job WHERE status='pending' AND scheduled_at > CAST($1 AS TIMESTAMPTZ)
             ORDER BY scheduled_at LIMIT 1]]
         lease_sql = [[SELECT lease_until AS deadline
-            FROM kickside_job WHERE status='running' AND lease_until IS NOT NULL
-            AND lease_until > CAST($2 AS TIMESTAMPTZ) ORDER BY lease_until LIMIT 1]]
+            FROM kickside_job WHERE status='running' AND lease_until IS NOT NULL ORDER BY lease_until LIMIT 1]]
     else
         due_sql = [[SELECT scheduled_at AS deadline
             FROM kickside_job WHERE status='pending' AND scheduled_at > $1 ORDER BY scheduled_at LIMIT 1]]
@@ -80,20 +78,21 @@ local function next_deadline(db: sql.DB, dbtype: string, dispatch_at: string): (
         -- without statistics SQLite can prefer status plus a population sort.
         lease_sql = [[SELECT lease_until AS deadline
             FROM kickside_job INDEXED BY idx_kickside_job_lease_reap
-            WHERE status='running' AND lease_until IS NOT NULL
-            AND lease_until > $2 ORDER BY lease_until LIMIT 1]]
+            WHERE status='running' AND lease_until IS NOT NULL ORDER BY lease_until LIMIT 1]]
     end
     local rows, err = db:query("SELECT kind, deadline FROM (SELECT 'due' AS kind, deadline FROM ("
         .. due_sql .. ") AS due UNION ALL SELECT 'lease' AS kind, deadline FROM ("
         .. lease_sql .. ") AS lease) AS deadlines WHERE deadline IS NOT NULL ORDER BY deadline ASC, kind DESC LIMIT 1",
-        { dispatch_at, dispatch_at })
+        { dispatch_at })
     if err then return nil, nil, errors.wrap(err, "worker deadline lookup failed") end
     local row = rows and rows[1]
     if not row then return nil, nil, nil end
     local deadline, parse_err = clock.parse(row.deadline)
     if parse_err then return nil, nil, errors.wrap(parse_err, "worker deadline is invalid") end
     local ms = (tonumber(deadline:sub(pool_time.now()):nanoseconds()) :: number) / 1000000
-    return math.max(1, math.ceil(ms)), tostring(row.kind), nil
+    local kind = tostring(row.kind)
+    -- A ready lease must stay ready when another ordinary dispatch reads it.
+    return math.max(kind == "lease" and 0 or 1, math.ceil(ms)), kind, nil
 end
 pool.next_deadline = next_deadline
 
@@ -265,7 +264,9 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
     local retention_driver = pool_retention_schedule.new({
         policy = policy_read,
         now = pool_time.now,
-        sweep = function(cursor) return pool_jobs.retention_sweep(cursor) end,
+        sweep = function(cursor, completed_fence_cursor)
+            return pool_jobs.retention_sweep(cursor, completed_fence_cursor)
+        end,
         logger = logger,
         fallback_retry_ms = function() return dispatch_retry_delay_ms end,
     })
@@ -281,7 +282,18 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
         return types, nil
     end
 
+    local function reclaim_retry_pending(): boolean
+        return dispatch_retry_ns ~= nil and dispatch_retry_reclaim
+    end
+
+    local function job_deadline(): number?
+        -- A failed reclaim already has a dispatch deadline on the existing backoff.
+        if deadline_kind == "lease" and reclaim_retry_pending() then return nil end
+        return deadline_ns
+    end
+
     local function retry_dispatch(reclaim_due: boolean): ()
+        if not reclaim_due and reclaim_retry_pending() then return end
         if active_policy then
             local exponent = math.min(dispatch_retry_count, 20)
             dispatch_retry_delay_ms = math.min(active_policy.slot_retry_after_ms * (2 ^ exponent),
@@ -567,7 +579,8 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
             deadline_ns = nil
             deadline_kind = nil
         end
-        if not reclaim_err and not deadline_err and not (claim_err and not claim_refusal.is_marker_occupied(claim_err)) then
+        if not reclaim_err and not deadline_err and not (claim_err and not claim_refusal.is_marker_occupied(claim_err))
+            and (reclaim_due or not reclaim_retry_pending()) then
             dispatch_retry_ns = nil
             dispatch_retry_count = 0
         end
@@ -800,7 +813,7 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
                 if wait_ns == nil or left < (wait_ns :: number) then wait_ns = left end
             end
         end
-        consider(deadline_ns)
+        consider(job_deadline())
         if admitted then consider(retention_driver.deadline()) end
         local cases = { events_ch:case_receive(), registry_ch:case_receive(), idle_ch:case_receive(), wake_ch:case_receive() }
         if settings_ch then cases[#cases + 1] = settings_ch:case_receive() end
@@ -901,7 +914,8 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
                 if at <= now then spawn(slot) end
             end
         end
-        if deadline_ns ~= nil and deadline_ns <= now then
+        local job_at = job_deadline()
+        if job_at ~= nil and job_at <= now then
             local reclaim_due = deadline_kind == "lease"
             deadline_ns = nil
             deadline_kind = nil

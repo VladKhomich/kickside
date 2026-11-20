@@ -95,11 +95,15 @@ local function token_trace_context(metadata: any): any?
     return type(payload) == "table" and type((payload :: any).trace_context) == "table" and (payload :: any).trace_context or nil
 end
 
-local function take_trace_context(metadata: any): (any?, string?)
+local function take_trace_context(metadata: any, multipart_payload: any?): (any?, string?)
     if type(metadata) ~= "table" then return nil, nil end
     local raw = metadata.trace_context
     if raw == nil then
-        raw = token_trace_context(metadata)
+        if multipart_payload == nil then
+            raw = token_trace_context(metadata)
+        elseif type(multipart_payload.trace_context) == "table" then
+            raw = multipart_payload.trace_context
+        end
     end
     metadata.trace_context = nil
     if raw == nil then return nil, nil end

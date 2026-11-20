@@ -15,6 +15,7 @@ local row_bytes = require("row_bytes")
 local listing = require("listing")
 local sql_boundary = require("sql_boundary")
 local capacity = require("capacity")
+local dead_outcome = require("dead_outcome")
 local lifecycle_cancel = require("lifecycle_cancel")
 
 local enqueue = {}
@@ -356,8 +357,13 @@ local function enqueue_job_tx(db_or_tx: Executor, dbtype: string, params: Enqueu
     if type(params.concurrency_key) == "string" and params.concurrency_key ~= "" then
         concurrency_key = params.concurrency_key
     end
-    local capacity_descriptor, capacity_err = capacity.admit(params.worker_ref or params.job_type, concurrency_key)
+    local capacity_descriptor, capacity_err, worker_meta = capacity.admit(params.worker_ref or params.job_type, concurrency_key)
     if capacity_err then return nil, capacity_err end
+    if worker_meta and worker_meta.job_dead ~= nil
+        and not dead_outcome.is_outcome({job_identity = job_identity}) then
+        local _, dead_handler_err = dead_outcome.validate(params.worker_ref or params.job_type, worker_meta)
+        if dead_handler_err then return nil, dead_handler_err end
+    end
     local scheduled_at = params.scheduled_at or now
     if params.scheduled_at ~= nil then
         local instant, parse_err = clock.parse(params.scheduled_at)

@@ -334,7 +334,8 @@ local function run(deps: Map, input: any): (Map?, error?)
                 return reconcile.stale(db, round, d, limit)
             end)
             if stale_err then return nil, nil, classify(stale_err) end
-            return { items = reconcile.delete_items(stale :: { string }), has_more = false }, #(stale :: { string }), nil, nil
+            local items = reconcile.delete_items(stale :: { string }, d.reconcile_pass_id)
+            return { items = items, has_more = false }, #items, nil, nil
         end
         if not pulls then return { items = {}, has_more = false }, nil, nil, nil end
         local cursor: any = nil

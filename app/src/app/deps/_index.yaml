@@ -225,7 +225,7 @@ entries:
         value: "fs://css-variables.facade.json"
 
   # app.deps:keeper
-  - version: ">=0.5.111"
+  - version: ">=0.5.116"
     name: keeper
     kind: ns.dependency
     meta: {}
@@ -247,7 +247,7 @@ entries:
         value: app:gateway
 
   # app.deps:kickside_agents
-  - version: ">=0.2.3"
+  - version: ">=0.2.23"
     name: kickside_agents
     kind: ns.dependency
     meta: {}
@@ -258,7 +258,7 @@ entries:
     - name: kickside.agents:ui_server
       value: app:gateway
 
-  - version: ">=0.2.1"
+  - version: ">=0.2.37"
     name: kickside_automation
     kind: ns.dependency
     meta: {}
@@ -319,7 +319,7 @@ entries:
     - name: kickside.connection:ui_server
       value: app:gateway
 
-  - version: ">=0.3.9"
+  - version: ">=0.3.12"
     name: kickside_contract
     kind: ns.dependency
     meta: {}
@@ -330,7 +330,7 @@ entries:
     - name: kickside.contract.http:user_security_scope
       value: app.security:unassigned_endpoints
 
-  - version: ">=0.3.4"
+  - version: ">=0.3.35"
     name: kickside_core
     kind: ns.dependency
     meta: {}

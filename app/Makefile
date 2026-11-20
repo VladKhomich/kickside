@@ -46,11 +46,14 @@ publish: refresh-deps
 # A valid registry pack can otherwise contain only the login/static shell.
 VERSION ?= $(shell cat version.txt)
 HUB_REGISTRY ?= https://hub.wippy.ai
-.PHONY: release-build release-check release-publish release-dependencies
+.PHONY: release-build release-build-app-main release-check release-publish release-dependencies
 release-dependencies:
 	python3 scripts/check-release-dependencies.py --repository .. --wippy "$(WIPPY)"
 
-release-build: build
+release-build-app-main:
+	$(MAKE) -C .. release-build-app-main WIPPY_BIN="$(or $(WIPPY_BIN),$(WIPPY))"
+
+release-build: release-build-app-main build-facade-css
 	node scripts/check-app-bundle.mjs
 
 release-check: release-build
@@ -59,6 +62,7 @@ release-check: release-build
 release-publish: release-build
 	@test "$(VERSION)" = "$$(cat version.txt)" || { echo "Use the Release Please application version" >&2; exit 1; }
 	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse 'kickside-v$(VERSION)^{commit}')" || { echo "Publish from the exact application release tag" >&2; exit 1; }
+	@python3 ../scripts/resolve-release-commit.py --repository .. --require-hosted
 	$(WIPPY) publish --config . --version "$(VERSION)" --registry "$(HUB_REGISTRY)" --embed app:app_fs
 
 .PHONY: composition-lockrefresh composition-lint

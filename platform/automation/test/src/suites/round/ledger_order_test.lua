@@ -96,6 +96,30 @@ local function define_tests()
             db:release()
         end)
 
+        test.it("resumes the retained effect when a source repolls a key beyond the redelivery limit", function()
+            local owner, port = uuid.v7(), "fixture:pending"
+            local now = "2026-01-01T00:00:00Z"
+            local db = assert(sql.get(DB))
+            local tx = assert(db:begin())
+            local first = {item_key = "first", dedup_key = "one", delivery_order = 1, payload = {value = "first"}}
+            local second = {item_key = "second", dedup_key = "two", delivery_order = 2, payload = {value = "retained"}}
+            local _, err = round_ledger.record_tx(tx, owner, port, {
+                {item = first, state = "waiting", error = {code = "effect_pending", sink_effect = true}},
+                {item = second, state = "waiting", error = {code = "effect_pending", sink_effect = true}},
+            }, now, now)
+            test.is_nil(err, tostring(err))
+            local due = assert(round_ledger.due_tx(tx, owner, port, now, 1))
+            test.eq(#due, 1)
+            test.eq(due[1].item_key, "first")
+            local duplicate = {item_key = second.item_key, delivery_key = second.delivery_key, payload = {value = "changed"}}
+            local admitted = assert(round_ledger.admit(tx, owner, port, {due[1], duplicate}, 2, now))
+            assert(tx:rollback())
+            assert(db:release())
+            test.eq(#admitted.items, 2)
+            test.is_true(admitted.items[2].pending_effect)
+            test.eq(admitted.items[2].payload.value, "retained")
+        end)
+
         test.it("acquires ledger keys in primary-key order across SQL batches", function()
             local queries: { Map } = {}
             local writes: { Map } = {}

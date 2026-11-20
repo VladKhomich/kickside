@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.3.31](https://github.com/kicksideai/kickside/compare/uploads-v0.3.30...uploads-v0.3.31) (2026-11-19)
+
+
+### Features
+
+* **uploads:** admit versioned provider attachments ([#695](https://github.com/kicksideai/kickside/issues/695)) ([4b3bbdc](https://github.com/kicksideai/kickside/commit/4b3bbdc98afa9a787e69a0ad194d9869a4455f62))
+
+## [0.3.30](https://github.com/kicksideai/kickside/compare/uploads-v0.3.29...uploads-v0.3.30) (2026-11-19)
+
+
+### Bug Fixes
+
+* **uploads:** log upload creation persistence failures ([#687](https://github.com/kicksideai/kickside/issues/687)) ([17538f6](https://github.com/kicksideai/kickside/commit/17538f6fd6848a9d18f26c878788038f12c68f45))
+
+## [0.3.29](https://github.com/kicksideai/kickside/compare/uploads-v0.3.28...uploads-v0.3.29) (2026-11-19)
+
+
+### Bug Fixes
+
+* **uploads:** reject invalid multipart completion tokens ([#659](https://github.com/kicksideai/kickside/issues/659)) ([61a1e2d](https://github.com/kicksideai/kickside/commit/61a1e2d8328e0a60cb99bf11c200241414dab742))
+
+## [0.3.28](https://github.com/kicksideai/kickside/compare/uploads-v0.3.27...uploads-v0.3.28) (2026-11-19)
+
+
+### Features
+
+* **uploads:** enable progress deadlines for reporting pipelines ([#475](https://github.com/kicksideai/kickside/issues/475)) ([4ef4dbb](https://github.com/kicksideai/kickside/commit/4ef4dbb1f0aa21baa34d85a7005b5deeb6e427b6))
+
+
+### Bug Fixes
+
+* **uploads:** bound PostgreSQL checkpoint page reads ([#636](https://github.com/kicksideai/kickside/issues/636)) ([78a4ecc](https://github.com/kicksideai/kickside/commit/78a4ecc2ef8378b9676f60498122df0eba6ff481))
+
+## [0.3.27](https://github.com/kicksideai/kickside/compare/uploads-v0.3.26...uploads-v0.3.27) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** deliver terminal outcomes and preserve upload retry ([#474](https://github.com/kicksideai/kickside/issues/474)) ([d1e19d1](https://github.com/kicksideai/kickside/commit/d1e19d1666c659f61779c87e2e02f5a65782106d))
+* **uploads:** require terminal outcome recovery dependencies ([#626](https://github.com/kicksideai/kickside/issues/626)) ([a53e39a](https://github.com/kicksideai/kickside/commit/a53e39ad5c8613dc45db69ba0e8d822c6846571c))
+
 ## [0.3.26](https://github.com/kicksideai/kickside/compare/uploads-v0.3.25...uploads-v0.3.26) (2026-11-19)
 
 

@@ -12,6 +12,8 @@ local job_fixture = require("job_fixture")
 local heartbeat = require("worker_heartbeat")
 local clock = require("clock")
 local retention_order_migration = require("retention_order_migration")
+local dead_outcome = require("dead_outcome")
+local enqueue = require("lifecycle_enqueue")
 
 local function required(value: any, err: error?): any
     if err then error(err) end
@@ -38,7 +40,7 @@ local function drain(db: any, instant: any): (table, integer)
     local driver = schedule.new({policy = config.policy, now = function() return instant end, sweep = function(cursor)
         local stats = required(retention.sweep(db, tostring(db:type()), cursor))
         for key, value in pairs(stats) do
-            if key ~= "job_cursor" then totals[key] = (totals[key] or 0) + value end
+            if type(value) == "number" then totals[key] = (totals[key] or 0) + value end
         end
         return stats, nil
     end})
@@ -81,6 +83,339 @@ end
 
 local function define_tests()
     test.describe("retention keeps pace with expired writes", function()
+        test.it("visits 100000 completed fences in bounded windows and advances past empty windows", function()
+            local db = open_queue()
+            local dbtype = tostring(db:type())
+            local postgres = dbtype == sql.type.POSTGRES
+            local policy = required(config.policy())
+            local batch = policy.thread_cleanup_batch
+            local total = 100000
+            test.eq(job_fixture.seed_completed_fences(db, total), total)
+            required(db:execute("ANALYZE kickside_job_thread_cleanup"))
+            local fence_index = "idx_job_cleanup_completed_order"
+            if postgres then
+                -- The private queue clones the index definition under a generated name.
+                local indexes = required(db:query([[SELECT indexname FROM pg_indexes
+                    WHERE schemaname=current_schema() AND tablename='kickside_job_thread_cleanup'
+                    AND indexdef LIKE '%(completed_at, thread_id)%'
+                    AND indexdef LIKE '%completed_at IS NOT NULL%']]))
+                test.eq(#indexes, 1)
+                fence_index = indexes[1].indexname
+            end
+
+            local function thread_id(index: integer): string
+                return string.format("00000000-0000-0000-0000-%012d", index)
+            end
+            local function seed_leftover(owner: string)
+                local job_id = uuid.v7()
+                required(db:execute([[INSERT INTO kickside_job
+                    (id,owner_kind,owner_id,job_type,status,job_identity)
+                    VALUES ($1,'thread',$2,'test.retention','pending',$3)]], {job_id, owner, job_id}))
+                return job_id
+            end
+            local function exists(job_id: string): boolean
+                return #required(db:query("SELECT id FROM kickside_job WHERE id=$1", {job_id})) == 1
+            end
+
+            local windows, inspected, locks, expiry_windows = 0, 0, 0, 0
+            local function record_lock(statement: string)
+                if statement:find("SELECT f.thread_id,f.completed_at", 1, true) then
+                    expiry_windows = expiry_windows + 1
+                elseif statement:find("started,next_page_seq,completed_at", 1, true)
+                    and statement:find("kickside_job_thread_cleanup WHERE thread_id=", 1, true) then
+                    locks = locks + 1
+                elseif statement:find("SET thread_id=thread_id WHERE thread_id=", 1, true) then
+                    locks = locks + 1
+                end
+            end
+            local probe = {
+                type = function() return db:type() end,
+                begin = function()
+                    return job_fixture.observe_tx(required(db:begin()), record_lock), nil
+                end,
+                execute = function(_, statement, params) return db:execute(statement, params) end,
+                query = function(_, statement, params)
+                    if not statement:find("SELECT f.thread_id,f.completed_at", 1, true) then
+                        return db:query(statement, params)
+                    end
+                    windows = windows + 1
+                    if windows <= 2 or windows == math.floor(total / batch) then
+                        local explain = postgres and "EXPLAIN (ANALYZE, BUFFERS) " or "EXPLAIN QUERY PLAN "
+                        local plan = required(db:query(explain .. statement, params))
+                        local ordered_index = false
+                        for _, row in ipairs(plan) do
+                            local detail = tostring(postgres and row["QUERY PLAN"] or row.detail)
+                            if detail:find(fence_index, 1, true) then
+                                ordered_index = true
+                                if postgres then
+                                    local read, loops = detail:match("actual time=[^ ]+ rows=(%d+) loops=(%d+)")
+                                    local scanned, iterations = tonumber(read), tonumber(loops)
+                                    test.is_true(scanned and iterations and scanned * iterations <= batch, detail)
+                                elseif #params > 1 then
+                                    test.not_nil(detail:find("(completed_at,thread_id)>(?,?)", 1, true), detail)
+                                end
+                            end
+                            if postgres then
+                                local removed = detail:match("Rows Removed by [%a ]+: (%d+)")
+                                test.is_true(not removed or tonumber(removed) <= batch, detail)
+                            end
+                        end
+                        test.is_true(ordered_index, "the completed fence window uses the existing ordered index")
+                    end
+                    local rows = required(db:query(statement, params))
+                    test.is_true(#rows <= batch, "the eligibility checks are limited to one fence window")
+                    inspected = inspected + #rows
+                    return rows, nil
+                end,
+            }
+            local instant = time.now()
+            local pass_count = math.floor(total / batch) + 1
+            local removals = 0
+            local keep_due = true
+            local driver = schedule.new({ policy = config.policy, now = function() return instant end,
+                sweep = function(job_cursor, completed_fence_cursor)
+                    local stats = required(retention.sweep(probe, dbtype, job_cursor, completed_fence_cursor))
+                    removals = removals + stats.thread_cleanup_leftovers
+                    if windows == pass_count and keep_due then
+                        -- A different retention lane can need another pass even
+                        -- when the completed fence scan has reached the end.
+                        stats.workers = policy.retention_batch
+                        keep_due = false
+                    end
+                    return stats, nil
+                end })
+
+            local now = instant:unix_nano()
+            for pass = 1, pass_count do
+                driver.run(now)
+                test.eq(windows, pass, "one window per worker turn")
+                test.eq(driver.deadline(), now, "an empty eligible page still advances to the next window")
+            end
+            driver.run(now)
+            test.eq(windows, pass_count, "the exhausted scan does not restart while another lane remains due")
+            test.is_true(driver.deadline() > now, "the scheduler idles after the round")
+            test.eq(inspected, total, "the complete round reads each settled fence once")
+            test.eq(removals, 0)
+            test.eq(locks, 0, "inspecting settled fences opens no per-fence transaction")
+            test.eq(expiry_windows, 1, "expiry stays closed while the longer reclaimer round continues")
+
+            local early = seed_leftover(thread_id(batch + 1))
+            local late = seed_leftover(thread_id(total))
+            windows, inspected = 0, 0
+            local next_round = driver.deadline()
+            driver.run(next_round)
+            test.is_true(exists(early) and exists(late), "the first window has no eligible owners")
+            test.eq(driver.deadline(), next_round)
+            driver.run(next_round)
+            test.is_false(exists(early), "the next window reaches and drains the first eligible owner")
+            test.is_true(exists(late))
+            for _ = 3, pass_count do driver.run(next_round) end
+            test.is_false(exists(late), "the tail of the round reaches the late owner")
+            if driver.deadline() == next_round then driver.run(next_round) end
+            test.eq(windows, pass_count)
+            test.eq(inspected, total)
+            test.eq(removals, 2)
+            test.eq(locks, 2, "only the discovered leftover owners take fence locks")
+            test.eq(expiry_windows, 2, "the next retention round starts both fence scans")
+            test.is_true(driver.deadline() > next_round)
+            local remaining = required(db:query("SELECT count(*) AS n FROM kickside_job_thread_cleanup"))
+            test.eq(tonumber(remaining[1].n), total, "inspection leaves the active retention window untouched")
+            db:release()
+        end)
+
+        test.it("bounds expiry across 100000 completed fences protected by retained work", function()
+            local db = open_queue()
+            local dbtype = tostring(db:type())
+            local postgres = dbtype == sql.type.POSTGRES
+            local policy = required(config.policy())
+            local batch, total = policy.retention_batch, 100000
+            test.eq(job_fixture.seed_completed_fences(db, total), total)
+            required(db:execute("UPDATE kickside_job_thread_cleanup SET completed_at='2000-01-01T00:00:00Z'"))
+            local id = postgres and "CAST(thread_id AS uuid)" or "thread_id"
+            required(db:execute([[INSERT INTO kickside_job(id,owner_kind,owner_id,job_type,status,job_identity)
+                SELECT ]] .. id .. [[,'thread',thread_id,'test.fence_expiry','pending',thread_id
+                FROM kickside_job_thread_cleanup]]))
+            required(db:execute("ANALYZE kickside_job_thread_cleanup"))
+            required(db:execute("ANALYZE kickside_job"))
+            local function fence_id(index: integer): string
+                return string.format("00000000-0000-0000-0000-%012d", index)
+            end
+            local early, changed_job, changed_receipt, late = fence_id(batch + 1), fence_id(batch + 2),
+                fence_id(batch + 3), fence_id(total)
+            for _, owner in ipairs({early, changed_job, changed_receipt, late}) do
+                required(db:execute("DELETE FROM kickside_job WHERE owner_id=$1", {owner}))
+            end
+            local function exists(owner: string): boolean
+                return #required(db:query("SELECT thread_id FROM kickside_job_thread_cleanup WHERE thread_id=$1", {owner})) == 1
+            end
+
+            local windows, deleted = 0, 0
+            local probe = {
+                type = function() return db:type() end,
+                execute = function(_, statement, params) return db:execute(statement, params) end,
+                query = function(_, statement, params) return db:query(statement, params) end,
+                begin = function()
+                    local tx = required(db:begin())
+                    return job_fixture.observe_tx(tx, function(statement)
+                        if not statement:find("SELECT f.thread_id,f.completed_at", 1, true) then return end
+                        windows = windows + 1
+                        if windows == 2 then
+                            -- These references become visible after inspecting the window.
+                            required(tx:execute([[INSERT INTO kickside_job
+                                (id,owner_kind,owner_id,job_type,status,job_identity)
+                                VALUES ($1,'thread',$2,'test.fence_expiry','pending',$3)]],
+                                {uuid.v7(), changed_job, changed_job}))
+                            required(tx:execute([[INSERT INTO kickside_job_thread_cleanup_receipt
+                                (thread_id,page_seq,processed,done,discarded_json,unresolved_json,created_at)
+                                VALUES ($1,0,0,TRUE,'{}','{}','2000-01-01T00:00:00Z')]], {changed_receipt}))
+                        end
+                    end), nil
+                end,
+            }
+            local instant = time.now()
+            local now = instant:unix_nano()
+            local cursor
+            local driver = schedule.new({policy = config.policy, now = function() return instant end,
+                sweep = function(job_cursor, completed_fence_cursor)
+                    local positions = completed_fence_cursor
+                    if positions == nil then positions = {reclaim = false} end
+                    local stats = required(retention.sweep(probe, dbtype, job_cursor, positions))
+                    deleted = deleted + stats.thread_cleanup_fences
+                    cursor = stats.completed_fence_cursor
+                    return stats, nil
+                end})
+            local passes = math.floor(total / batch) + 1
+            for pass = 1, passes do
+                test.eq(driver.deadline(), now, "expiry continuation stays due across protected windows")
+                driver.run(now)
+                test.eq(windows, pass, "the worker reads one expiry window per turn")
+                if pass < passes then test.eq(cursor.expire.thread_id, fence_id(pass * batch)) end
+                if pass == 1 then
+                    test.eq(deleted, 0)
+                    test.is_true(exists(early))
+                elseif pass == 2 then
+                    test.eq(deleted, 1)
+                    test.is_true(exists(changed_job))
+                    test.is_true(exists(changed_receipt))
+                    test.is_false(exists(early))
+                    test.is_true(exists(late))
+                end
+            end
+            test.eq(deleted, 2)
+            test.is_false(exists(late))
+            test.is_nil(cursor)
+            test.is_true(driver.deadline() > now, "expiry finishes the retention round")
+            local remaining = required(db:query("SELECT count(*) AS n FROM kickside_job_thread_cleanup"))
+            test.eq(tonumber(remaining[1].n), total - 2)
+            db:release()
+        end)
+
+        test.it("bounds each expiration page when 10000 dead parents have pending outcomes", function()
+            local db = open_queue()
+            local dbtype = tostring(db:type())
+            local postgres = dbtype == sql.type.POSTGRES
+            local policy = required(config.policy())
+            local batch = policy.retention_batch
+            local total = 10000
+            local owner = uuid.v7()
+            local numbers = postgres and "SELECT generate_series(1,10000) AS n"
+                or "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<10000) SELECT n FROM seq"
+            local id = postgres and "md5($1::text || n::text)::uuid" or "lower(hex(randomblob(16)))"
+            required(db:execute([[INSERT INTO kickside_job
+                (id,owner_kind,owner_id,job_type,status,job_identity,finished_at)
+                SELECT ]] .. id .. ",'test',$1,'test.retention','dead',CAST(n AS TEXT),'2000-01-01T00:00:00Z' FROM ("
+                .. numbers .. ") numbered", {owner}))
+            local prefix, suffix = enqueue.encode_part(dead_outcome.NAMESPACE), enqueue.encode_part(dead_outcome.KEY)
+            local job_id = "CAST(id AS TEXT)"
+            local outcome_id = postgres and "md5('outcome' || " .. job_id .. ")::uuid" or "lower(hex(randomblob(16)))"
+            required(db:execute([[WITH parents AS (SELECT id,owner_id FROM kickside_job WHERE owner_id=$1)
+                INSERT INTO kickside_job
+                (id,owner_kind,owner_id,job_type,status,job_identity)
+                SELECT ]] .. outcome_id .. ",'test',owner_id,'test.outcome','pending',$2 || LENGTH(" .. job_id .. ") || ':' || "
+                .. job_id .. " || $3 FROM parents", {owner, prefix, suffix}))
+            local seeded = required(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE owner_id=$1 AND status='pending'", {owner}))
+            test.eq(tonumber(seeded[1].n), total)
+            local later = seed_job(db, owner)
+            required(db:execute("UPDATE kickside_job SET finished_at='2000-01-02T00:00:00Z' WHERE id=$1", {later}))
+            required(db:execute("ANALYZE kickside_job"))
+
+            local instant = time.now()
+            local pages, examined, deleted = 0, 0, 0
+            local probe = {
+                type = function() return db:type() end,
+                begin = function() return db:begin() end,
+                execute = function(_, statement, params) return db:execute(statement, params) end,
+                query = function(_, statement, params)
+                    if not string.find(statement, "SELECT id,owner_kind,owner_id,finished_at,", 1, true) then
+                        return db:query(statement, params)
+                    end
+                    pages = pages + 1
+                    if postgres then
+                        local plan = required(db:query("EXPLAIN (ANALYZE, BUFFERS) " .. statement, params))
+                        local loops = 0
+                        for _, row in ipairs(plan) do
+                            local detail = tostring(row["QUERY PLAN"])
+                            local rows, scans = string.match(detail, "actual time=[^ ]+ rows=(%d+) loops=(%d+)")
+                            if rows then
+                                loops = required(tonumber(scans))
+                                test.is_true(required(tonumber(rows)) * loops <= batch, detail)
+                            end
+                            local removed = string.match(detail, "Rows Removed by [%a ]+: (%d+)")
+                            if removed then
+                                test.is_true(required(tonumber(removed)) * loops <= batch, detail)
+                            end
+                        end
+                    else
+                        local plan = required(db:query("EXPLAIN QUERY PLAN " .. statement, params))
+                        local expiry_seek, tie_seek = false, false
+                        for _, row in ipairs(plan) do
+                            if string.find(row.detail, "SEARCH kickside_job USING INDEX idx_job_global_retention", 1, true) then
+                                expiry_seek = true
+                            end
+                            if string.find(row.detail, "idx_job_global_retention (finished_at=? AND rowid>?)", 1, true) then
+                                tie_seek = true
+                            end
+                        end
+                        test.is_true(expiry_seek, "the page uses the expiry index")
+                        if params[3] ~= nil then test.is_true(tie_seek, "same-timestamp parents use an indexed rowid seek") end
+                    end
+                    local rows = required(db:query(statement, params))
+                    examined = examined + #rows
+                    return rows, nil
+                end,
+            }
+            local driver = schedule.new({policy = config.policy, now = function() return instant end,
+                sweep = function(cursor)
+                    local stats = required(retention.sweep(probe, dbtype, cursor))
+                    deleted = deleted + stats.jobs
+                    return stats, nil
+                end})
+            local now = instant:unix_nano()
+            for pass = 1, math.ceil((total + 1) / batch) do
+                local before = examined
+                driver.run(now)
+                test.eq(pages, pass, "each sweep fetches one expiry page")
+                test.eq(examined - before, math.min(batch, total + 1 - before))
+                test.eq(deleted, examined <= total and 0 or 1)
+                if examined <= total then test.eq(driver.deadline(), now, "a protected page does not stop the sweep") end
+            end
+            test.is_true(driver.deadline() > now)
+            local rows = required(db:query("SELECT id FROM kickside_job WHERE id=$1", {later}))
+            test.eq(#rows, 0, "an eligible job behind all protected parents is pruned")
+            rows = required(db:query("SELECT COUNT(*) AS n FROM kickside_job WHERE owner_id=$1 AND status='dead'", {owner}))
+            test.eq(tonumber(rows[1].n), total)
+
+            local order = postgres and "id" or "rowid"
+            local first = required(db:query("SELECT id FROM kickside_job WHERE owner_id=$1 AND status='dead' ORDER BY "
+                .. order .. " LIMIT 1", {owner}))[1].id
+            required(db:execute("UPDATE kickside_job SET status='done' WHERE job_identity=$1",
+                {prefix .. enqueue.encode_part(tostring(first)) .. suffix}))
+            driver.run(driver.deadline())
+            rows = required(db:query("SELECT id FROM kickside_job WHERE id=$1", {first}))
+            test.eq(#rows, 0, "the next interval revisits parents whose outcomes settled")
+            db:release()
+        end)
+
         test.it("drains finished deletion and other jobs with their runs in bounded pages", function()
             local db = open_queue()
             local policy = required(config.policy())

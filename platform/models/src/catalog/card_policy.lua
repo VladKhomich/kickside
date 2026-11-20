@@ -87,6 +87,23 @@ local function capability_ownership(input: any, base: any?, inferred: any?): (an
     return effective_capabilities(ownership.inferred, ownership.overrides), ownership
 end
 
+-- Pricing is visible to members through model resolution. Apply the same
+-- credential classification as Models portability while keeping provider rates.
+local function public_pricing(value: any): any
+    if type(value) ~= "table" then return {} end
+    local public, secret = policy.split_config(value)
+    if next(secret) == nil then return value end
+    return public
+end
+
+local function sanitize_discovered_pricing(metadata: any): any
+    local discovered = metadata.discovered
+    if type(discovered) == "table" and discovered.pricing ~= nil then
+        discovered.pricing = public_pricing(discovered.pricing)
+    end
+    return metadata
+end
+
 local function build_card(row: any, profile: any?): (any?, any?)
     local capabilities, capabilities_err = policy.decode_json(row.capabilities_json, {})
     if capabilities_err then return nil, capabilities_err end
@@ -122,7 +139,7 @@ local function build_card(row: any, profile: any?): (any?, any?)
         max_tokens = stored_limits.max_tokens or context,
         output_tokens = stored_limits.output_tokens or output,
         stored_limits = stored_limits,
-        pricing = pricing,
+        pricing = public_pricing(pricing),
         providers = {
             {
                 id = row.provider_id,
@@ -139,7 +156,7 @@ local function build_card(row: any, profile: any?): (any?, any?)
         configured_enabled = enabled,
         class_load_failed = enabled and profile and profile.configured_enabled == true and profile.error ~= nil or nil,
         error = profile and profile.error or nil,
-        metadata = metadata,
+        metadata = sanitize_discovered_pricing(metadata),
     }
 end
 
@@ -241,11 +258,11 @@ local function clean_card_input(input: any, base: any?, inferred: any?): (any?, 
         max_tokens = card_limit(input, stored_limits, "max_tokens"),
         output_tokens = card_limit(input, stored_limits, "output_tokens"),
         dimensions = card_limit(input, stored_limits, "dimensions"),
-        pricing = type(input.pricing) == "table" and input.pricing or (base and base.pricing or {}),
+        pricing = public_pricing(type(input.pricing) == "table" and input.pricing or (base and base.pricing)),
         options = normalize_card_options(card_options(input, base)),
         source = input.source or (base and base.source) or models_types.SOURCE_MANUAL,
         enabled = enabled,
-        metadata = type(input.metadata) == "table" and policy.scrub_sensitive(input.metadata) or policy.scrub_sensitive(base and base.metadata or {}),
+        metadata = sanitize_discovered_pricing(policy.scrub_sensitive(type(input.metadata) == "table" and input.metadata or (base and base.metadata or {}))),
     }
     return card
 end

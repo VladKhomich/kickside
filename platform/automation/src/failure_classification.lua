@@ -20,6 +20,7 @@ local M = {}
 -- success=true acknowledgement and no error of the sink's own: the sink may
 -- have applied the write.
 M.UNACKNOWLEDGED = "unacknowledged_write"
+M.EFFECT_PENDING = "effect_pending"
 
 local KIND_INTERNAL: string = errors.INTERNAL :: string
 local KIND_UNAVAILABLE: string = errors.UNAVAILABLE :: string
@@ -58,6 +59,7 @@ DATA_ERROR_KINDS.replay_evidence_unavailable = { kind = KIND_INVALID, determinis
 DATA_ERROR_KINDS.idempotency_conflict = { kind = KIND_CONFLICT, deterministic = true }
 DATA_ERROR_KINDS.cursor_expired = { kind = KIND_UNAVAILABLE, deterministic = false }
 DATA_ERROR_KINDS.dependency_missing = { kind = KIND_UNAVAILABLE, deterministic = false }
+DATA_ERROR_KINDS[M.EFFECT_PENDING] = { kind = KIND_UNAVAILABLE, deterministic = false }
 DATA_ERROR_KINDS.history_unavailable = { kind = KIND_UNAVAILABLE, deterministic = false }
 DATA_ERROR_KINDS.invalid_config = { kind = KIND_INVALID, deterministic = true }
 DATA_ERROR_KINDS.invalid_request = { kind = KIND_INVALID, deterministic = true }

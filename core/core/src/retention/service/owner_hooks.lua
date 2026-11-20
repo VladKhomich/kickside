@@ -25,6 +25,7 @@ local cached_version: string? = nil
 local cached_entries: table[]? = nil
 local cached_definitions: table[]? = nil
 local cached_migrations: { [string]: table[] } = {}
+local owner_cursors: { [string]: string } = {}
 
 -- Registry declarations are immutable within a version. Migration ledgers and
 -- owner callback results remain fresh on every retention pass.
@@ -50,6 +51,7 @@ function M.declarations(): (table[]?, table[]?, error?)
     end
     cached_version, cached_entries, cached_definitions = id, entries, definitions
     cached_migrations = {}
+    owner_cursors = {}
     return entries, definitions, nil
 end
 
@@ -143,7 +145,7 @@ local function invoke(owner: Owner, definitions: table[], ledgers: { [string]: A
     local is_ready, ready_err = ready(owner, definitions, ledgers)
     if ready_err then return nil, ready_err end
     if not is_ready then return 0, nil end
-    local result, call_err = funcs.call(owner.id, { change = change })
+    local result, call_err = funcs.call(owner.id, { change = change, cursor = owner_cursors[owner.id] })
     if call_err then return nil, errors.wrap(call_err, "retention owner " .. owner.id .. " failed") end
     if type(result) == "table" and result.success == false then
         if not result.error then
@@ -185,6 +187,12 @@ local function invoke(owner: Owner, definitions: table[], ledgers: { [string]: A
                 "retention.owner.deadline_ms", owner.id)
         end
     end
+    local cursor = result.cursor
+    if cursor ~= nil and (type(cursor) ~= "string" or cursor == "" or result.needs_continue ~= true) then
+        return nil, invalid_response("retention owner " .. owner.id .. " returned invalid cursor",
+            "retention.owner.cursor", owner.id)
+    end
+    owner_cursors[owner.id] = cursor
     return math.floor(result.deleted) :: integer, nil, result.needs_continue == true, result.blocked, deadline :: integer?
 end
 

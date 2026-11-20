@@ -25,11 +25,13 @@ entries:
     source: file://upload_http_dedup_test.lua
     method: run
     meta: { type: test, suite: upload_http_dedup }
-    modules: [uuid, security, funcs, sql]
+    modules: [uuid, security, funcs, sql, fs, registry, http_client, json, env]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       types: kickside.uploads:types
+      secret_cipher: kickside.contract:secret_cipher
+      upload_tokens: kickside.uploads.persist:upload_tokens
 
   - name: upload_app_policy_test
     kind: function.lua
@@ -347,6 +349,12 @@ entries:
     modules: [sql]
     method: handle
 
+  - name: callback_reject
+    kind: function.lua
+    source: file://callback_probe.lua
+    modules: [sql]
+    method: reject
+
   - name: admit_upload
     kind: function.lua
     meta:
@@ -362,9 +370,12 @@ entries:
   - name: failing_stage
     kind: function.lua
     meta:
+      reports_progress: true
       comment: Test-only universal upload stage that fails when explicitly requested.
     source: file://failing_stage.lua
     method: process
+    imports:
+      jobs: kickside.core.jobs:jobs
 
   - name: packed_storage_test
     kind: function.lua
@@ -451,8 +462,9 @@ entries:
       suite: kickside_uploads_rasterize
       comment: Discovery, PDF adapter, and the empty-document rasterize pipeline stage.
     source: file://rasterize_test.lua
-    modules: [registry, funcs, fs, uuid, security, contract, json, time]
+    modules: [registry, funcs, fs, uuid, security, contract, json, time, sql, process, channel]
     imports:
+      proc_supervisor: kickside.core.jobs:proc_supervisor
       page_images: kickside.uploads.rasterize:page_images
       test: wippy.test:test
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
@@ -689,12 +701,19 @@ entries:
       comment: The supervised Core retention sweeper runs the uploads owner under its declared identity.
     source: file://retention_sweeper_test.lua
     method: run
-    modules: [sql, uuid, time, process, security, contract]
+    modules: [sql, uuid, time, process, security, contract, funcs, json, env, fs]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
       retention_notifier: kickside.core.retention:notifier
       types: kickside.uploads:types
+      upload_tokens: kickside.uploads.persist:upload_tokens
+      secret_cipher: kickside.contract:secret_cipher
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      upload_read_model: kickside.uploads.persist:upload_read_model
+      process_job: kickside.uploads.service:process_dead
+      threads_writer: kickside.core.threads.persist:writer
+      jobs_retention: kickside.core.jobs.persist:retention
 
   - name: delete_stage_failure_test
     kind: function.lua
@@ -1136,6 +1155,13 @@ entries:
     method: GET
     path: /uploads/{uuid}/raw
     func: kickside.uploads.api:raw_handler
+
+  - name: reference_create_upload.endpoint
+    kind: http.endpoint
+    meta: {router: reference_api}
+    method: POST
+    path: /uploads
+    func: kickside.uploads.api:upload_handler
 
   - name: reference_artifacts.endpoint
     kind: http.endpoint

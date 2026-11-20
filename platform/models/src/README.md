@@ -115,7 +115,9 @@ the provider reports none, and rewrites the other discovered fields.
 without the admin HTTP surface. `upsert_card(card)` creates or updates the card
 by name through the same write path as `PUT /models/cards`; `disable_card({name})`
 disables a stored card and keeps its row. When `metadata.train` is present it
-must carry `weights_digest` and `manifest_sha256`. The contract is outside the
+must carry `weights_digest` and `manifest_sha256`. Card writes discard
+credential fields and reject URLs containing credentials. Replies redact
+credential-bearing URLs already stored on legacy cards. The contract is outside the
 member module grant; a module receives it through the
 `kickside.models.security:card_registrar` policy.
 

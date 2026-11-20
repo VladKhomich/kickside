@@ -396,6 +396,19 @@ function fixture.observe_tx(tx: sql.Transaction, on_query: (string) -> (), on_ex
 end
 
 
+function fixture.seed_completed_fences(db: any, total: integer): integer
+    local postgres = tostring(db:type()) == sql.type.POSTGRES
+    local numbers = postgres and "SELECT generate_series(1," .. tostring(total) .. ") AS n"
+        or "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<"
+            .. tostring(total) .. ") SELECT n FROM seq"
+    local suffix = postgres and "lpad(n::text,12,'0')" or "printf('%012d',n)"
+    local result, err = db:execute([[INSERT INTO kickside_job_thread_cleanup(thread_id,started,completed_at)
+        SELECT '00000000-0000-0000-0000-' || ]] .. suffix
+        .. ",TRUE,'2099-01-01T00:00:00Z' FROM (" .. numbers .. ") numbered")
+    if err then error(err) end
+    return math.floor(tonumber(result.rows_affected) :: number)
+end
+
 function fixture.seed_runs(db: any, total: integer, job_id: string, owner: string, finished_at: string): integer
     local dbtype = tostring(db:type())
     local numbers = dbtype == sql.type.POSTGRES

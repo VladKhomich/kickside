@@ -123,6 +123,7 @@ entries:
     source: file://fixtures/rasterize_stage.lua
     modules: [funcs, contract]
     imports:
+      jobs: kickside.core.jobs:jobs
       logger: app:page_bytes_logger
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       artifact_parts_repo: kickside.uploads.persist:artifact_parts_repo

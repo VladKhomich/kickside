@@ -227,6 +227,13 @@ local function handler(params)
     if mode_count ~= 1 then
         return tool_result.fail(errors.INVALID, "choose exactly one mode: text content, tag_name, or resource_kind + resource_id")
     end
+    if params.artifact_id ~= nil then
+        local id = params.artifact_id
+        if not text_mode or type(id) ~= "string" or #id ~= 36
+            or not id:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") then
+            return tool_result.fail(errors.INVALID, "artifact_id must be the UUID of an existing text artifact in this session")
+        end
+    end
 
     -- Two independent axes, deliberately kept apart:
     --   display_type = PLACEMENT. "standalone" makes the session emit a separate
@@ -238,9 +245,10 @@ local function handler(params)
     --     embeds it in a proxy-enabled iframe. Omitted keeps the session default
     --     ("inline"), which is the pre-existing behaviour for every artifact.
     local artifact = {
+        id = params.artifact_id,
         title = params.title,
         display_type = params.instructions == true and "inline" or "standalone",
-        preview = params.preview or "",
+        preview = params.preview or (params.artifact_id == nil and "" or nil),
         instructions = params.instructions == true,
     }
     if params.render ~= nil then artifact.type = params.render end
@@ -313,7 +321,7 @@ local function handler(params)
 
     return {
         success = true,
-        message = "Artifact queued: " .. params.title,
+        message = (params.artifact_id and "Artifact edit queued: " or "Artifact queued: ") .. params.title,
         _control = { artifacts = { artifact } },
     }
 end

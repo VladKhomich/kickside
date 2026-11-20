@@ -11,6 +11,8 @@ local component_types = require("component_types")
 local context_policy = require("context_policy")
 local placement_rules = require("placement_rules")
 local kind_authority = require("kind_authority")
+local access_ops = require("access_ops")
+local process = require("process")
 type Executor = sql.DB | sql.Transaction
 
 -- Encode a private-context value to its stored JSON string.
@@ -32,6 +34,29 @@ local audit_policy = require("audit_policy")
 local function already_exists(): error
     return errors.new({message = "component already exists", kind = errors.CONFLICT,
         retryable = false, details = {code = "component_already_exists"}})
+end
+
+-- A library runs inside the enclosing function. Derive the producer here from
+-- the runtime frame each time, including when installed callbacks call Component.
+local function admit_custody(tx: Executor, payload: table, custodian_id: string, custodian_kind: string, plugin_id: string?): error?
+    local denied = errors.new({kind = errors.PERMISSION_DENIED, message = "owned child registration is not authorized",
+        details = {code = "component_owned_child_denied"}})
+    local actor, actor_err = security.actor()
+    if actor_err then return actor_err end
+    if not actor then return denied end
+    local creator, creator_err = actor:id()
+    if creator_err then return creator_err end
+    if creator ~= payload.actor_id then return denied end
+    local producer, origin_err = process.id()
+    if origin_err then return origin_err end
+    if not producer then return denied end
+    local allowed, permission_err = placement_rules.admits_owned_child(custodian_kind, payload.impl_id, producer, plugin_id)
+    if permission_err then return permission_err end
+    if allowed ~= true then return denied end
+    local writable, access_err = access_ops.check_user_access(tx, creator, custodian_id, component_types.ACCESS.WRITE)
+    if access_err then return access_err end
+    if not writable then return denied end
+    return nil
 end
 
 -- CREATE_COMPONENT payload: { component_id?, impl_id, private_context?,
@@ -127,6 +152,14 @@ local function create_component(tx: Executor, db: Executor, command: component_t
     local exists, exists_err = placement.key_exists(tx, component_id)
     if exists_err then return nil, exists_err end
     if exists then return nil, already_exists() end
+    if payload.component_id ~= nil then
+        local pending, reap_err = placement.pending_thread_reap(tx, component_id)
+        if reap_err then return nil, reap_err end
+        if pending then
+            return nil, errors.new({kind = errors.CONFLICT, retryable = true,
+                message = "component's previous primary thread is pending cleanup"})
+        end
+    end
     local rule, rule_err = placement_rules.for_impl(payload.impl_id :: string)
     if rule_err then return nil, rule_err end
 
@@ -150,6 +183,28 @@ local function create_component(tx: Executor, db: Executor, command: component_t
 
     local placement_err = placement_rules.check(rule, payload.impl_id :: string, parent_kind, false)
     if placement_err then return nil, placement_err end
+
+    local recorded_owner = payload.actor_id
+    if payload.parent_custody == true then
+        if not parent_id then
+            return nil, errors.new({kind = errors.INVALID, message = "owned child registration requires a parent"})
+        end
+        local custody_err = admit_custody(tx, payload, parent_id, parent_kind, nil)
+        if custody_err then return nil, custody_err end
+        recorded_owner = parent_id
+    elseif payload.root_attachment ~= nil then
+        local attachment = payload.root_attachment
+        if parent_id or type(attachment) ~= "table" or type(attachment.custodian_id) ~= "string" or not uuid.validate(attachment.custodian_id)
+            or type(attachment.plugin_id) ~= "string" or attachment.plugin_id == "" or not payload.component_id then
+            return nil, errors.new({kind = errors.INVALID, message = "invalid root attachment association"})
+        end
+        local custodian, lookup_err = placement.read_node(tx, attachment.custodian_id, true)
+        if lookup_err then return nil, lookup_err end
+        if not custodian then return nil, errors.new({kind = errors.NOT_FOUND, message = "attachment custodian not found"}) end
+        local custody_err = admit_custody(tx, payload, attachment.custodian_id, custodian.impl_id, attachment.plugin_id)
+        if custody_err then return nil, custody_err end
+        recorded_owner = attachment.custodian_id
+    end
 
     local node_path = placement.build_path(db, component_id, parent_path)
 
@@ -193,7 +248,7 @@ local function create_component(tx: Executor, db: Executor, command: component_t
         return nil, errors.new({message = "component insert returns no affected-row proof", kind = errors.INTERNAL,
             retryable = false, details = {code = "component_insert_result_invalid"}})
     end
-    -- Grant full access to the owner. This is a DIRECT grant: source = the
+    -- Grant full access to the creator. This is a DIRECT grant: source = the
     -- component itself, inherited = 0.
     local _, access_err = sql.builder.insert(component_types.TABLES.ACCESS)
         :set_map({
@@ -233,14 +288,13 @@ local function create_component(tx: Executor, db: Executor, command: component_t
         end
     end
 
-    -- Record the owner (the creator) as reserved metadata so the share UI can
-    -- mark and protect them — ownership is explicit, not just an implied grant.
+    -- Record custody in the same owner row used by sharing and lifecycle.
     local _, owner_err = sql.builder.insert(component_types.TABLES.META)
         :set_map({
             meta_id = uuid.v7(),
             component_id = component_id,
             key = component_types.OWNER_META_KEY,
-            value = payload.actor_id,
+            value = recorded_owner,
             created_at = now_ts,
             updated_at = now_ts,
         })

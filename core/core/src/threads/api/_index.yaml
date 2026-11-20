@@ -235,6 +235,8 @@ entries:
     kind: function.lua
     meta:
       comment: POST handler — append a message event.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://post_message.lua
     method: handler
     modules: [http, json]
@@ -257,6 +259,8 @@ entries:
     kind: function.lua
     meta:
       comment: POST handler — append one typed event.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://post_event.lua
     method: handler
     modules: [http, json]
@@ -277,6 +281,8 @@ entries:
     kind: function.lua
     meta:
       comment: GET handler — a thread's events with a seq window + type filter.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://list_events.lua
     method: handler
     modules: [http]
@@ -298,6 +304,8 @@ entries:
     kind: function.lua
     meta:
       comment: POST handler — ingest a batch of events idempotently.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://ingest_events_batch.lua
     method: handler
     modules: [http, json]

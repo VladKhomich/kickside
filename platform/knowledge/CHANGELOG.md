@@ -1,5 +1,74 @@
 # Changelog
 
+## [0.1.102](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.101...knowledge-v0.1.102) (2026-11-20)
+
+
+### Bug Fixes
+
+* **knowledge:** clarify the management tool description ([#744](https://github.com/kicksideai/kickside/issues/744)) ([c2cbff0](https://github.com/kicksideai/kickside/commit/c2cbff0bb3729087ec393f8f22b2c676d8fd4579))
+
+## [0.1.101](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.100...knowledge-v0.1.101) (2026-11-20)
+
+
+### Bug Fixes
+
+* **knowledge:** serialize empty detail settings as an object ([#721](https://github.com/kicksideai/kickside/issues/721)) ([cf56023](https://github.com/kicksideai/kickside/commit/cf56023f20e6aa1c4e09063fabccf6c66b5b3a2a))
+
+## [0.1.100](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.99...knowledge-v0.1.100) (2026-11-20)
+
+
+### Features
+
+* **knowledge:** show Drive sync controls and file failures ([#708](https://github.com/kicksideai/kickside/issues/708)) ([7aaa36f](https://github.com/kicksideai/kickside/commit/7aaa36f2cc51776983600f15be98450fde03f8b3))
+
+## [0.1.99](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.98...knowledge-v0.1.99) (2026-11-20)
+
+
+### Features
+
+* **knowledge:** link Google Drive folders in settings ([#700](https://github.com/kicksideai/kickside/issues/700)) ([6091b02](https://github.com/kicksideai/kickside/commit/6091b029add2fba495e857267415106cdcf02427))
+
+
+### Bug Fixes
+
+* **knowledge:** require reconcile delay support for Drive folder linking ([#714](https://github.com/kicksideai/kickside/issues/714)) ([cdab213](https://github.com/kicksideai/kickside/commit/cdab2138e6bd2b46d1b10be6d1dc7a8117b35c3e))
+
+## [0.1.98](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.97...knowledge-v0.1.98) (2026-11-19)
+
+
+### Features
+
+* **knowledge:** admit versioned Drive attachment deliveries ([#669](https://github.com/kicksideai/kickside/issues/669)) ([cdc2589](https://github.com/kicksideai/kickside/commit/cdc25898a5c888d4304daf58578d9dd91f4f149d))
+
+## [0.1.97](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.96...knowledge-v0.1.97) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** return explicit AskKB answer outcomes ([#688](https://github.com/kicksideai/kickside/issues/688)) ([6d47698](https://github.com/kicksideai/kickside/commit/6d47698f16057fa64c3180516f4b53fff6fb4e3c))
+
+## [0.1.96](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.95...knowledge-v0.1.96) (2026-11-19)
+
+
+### Features
+
+* **knowledge:** deliver completed uploads through Data Sync ([#662](https://github.com/kicksideai/kickside/issues/662)) ([a8d8d20](https://github.com/kicksideai/kickside/commit/a8d8d2019deba231c4d7a1f304b071ba303cd955))
+
+## [0.1.95](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.94...knowledge-v0.1.95) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** use the single bound target for document ingestion ([#641](https://github.com/kicksideai/kickside/issues/641)) ([5792715](https://github.com/kicksideai/kickside/commit/5792715483f232da2e95f8cabafce790cb82be96))
+
+## [0.1.94](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.93...knowledge-v0.1.94) (2026-11-19)
+
+
+### Bug Fixes
+
+* **knowledge:** direct attachment ingestion to Knowledge Base Writer ([#631](https://github.com/kicksideai/kickside/issues/631)) ([dcaaad2](https://github.com/kicksideai/kickside/commit/dcaaad2b5ffda849cfa057643c1e7cce6d9f0c98))
+* **knowledge:** read authoritative catalog statistics ([#633](https://github.com/kicksideai/kickside/issues/633)) ([8183725](https://github.com/kicksideai/kickside/commit/8183725a89bfdbbcd8910187f2231d9e29e7d3f3))
+
 ## [0.1.93](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.92...knowledge-v0.1.93) (2026-11-19)
 
 

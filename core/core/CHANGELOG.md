@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.3.38](https://github.com/kicksideai/kickside/compare/core-v0.3.37...core-v0.3.38) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** fence private checkpoints against owner identity changes ([#748](https://github.com/kicksideai/kickside/issues/748)) ([c959762](https://github.com/kicksideai/kickside/commit/c959762a7125982201d3acec01fe856f84a3e447))
+
+## [0.3.37](https://github.com/kicksideai/kickside/compare/core-v0.3.36...core-v0.3.37) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** wait for system component provisioning at startup ([ecf12e5](https://github.com/kicksideai/kickside/commit/ecf12e5c61d83e7eb414978faae7a8aa1f6afd27))
+
+## [0.3.36](https://github.com/kicksideai/kickside/compare/core-v0.3.35...core-v0.3.36) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** wait for a committed projection sequence ([e590e5c](https://github.com/kicksideai/kickside/commit/e590e5cac690061421217aaf15519e8ac1df95bc))
+
+## [0.3.35](https://github.com/kicksideai/kickside/compare/core-v0.3.34...core-v0.3.35) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** recover the lifecycle reaper after upgrade ([32774f8](https://github.com/kicksideai/kickside/commit/32774f80483f1986481892d5cefdc83f0af4d05d))
+
+## [0.3.34](https://github.com/kicksideai/kickside/compare/core-v0.3.33...core-v0.3.34) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** let retention stop under sustained wake load ([#675](https://github.com/kicksideai/kickside/issues/675)) ([b741a77](https://github.com/kicksideai/kickside/commit/b741a77e6437edd940c7f1c81dc568a1bb65b9c4))
+
+## [0.3.33](https://github.com/kicksideai/kickside/compare/core-v0.3.32...core-v0.3.33) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** enforce binding-declared event read access ([#305](https://github.com/kicksideai/kickside/issues/305)) ([8a53ce5](https://github.com/kicksideai/kickside/commit/8a53ce5030a515ea98552ce34e30417bd18f7a9a))
+
+## [0.3.32](https://github.com/kicksideai/kickside/compare/core-v0.3.31...core-v0.3.32) (2026-11-19)
+
+
+### Bug Fixes
+
+* **core:** reprovision threads after completed cleanup ([#625](https://github.com/kicksideai/kickside/issues/625)) ([8d50a1f](https://github.com/kicksideai/kickside/commit/8d50a1f0e173191c078eab4007da2fbbdf857d3e))
+
+## [0.3.31](https://github.com/kicksideai/kickside/compare/core-v0.3.30...core-v0.3.31) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** deliver terminal outcomes and preserve upload retry ([#474](https://github.com/kicksideai/kickside/issues/474)) ([d1e19d1](https://github.com/kicksideai/kickside/commit/d1e19d1666c659f61779c87e2e02f5a65782106d))
+
+## [0.3.30](https://github.com/kicksideai/kickside/compare/core-v0.3.29...core-v0.3.30) (2026-11-19)
+
+
+### Features
+
+* **core:** converge settled projection workers in place ([#615](https://github.com/kicksideai/kickside/issues/615)) ([b6ebc09](https://github.com/kicksideai/kickside/commit/b6ebc09a1a4885e65da978ddeb79e350b974365a))
+
 ## [0.3.29](https://github.com/kicksideai/kickside/compare/core-v0.3.28...core-v0.3.29) (2026-11-19)
 
 

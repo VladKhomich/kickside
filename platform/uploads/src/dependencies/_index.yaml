@@ -9,14 +9,14 @@ entries:
     component: kickside/component
 
   - name: dep.kickside.core
-    version: '*'
+    version: '>=0.3.31'
     kind: ns.dependency
     meta:
       comment: Event-sourced on the core thread engine (thread upsert, event append, status).
     component: kickside/core
 
   - name: dep.kickside.jobs
-    version: '*'
+    version: '>=0.1.90'
     kind: ns.dependency
     meta:
       comment: Background job substrate the scheduler and projection runtime coordinate with.

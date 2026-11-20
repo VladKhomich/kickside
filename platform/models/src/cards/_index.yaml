@@ -7,21 +7,21 @@ namespace: kickside.models.cards
 # kickside.models.security:card_registrar.
 
 entries:
-  - name: card_writer_runtime
+  - name: database_config_read
     kind: security.policy
     meta:
       private: true
-      comment: Card contract functions read and write the models database and read the catalog snapshot.
+      comment: Read the Models database binding when retiring a stored card.
     policy:
-      resources: '*'
-      actions: [registry.get, db.get, store.get, store.key.get]
+      resources: [kickside.models:db_config]
+      actions: [registry.get]
       effect: allow
 
   - name: cards
     kind: contract.definition
     meta:
       title: Model Cards
-      description: Register and retire model cards without the admin HTTP surface. Writes use the same path as PUT /models/cards and publish the same cache snapshot.
+      description: Register and retire model cards without the admin HTTP surface. Upserts share the PUT /models/cards save path. Retirement keeps the stored row and refreshes the cache.
     methods:
       - name: upsert_card
         description: upsert_card(card) -> { success, model?, error? }. Creates or updates the card by name; omitted fields keep the saved values.
@@ -94,13 +94,15 @@ entries:
       policy: kickside.models.catalog:policy
     security:
       policies:
-        - kickside.models.cards:card_writer_runtime
+        - kickside.models.catalog:catalog_database
+        - kickside.models.catalog:catalog_read
+        - kickside.models.catalog:provider_binding_read
         - kickside.models:reload_profiles_call
 
   - name: disable_card
     kind: function.lua
     meta:
-      comment: cards contract -- disable a stored card through the shared card service.
+      comment: cards contract -- retire a stored card and keep its row.
     source: file://cards_contract.lua
     method: disable_card
     imports:
@@ -108,7 +110,8 @@ entries:
       policy: kickside.models.catalog:policy
     security:
       policies:
-        - kickside.models.cards:card_writer_runtime
+        - kickside.models.cards:database_config_read
+        - kickside.models.catalog:catalog_database
         - kickside.models:reload_profiles_call
 
   - name: cards_binding

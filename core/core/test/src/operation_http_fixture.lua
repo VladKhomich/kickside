@@ -7,6 +7,10 @@ function M.reset(stage: string, source: error?, cleanup: error?): ()
     M.gate = access.new({reader = {get_component_id = function() return "component", nil end},
         component = {has_access = function() return true, nil end}})
 end
+function M.gate_projection_registration(...: any): (table?, error?)
+    local allowed, _, _, component_id, err = M.gate_thread_access(...)
+    return allowed and {binding = {component_id = component_id}} or nil, err
+end
 function M.gate_thread_access(...: any): (boolean, integer, string?, string?, error?)
     local allowed, status, message, component_id, err = M.gate.gate_thread_access(...)
     if type(allowed) ~= "boolean" or type(status) ~= "number" or status % 1 ~= 0
@@ -60,7 +64,7 @@ function M.find_by_thread(...: any): (any, error?)
     if M.stage == "work" or M.stage == "missing_work" then return nil, M.source end
     return {thread_id = M.id}, nil
 end
-function M.list_projections(...: any): (any, error?, any) return {{id = "projection"}}, refusal("work"), {} end
+function M.list_projections(...: any): (any, error?, any, number) return {{id = "projection"}}, refusal("work"), {}, 0 end
 function M.list_cursors(...: any): (any, error?, any) return {{id = "cursor"}}, refusal("cursors"), {} end
 function M.decode(...: any): (any, error?) return nil, refusal("cursor") end
 function M.response_page(...: any): (any, error?) if M.stage == "missing_page" then return nil, nil end; return {projections = {}, cursors = {}, count = 0}, refusal("page") end

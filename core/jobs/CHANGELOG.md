@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.1.96](https://github.com/kicksideai/kickside/compare/jobs-v0.1.95...jobs-v0.1.96) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** keep expired leases scheduled for reclaim ([#671](https://github.com/kicksideai/kickside/issues/671)) ([e4d61ac](https://github.com/kicksideai/kickside/commit/e4d61acdc75d65ec283f3d30ee9de2884132fd1e))
+
+## [0.1.95](https://github.com/kicksideai/kickside/compare/jobs-v0.1.94...jobs-v0.1.95) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** recover singleton handoff after owner exit ([#657](https://github.com/kicksideai/kickside/issues/657)) ([b00a6ce](https://github.com/kicksideai/kickside/commit/b00a6ce35099d7f4e8b5aa9ba5c402dfd6a2c357))
+
+## [0.1.94](https://github.com/kicksideai/kickside/compare/jobs-v0.1.93...jobs-v0.1.94) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound completed fence expiry inspection ([#646](https://github.com/kicksideai/kickside/issues/646)) ([7548fcb](https://github.com/kicksideai/kickside/commit/7548fcbf7bd9e9109bf26705612aca2ee5e88df7))
+* **jobs:** retire empty thread fences after slot purge ([#645](https://github.com/kicksideai/kickside/issues/645)) ([1f84bcf](https://github.com/kicksideai/kickside/commit/1f84bcfc15c11b6b3c36b9f09fd7fd98bdca1ddd))
+
+## [0.1.93](https://github.com/kicksideai/kickside/compare/jobs-v0.1.92...jobs-v0.1.93) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** bound completed fence retention inspection ([#637](https://github.com/kicksideai/kickside/issues/637)) ([9819572](https://github.com/kicksideai/kickside/commit/9819572532af56cd5d4fb70ab6cbd11af9822635))
+
+## [0.1.92](https://github.com/kicksideai/kickside/compare/jobs-v0.1.91...jobs-v0.1.92) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** detach independent links during thread cleanup ([#628](https://github.com/kicksideai/kickside/issues/628)) ([b44ab06](https://github.com/kicksideai/kickside/commit/b44ab064611734492311c4cda63f29cf20668321))
+
+## [0.1.91](https://github.com/kicksideai/kickside/compare/jobs-v0.1.90...jobs-v0.1.91) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** guard replacement thread cleanup sequences ([#624](https://github.com/kicksideai/kickside/issues/624)) ([8e715ed](https://github.com/kicksideai/kickside/commit/8e715ede1a265bab118732f658719c146871e0d3))
+
+## [0.1.90](https://github.com/kicksideai/kickside/compare/jobs-v0.1.89...jobs-v0.1.90) (2026-11-19)
+
+
+### Bug Fixes
+
+* **jobs:** deliver terminal outcomes and preserve upload retry ([#474](https://github.com/kicksideai/kickside/issues/474)) ([d1e19d1](https://github.com/kicksideai/kickside/commit/d1e19d1666c659f61779c87e2e02f5a65782106d))
+
 ## [0.1.89](https://github.com/kicksideai/kickside/compare/jobs-v0.1.88...jobs-v0.1.89) (2026-11-19)
 
 

@@ -5,6 +5,10 @@ local policy = require("uploads_retention_policy")
 local read_model_module = require("upload_read_model_retention")
 local artifact_cleanup = require("artifact_cleanup_repo")
 local processing_hooks = require("processing_hooks")
+local upload_query_repo = require("upload_query_repo")
+local resources = require("uploads_resources")
+local process_job = require("process_job")
+local upload_types = require("upload_types")
 
 local M = {}
 
@@ -13,9 +17,30 @@ local function missing(what: string): error
         kind = errors.INTERNAL, retryable = true }) :: error)
 end
 
-function M.run(): any
+function M.run(input: table?): any
     local settings, policy_err = policy.policy()
     if policy_err or not settings then return { success = false, error = policy_err or missing("policy") } end
+    local db, db_err = resources.get_db()
+    if db_err or not db then return { success = false, error = db_err or missing("database") } end
+    local cursor = type(input) == "table" and input.cursor or nil
+    local checkpoints, checkpoint_err, next_cursor =
+        upload_query_repo.list_checkpoints(settings.batch_deleted_read_model, cursor, db)
+    db:release()
+    if checkpoint_err then return { success = false, error = checkpoint_err } end
+    local recovery_err = nil
+    local blocked = {}
+    for _, checkpoint in ipairs(checkpoints) do
+        local _, settle_err = process_job.recover(checkpoint)
+        if settle_err then
+            local component_id = upload_types.component_id_for_owner(checkpoint.actor_id)
+            if component_id and type(settle_err) == "userdata" and not settle_err:retryable()
+                and errors.is(settle_err, errors.NOT_FOUND) then
+                blocked[#blocked + 1] = { component_id = component_id, error = settle_err }
+            else
+                recovery_err = recovery_err or settle_err
+            end
+        end
+    end
     local definition, contract_err = contract.get("kickside.core:threads")
     if contract_err or not definition then
         return { success = false, error = errors.new({ message = "Core threads contract unavailable: "
@@ -35,8 +60,10 @@ function M.run(): any
     if blob_err or blobs == nil then return { success = false, error = blob_err or missing("blob prune") } end
     local placements, placement_err = processing_hooks.prune(blob_cutoff, settings.batch_orphan_blob)
     if placement_err or placements == nil then return { success = false, error = placement_err or missing("extension prune") } end
-    return { success = true, deleted = count, blobs_deleted = blobs, placements_deleted = placements,
-        needs_continue = model_progress.needs_continue or blob_progress.needs_continue }
+    if recovery_err then return { success = false, error = recovery_err } end
+    return { success = true, deleted = count, blobs_deleted = blobs, placements_deleted = placements, blocked = blocked,
+        cursor = next_cursor, needs_continue = next_cursor ~= nil or model_progress.needs_continue
+            or blob_progress.needs_continue }
 end
 
 return M

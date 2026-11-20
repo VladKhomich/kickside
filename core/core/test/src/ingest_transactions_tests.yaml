@@ -28,6 +28,7 @@ entries:
   - sql
   - logger
   imports:
+    event_access: kickside.core.threads:event_access
     sql_boundary: kickside.core.jobs.persist:sql_boundary
     threads_normalize: kickside.core.threads.persist:normalize
     threads_component: kickside.core.threads:component

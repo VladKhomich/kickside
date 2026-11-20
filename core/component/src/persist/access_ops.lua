@@ -61,7 +61,9 @@ local function grant_access(tx: Executor, _db: Executor, command: component_type
             inherited = 0,
             created_at = time.now():utc():format_rfc3339(),
         })
-        :suffix("ON CONFLICT (subject_type, subject_id, component_id, source_component_id) DO UPDATE SET access_mask = excluded.access_mask")
+        :suffix("ON CONFLICT (subject_type, subject_id, component_id, source_component_id)"
+            .. " DO UPDATE SET access_mask = excluded.access_mask"
+            .. " WHERE " .. component_types.TABLES.ACCESS .. ".access_mask IS DISTINCT FROM excluded.access_mask")
         :run_with(tx):exec()
     if err then return nil, internal("failed to grant access", err) end
 

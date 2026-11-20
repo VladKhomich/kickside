@@ -254,6 +254,29 @@ entries:
       type: string
       format: color
 
+  - name: setting_chat_appearance
+    kind: registry.entry
+    meta:
+      type: kickside.settings:definition
+    namespace: kickside.ui
+    key: chat_appearance
+    value_type: json
+    default: {}
+    scope: global
+    editable: true
+    visible: false
+    description: Main navigation and empty chat settings.
+    validate_func: kickside.ui:validate_chat_appearance
+
+  - name: chat_appearance
+    kind: library.lua
+    source: file://chat_appearance.lua
+
+  - name: validate_chat_appearance
+    kind: function.lua
+    source: file://chat_appearance.lua
+    method: validate
+
   - name: nav_provider
     kind: contract.definition
     meta:

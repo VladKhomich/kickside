@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.77](https://github.com/kicksideai/kickside/compare/hub-v0.1.76...hub-v0.1.77) (2026-11-19)
+
+
+### Bug Fixes
+
+* **hub:** stage Keeper before updating KickSide ([#649](https://github.com/kicksideai/kickside/issues/649)) ([bf360a9](https://github.com/kicksideai/kickside/commit/bf360a996e307540f6bd08dfb55a60b3d94e6d58))
+
 ## [0.1.76](https://github.com/kicksideai/kickside/compare/hub-v0.1.75...hub-v0.1.76) (2026-11-19)
 
 

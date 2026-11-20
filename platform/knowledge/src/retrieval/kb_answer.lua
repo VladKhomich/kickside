@@ -24,7 +24,7 @@ local MAX_SOURCES = 6
 local PREVIEW_LENGTH = 1200
 local ANSWER_MAX_TOKENS = 1024
 local ANSWER_TIMEOUT_SECONDS = 30
-local NO_ANSWER_MODEL = "No answer model is available. Returning query results."
+local NO_ANSWER_FOUND = "No answer found. No source passages matched the question."
 
 local ANSWER_PROMPT = [[Answer the question using ONLY the passages below. State nothing the passages do not support; if they do not contain the answer, say so plainly. Cite each supported statement with the passage number in square brackets, such as [1]. Use one number per bracket pair: for multiple sources write [1][2]; never combine numbers inside one pair. Use only numbers from the supplied passages. Be concise and direct.%s
 
@@ -64,7 +64,7 @@ local function synthesize(query_text: string, items: any, model: any, extra_prom
     if type(answer) == "table" then
         answer = (answer :: { content: any }).content
     end
-    if type(answer) ~= "string" or answer == "" then
+    if type(answer) ~= "string" or not string.find(answer, "%S") then
         return nil, errors.new({ kind = errors.INTERNAL, message = "answer generation returned empty content" })
     end
     return answer :: string
@@ -90,8 +90,14 @@ local function normalize(items: any): any
     return out
 end
 
+local function query_only(response: any, reason: string): any
+    response.mode = "query"
+    response.answer = reason .. (response.count == 0 and " " .. NO_ANSWER_FOUND or " Returning query results.")
+    return response
+end
+
 -- ask(kb_id, { query, limit? }) -> (result, err). result is
--- { success, query, answer?, results, count, mode? }. In query mode, answer
+-- { success, query, answer, results, count, mode? }. In query mode, answer
 -- describes why the response contains passages without a generated answer.
 function M.ask(kb_id: any, opts: any): (any, any)
     opts = opts or {}
@@ -120,9 +126,8 @@ function M.ask(kb_id: any, opts: any): (any, any)
     local items = (result and result.items) or {}
     local response: any = { success = true, query = query_text, results = normalize(items), count = #items }
     if not answer_model then
-        response.mode = "query"
-        response.answer = setting == false and "Answers are disabled. Returning query results." or NO_ANSWER_MODEL
-        return response, nil
+        local reason = setting == false and "Answers are disabled." or "No answer model is available."
+        return query_only(response, reason), nil
     end
     local unavailable = analysis and analysis.model == answer_model
         and analysis.status == "unavailable" and analysis.reason == "no_models_for_class"
@@ -133,8 +138,7 @@ function M.ask(kb_id: any, opts: any): (any, any)
             unavailable = not available
         end
         if unavailable then
-            response.mode, response.answer = "query", NO_ANSWER_MODEL
-            return response, nil
+            return query_only(response, "No answer model is available."), nil
         end
     elseif unavailable then
         return nil, errors.new({ kind = errors.UNAVAILABLE,
@@ -158,10 +162,13 @@ function M.ask(kb_id: any, opts: any): (any, any)
         agent_config.analysis_model = answer_model
         local r, ferr = M._funcs.call(AGENTIC_QUERY, { kb_id = kb_id, query = query_text, config = agent_config, seed_items = seed_items })
         if ferr then return nil, model_failure.wrap("agentic answer", ferr) end
-        if type(r) ~= "table" or type((r :: any).answer) ~= "string" or (r :: any).answer == "" then
+        local answer = type(r) == "table" and (r :: any).answer or nil
+        if type(answer) ~= "string" or not string.find(answer, "%S") then
             return nil, errors.new({ kind = errors.INTERNAL, message = "agentic answer returned empty content" })
         end
-        response.answer = (r :: any).answer
+        response.answer = answer
+    elseif #items == 0 then
+        response.answer = NO_ANSWER_FOUND
     else
         local answer, synthesis_err = synthesize(query_text, items, answer_model, config.extra_prompt)
         if synthesis_err then return nil, synthesis_err end

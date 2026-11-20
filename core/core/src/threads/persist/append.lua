@@ -24,6 +24,7 @@ local trace_context = require("trace_context")
 local retention_policy = require("retention_policy")
 local row_size = require("row_size")
 local subjects = require("subjects")
+local event_access = require("event_access")
 
 local append = {}
 
@@ -38,8 +39,8 @@ local COLUMNS = {
 
 -- One appended or matched event.
 type Appended = {
-    event_id: string,
-    seq: integer,
+    event_id: string?,
+    seq: integer?,
     duplicate: boolean,
     subject: string?,
     subject_version: integer?,
@@ -60,6 +61,7 @@ type AppendOptions = {
     defer_wake: boolean?,
     expect: any?,
     locked_thread: table?,
+    check_receipts: boolean?,
 }
 
 local trim = normalize.trim
@@ -170,7 +172,10 @@ local function load_existing(tx: sql.Transaction, thread_id: string, rows: { tab
     local by_seq: Stored = {}
 
     local id_err = each_chunk(ids, function(chunk)
-        local found, err = tx:query("SELECT id, seq, subject, subject_version FROM kickside_event WHERE id IN (" .. placeholders(1, #chunk) .. ")", chunk)
+        local params = {thread_id}
+        for _, value in ipairs(chunk) do params[#params + 1] = value end
+        local found, err = tx:query("SELECT id, seq, subject, subject_version FROM kickside_event WHERE thread_id=$1 AND id IN ("
+            .. placeholders(2, #chunk) .. ")", params)
         found, err = sql_boundary.rows(found, err, "failed to check duplicate event ids", "duplicate ids", response_error)
         if err then return err end
         for _, r in ipairs(found :: { table }) do
@@ -220,8 +225,10 @@ local function insert_rows(tx: sql.Transaction, rows: { table }): error?
     while index <= #rows do
         local insert = sql.builder.insert("kickside_event"):columns(table.unpack(COLUMNS))
         local last = math.min(index + append.INSERT_CHUNK - 1, #rows)
+        local explicit_ids: {string} = {}
         for i = index, last do
             local row = rows[i]
+            if row.explicit_id then explicit_ids[#explicit_ids + 1] = row.id end
             local values: { any } = table.create(#COLUMNS, 0)
             for c, column in ipairs(COLUMNS) do
                 local value = row[column]
@@ -230,11 +237,47 @@ local function insert_rows(tx: sql.Transaction, rows: { table }): error?
             end
             insert = insert:values(table.unpack(values, 1, #COLUMNS))
         end
+        if #explicit_ids > 0 then insert = insert:suffix("ON CONFLICT (id) DO NOTHING") end
         local result, err = insert:run_with(tx):exec()
+        local count = not err and type(result) == "table" and tonumber(result.rows_affected) or nil
+        if #explicit_ids > 0 and count and count >= 0 and count % 1 == 0 and count < last - index + 1 then
+            local collisions, collision_err = tx:query("SELECT 1 FROM kickside_event WHERE id IN ("
+                .. placeholders(1, #explicit_ids) .. ") LIMIT 1", explicit_ids)
+            if collision_err then return errors.wrap(collision_err, "failed to confirm event id collision") end
+            if type(collisions) == "table" and #collisions > 0 then
+                return errors.new({kind = errors.CONFLICT, retryable = false, message = "event id is already in use",
+                    details = {reason = "event_id_collision"}})
+            end
+        end
         local _, count_err = sql_boundary.exact_row_count(result, err,
             "failed to insert events", "insert count", last - index + 1, response_error)
         if count_err then return count_err end
         index = index + append.INSERT_CHUNK
+    end
+    return nil
+end
+
+local function receipt_access(tx: sql.Transaction, thread_id: string, options: AppendOptions): (boolean, error?)
+    if not options.check_receipts then return true, nil end
+    local err = event_access.check(tx, thread_id, {})
+    if errors.is(err, errors.PERMISSION_DENIED) then return false, nil end
+    return err == nil, err
+end
+
+local function safe_conflict(tx: sql.Transaction, id: string, options: AppendOptions, conflict: error): error
+    if not errors.is(conflict, errors.CONFLICT) then return conflict end
+    local allowed, err = receipt_access(tx, id, options)
+    if err then return err end
+    if allowed then return conflict end
+    return errors.new({kind = errors.CONFLICT, retryable = false, message = "event append precondition failed",
+        details = {reason = conflict:details().reason}})
+end
+
+local function safe_receipts(tx: sql.Transaction, id: string, options: AppendOptions, answered: {Appended}): error?
+    local allowed, err = receipt_access(tx, id, options)
+    if err or allowed then return err end
+    for index, receipt in ipairs(answered) do
+        if receipt.duplicate then answered[index] = {duplicate = true} end
     end
     return nil
 end
@@ -303,27 +346,31 @@ function append.append_events_tx(tx: sql.Transaction, thread_id: string, events:
             local match = (row.id ~= "" and ids[row.id]) or (ext and externals[ext])
             if not match then break end
             if row.subject ~= match.subject then
-                return nil, (errors.new({ message = "event subject mismatch", kind = errors.CONFLICT, retryable = false,
+                local conflict = errors.new({ message = "event subject mismatch", kind = errors.CONFLICT, retryable = false,
                     details = { reason = "event_subject_mismatch", event_id = match.event_id,
-                        subject = row.subject, stored_subject = match.subject } }) :: error)
+                        subject = row.subject, stored_subject = match.subject } })
+                return nil, safe_conflict(tx, id, options, conflict)
             end
             retry[index] = match :: Appended
         end
         if #retry == #candidates then
-            return { thread_id = id, inserted = 0, duplicates = #retry, max_seq = head, events = retry }, nil
+            local err = safe_receipts(tx, id, options, retry)
+            if err then return nil, err end
+            return {thread_id = id, inserted = 0, duplicates = #retry, max_seq = head, events = retry}, nil
         end
         local conflict_err = subjects.check(tx, id, head, options.expect)
-        if conflict_err then return nil, conflict_err end
+        if conflict_err then return nil, safe_conflict(tx, id, options, conflict_err) end
     end
 
     for index, row in ipairs(candidates) do
         if row.seq ~= nil and (row.seq :: integer) <= max_pruned then
-            return nil, (errors.new({
+            local conflict = errors.new({
                 message = "events[" .. tostring(index) .. "].seq " .. tostring(row.seq) .. " is at or below the prune boundary " .. tostring(max_pruned),
                 kind = errors.CONFLICT,
                 retryable = false,
                 details = { reason = "below_prune_boundary", max_pruned_seq = max_pruned },
-            }) :: error)
+            })
+            return nil, safe_conflict(tx, id, options, conflict)
         end
     end
 
@@ -343,8 +390,9 @@ function append.append_events_tx(tx: sql.Transaction, thread_id: string, events:
         if not match and ext then match = externals[ext] end
         if not match and row.seq ~= nil then
             if options.expect ~= nil and seqs[tostring(row.seq)] then
-                return nil, (errors.new({ message = "explicit sequence already exists", kind = errors.CONFLICT,
-                    details = { reason = "seq_collision", seq = row.seq }, retryable = false }) :: error)
+                local conflict = errors.new({ message = "explicit sequence already exists", kind = errors.CONFLICT,
+                    details = { reason = "seq_collision", seq = row.seq }, retryable = false })
+                return nil, safe_conflict(tx, id, options, conflict)
             end
             match = seqs[tostring(row.seq)]
         end
@@ -365,6 +413,7 @@ function append.append_events_tx(tx: sql.Transaction, thread_id: string, events:
                 local stored = seqs[tostring(seq)] :: Appended
                 answered[index] = { event_id = stored.event_id, seq = stored.seq, duplicate = true, subject = stored.subject, subject_version = stored.subject_version }
             else
+                row.explicit_id = row.id ~= ""
                 if row.id == "" then row.id = uuid.v7() end
                 if row.subject ~= nil then
                     local version = versions[row.subject]
@@ -390,6 +439,10 @@ function append.append_events_tx(tx: sql.Transaction, thread_id: string, events:
         end
     end
 
+    if duplicates > 0 then
+        local receipt_err = safe_receipts(tx, id, options, answered)
+        if receipt_err then return nil, receipt_err end
+    end
     local wake_generation: integer? = nil
     if #to_insert > 0 then
         local policy, policy_err = retention_policy.policy()

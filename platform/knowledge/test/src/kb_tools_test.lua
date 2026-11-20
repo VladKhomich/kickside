@@ -132,9 +132,10 @@ local function define_tests()
             test.contains(tostring(err), "access denied")
         end)
 
-        test.it("ask formatter returns an empty answer with no sources for empty retrieval", function()
-            local r = kb_tools.format_ask_result({ answer = nil, results = {}, count = 0 })
-            test.eq(r.answer, "")
+        test.it("ask formatter preserves the no-answer notice and empty sources", function()
+            local answer = "No answer found. No source passages matched the question."
+            local r = kb_tools.format_ask_result({ answer = answer, results = {}, count = 0 })
+            test.eq(r.answer, answer)
             test.eq(r.count, 0)
             test.eq(#r.sources, 0)
         end)

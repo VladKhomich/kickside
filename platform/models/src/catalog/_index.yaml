@@ -90,6 +90,5 @@ entries:
       comment: Single write path for model cards, shared by the admin handlers and the cards contract.
     source: file://card_service.lua
     imports:
-      card_policy: kickside.models.catalog:card_policy
       model_catalog: kickside.models.catalog:model_catalog
       models_repo: kickside.models.persist:repo

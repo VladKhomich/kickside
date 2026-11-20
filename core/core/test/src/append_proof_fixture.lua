@@ -23,7 +23,7 @@ function M.transaction(): any
         return reply("dialect", "sqlite")
     end, query = function(...)
         M.queries = M.queries + 1
-        local stage = ({"thread", "ids", "external", "sequences"})[M.queries]
+        local stage = ({"thread", "ids", "external", "sequences", "collision"})[M.queries]
         if type(stage) ~= "string" then error(errors.new({kind = errors.INTERNAL, retryable = false, message = "append proof fixture receives an undeclared query"})) end
         if M.stage == stage then return nil, M.source end
         if stage == "thread" then return reply(stage, {{event_count = 0, max_pruned_seq = 0}}) end
@@ -47,6 +47,7 @@ end
 local builder = {}
 function builder:columns(...) return self end
 function builder:values(...) return self end
+function builder:suffix(...) return self end
 function builder:run_with(...) return self end
 function builder:exec(...) return M.insert(...) end
 function M.insert_builder(...) return builder end

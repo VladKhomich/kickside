@@ -11,9 +11,11 @@ local function define_tests()
             test.is_nil(declaration.data.policy.conditions)
             local expected = {
                 ["kickside.knowledge.api:ask.endpoint"] = true,
+                ["kickside.knowledge.api:browse_drive_folders.endpoint"] = true,
                 ["kickside.knowledge.api:create_kb.endpoint"] = true,
                 ["kickside.knowledge.api:delete_content.endpoint"] = true,
                 ["kickside.knowledge.api:delete_kb.endpoint"] = true,
+                ["kickside.knowledge.api:drive_folder_availability.endpoint"] = true,
                 ["kickside.knowledge.api:get_kb.endpoint"] = true,
                 ["kickside.knowledge.api:ingest_content.endpoint"] = true,
                 ["kickside.knowledge.api:ingest_existing_upload.endpoint"] = true,
@@ -68,6 +70,8 @@ local function define_tests()
                 "kickside.knowledge.api:list_engines.endpoint",
                 "kickside.knowledge.api:create_kb.endpoint",
                 "kickside.knowledge.api:get_kb.endpoint",
+                "kickside.knowledge.api:drive_folder_availability.endpoint",
+                "kickside.knowledge.api:browse_drive_folders.endpoint",
                 "kickside.knowledge.api:delete_kb.endpoint",
                 "kickside.knowledge.api:update_kb.endpoint",
                 "kickside.knowledge.api:upload_token.endpoint",

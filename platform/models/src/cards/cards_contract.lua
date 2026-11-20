@@ -19,10 +19,18 @@ local function train_error(metadata: any): string?
     return nil
 end
 
+local function redact_urls(value: any): any
+    if type(value) == "string" and policy.url_has_credentials(value) then return "[redacted]" end
+    if type(value) == "table" then
+        for key, child in pairs(value) do value[key] = redact_urls(child) end
+    end
+    return value
+end
+
 local function respond(card: any?, err: any?): any
     if not card then return { success = false, error = tostring(err) } end
     local public = policy.split_config(card)
-    return { success = true, model = public }
+    return { success = true, model = redact_urls(public) }
 end
 
 -- upsert_card(card) -> { success, model?, error? }. Idempotent by card name.
@@ -30,7 +38,11 @@ function M.upsert_card(args: any): any
     if type(args) ~= "table" then return { success = false, error = "model body must be an object" } end
     local terr = train_error(args.metadata)
     if terr then return { success = false, error = terr } end
-    return respond(card_service.save(args))
+    local input = policy.split_config(args)
+    if policy.config_credential_error(input) then
+        return { success = false, error = "Model card URLs must be credential-free. Configure credentials on the provider profile." }
+    end
+    return respond(card_service.save(input))
 end
 
 -- disable_card({ name }) -> { success, model?, error? }. Idempotent by card name.

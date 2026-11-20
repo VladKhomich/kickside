@@ -151,7 +151,7 @@ end
 
 local function define_tests()
     test.describe("job pool claim refusals", function()
-        test.it("dispatches between bounded passes while draining 100000 expired runs", function()
+        test.it("dispatches between bounded passes across 100000 expired runs and 100000 completed fences", function()
             local db, dbtype, db_err = job_fixture.private_queue("app:private_queue_retention_dispatch")
             test.is_nil(db_err)
             if not db then error("retention dispatch queue is unavailable") end
@@ -161,6 +161,7 @@ local function define_tests()
                 VALUES ($1,'test',$2,'test.retention','done',$2)]], {id, owner})
             test.is_nil(seed_err)
             test.eq(job_fixture.seed_runs(db, 100000, id, owner, "2000-01-01T00:00:00Z"), 100000)
+            test.eq(job_fixture.seed_completed_fences(db, 100000), 100000)
             local pending, enqueue_err = lifecycle.enqueue_job(db, dbtype, {
                 owner_locator = {kind = "test", id = owner}, job_type = "test.retention",
                 job_identity = {namespace = "retention", scope = owner, key = "dispatch"},
@@ -168,7 +169,8 @@ local function define_tests()
             test.is_nil(enqueue_err)
             local _, worker_err = db:execute("INSERT INTO kickside_job_worker(id,registry_version) VALUES ($1,'v1')", {WORKER_ID})
             test.is_nil(worker_err)
-            local deleted, passes = 0, 0
+            local deleted, run_passes, fence_passes = 0, 0, 0
+            local scanning_fences = true
             local started = time.now()
             local dispatched_ms: number? = nil
             local outcome = run_pool(function()
@@ -178,20 +180,27 @@ local function define_tests()
                 test.eq(batch[1].id, pending)
                 dispatched_ms = time.now():sub(started):nanoseconds() / 1000000
                 test.is_true(deleted > 0 and deleted < 100000, "dispatch runs before the backlog drains")
+                test.is_true(fence_passes > 0 and scanning_fences, "dispatch runs while fence inspection advances")
                 return batch, nil
             end, nil, nil, nil, nil, nil, nil, {
-                sweep = function()
-                    local stats, err = retention.sweep(db, dbtype)
+                sweep = function(job_cursor, completed_fence_cursor)
+                    local stats, err = retention.sweep(db, dbtype, job_cursor, completed_fence_cursor)
                     if err then error(err) end
-                    deleted, passes = deleted + stats.job_runs, passes + 1
+                    if stats.job_runs > 0 then run_passes = run_passes + 1 end
+                    if completed_fence_cursor ~= false then fence_passes = fence_passes + 1 end
+                    deleted = deleted + stats.job_runs
+                    scanning_fences = stats.completed_fence_cursor ~= nil
                     return stats, nil
                 end,
-                pending = function() return deleted < 100000 end,
+                pending = function() return deleted < 100000 or scanning_fences end,
             })
             db:release()
             test.eq(deleted, 100000)
-            test.eq(passes, 200)
+            test.eq(run_passes, 200)
+            test.is_true(fence_passes > 200)
+            test.is_false(scanning_fences)
             test.eq(outcome.assignments, 1)
+            test.eq(outcome.cancels, 1)
             test.not_nil(dispatched_ms)
             test.is_true(dispatched_ms < 5000, "dispatch exceeds the existing five-second start bound")
         end)
@@ -277,7 +286,9 @@ local function define_tests()
                     test.is_true(plan:find("idx_kickside_job_lease_reap", 1, true) ~= nil, plan)
                     test.is_true(plan:find("lease_until>?", 1, true) ~= nil, plan)
                 else
-                    test.is_true(plan:find("Index Cond: (lease_until >", 1, true) ~= nil, plan)
+                    -- PostgreSQL gives the copied partial index a new name in this fixture.
+                    local lease_scan = plan:match("Index [^\n]*using kickside_job_lease_until_idx[^\n]*") or ""
+                    test.is_true(lease_scan:find("rows=1 loops=1", 1, true) ~= nil, plan)
                 end
             end
             local pending = assert(lifecycle.enqueue_job(db, dbtype, {
@@ -292,9 +303,14 @@ local function define_tests()
             test.eq(earlier_kind, "due")
             assert(db:execute("UPDATE kickside_job SET lease_until=$1 WHERE status='running'", {dispatch_at}))
             assert(db:execute("UPDATE kickside_job SET scheduled_at=$1 WHERE id=$2", {dispatch_at, pending}))
+            local expired_delay, expired_kind, expired_err = worker_pool.next_deadline(db, dbtype, dispatch_at)
+            test.is_nil(expired_err)
+            test.eq(expired_delay, 0, "the expired lease is ready for reclaim")
+            test.eq(expired_kind, "lease")
+            assert(db:execute("UPDATE kickside_job SET lease_until=NULL WHERE status='running'"))
             local none, no_kind, no_err = worker_pool.next_deadline(db, dbtype, dispatch_at)
             test.is_nil(no_err)
-            test.is_nil(none, "deadlines at the dispatch snapshot were already judged")
+            test.is_nil(none, "pending jobs at the dispatch snapshot were already considered")
             test.is_nil(no_kind)
             db:release()
         end)

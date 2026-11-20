@@ -16,6 +16,10 @@ function M.get(id: string): (any, error?)
         real_db = db
     end
     return {
+        type = function(_self: any): (any, error?)
+            if real_db then return real_db:type() end
+            return sql.type.SQLITE, nil
+        end,
         query = function(_self: any, statement: string, params: table): (any, error?)
             M.queries = M.queries + 1
             if M.stage == "query" then return nil, M.source end

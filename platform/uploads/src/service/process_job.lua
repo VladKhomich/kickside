@@ -11,6 +11,7 @@ local upload_types = require("types")
 local jobs = require("jobs")
 local job_types = require("job_types")
 local processing_hooks = require("processing_hooks")
+local trace_context = require("trace_context")
 
 local log = logger:named("upload_job")
 
@@ -34,24 +35,24 @@ local function terminal_failure(job: any, retriable: any): boolean
     return retriable == false or is_final_attempt(job)
 end
 
-local function ensure_running(job: any): (boolean, string?)
+local function ensure_running(job: any): (boolean, any?)
     if type(job) ~= "table" or tostring(job.id or "") == "" or tostring(job.lease_token or "") == "" then
         return true, nil
     end
-    local active, active_err = jobs.lease_valid(tostring(job.id), {
+    -- A progress checkpoint reads the lease fence and notifies the supervisor.
+    local active, active_err = jobs.heartbeat(tostring(job.id), {
         token = job.lease_token, execution_seq = job.execution_seq,
     })
     if active_err then
-        return false, tostring(active_err)
+        return false, active_err
     end
     if active ~= true then
-        return false, "job cancelled"
+        return false, nil
     end
     return true, nil
 end
 
--- Lifecycle events dedupe per processing attempt: the job that emits them.
-local function upload_event(job_id: string, upload: any, etype: string, body: any, trace_context: any?): table
+local function upload_event(version: string, upload: any, etype: string, body: any, trace_context: any?): table
     return {
         type = etype,
         body = body,
@@ -59,13 +60,13 @@ local function upload_event(job_id: string, upload: any, etype: string, body: an
         external = {
             external_source = upload_types.EVENT_SOURCE,
             external_id = tostring(upload.uuid),
-            external_version = job_id,
+            external_version = version,
         },
     }
 end
 
-local function completed_event(job_id: string, upload: any, trace_context: any?): table
-    return upload_event(job_id, upload, upload_types.EVENT.COMPLETED, {
+local function completed_event(version: string, upload: any, trace_context: any?): table
+    return upload_event(version, upload, upload_types.EVENT.COMPLETED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -74,8 +75,8 @@ local function completed_event(job_id: string, upload: any, trace_context: any?)
     }, trace_context)
 end
 
-local function failed_event(job_id: string, upload: any, error_text: string, trace_context: any?): table
-    return upload_event(job_id, upload, upload_types.EVENT.FAILED, {
+local function failed_event(version: string, upload: any, error_text: string, trace_context: any?): table
+    return upload_event(version, upload, upload_types.EVENT.FAILED, {
         upload_id = upload.uuid,
         filename = type(upload.metadata) == "table" and upload.metadata.filename or nil,
         mime_type = upload.mime_type,
@@ -85,59 +86,117 @@ local function failed_event(job_id: string, upload: any, error_text: string, tra
     }, trace_context)
 end
 
--- Uploads owns publication and settles the same lease before returning to Jobs.
-local function publish_output(job: any, event: table, output: table): (table?, any?)
-    local prepared_hooks
-    if output.success == true then
+local function completion_output(upload: any): table
+    return { success = true, upload_id = upload.uuid, owner_actor_id = upload.actor_id }
+end
+
+local function permanent(err: any): boolean
+    return type(err) == "userdata" and not err:retryable()
+end
+
+-- Settle storage, callback jobs and the thread event in the same transaction.
+local function settle(job: any, upload: any, outcome: table, source: string?): (boolean, any?)
+    local success, error_text = outcome.success == true, outcome.error_text
+    local job_id, thread_id = job.id and tostring(job.id), tostring(job.thread_id or "")
+    -- Explicit Retry records a job ID, so only the initial attempt can be intentless.
+    local version = job_id or "attempt:1"
+    local prepared
+    if success then
         local prepare_err
-        prepared_hooks, prepare_err = processing_hooks.prepare(output)
-        if prepare_err then return nil, prepare_err end
+        prepared, prepare_err = processing_hooks.prepare(outcome.output)
+        if prepare_err then return false, prepare_err end
     end
-    local body_json, encode_err = json.encode(event.body)
-    if encode_err then return nil, encode_err end
-    event.body, event.body_json = nil, body_json
     local db, db_err = sql.get(jobs_config.db_id())
-    if db_err or not db then return nil, db_err end
+    if db_err or not db then return false, db_err end
     local raw_type, type_err = db:type()
-    if type_err then db:release(); return nil, type_err end
+    if type_err then db:release(); return false, type_err end
     local dbtype = tostring(raw_type)
     local tx, begin_err = db:begin()
-    if begin_err or not tx then db:release(); return nil, begin_err end
-    local thread_id = tostring(job.thread_id or "")
-    local _, append_err = threads_writer.append_system_tx(tx, dbtype, thread_id, { event }, tostring(job.id))
-    if append_err then
-        tx:rollback()
+    if begin_err or not tx then db:release(); return false, begin_err end
+    local function abort(err: any): (boolean, any?)
+        local _, rollback_err = tx:rollback()
         db:release()
-        return nil, append_err
+        return false, rollback_err or err
     end
-    if output.success == true then
-        local recorded, hook_err = processing_hooks.completed(tx, dbtype, job, output, event.trace_context, prepared_hooks)
-        if hook_err or recorded ~= true then
-            tx:rollback(); db:release()
-            return nil, hook_err or errors.new({message="Processing extension did not acknowledge completion",kind=errors.INTERNAL,retryable=true})
+    local checkpoint, state_err = upload_record_repo.lock_settlement_tx(tx, upload, job_id, source == "checkpoint")
+    if state_err or not checkpoint then return abort(state_err) end
+    local published = false
+    if checkpoint.storage_state ~= "uploaded" then
+        local publication_err
+        published, publication_err = upload_query_repo.checkpoint_published_tx(tx, upload.uuid)
+        if publication_err then return abort(publication_err) end
+        if published and source then return abort(nil) end
+    end
+    if not published then
+        -- Earlier workers wrote terminal storage before scheduling callbacks and
+        -- publishing the event. A terminal row cannot prove delivery history.
+        local legacy = checkpoint.storage_state ~= "uploaded"
+        local _, callback_err, unverified_callback =
+            pipeline_lib.invoke_upload_token(upload, success, error_text, tx, dbtype, legacy)
+        if callback_err then
+            if not permanent(callback_err) then return abort(callback_err) end
+            if success then
+                -- Discard any success callbacks staged before the permanent refusal.
+                local _, rollback_err = abort(nil)
+                if rollback_err then return false, rollback_err end
+                outcome.success, outcome.error_text = false, tostring(callback_err)
+                return settle(job, upload, outcome, source)
+            end
+        end
+        local event = success and completed_event(version, upload, upload.trace_context)
+            or failed_event(version, upload, tostring(error_text), upload.trace_context)
+        if callback_err then event.body.callback_error = tostring(callback_err) end
+        if unverified_callback and not callback_err then
+            event.body.callback_error = "Callback delivery could not be verified for this stored processing attempt."
+        end
+        local body_json, encode_err = json.encode(event.body)
+        if encode_err then return abort(encode_err) end
+        event.body, event.body_json = nil, body_json
+        local completing = not source and job_id or nil
+        local _, append_err = threads_writer.append_system_tx(tx, dbtype, thread_id, { event }, completing)
+        if append_err then return abort(append_err) end
+        local publish_err = upload_record_repo.publish_storage_tx(tx, upload.uuid, success and "completed" or "failed")
+        if publish_err then return abort(publish_err) end
+        if success then
+            local recorded, hook_err = processing_hooks.completed(tx, dbtype, job, outcome.output, event.trace_context, prepared)
+            if hook_err or recorded ~= true then
+                return abort(hook_err or errors.new({message="Processing extension did not acknowledge completion",kind=errors.INTERNAL,retryable=true}))
+            end
         end
     end
-    local _, complete_err = jobs.complete_tx(tx, tostring(job.id), {
-        token = job.lease_token, execution_seq = job.execution_seq,
-    }, {})
-    if complete_err then
-        tx:rollback()
-        db:release()
-        return nil, complete_err
+    if not source then
+        local _, complete_err = jobs.complete_tx(tx, job_id, {
+            token = job.lease_token, execution_seq = job.execution_seq,
+        }, {})
+        if complete_err then return abort(complete_err) end
     end
     local _, commit_err = tx:commit()
     db:release()
-    if commit_err then return nil, commit_err end
+    if commit_err then return false, commit_err end
+    if published then return true, nil end
     local _, notify_err = retention_notifier.notify({ kind = "events_appended", thread_id = thread_id })
-    if notify_err then return nil, notify_err end
-    return output, nil
+    if notify_err then return false, notify_err end
+    local _, nudge_err = jobs.nudge_workers()
+    if nudge_err then return false, nudge_err end
+    return true, nil
+end
+
+-- A processing job settles the upload it holds; one that no longer can reports why.
+local function settle_from_job(job: any, upload: any, outcome: table): any?
+    local settled, settle_err = settle(job, upload, outcome)
+    if settle_err then return settle_err end
+    if not settled then
+        return errors.new({ message = "upload " .. tostring(upload.uuid) .. " is no longer processing",
+            kind = errors.CONFLICT, retryable = false })
+    end
+    return nil
 end
 
 local function run(input: any): (any, any?)
     input = type(input) == "table" and input or {}
     local payload = type(input.payload) == "table" and input.payload or {}
     local job = job_info(input)
-    local upload_id = tostring(payload.upload_id or "")
+    local upload_id = tostring(type(payload) == "table" and payload.upload_id or "")
     if upload_id == "" then
         return nil, "missing upload_id"
     end
@@ -152,8 +211,9 @@ local function run(input: any): (any, any?)
     end
 
     local running, running_err = ensure_running(job)
+    if running_err then return nil, running_err end
     if not running then
-        return { skipped = true, cancelled = true, upload_id = upload_id, reason = running_err }, nil
+        return { skipped = true, cancelled = true, upload_id = upload_id, reason = "job cancelled" }, nil
     end
 
 
@@ -162,9 +222,10 @@ local function run(input: any): (any, any?)
         cancel_ref = {job_id = tostring(job.id), lease_token = tostring(job.lease_token), execution_seq = job.execution_seq}
     end
     local success, proc_err, processed_upload, retriable = true, nil, upload, nil
-    -- Completion is the processing checkpoint. A publication/settings/callback
-    -- retry must never repeat conversion or OCR for an already processed upload.
-    if upload.storage_state ~= "completed" then
+    -- A terminal storage checkpoint resumes publication without rerunning processing.
+    if upload.storage_state == "failed" then
+        success, proc_err, retriable = false, "upload processing failed", false
+    elseif upload.storage_state ~= "completed" then
         success, proc_err, processed_upload, retriable = pipeline_lib.process_upload(upload, {
             final_attempt = is_final_attempt(job),
             should_continue = function(_phase)
@@ -184,19 +245,9 @@ local function run(input: any): (any, any?)
             -- The terminal storage mark is part of the job's write set: a job that
             -- cannot record its outcome returns to the queue instead of reporting
             -- a result the store does not reflect.
-            local _, state_err = upload_record_repo.mark_storage_failed(upload_id)
-            if state_err then
-                return nil, "failed to mark upload storage state failed: " .. tostring(state_err)
-            end
-            local callback_ok, callback_err = pipeline_lib.invoke_upload_token(upload, false, error_text)
-            if not callback_ok then
-                log:warn("failed to enqueue upload error callback", { upload_id = upload_id, error = tostring(callback_err) })
-                return nil, callback_err
-            end
-            local output, publish_err = publish_output(job, failed_event(tostring(job.id), upload, error_text, upload.trace_context), {
-                upload_id = upload_id, job_error = error_text,
-            })
-            if publish_err then return nil, publish_err end
+            local settle_err = settle_from_job(job, upload, { success = false, error_text = error_text })
+            if settle_err then return nil, settle_err end
+            local output = { upload_id = upload_id, job_error = error_text }
             if type(proc_err) == "userdata" then return output, proc_err end
             return output, nil
         end
@@ -204,20 +255,62 @@ local function run(input: any): (any, any?)
     end
 
     local final_upload: any = type(processed_upload) == "table" and processed_upload or upload
-    local _, state_err = upload_record_repo.mark_storage_completed(upload_id)
-    if state_err then
-        return nil, "failed to mark upload storage state completed: " .. tostring(state_err)
-    end
-    local callback_ok, callback_err = pipeline_lib.invoke_upload_token(final_upload, true, nil)
-    if not callback_ok then
-        return nil, callback_err
-    end
+    local output = completion_output(final_upload)
+    local outcome = { success = true, output = output }
+    local settle_err = settle_from_job(job, final_upload, outcome)
+    if settle_err then return nil, settle_err end
+    if not outcome.success then return { upload_id = upload_id, job_error = outcome.error_text }, nil end
+    return output, nil
+end
 
-    local final_trace_context = type(final_upload) == "table" and final_upload.trace_context or nil
+local function settle_checkpoint(job: any, upload: any, decode_err: any?, source: string): (boolean, any?)
+    if decode_err then
+        upload.metadata, upload.trace_context = nil, nil
+    else
+        local _, trace_err = trace_context.normalize(upload.trace_context)
+        if trace_err then upload.trace_context, decode_err = nil, trace_err end
+    end
+    local outcome = upload.storage_state == "completed" and not decode_err
+            and { success = true, output = completion_output(upload) }
+        or { success = false, error_text = tostring(decode_err or job.last_error or "upload processing failed") }
+    return settle(job, upload, outcome, source)
+end
 
-    return publish_output(job, completed_event(tostring(job.id), final_upload, final_trace_context), {
-        success = true, upload_id = upload_id, owner_actor_id = final_upload.actor_id,
-    })
+local function recover(row: any): (boolean, any?)
+    local upload, decode_err = upload_query_repo.parse_upload_row(row)
+    return settle_checkpoint({
+        id = row.processing_job_id, thread_id = upload_types.component_id_for_owner(row.actor_id),
+        owner_kind = "user", owner_id = row.actor_id, payload = { upload_id = row.uuid },
+    }, upload or row, decode_err, "checkpoint")
+end
+
+-- A dead processing job resumes stored completion or settles failure with its
+-- last error. Redelivery and a newer processing intent leave the upload unchanged.
+local function dead(input: any): (any, any?)
+    local outcome = type(input) == "table" and type(input.payload) == "table" and input.payload or {}
+    local job_id = tostring(outcome.job_id or "")
+    if job_id == "" then
+        return nil, errors.new({ message = "dead outcome requires job_id", kind = errors.INVALID, retryable = false })
+    end
+    local dead_job, read_err = jobs.get_job(job_id)
+    if read_err then return nil, read_err end
+    if not dead_job then return { skipped = true, reason = "job_absent", job_id = job_id }, nil end
+    if dead_job.status ~= job_types.JOB_STATE.DEAD then
+        return nil, errors.new({ message = "job " .. job_id .. " is not dead", kind = errors.INVALID, retryable = false })
+    end
+    local payload = dead_job.payload
+    if type(payload) == "string" then
+        local decode_err
+        payload, decode_err = json.decode(payload)
+        if decode_err then return nil, decode_err end
+    end
+    local upload, upload_err = upload_query_repo.find_by_processing_job(tostring(dead_job.owner_id), job_id, tostring(type(payload) == "table" and payload.upload_id or ""))
+    if upload_err and (not upload or upload.storage_state == "uploaded") then return nil, upload_err end
+    if not upload then return { skipped = true, reason = "upload_not_held", job_id = job_id }, nil end
+    local settled, settle_err = settle_checkpoint(dead_job, upload, upload_err, "dead")
+    if settle_err then return nil, settle_err end
+    log:info("dead processing job settled", { upload_id = upload.uuid, job_id = job_id, settled = settled })
+    return { upload_id = upload.uuid, job_id = job_id, settled = settled }, nil
 end
 
 -- proc:// entry point. The monitored process transports one status value, with
@@ -232,4 +325,4 @@ local function main(input: any): table
     return {ok = true, output = result}
 end
 
-return { run = run, main = main, terminal_failure = terminal_failure }
+return { run = run, main = main, dead = dead, recover = recover, terminal_failure = terminal_failure }

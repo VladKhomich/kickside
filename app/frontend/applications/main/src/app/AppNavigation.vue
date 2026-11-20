@@ -5,7 +5,7 @@ import { Icon } from '@iconify/vue'
 import Avatar from 'primevue/avatar'
 import Menu from 'primevue/menu'
 import type { MenuItem } from 'primevue/menuitem'
-import { badgeStyle, badgeVisible, canRender, type NavBadge, type NavCategory, type NavItem } from '../composables/useSurfaces'
+import { badgeStyle, badgeVisible, canRender, type NavBadge, type NavCategory, type NavItem, type NewChatNavigation } from '../composables/useSurfaces'
 import { normalizePath } from '../router/path'
 import type { AccountItem } from './useShellAccount'
 
@@ -16,6 +16,7 @@ const props = defineProps<{
   appTitle: string
   markUrl: string
   isNewChatRoute: boolean
+  newChat?: NewChatNavigation
   renderableCategories: NavCategory[]
   navItems: NavItem[]
   loaded: boolean
@@ -47,6 +48,18 @@ const categoryMenu = ref<InstanceType<typeof Menu> | null>(null)
 const profileMenu = ref<InstanceType<typeof Menu> | null>(null)
 const activeCategoryKey = ref<string | null>(null)
 const activeCategory = computed(() => renderableCategories.value.find(category => category.key === activeCategoryKey.value))
+const navigationSections = computed(() => {
+  const sections: { key: string, category: NavCategory | null }[] = renderableCategories.value.map(category => ({
+    key: 'category:' + category.key,
+    category,
+  }))
+  if (props.newChat?.visible !== false) {
+    const action = { key: 'new-chat', category: null }
+    if (props.newChat?.placement === 'last') sections.push(action)
+    else sections.unshift(action)
+  }
+  return sections
+})
 const profileOpen = ref(false)
 const categoryItems = computed<MenuItem[]>(() => (activeCategory.value?.items || []).map(item => ({
   label: item.label,
@@ -126,7 +139,9 @@ function userInitials(user: { email: string; full_name: string }): string {
       <span class="text-base font-bold tracking-tight text-surface-900 dark:text-surface-0 truncate" :title="appTitle">{{ appTitle }}</span>
     </span>
     <nav aria-label="Main navigation" class="flex-1 flex items-center gap-1 min-w-0 overflow-x-auto">
+      <template v-for="{ key, category } in navigationSections" :key="key">
       <button
+        v-if="!category"
         class="app-nav-item flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors"
         :class="isNewChatRoute && 'is-active'"
         :aria-current="isNewChatRoute ? 'page' : undefined"
@@ -135,9 +150,8 @@ function userInitials(user: { email: string; full_name: string }): string {
         <Icon icon="tabler:plus" class="w-[18px] h-[18px] shrink-0" aria-hidden="true" />
         <span class="nav-label">New chat</span>
       </button>
-      <template v-for="category in renderableCategories" :key="category.key || '_root'">
         <!-- Ungrouped surfaces: direct buttons. -->
-        <template v-if="!category.key">
+        <template v-else-if="!category.key">
           <button
             v-for="item in category.items"
             :key="item.id"
@@ -239,7 +253,9 @@ function userInitials(user: { email: string; full_name: string }): string {
       aria-label="Main navigation"
       class="flex-1 px-2 py-1 overflow-y-auto overflow-x-hidden"
     >
+      <template v-for="{ key, category } in navigationSections" :key="key">
       <button
+        v-if="!category"
         class="app-nav-item app-nav-new w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
         :class="[railCollapsed ? 'justify-center' : '', isNewChatRoute && 'is-active']"
         :aria-current="isNewChatRoute ? 'page' : undefined"
@@ -250,7 +266,7 @@ function userInitials(user: { email: string; full_name: string }): string {
         <Icon icon="tabler:plus" class="w-[18px] h-[18px] shrink-0" aria-hidden="true" />
         <span v-if="!railCollapsed" class="flex-1 text-left truncate nav-label">New chat</span>
       </button>
-      <template v-for="category in renderableCategories" :key="category.key || '_root'">
+      <template v-else>
         <!-- Category header (real categories only) — collapsible dropdown when
              the rail is expanded. -->
         <button
@@ -305,6 +321,7 @@ function userInitials(user: { email: string; full_name: string }): string {
             />
           </button>
         </div>
+      </template>
       </template>
 
       <div v-if="loaded && navError && !railCollapsed" class="px-3 py-4 text-xs" style="color: var(--p-danger-500)">

@@ -41,6 +41,53 @@ consuming component does not substitute for a deleted or revoked root. Changing
 the component's stored execution identity requires the existing authenticated
 `set_execution_identity` command and its ADMIN and delegation checks.
 
+### Component custody for a new child
+
+An owning service can statically import `kickside.component.binding:child_registration`
+and call `register_owned_child(request)` after admitting its operation. The request
+uses the existing registration fields and requires a placement parent. The
+installed **parent kind** declares the exact child implementation and producer
+function IDs in `meta.owned_child_producers`:
+
+```yaml
+owned_child_producers:
+  example.binding:view:
+    - example.service:create_view
+```
+
+Static invocation uses the owning service's existing actor and scope. The
+service must be able to open Component, call its ordinary register method and
+perform the registration work required by the child kind. Work board views are
+the first qualified consumer.
+
+The Component writer obtains the enclosing function ID from `process.id()`,
+checks it against the declaration, and verifies the authenticated creator can
+write to the live parent. Registration records the parent's ID in the existing
+owner row together with ordinary placement, the direct creator grant and the
+creator's captured execution identity. The result has the normal registration
+envelope. An existing component ID produces the ordinary creation conflict.
+The regular registration contract continues to record the creator as owner.
+
+For a root-placed plugin attachment, the same library exposes
+`register_root_attachment(request, custodian_id, plugin_id)`. The provisioning
+service supplies an explicit child ID after reserving that activation. The
+custodian kind names the installed plugin manifest type and exact producer:
+
+```yaml
+root_attachment_producers:
+  example.plugin: [example.jobs:activate]
+```
+
+Component checks the live custodian, actor WRITE and native producer, then
+reads the installed plugin's `meta.type` and `meta.attachment`. The declared
+attachment must equal the requested implementation. Creation records the
+custodian as owner while leaving placement at the root. The provisioning
+service verifies its own durable association and handles existing instances.
+Attach `kickside.component:attachment_seal_access` to the producer function
+when plugin kinds can declare secret fields. This policy allows the
+Component seal operation for initial values. The installation key and the
+open operation keep their existing service policies.
+
 ## Kind mutation admission (SPEC)
 
 A component kind binding declares `meta.mutation: open` or `closed`. An absent

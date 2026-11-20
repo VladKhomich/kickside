@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 -- Read-only boundary for committed materialized views. It exposes projection
 -- bodies only: no event log, cursor, lag, catch-up, replay, or worker controls.
 
@@ -6,8 +7,7 @@ local sql = require("sql")
 local json = require("json")
 
 local core_db = require("core_db")
-local component = require("component")
-local core_types = require("core_types")
+local event_access = require("event_access")
 
 local M = {}
 
@@ -24,24 +24,25 @@ function M.get(args: any): (any?, error?)
     if kind == "" then return nil, failure("kind is required", errors.INVALID) end
     if projection_key == "" then projection_key = "default" end
 
-    local allowed, access_err = component.has_access(owner_id, core_types.ACCESS.READ)
-    if access_err then return nil, access_err end
-    if not allowed then return nil, failure("read access denied", errors.PERMISSION_DENIED) end
-
     local db, db_err = sql.get(core_db.id())
     if db_err then return nil, (errors.wrap(db_err, "read-model database unavailable") :: error) end
     if not db then return nil, failure("read-model database unavailable", errors.UNAVAILABLE) end
-    local rows, query_err = db:query([[
-        SELECT body
-          FROM kickside_projection
-         WHERE thread_id = $1 AND kind = $2 AND projection_key = $3
-         LIMIT 1
-    ]], { owner_id, kind, projection_key })
+    local request = {lazy = true}
+    local model = sql.builder.select("body"):from("kickside_projection")
+        :where("thread_id = ? AND kind = ? AND projection_key = ?", owner_id, kind, projection_key)
+    local query, query_err = event_access.authorized_query(db, owner_id, model, sql.builder.select(), request, 1)
+    local rows: table[]? = nil
+    if not query_err then rows, query_err = event_access.execute(db, owner_id, query, request) end
     db:release()
     if query_err then return nil, (errors.wrap(query_err, "failed to read materialized view") :: error) end
-    if type(rows) ~= "table" or not rows[1] then return { body = {} }, nil end
+    if type(rows) ~= "table" or #rows ~= 1 then
+        return nil, failure("invalid materialized view response", errors.INTERNAL)
+    end
+    local row = rows[1]
+    local access_err = event_access.verify(request, row)
+    if access_err then return nil, access_err end
 
-    local body = (rows[1] :: any).body
+    local body = row.body
     if type(body) == "string" then
         local decoded, decode_err = json.decode(body)
         if decode_err then return nil, (errors.wrap(decode_err, "invalid materialized view body") :: error) end

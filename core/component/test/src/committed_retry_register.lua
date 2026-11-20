@@ -1,1 +1,1 @@
-../../src/binding/register_component_func.lua
+../../src/binding/registration.lua

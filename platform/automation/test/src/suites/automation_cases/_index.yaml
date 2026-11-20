@@ -76,6 +76,7 @@ entries:
   - uuid
   imports:
     test: wippy.test:test
+    api_errors: kickside.automation.api:errors
     declaration_authority: kickside.automation:declaration_authority
     types: kickside.automation:types
     binding_validation: kickside.automation:binding_validation

@@ -84,6 +84,14 @@ local function stored_profile(id: string): any
     return rows[1]
 end
 
+local function stored_card(name: string): any
+    local db = assert(sql.get("app:db"))
+    local rows, err = db:query("SELECT * FROM kickside_model_cards WHERE name = $1", { name })
+    db:release()
+    test.is_nil(err)
+    return rows[1]
+end
+
 local function with_existing_provider(fn: (any) -> ())
     local profile = assert(models_repo.create_profile({
         id = "cc-existing-provider", name = "Existing provider",
@@ -150,6 +158,33 @@ local function define_tests()
             test.eq(result.success, false)
             test.eq(overlay_count(NAME), 0)
         end)
+
+        test.it("keeps registrar credentials out of stored options and metadata", function()
+            local credential = "synthetic-card-credential"
+            local input = card_body({ options = { nested = { access_key = credential, token_limit = 5 } } })
+            input.metadata = { train = TRAIN, vendor = { access_key = credential, enabled = true } }
+            local cards = registrar()
+            local result = assert(cards:upsert_card(input))
+            test.eq(result.success, true)
+            local row = assert(stored_card(NAME))
+            local options = assert(json.decode(row.options_json))
+            local metadata = assert(json.decode(row.metadata_json))
+            test.is_nil(options.nested.access_key)
+            test.is_nil(metadata.vendor.access_key)
+            test.eq(options.nested.token_limit, 5)
+            test.eq(metadata.vendor.enabled, true)
+            test.eq(metadata.train.weights_digest, TRAIN.weights_digest)
+            cleanup()
+        end)
+
+        test.it("rejects credential-bearing URLs before writing a card", function()
+            local cards = registrar()
+            local result = assert(cards:upsert_card(card_body({
+                options = { links = { "https://example.invalid/path?%61pi_key=synthetic" } },
+            })))
+            test.eq(result.success, false)
+            test.is_nil(stored_card(NAME))
+        end)
     end)
 
     test.describe("cards contract: disable_card", function()
@@ -197,6 +232,35 @@ local function define_tests()
             test.eq(result.success, false)
             test.eq(overlay_count("cc-never-saved"), 0)
         end)
+
+        test.it("preserves a newer stored row when the cache has the previous values", function()
+            call(UPSERT, card_body())
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_model_cards SET options_json = $1, priority = $2 WHERE name = $3",
+                { '{"custom": { "enabled": true }}', 42, NAME }))
+            db:release()
+            local before = assert(stored_card(NAME))
+            local result = assert(registrar():disable_card({ name = NAME }))
+            test.eq(result.success, true)
+            test.eq(result.model.priority, 42)
+            local after = assert(stored_card(NAME))
+            for key, value in pairs(before) do
+                if key ~= "enabled" and key ~= "updated_at" then test.eq(after[key], value, key) end
+            end
+            test.eq(tonumber(after.enabled), 0)
+            cleanup()
+        end)
+
+        test.it("does not recreate a deleted card present in the cache", function()
+            call(UPSERT, card_body())
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("DELETE FROM kickside_model_cards WHERE name = $1", { NAME }))
+            db:release()
+            local result = assert(registrar():disable_card({ name = NAME }))
+            test.eq(result.success, false)
+            test.is_nil(stored_card(NAME))
+            test.eq(overlay_count(NAME), 0)
+        end)
     end)
 
     test.describe("card_registrar policy", function()
@@ -239,6 +303,35 @@ local function define_tests()
                     test.is_nil((assert(json.encode(result)):find(marker, 1, true)), "legacy pricing credential returned")
                     test.eq(result.model.pricing.prompt, 1)
                     test.eq(result.model.pricing.vendor.token_count, 7)
+                end)
+            end)
+
+            test.it(action .. " redacts legacy credential URLs and keeps adjacent public values", function()
+                with_existing_provider(function()
+                    local name = "cc-existing-card"
+                    local public_url = "https://example.invalid/public?count=7"
+                    local legacy = { links = { "https://user:synthetic@example.invalid/private", public_url } }
+                    local pricing = { input = 2, reference = "https://example.invalid/private?api_key=synthetic" }
+                    local metadata = { reference = "https://example.invalid/private?access_token=synthetic", count = 7 }
+                    local db = assert(sql.get("app:db"))
+                    assert(db:execute("UPDATE kickside_model_cards SET options_json = $1, pricing_json = $2, metadata_json = $3 WHERE name = $4",
+                        { assert(json.encode(legacy)), assert(json.encode(pricing)), assert(json.encode(metadata)), name }))
+                    db:release()
+                    assert(models_repo.reload())
+
+                    local cards = registrar()
+                    local result = assert(cards[action](cards, { name = name }))
+                    test.eq(result.success, true)
+                    test.eq(result.model.options.links[1], "[redacted]")
+                    test.eq(result.model.options.links[2], public_url)
+                    test.eq(result.model.pricing.reference, "[redacted]")
+                    test.eq(result.model.pricing.input, 2)
+                    test.eq(result.model.metadata.reference, "[redacted]")
+                    test.eq(result.model.metadata.count, 7)
+                    if action == "disable_card" then
+                        local retained = assert(stored_card(name))
+                        test.eq(assert(json.decode(retained.options_json)).links[1], legacy.links[1])
+                    end
                 end)
             end)
 
@@ -297,9 +390,10 @@ local function define_tests()
             test.eq(policy:evaluate(actor, "env.get", "ENCRYPTION_KEY"), "undefined")
             local reload = "kickside.models.persist:reload_profiles"
             test.eq(policy:evaluate(actor, "funcs.call", reload), "undefined")
-            local writer_runtime = assert(security.policy("kickside.models.cards:card_writer_runtime"))
-            test.eq(writer_runtime:evaluate(actor, "env.get", "ENCRYPTION_KEY"), "undefined")
-            test.eq(writer_runtime:evaluate(actor, "store.key.set", "kickside.models:cache"), "undefined")
+            local catalog_read = assert(security.policy("kickside.models.catalog:catalog_read"))
+            test.eq(catalog_read:evaluate(actor, "env.get", "ENCRYPTION_KEY"), "undefined")
+            test.eq(catalog_read:evaluate(actor, "store.get", "app:unrelated_store"), "undefined")
+            test.eq(catalog_read:evaluate(actor, "store.key.set", "kickside.models:cache"), "undefined")
         end)
 
         test.it("opens the contract through its binding and saves and retires a card", function()

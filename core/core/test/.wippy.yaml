@@ -6,6 +6,7 @@ logmanager:
 # claims: the suites own every claim, so the harness starts no live jobs worker
 # (a live worker would race each claim, wake and fold the suites assert on).
 override:
+  "kickside.component:encryption_key:default": event.read.test:fixture_key
   "kickside.core.jobs.service:worker.service:lifecycle.auto_start": false
   "kickside.core.retention.service:sweeper.service:lifecycle.auto_start": false
   # A killed reservation owner can close the last SQLite connection; a file

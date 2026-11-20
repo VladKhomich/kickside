@@ -63,7 +63,7 @@ entries:
         shared_db_config: app:projection_transition_database
     source: file://projection_declared_checkpoint_worker.lua
     method: run
-    modules: [security]
+    modules: [security, sql]
     imports:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types

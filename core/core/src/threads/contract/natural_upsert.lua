@@ -19,6 +19,7 @@ local function finish(id: string, ready: any, created: boolean, loaded: table?):
         read_err = sql_boundary.release(db, read_err, "release natural thread read connection")
     end
     if read_err or not thread then return nil, read_err end
+    local binding: table? = nil
     if ready ~= true and ready ~= 1 then
         local identity, identity_err = common.declared_identity(id)
         if identity_err or not identity then return nil, identity_err end
@@ -30,10 +31,10 @@ local function finish(id: string, ready: any, created: boolean, loaded: table?):
         if not complete_err then complete_err = natural_key.mark_ready(work,id) end
         complete_err = sql_boundary.release(work, complete_err, "release natural thread completion connection")
         if complete_err then return nil, complete_err end
-        if created then thread = completed.thread end
+        if created then thread, binding = completed.thread, completed.binding end
     end
     if created then
-        local emit_err = common.emit_update(id,"kickside.threads:thread.created",{thread=thread})
+        local emit_err = common.emit_update(id,"kickside.threads:thread.created",{thread=thread,binding=binding})
         if emit_err then return nil, emit_err end
     end
     return {thread=thread,thread_id=id,created=created,

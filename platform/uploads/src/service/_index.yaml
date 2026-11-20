@@ -19,11 +19,13 @@ entries:
       jobs: kickside.core.jobs:jobs
       provision: kickside.core.threads:provision
       processing_intent_repo: kickside.uploads.persist:processing_intent_repo
+      upload_type: kickside.uploads:upload_type
 
   - name: process_job_proc
     kind: process.lua
     meta:
       comment: "proc:// entry for one upload pipeline attempt. Spawned non-blocking and supervisable by the core job worker, so a hung OCR call can be terminated and the attempt finalized."
+      job_dead: kickside.uploads.service:process_dead
     source: file://process_job.lua
     modules: [logger, sql, json]
     security:
@@ -44,7 +46,34 @@ entries:
       jobs: kickside.core.jobs:jobs
       job_types: kickside.core.jobs:types
       processing_hooks: kickside.uploads.binding:processing_hooks_default
+      trace_context: kickside.execution:trace
     method: main
+
+  - name: process_dead
+    kind: function.lua
+    meta:
+      comment: Dead handler of process_job_proc. Resumes stored completion or settles failure with the job's last error.
+    source: file://process_job.lua
+    modules: [logger, sql, json]
+    security:
+      actor:
+        id: system:kickside.uploads.process
+      policies:
+        - kickside.uploads.security:deferred_owner
+        - kickside.uploads.security:deferred_actor
+    imports:
+      jobs_config: kickside.core.jobs:config
+      threads_writer: kickside.core.threads.persist:writer
+      retention_notifier: kickside.core.retention:notifier
+      upload_record_repo: kickside.uploads.persist:upload_record_repo
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      pipeline_lib: kickside.uploads:pipeline
+      types: kickside.uploads:types
+      jobs: kickside.core.jobs:jobs
+      job_types: kickside.core.jobs:types
+      processing_hooks: kickside.uploads.binding:processing_hooks_default
+      trace_context: kickside.execution:trace
+    method: dead
 
   - name: callback_job
     kind: function.lua

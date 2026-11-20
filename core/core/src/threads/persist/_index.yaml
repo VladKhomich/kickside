@@ -3,8 +3,8 @@ namespace: kickside.core.threads.persist
 
 entries:
   # Persistence layer of the threads slice: thread + event reads/writes and the
-  # writer-side input normalization. Access is gated through the component
-  # contract (kickside.core.threads:component), not SQL joins. Shared vocabulary
+  # writer-side input normalization. Component owns the ACL used by the
+  # component contract and the payload statements. Shared vocabulary
   # (consts, env), the component seam, notify, and the contract binding live in
   # the slice root (kickside.core.threads).
 
@@ -24,7 +24,7 @@ entries:
   - name: reader
     kind: library.lua
     meta:
-      comment: Thread/event/children/edge reads; access via the component contract, not SQL joins.
+      comment: Thread metadata reads and event payload readers with a same-statement Component access proof.
     source: file://reader.lua
     modules:
       - sql
@@ -33,6 +33,7 @@ entries:
       text_trim: kickside.contract:text_trim
       subjects: kickside.core.threads.persist:subjects
       threads_component: kickside.core.threads:component
+      event_access: kickside.core.threads:event_access
       core_types: kickside.core:types
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
       lifecycle_consts: kickside.core.lifecycle:consts
@@ -48,6 +49,7 @@ entries:
       - json
       - uuid
     imports:
+      event_access: kickside.core.threads:event_access
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
       clock: kickside.core.jobs:clock
@@ -69,6 +71,7 @@ entries:
       - sql
       - logger
     imports:
+      event_access: kickside.core.threads:event_access
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
       committed_error: kickside.contract:committed_error
@@ -89,12 +92,16 @@ entries:
       - uuid
       - json
     imports:
+      event_declaration: kickside.core.threads:event_declaration
       clock: kickside.core.jobs:clock
       threads_consts: kickside.core.threads:consts
       core_types: kickside.core:types
       autoinit: kickside.component:autoinit
       threads_normalize: kickside.core.threads.persist:normalize
       natural_key: kickside.core.threads.persist:natural_key
+      jobs_cleanup: kickside.core.jobs.persist:thread_teardown
+      core_db: kickside.core:db
+      jobs_config: kickside.core.jobs:config
 
   - name: thread_crud
     kind: library.lua
@@ -105,6 +112,9 @@ entries:
       - sql
       - uuid
     imports:
+      component_client: kickside.component:component
+      event_declaration: kickside.core.threads:event_declaration
+      event_access: kickside.core.threads:event_access
       sql_boundary: kickside.core.jobs.persist:sql_boundary
       error_envelope: kickside.contract:error_envelope
       committed_error: kickside.contract:committed_error

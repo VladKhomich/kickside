@@ -14,11 +14,11 @@ end
 local function call(method: string): (any, error?)
     local db = fixture.database()
     if method == "complete" then
-        local err = api.complete(db, "thread", {trusted_audit = true, impl_id = "kickside.core.retention.pin_tests:inherited_retention_descriptor"}, nil, {system = true})
+        local err = api.complete(db, "thread", {impl_id = "kickside.core.retention.pin_tests:inherited_retention_descriptor"}, nil, {system = true}, true)
         if err then return nil, err end
         return true, nil
     end
-    return api[method](db, "thread", {trusted_audit = true, impl_id = "kickside.core.retention.pin_tests:inherited_retention_descriptor"}, nil, {system = true})
+    return api[method](db, "thread", {impl_id = "kickside.core.retention.pin_tests:inherited_retention_descriptor"}, nil, {system = true}, true)
 end
 return {run = test.run_cases(function()
     test.describe("native thread attachment errors", function()

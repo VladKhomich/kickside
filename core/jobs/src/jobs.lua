@@ -12,6 +12,7 @@ local completion = require("completion")
 local lease_status = require("lease_status")
 local retention = require("retention")
 local thread_teardown = require("thread_teardown")
+local thread_fence = require("thread_fence")
 local api_scope = require("api_scope")
 local lease_release = require("lease_release")
 local claim = require("claim")
@@ -147,6 +148,13 @@ local function enqueue_result(params: lifecycle.EnqueueParams, id: string, inser
 end
 
 local function enqueue_tx(tx: sql.Transaction, dbtype: string, job_params: lifecycle.EnqueueParams): (table?, error?)
+    local thread_id = job_params.thread_id
+    local owner = job_params.owner_locator :: table
+    if thread_id and (owner.kind ~= "thread" or owner.id ~= thread_id) then
+        local link, link_err = thread_fence.admit_link(tx, dbtype, thread_id)
+        if link_err then return nil, link_err end
+        job_params.thread_id = link
+    end
     local id, enqueue_err, inserted, replaced_job_id = lifecycle.enqueue_job(tx, dbtype, job_params)
     if enqueue_err or not id then return nil, enqueue_err end
     if job_params.demand then
@@ -293,9 +301,9 @@ function jobs.complete(id: string, lease: table, options: table): (table?, error
 end
 
 -- Jobs-owned, bounded retention entry point consumed by the maintenance slot.
-function jobs.retention_sweep(cursor: table?): (table?, error?)
+function jobs.retention_sweep(cursor: table?, completed_fence_cursor: table | boolean | nil): (table?, error?)
     return with_db(function(db: sql.DB, dbtype: string): (table?, error?)
-        return retention.sweep(db, dbtype, cursor)
+        return retention.sweep(db, dbtype, cursor, completed_fence_cursor)
     end, true)
 end
 

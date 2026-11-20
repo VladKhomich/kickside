@@ -18,6 +18,7 @@ local M = {}
 -- it never registers a projection (that is the declared path).
 local THREAD_CLASS = "kickside.knowledge.injection"
 local EXTERNAL_SOURCE = "knowledge.kb"
+local UPLOAD_DELETE_SOURCE = "knowledge.kb.versioned_delete"
 local GRAPH_EXTERNAL_SOURCE = "knowledge.graph"
 local COMPONENT_SERVICE = "kickside.component:component_service"
 local THREADS_CONTRACT = "kickside.core:threads"
@@ -130,6 +131,18 @@ local function call_threads(exec: any, method: string, args: any): (any, any)
         return nil, call_err
     end
     return result, nil
+end
+
+local function latest_content_delete(exec: any, kb_id: string, external_id: string): (any?, any?)
+    local latest
+    for _, source in ipairs({EXTERNAL_SOURCE, UPLOAD_DELETE_SOURCE}) do
+        local result, err = exec:find_event_by_external({thread_id = kb_id, event_type = M.EVENT_CONTENT_DELETED,
+            external_source = source, external_id = external_id, latest = true})
+        if err then return nil, err end
+        local event = result and result.event
+        if event and (not latest or tonumber(event.seq) > tonumber(latest.seq)) then latest = event end
+    end
+    return latest, nil
 end
 
 local function validate_kb_access(kb_id: string, access: any): (any?, any?)
@@ -343,6 +356,7 @@ end
 M.THREAD_CLASS = THREAD_CLASS
 M.KB_STORE_CONTRACT = KB_STORE_CONTRACT
 M.EXTERNAL_SOURCE = EXTERNAL_SOURCE
+M.UPLOAD_DELETE_SOURCE = UPLOAD_DELETE_SOURCE
 M.GRAPH_EXTERNAL_SOURCE = GRAPH_EXTERNAL_SOURCE
 M.SOURCE_PROJECTION_KIND = SOURCE_PROJECTION_KIND
 M.SOURCE_PROJECTION_KEY = SOURCE_PROJECTION_KEY
@@ -355,6 +369,7 @@ M.execution_scope = execution_scope
 M.current_executor = current_executor
 M.current_component_service = current_component_service
 M.call_threads = call_threads
+M.latest_content_delete = latest_content_delete
 M.validate_kb_access = validate_kb_access
 M.current_actor_id = current_actor_id
 M.content_sha = content_sha

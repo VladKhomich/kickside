@@ -29,7 +29,7 @@ end
 
 local function registration(db, component_id, projection_key, cursor_key)
     local rows = assert(db:query([[SELECT c.id,c.job_id,c.actor_id,c.execution_identity_json,c.generation,c.last_seq,
-        c.status,c.last_error,c.projection_id,p.body,p.last_event_seq,p.actor_context FROM kickside_projection_cursor c
+        c.status,c.last_error,c.continuation,c.projection_id,p.body,p.last_event_seq,p.actor_context FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id
         WHERE c.thread_id=$1 AND p.kind=$2 AND p.projection_key=$3 AND c.cursor_key=$4]],
         {component_id, KIND, projection_key, cursor_key}))
@@ -169,6 +169,10 @@ return {run = test.run_cases(function()
             {name = "refuses a different stored actor", identity = true, refusal = "component's execution identity"},
             {name = "refuses an unrelated component implementation", owner = true, refusal = "installed projection declaration"},
             {name = "continues to enforce live actor authorization", revoked = true, refusal = "deferred principal is disabled"},
+            {name = "rejects checkpoint writes after an admitted owner generation changes", change_owner = "before_write"},
+            {name = "keeps the committed continuation after its owner generation changes", change_owner = "after_partial"},
+            {name = "rejects stale settlement after the checkpoint commits", change_owner = "before_settlement", allowed = true},
+            {name = "rejects a stale worker verdict without invalidating the projection", change_owner = "before_verdict"},
         }) do
             test.it(case.name, function()
                 local f = fixture.new()
@@ -186,7 +190,7 @@ return {run = test.run_cases(function()
                 test.is_nil(direct)
                 test.is_true(errors.is(direct_err, errors.PERMISSION_DENIED), tostring(direct_err))
                 local input, append_err = f.run_as(f.owner, "append_event", {thread_id = id,
-                    event = {type = TRIGGER, body = {}}})
+                    event = {type = TRIGGER, body = {change_owner = case.change_owner}}})
                 assert(input, tostring(append_err))
 
                 local before = in_db(function(db)
@@ -216,7 +220,15 @@ return {run = test.run_cases(function()
                     return registration(db, id, "source", params.cursor_key)
                 end)
                 test.not_nil(before.actor_id)
-                local result = execute(before)
+                local result
+                if case.change_owner then
+                    local run_err
+                    result, run_err = invoke.run({job = lease(before), payload = {cursor_id = before.id}})
+                    test.is_nil(result)
+                    test.is_true(errors.is(run_err, errors.CONFLICT), tostring(run_err))
+                else
+                    result = execute(before)
+                end
                 in_db(function(db)
                     local after = registration(db, id, "source", params.cursor_key)
                     local effects = assert(db:query("SELECT actor_id FROM declared_checkpoint_effect WHERE thread_id=$1", {id}))
@@ -224,6 +236,14 @@ return {run = test.run_cases(function()
                     test.eq(after.id, before.id)
                     test.eq(after.job_id, before.job_id)
                     test.eq(tonumber(after.generation), tonumber(before.generation))
+                    if case.change_owner then
+                        test.eq(after.status, "active")
+                        if case.change_owner == "before_verdict" then
+                            test.eq(after.last_error, before.last_error)
+                        else
+                            test.contains(after.last_error, "projection owner authority changed during execution")
+                        end
+                    end
                     if case.allowed then
                         test.eq(tonumber(after.last_seq), 1)
                         test.eq(#effects, 1)
@@ -232,11 +252,19 @@ return {run = test.run_cases(function()
                         local output = type(outputs[1].body) == "table" and outputs[1].body or assert(json.decode(outputs[1].body))
                         test.eq(output.actor_id, f.owner)
                     else
-                        test.is_true(result.invalid, tostring(after.last_error))
-                        test.contains(after.last_error, assert(case.refusal))
+                        if not case.change_owner then
+                            test.is_true(result.invalid, tostring(after.last_error))
+                            test.contains(after.last_error, assert(case.refusal))
+                        end
                         test.eq(tonumber(after.last_seq), 0)
                         test.eq(#effects, 0)
                         test.eq(#outputs, 0)
+                        if case.change_owner == "after_partial" then
+                            local pinned = assert(apply.continuation(after))
+                            test.eq(pinned.item, 1)
+                            test.eq(pinned.step, 1)
+                            test.eq(pinned.seq, 1)
+                        end
                     end
                 end)
             end)

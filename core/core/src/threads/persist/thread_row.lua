@@ -5,6 +5,7 @@
 -- which attaches a thread to a component that already exists.
 
 local sql = require("sql")
+local event_declaration = require("event_declaration")
 local uuid = require("uuid")
 local json = require("json")
 local clock = require("clock")
@@ -14,6 +15,9 @@ local autoinit = require("autoinit")
 local normalize = require("threads_normalize")
 
 local natural_key = require("natural_key")
+local jobs_cleanup = require("jobs_cleanup")
+local core_db = require("core_db")
+local jobs_config = require("jobs_config")
 
 local M = {}
 local trim = normalize.trim
@@ -120,11 +124,13 @@ end
 
 -- insert writes the thread row under thread_id (== its component id) and its parent
 -- edge on tx. A row already present under that id is a CONFLICT.
-function M.insert(tx: sql.Transaction, dbtype: string, thread_id: string, row: any): error?
+function M.insert(tx: sql.Transaction, dbtype: string, thread_id: string, row: any, impl_id: string?): error?
     if type(thread_id) ~= "string" or thread_id == "" then return invalid("thread_id is required") end
     if dbtype == "" then return invalid("dbtype is required") end
     local checked, check_err = M.check(row)
     if check_err or not checked then return check_err end
+    local _, declaration_err = event_declaration.load(trim(impl_id))
+    if declaration_err then return declaration_err end
     local now = clock.now(dbtype)
 
     local inserted, insert_err = sql.builder.insert("kickside_thread")
@@ -149,6 +155,20 @@ function M.insert(tx: sql.Transaction, dbtype: string, thread_id: string, row: a
             details = {conflict = M.THREAD_CONFLICT, code = "thread_already_exists"}})
     end
     if count ~= 1 then return invalid_response("insert.rows_affected") end
+
+    if core_db.id() == jobs_config.db_id() then
+        local page_seq, replacement_err = jobs_cleanup.prepare_replacement_tx(tx, dbtype, thread_id)
+        if replacement_err then return replacement_err end
+        if page_seq == nil then return invalid_response("replacement.page_sequence") end
+        if page_seq > 0 then
+            local updated, update_err = tx:execute("UPDATE kickside_thread SET teardown_page_seq=$1 WHERE id=$2",
+                { page_seq, thread_id })
+            if update_err then return errors.wrap(update_err, "failed to set replacement thread cleanup sequence") end
+            if type(updated) ~= "table" or tonumber(updated.rows_affected) ~= 1 then
+                return invalid_response("replacement.rows_affected")
+            end
+        end
+    end
 
     if checked.natural_key then
         local key = checked.natural_key

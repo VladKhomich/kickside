@@ -63,7 +63,7 @@ const panelComponents = {
   chat: markRaw(LayoutPortalTarget),
 }
 const {
-  renderableCategories, navItems, layout, home, splash, splashError, splashSaving,
+  renderableCategories, navItems, layout, newChat, home, splash, splashError, splashSaving,
   loaded, error: navError, loadNav, reloadNav, dismissSplash, advanceSplash,
 } = useSurfaces()
 
@@ -393,6 +393,7 @@ onUnmounted(() => {
     <AppNavigation
       :class="railCollapsed ? 'sidebar--collapsed' : 'sidebar--expanded'"
       :layout="layout"
+      :new-chat="newChat"
       :app-title="appTitle"
       :mark-url="markUrl"
       :is-new-chat-route="isNewChatRoute"

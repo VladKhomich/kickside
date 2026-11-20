@@ -4,11 +4,24 @@ import type { WippyElementConfig, WippyPropsSchema } from '@wippy-fe/webcomponen
 import { lazyPage } from '@widgets/lazy'
 import type { Events } from './constants.ts'
 import stylesText from './styles.css?inline'
+import type { ChatSurface } from '@widgets/chatAppearance'
 
-class KicksideChatEmptyStateElement extends WippyVueElement<Record<string, unknown>, Events> {
-  static get wippyConfig(): WippyElementConfig<Record<string, unknown>> {
+interface ChatEmptyStateProps { surface?: ChatSurface }
+
+class KicksideChatEmptyStateElement extends WippyVueElement<ChatEmptyStateProps, Events> {
+  static get wippyConfig(): WippyElementConfig<ChatEmptyStateProps> {
     return {
-      propsSchema: { type: 'object', properties: {} } as WippyPropsSchema,
+      propsSchema: {
+        type: 'object',
+        properties: {
+          surface: {
+            type: 'string',
+            enum: ['sessions', 'sidebar'],
+            default: 'sidebar',
+            description: 'Selects the empty-chat profile for the Sessions page or the host sidebar.',
+          },
+        },
+      } as WippyPropsSchema,
       hostCssKeys: ['themeConfigUrl', 'primeVueCssUrl'] as const,
       inlineCss: stylesText,
     }
