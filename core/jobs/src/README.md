@@ -79,6 +79,14 @@ fills the sweep budget, the next sweep starts at the following type.
 Each sweep bounds the rows and types it examines and resumes through the
 existing retention timer.
 
+Wake retention inspects at most `retention.batch` fanout keys per wake pass
+and saves the last inspected key in Jobs storage. The pool resumes from that
+position after a restart and wraps at the end of the keyspace. It waits for
+`retention.sweep_interval` before inspecting another wake page, unless the
+previous page deleted a full batch. A wake key with a pending or running
+subscriber retains its generation. PostgreSQL skips wake keys held by a
+publisher and checks them again on the next rotation.
+
 ## Dependency interface
 
 The host must supply `target_db`; it is injected into both the jobs migration and the

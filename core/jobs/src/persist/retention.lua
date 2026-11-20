@@ -260,20 +260,85 @@ function M.prune_wake_fanout(db: any, limit: integer?): (integer?, error?)
         math.max(1, math.floor(tonumber(limit) or (policy :: any).retention_batch)))
     local dbtype, type_err = db:type()
     if type_err then return nil, errors.wrap(type_err, "orphan wake dialect") end
-    -- A wake publisher locks the same row before it can queue its continuation.
-    -- Skip rows it owns so a stale candidate snapshot cannot delete new demand.
-    local lock = dbtype == sql.type.POSTGRES and " FOR UPDATE OF f SKIP LOCKED" or ""
-    local result, err = db:execute([[WITH expired AS (
-        SELECT f.key FROM kickside_wake_fanout f
-        WHERE NOT EXISTS (SELECT 1 FROM kickside_job j WHERE j.wake_key = f.key
-            AND j.status IN ('pending','running'))
-        ORDER BY f.key LIMIT $1]] .. lock .. [[
-    ) DELETE FROM kickside_wake_fanout WHERE key IN (SELECT key FROM expired)
-      AND NOT EXISTS (SELECT 1 FROM kickside_job j
-        WHERE j.wake_key = kickside_wake_fanout.key
-          AND j.status IN ('pending','running'))]], { batch })
-    if err then return nil, errors.wrap(err, "orphan wake rows") end
-    return affected(result, "orphan wake rows", batch)
+
+    local positions, position_err = db:query("SELECT last_key FROM kickside_job_wake_retention WHERE id=1")
+    positions, position_err = sql_boundary.bounded_rows(positions, position_err,
+        "wake retention position failed", "wake.position", 0, 1, response_error)
+    if position_err then return nil, position_err end
+    local prior = ""
+    if positions[1] then
+        if type(positions[1].last_key) ~= "string" then return nil, response_error("wake.position.key") end
+        prior = positions[1].last_key
+    end
+
+    -- Limit index entries before probing subscribers. A scalar probe keeps
+    -- PostgreSQL from scanning the subscriber index to build an anti-join.
+    local rows, read_err = db:query([[SELECT page.key,
+        (SELECT 1 FROM kickside_job j WHERE j.wake_key=page.key
+          AND j.status IN ('pending','running') LIMIT 1) IS NULL AS orphan
+        FROM (SELECT key FROM kickside_wake_fanout WHERE key>$1 ORDER BY key LIMIT $2) AS page
+        ORDER BY page.key]], { prior, batch })
+    rows, read_err = sql_boundary.bounded_rows(rows, read_err,
+        "wake retention window failed", "wake.window", 0, batch, response_error)
+    if read_err then return nil, read_err end
+    local orphans: {string} = {}
+    for _, row in ipairs(rows) do
+        if type(row.key) ~= "string" or row.key == "" then return nil, response_error("wake.window.key") end
+        if row.orphan == true or row.orphan == 1 then
+            orphans[#orphans + 1] = row.key
+        elseif row.orphan ~= false and row.orphan ~= 0 then
+            return nil, response_error("wake.window.orphan")
+        end
+    end
+    local next_key = #rows == batch and rows[#rows].key or ""
+    if next_key == prior and #orphans == 0 then return 0, nil end
+
+    local tx, begin_err = sql_boundary.begin(db, "wake retention begin failed", "wake.transaction", response_error)
+    if begin_err then return nil, begin_err end
+    local function abort(err: error?): (nil, error?)
+        return nil, sql_boundary.rollback(tx, err, "wake retention rollback failed")
+    end
+    -- Persist the inspected position even when every key is subscribed or
+    -- locked. The compare-and-set also acquires the SQLite writer before rechecking.
+    local advanced, advance_err = tx:execute([[INSERT INTO kickside_job_wake_retention (id,last_key) VALUES (1,$1)
+        ON CONFLICT(id) DO UPDATE SET last_key=excluded.last_key
+        WHERE kickside_job_wake_retention.last_key=$2]], {next_key, prior})
+    local count, count_err = sql_boundary.single_row_count(advanced, advance_err,
+        "wake retention advance failed", "wake.advance", response_error)
+    if count_err then return abort(count_err) end
+    if count == 0 then
+        local _, rollback_err = abort(nil)
+        if rollback_err then return nil, rollback_err end
+        return 0, nil
+    end
+
+    if dbtype == sql.type.POSTGRES and #orphans > 0 then
+        local held, lock_err = tx:query("SELECT key FROM kickside_wake_fanout WHERE key IN ("
+            .. placeholders(1, #orphans) .. ") ORDER BY key FOR UPDATE SKIP LOCKED", orphans)
+        held, lock_err = sql_boundary.bounded_rows(held, lock_err,
+            "wake retention lock failed", "wake.lock", 0, #orphans, response_error)
+        if lock_err then return abort(lock_err) end
+        orphans = {}
+        for _, row in ipairs(held) do
+            if type(row.key) ~= "string" or row.key == "" then return abort(response_error("wake.lock.key")) end
+            orphans[#orphans + 1] = row.key
+        end
+    end
+    local removed = 0
+    if #orphans > 0 then
+        -- PostgreSQL takes a fresh statement snapshot after acquiring the wake
+        -- locks. An active or disabled pending subscriber keeps its generation.
+        local result, err = tx:execute("DELETE FROM kickside_wake_fanout WHERE key IN ("
+            .. placeholders(1, #orphans) .. [[) AND (SELECT 1 FROM kickside_job j
+                WHERE j.wake_key=kickside_wake_fanout.key AND j.status IN ('pending','running') LIMIT 1) IS NULL]], orphans)
+        local removed_count, delete_err = sql_boundary.bounded_row_count(result, err,
+            "orphan wake rows", "wake.delete", #orphans, response_error)
+        if delete_err then return abort(delete_err) end
+        removed = removed_count :: integer
+    end
+    local _, commit_err = tx:commit()
+    if commit_err then return nil, errors.wrap(commit_err, "wake retention commit failed") end
+    return removed, nil
 end
 
 local function before(dbtype: string, duration_ms: integer): string
@@ -432,7 +497,8 @@ end
 
 -- One bounded pass over each Jobs-owned retained table. Full batch counts
 -- keep the worker pool retention deadline due until the backlog drains.
-function M.sweep(db: any, dbtype: string, cursor: table?, completed_fence_cursor: table | boolean | nil): (table?, error?)
+function M.sweep(db: any, dbtype: string, cursor: table?, completed_fence_cursor: table | boolean | nil,
+    scan_wake: boolean?): (table?, error?)
     local policy, policy_err = cfg.policy()
     if policy_err or not policy then return nil, policy_err end
     local batch = (policy :: any).retention_batch :: integer
@@ -475,8 +541,6 @@ function M.sweep(db: any, dbtype: string, cursor: table?, completed_fence_cursor
     if workers_err then return nil, workers_err end
     local pulses, pulses_err = prune_worker_pulses(db, liveness_cutoff, batch)
     if pulses_err then return nil, pulses_err end
-    local wake_rows, wake_err = M.prune_wake_fanout(db, batch)
-    if wake_err then return nil, wake_err end
     local cleanup_receipts, receipts_err = prune_thread_cleanup_receipts(db, receipt_cutoff, batch, dbtype)
     if receipts_err then return nil, receipts_err end
     local leftovers: integer? = 0
@@ -496,6 +560,12 @@ function M.sweep(db: any, dbtype: string, cursor: table?, completed_fence_cursor
                 db, receipt_cutoff, batch, dbtype, positions.expire)
             if fences_err then return nil, fences_err end
         end
+    end
+    local wake_rows: integer? = 0
+    if scan_wake ~= false then
+        local wake_err: error?
+        wake_rows, wake_err = M.prune_wake_fanout(db, batch)
+        if wake_err then return nil, wake_err end
     end
     return {
         jobs = jobs :: integer, job_runs = runs :: integer, job_cursor = job_cursor,

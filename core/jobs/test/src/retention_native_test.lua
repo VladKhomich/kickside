@@ -66,13 +66,13 @@ local function group(first: integer, last: integer)
         for _, dialect in ipairs({sql.type.SQLITE, sql.type.POSTGRES}) do
             for index = first, last do
                 local mode = modes[index]
-                local stages = {"delete"}
-                local transactional = mode ~= "wake"
-                if transactional then stages = {"begin", "candidates", "delete", "commit"} end
+                local stages = {"begin", "candidates", "delete", "commit"}
                 if mode == "jobs" or mode == "runs" or mode == "workers" then
                     stages[#stages + 1] = "dialect"
                     if dialect == sql.type.POSTGRES then stages[#stages + 1] = "prelock" end
-                elseif mode == "wake" then stages[#stages + 1] = "dialect"
+                elseif mode == "wake" then
+                    for _, stage in ipairs({"dialect", "position", "advance"}) do stages[#stages + 1] = stage end
+                    if dialect == sql.type.POSTGRES then stages[#stages + 1] = "lock" end
                 elseif mode == "fences" and dialect == sql.type.POSTGRES then stages[#stages + 1] = "lock" end
                 for _, stage in ipairs(stages) do
                     for _, kind in ipairs(kinds) do
@@ -91,28 +91,26 @@ local function group(first: integer, last: integer)
                         end
                     end
                 end
-                if transactional then
-                    for _, kind in ipairs(kinds) do
-                        test.it("rollback/" .. dialect .. "/" .. mode .. "/" .. kind, function()
-                            local source = errors.new({kind = kind, message = "rollback refusal", retryable = false,
-                                details = {code = "retention_dependency", nested = {marker = "kept"}}})
-                            local primary = errors.new({kind = errors.PERMISSION_DENIED, message = "delete refusal", retryable = false,
-                                details = {code = "retention_primary", nested = {marker = "primary"}}})
-                            fixture.reset(mode, "rollback", source, dialect)
-                            fixture.primary = primary
-                            local value, err = invoke()
-                            test.is_nil(value)
-                            local actual = required(err)
-                            retains(actual, source)
-                            test.eq(actual:details().operation_error.kind, primary:kind())
-                            test.eq(actual:details().operation_error.retryable, primary:retryable())
-                            test.eq(actual:details().operation_error.details.code, "retention_primary")
-                            test.eq(actual:details().operation_error.details.nested.marker, "primary")
-                            test.eq(fixture.rollbacks, 1)
-                        end)
-                    end
+                for _, kind in ipairs(kinds) do
+                    test.it("rollback/" .. dialect .. "/" .. mode .. "/" .. kind, function()
+                        local source = errors.new({kind = kind, message = "rollback refusal", retryable = false,
+                            details = {code = "retention_dependency", nested = {marker = "kept"}}})
+                        local primary = errors.new({kind = errors.PERMISSION_DENIED, message = "delete refusal", retryable = false,
+                            details = {code = "retention_primary", nested = {marker = "primary"}}})
+                        fixture.reset(mode, "rollback", source, dialect)
+                        fixture.primary = primary
+                        local value, err = invoke()
+                        test.is_nil(value)
+                        local actual = required(err)
+                        retains(actual, source)
+                        test.eq(actual:details().operation_error.kind, primary:kind())
+                        test.eq(actual:details().operation_error.retryable, primary:retryable())
+                        test.eq(actual:details().operation_error.details.code, "retention_primary")
+                        test.eq(actual:details().operation_error.details.nested.marker, "primary")
+                        test.eq(fixture.rollbacks, 1)
+                    end)
                 end
-                for _, stage in ipairs(transactional and {"begin", "candidates", "delete"} or {"delete"}) do
+                for _, stage in ipairs({"begin", "candidates", "delete"}) do
                     test.it("missing/" .. dialect .. "/" .. mode .. "/" .. stage, function()
                         fixture.reset(mode, stage, nil, dialect)
                         fixture.missing = true
