@@ -69,7 +69,8 @@
   },
   "scripts": {
     "build": "vite build",
-    "dev": "vite build --watch"
+    "dev": "vite build --watch",
+    "test": "vitest run"
   },
   "workspaces": [
     "./.wippy/npm/@*/*"

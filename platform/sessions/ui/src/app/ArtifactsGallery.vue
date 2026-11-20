@@ -8,11 +8,15 @@ import { useComponentEvents } from '../constants.ts'
 import type { ArtifactSummary } from '../types.ts'
 import { useSessionsApi } from './useSessionsApi.ts'
 import { artifactId, artifactWhen } from './artifactPresentation.ts'
+import { compareArtifactsNewest, readArtifactUpdate, readSessionUpdate } from './inventoryEvents.ts'
+import { useInventoryRefresh } from './useInventoryRefresh.ts'
 
+const PAGE_SIZE = 48
+const MAX_API_PAGE_SIZE = 100
 const api = useSessionsApi()
 const emit = useComponentEvents()
 const artifacts = ref<ArtifactSummary[]>([])
-const loading = ref(true)
+const loaded = ref(false)
 const loadingMore = ref(false)
 const error = ref('')
 const actionError = ref('')
@@ -22,8 +26,10 @@ const search = ref('')
 const display = ref<'all' | 'standalone' | 'inline'>('all')
 const opening = ref('')
 const unsubscribe: (() => void)[] = []
-let refreshTimer: ReturnType<typeof setTimeout> | null = null
-let requestSequence = 0
+let nextPage: Promise<void> | undefined
+type ArtifactUpdate = NonNullable<ReturnType<typeof readArtifactUpdate>>
+const changes = new Map<string, ArtifactUpdate>()
+const sessionDeletes = new Set<string>()
 
 const filtered = computed(() => {
   const query = search.value.trim().toLowerCase()
@@ -35,35 +41,95 @@ const filtered = computed(() => {
   })
 })
 
-async function load(reset = true) {
-  const sequence = ++requestSequence
-  const requestCursor = reset ? '' : cursor.value
-  if (reset) {
-    loading.value = true
-    error.value = ''
-  } else {
-    loadingMore.value = true
-  }
+async function loadPage(reset: boolean) {
+  error.value = ''
   try {
-    const page = await api.artifacts({ limit: 48, cursor: requestCursor })
-    if (sequence !== requestSequence) return
-    artifacts.value = reset ? page.artifacts : [...artifacts.value, ...page.artifacts]
-    cursor.value = page.nextCursor
-    hasMore.value = page.hasMore
+    const limit = reset ? Math.max(PAGE_SIZE, artifacts.value.length) : PAGE_SIZE
+    const rows = reset ? [] : [...artifacts.value]
+    const target = rows.length + limit
+    let nextCursor = reset ? '' : cursor.value
+    let more = false
+    do {
+      const page = await api.artifacts({ limit: Math.min(target - rows.length, MAX_API_PAGE_SIZE), cursor: nextCursor })
+      rows.push(...page.artifacts)
+      nextCursor = page.nextCursor
+      more = page.hasMore
+    } while (more && nextCursor && rows.length < target)
+    artifacts.value = [...new Map(rows.filter(row => !row.session_id || !sessionDeletes.has(row.session_id))
+      .map(row => [artifactId(row), row])).values()].sort(compareArtifactsNewest)
+    cursor.value = nextCursor
+    hasMore.value = more
+    loaded.value = true
   } catch (cause) {
-    if (sequence !== requestSequence) return
-    error.value = (cause as Error).message
-  } finally {
-    if (sequence === requestSequence) {
-      loading.value = false
-      loadingMore.value = false
+    const response = (cause as { response?: { status?: number; data?: { error?: string } } } | null)?.response
+    if (!reset && response?.status === 400 && response.data?.error === 'Invalid artifact cursor') {
+      await loadPage(true)
+      return
     }
+    error.value = (cause as Error).message
   }
 }
 
-function queueRefresh() {
-  if (refreshTimer) clearTimeout(refreshTimer)
-  refreshTimer = setTimeout(() => { void load(true) }, 150)
+async function refreshGallery() {
+  if (nextPage) await nextPage
+  await loadPage(true)
+}
+
+function queueArtifact(change: ArtifactUpdate) {
+  const previous = changes.get(change.artifactId)
+  changes.set(change.artifactId, {
+    artifactId: change.artifactId,
+    sessionId: change.sessionId || previous?.sessionId,
+    deleted: change.deleted || previous?.deleted === true,
+  })
+  queueUpdates()
+}
+
+async function applyArtifactChanges() {
+  if (nextPage) await nextPage
+  const batch = [...changes.values()]
+  changes.clear()
+  const tail = artifacts.value.at(-1)
+  const rows = new Map(artifacts.value.map(row => [artifactId(row), row]))
+
+  await Promise.all(batch.map(async (change) => {
+    const id = change.artifactId
+    const sessionId = change.sessionId || rows.get(id)?.session_id
+    if (change.deleted || (sessionId && sessionDeletes.has(sessionId))) {
+      rows.delete(id)
+      return
+    }
+
+    try {
+      const row = await api.artifact(id)
+      if (changes.get(id)?.deleted) rows.delete(id)
+      else if (rows.has(id) || !hasMore.value || !tail || compareArtifactsNewest(row, tail) <= 0) {
+        rows.set(id, { ...row, session_id: row.session_id || sessionId })
+      }
+    } catch (cause) {
+      const status = (cause as { response?: { status?: number } } | null)?.response?.status
+      if (status === 404 || status === 403) rows.delete(id)
+      else actionError.value = (cause as Error).message
+    }
+  }))
+
+  artifacts.value = [...rows.values()]
+    .filter(row => !row.session_id || !sessionDeletes.has(row.session_id))
+    .sort(compareArtifactsNewest)
+}
+
+const { refreshing, syncing, refresh: load, queueUpdates } = useInventoryRefresh(refreshGallery, applyArtifactChanges)
+
+async function loadMore() {
+  if (syncing.value || nextPage || !hasMore.value) return
+  loadingMore.value = true
+  nextPage = loadPage(false)
+  try {
+    await nextPage
+  } finally {
+    nextPage = undefined
+    loadingMore.value = false
+  }
 }
 
 async function openArtifact(artifact: ArtifactSummary) {
@@ -81,15 +147,26 @@ async function openArtifact(artifact: ArtifactSummary) {
   }
 }
 
-useHostVisibilityRefresh(() => load(true))
 onMounted(() => {
-  unsubscribe.push(on('artifact:*', queueRefresh))
-  unsubscribe.push(on('session:*', queueRefresh))
+  unsubscribe.push(on('artifact:*', (message) => {
+    const change = readArtifactUpdate(message)
+    if (change) queueArtifact(change)
+  }))
+  unsubscribe.push(on('session:*', (message) => {
+    const change = readSessionUpdate(message)
+    if (!change) return
+    if (change.deleted) {
+      sessionDeletes.add(change.sessionId)
+      queueUpdates()
+    } else if (change.artifactId) {
+      queueArtifact({ artifactId: change.artifactId, sessionId: change.sessionId, deleted: false })
+    }
+  }))
+  unsubscribe.push(on('@reconnect', load))
 })
+useHostVisibilityRefresh(load)
 onBeforeUnmount(() => {
   unsubscribe.forEach(stop => stop())
-  requestSequence++
-  if (refreshTimer) clearTimeout(refreshTimer)
 })
 </script>
 
@@ -116,7 +193,7 @@ onBeforeUnmount(() => {
             <option value="inline">Inline</option>
           </select>
         </label>
-        <Button type="button" severity="secondary" outlined title="Refresh" aria-label="Refresh artifacts" :loading="loading" :disabled="loading" @click="load(true)">
+        <Button type="button" severity="secondary" outlined title="Refresh" aria-label="Refresh artifacts" :loading="refreshing" :disabled="refreshing" @click="load">
           <template #icon="{ class: iconClass }"><Icon icon="tabler:refresh" :class="iconClass" aria-hidden="true" /></template>
         </Button>
       </div>
@@ -128,13 +205,18 @@ onBeforeUnmount(() => {
         <span>{{ actionError }}</span>
         <button class="kx-err-x" aria-label="Dismiss" @click="actionError = ''"><Icon icon="tabler:x" aria-hidden="true" /></button>
       </div>
+      <div v-if="loaded && error" class="kx-err" role="alert">
+        <Icon icon="tabler:alert-triangle" aria-hidden="true" />
+        <span>{{ error }}</span>
+        <button class="kx-err-x" aria-label="Dismiss" @click="error = ''"><Icon icon="tabler:x" aria-hidden="true" /></button>
+      </div>
 
-      <div v-if="loading" class="kx-loading"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Loading artifacts…</div>
-      <div v-else-if="error" class="kx-empty">
+      <div v-if="!loaded && !error" class="kx-loading"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Loading artifacts…</div>
+      <div v-else-if="!loaded && error" class="kx-empty">
         <div class="kx-empty-ico"><Icon icon="tabler:alert-triangle" aria-hidden="true" /></div>
         <div class="kx-empty-title">Couldn’t load artifacts</div>
         <div class="kx-empty-sub">{{ error }}</div>
-        <Button type="button" label="Retry" @click="load(true)">
+        <Button type="button" label="Retry" @click="load">
           <template #icon="{ class: iconClass }"><Icon icon="tabler:refresh" :class="iconClass" aria-hidden="true" /></template>
         </Button>
       </div>
@@ -152,7 +234,7 @@ onBeforeUnmount(() => {
           <article v-for="artifact in filtered" :key="artifactId(artifact)" class="kx-artifact-card" role="listitem">
             <button type="button" class="kx-artifact-open" :disabled="opening === artifactId(artifact)" @click="openArtifact(artifact)">
               <span class="kx-artifact-preview" aria-hidden="true">
-                <w-artifact :id="artifactId(artifact)" />
+                <w-artifact :key="artifact.content_version" :id="artifactId(artifact)" />
               </span>
               <span class="kx-artifact-copy">
                 <strong :title="artifact.title || 'Untitled artifact'">{{ artifact.title || 'Untitled artifact' }}</strong>
@@ -167,15 +249,15 @@ onBeforeUnmount(() => {
           </article>
         </div>
       </template>
-      <div v-if="!loading && !error && hasMore" class="kx-more">
+      <div v-if="hasMore" class="kx-more">
         <Button
           type="button"
           severity="secondary"
           outlined
           :label="loadingMore ? 'Loading…' : 'Load more'"
           :loading="loadingMore"
-          :disabled="loadingMore"
-          @click="load(false)">
+          :disabled="loadingMore || syncing"
+          @click="loadMore">
           <template #icon="{ class: iconClass }"><Icon icon="tabler:chevron-down" :class="iconClass" aria-hidden="true" /></template>
         </Button>
       </div>

@@ -37,7 +37,7 @@ entries:
     component: wippy/dataflow
 
   - name: dep.wippy.llm
-    version: '*'
+    version: '>=0.5.22'
     kind: ns.dependency
     meta:
       comment: Large language model calls for transform and agent work.
@@ -51,7 +51,7 @@ entries:
     component: wippy/relay
 
   - name: dep.wippy.session
-    version: '*'
+    version: '>=0.7.1'
     kind: ns.dependency
     meta:
       comment: Session substrate for agent and thread state.
