@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.101](https://github.com/kicksideai/kickside/compare/sync-v0.1.100...sync-v0.1.101) (2026-11-20)
+
+
+### Bug Fixes
+
+* **sync:** require Automation with reconcile key list delays ([#712](https://github.com/kicksideai/kickside/issues/712)) ([93b692a](https://github.com/kicksideai/kickside/commit/93b692a05a823275355c86686b8148e389cdd3e4))
+
 ## [0.1.100](https://github.com/kicksideai/kickside/compare/sync-v0.1.99...sync-v0.1.100) (2026-11-19)
 
 
