@@ -9,7 +9,7 @@ local function encoded(value: any): string
     return data
 end
 local function call(identity: table): error?
-    return api.apply_thread_declaration(fixture.database(), "thread", "declared", identity)
+    return api.apply_thread_declaration(fixture.database(), "thread", "core.owned.fixture:kind", identity)
 end
 return {run = test.run_cases(function()
     test.describe("native declared projection outcomes", function()
