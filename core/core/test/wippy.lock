@@ -8,6 +8,8 @@ modules:
       version: 0.3.8
     - name: kickside/core
       version: 0.0.0
+    - name: kickside/core-owned-projection-fixture
+      version: 0.0.0
     - name: kickside/execution
       version: 0.0.0
     - name: kickside/jobs

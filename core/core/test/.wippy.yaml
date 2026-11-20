@@ -21,6 +21,7 @@ workspace:
     kickside/realtime: ../../../platform/realtime
     kickside/realtime-dispatch: ../../realtime-dispatch
     kickside/core: ..
+    kickside/core-owned-projection-fixture: ./fixtures/owned-projection
     kickside/component: ../../component
     kickside/contract: ../../contract
     kickside/jobs: ../../jobs
