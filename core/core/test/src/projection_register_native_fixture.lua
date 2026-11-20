@@ -4,6 +4,7 @@ local M = {stage = "", source = nil, dbtype = "", existing = false,
     queries = 0, writes = 0, encodes = 0, begins = 0, commits = 0, rollbacks = 0, notifications = 0}
 function M.reset(dbtype: string, stage: string, source: any, existing: boolean)
     M.dbtype, M.stage, M.source, M.existing = dbtype, stage, source, existing
+    M.cursor_missing = false
     M.rollback_source, M.effect_id, M.proof_stage, M.proof = nil, nil, nil, nil
     M.body = '{"meta":{"worker_ref":"func://app:test_count_worker","worker_runtime":"func","worker_input_mode":"cursor_only"}}'
     M.retention_notifications = 0
@@ -17,6 +18,7 @@ local function query(): (any, error?)
     if M.queries == 1 then return {{id = "thread", event_count = 0, max_pruned_seq = 0}}, nil end
     if not M.existing then return {}, nil end
     if M.queries == 2 then return {{id = "projection", body = M.body}}, nil end
+    if M.cursor_missing then return {}, nil end
     return {{id = "cursor", last_seq = 0, generation = 1, job_id = "job"}}, nil
 end
 local function exec(): (any, error?)
