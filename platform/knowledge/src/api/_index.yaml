@@ -105,7 +105,8 @@ entries:
       resources:
         - kickside.google.source:browse_drive_folders
         - kickside.knowledge.sink:kb_upload
-        - kickside.sync:sync
+        - kickside.sync:dep.kickside.automation
+        - kickside.sync:sync_prepare_install
       actions: [registry.get]
       effect: allow
 

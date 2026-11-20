@@ -10,8 +10,25 @@ local http_errors = require("http_errors")
 local BROWSE = "kickside.google.source:browse_drive_folders"
 local SINK = "kickside.knowledge.sink:kb_upload"
 
+local function sync_requires_reconcile_delays(): boolean
+    local dependency = registry.get("kickside.sync:dep.kickside.automation")
+    local data = dependency and dependency.data
+    if type(data) ~= "table" or data.component ~= "kickside/automation" or type(data.version) ~= "string" then
+        return false
+    end
+    -- Sync declares a minimum version. Automation 0.2.37 first honored the
+    -- provider's retry delay when enumerating keys for reconciliation.
+    local major, minor, patch = data.version:match("^>=%s*(%d+)%.(%d+)%.(%d+)$")
+    local major_version, minor_version, patch_version = tonumber(major), tonumber(minor), tonumber(patch)
+    if not major_version or not minor_version or not patch_version then return false end
+    return major_version > 0 or minor_version > 2 or (minor_version == 2 and patch_version >= 37)
+end
+
 local function available(): boolean
-    if not registry.get(BROWSE) or not registry.get("kickside.sync:sync") then return false end
+    if not registry.get(BROWSE) or not registry.get("kickside.sync:sync_prepare_install")
+        or not sync_requires_reconcile_delays() then
+        return false
+    end
     local sink = registry.get(SINK)
     local schema = sink and sink.data and sink.data.input_schema
     if type(schema) == "string" then schema = json.decode(schema) end
