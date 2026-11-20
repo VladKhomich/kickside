@@ -18,6 +18,7 @@ local committed_error = require("committed_error")
 local core_db = require("core_db")
 local jobs_config = require("jobs_config")
 local lease_status = require("lease_status")
+local registration = require("registration")
 local job_types = require("job_types")
 
 local M = {}
@@ -270,7 +271,7 @@ local function check_range(tx: sql.Transaction, thread_id: string, prior: number
 end
 
 local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table,
-        writes: table[], checkpoint: Checkpoint?, empty_scan: boolean?): (table?, error?)
+        writes: table[], checkpoint: Checkpoint?, empty_scan: boolean?, owned: table?): (table?, error?)
     local raw_type, type_err = db:type()
     if type_err then return nil, errors.wrap(type_err, "projection dialect unavailable") end
     if type(raw_type) ~= "string" or raw_type == "" then return nil, response_error("database.type") end
@@ -284,7 +285,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local function abort(err: error): (nil, error)
         return nil, rollback(tx, err)
     end
-    local owner = checkpoint and checkpoint.owner
+    local owner = owned or (checkpoint and checkpoint.owner)
     if owner then
         local owner_err = check_checkpoint_owner(tx, dbtype, owner)
         if owner_err then return abort(owner_err) end
@@ -409,6 +410,9 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         if (not checkpoint and not empty_scan) or output.body ~= nil or output.patch ~= nil then
             local folded, fold_err = next_body(body, output)
             if fold_err then return abort(fold_err) end
+            if owned and not registration.declaration_matches(body, folded) then
+                return abort(invalid("component-owned projection cannot change its declaration"))
+            end
             local encoded, encode_err = json.encode(folded)
             if encode_err then return abort(errors.wrap(encode_err, "projection worker body is not JSON")) end
             if type(encoded) ~= "string" then return abort(response_error("body_json")) end
@@ -589,9 +593,10 @@ end
 -- Resolve returned writes live before taking an apply connection. Actor-bound
 -- authorization re-enters Component and Threads, including SQLite's single pool.
 local function advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table,
-        checkpoint: Checkpoint?, empty_scan: boolean?): (table?, error?)
+        checkpoint: Checkpoint?, empty_scan: boolean?, owned: table?): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
+    if owned and #writes > 0 then return nil, invalid("component-owned projection cannot return append_events") end
     local in_owner_process = checkpoint and checkpoint.owner and checkpoint.write
     if #writes > 0 and (in_owner_process or snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
         local admitted, admission_err
@@ -622,7 +627,7 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection apply DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
-    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checkpoint, empty_scan)
+    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checkpoint, empty_scan, owned)
     local finish_err = release(db, apply_err)
     if checkpoint and result then
         local progressed = result.last_seq > tonumber(snapshot.last_seq)
@@ -640,8 +645,8 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
 end
 
 function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table,
-        empty_scan: boolean?): (table?, error?)
-    return advance(db_id, job, snapshot, prefetched_last, output, nil, empty_scan)
+        empty_scan: boolean?, owned: table?): (table?, error?)
+    return advance(db_id, job, snapshot, prefetched_last, output, nil, empty_scan, owned)
 end
 
 -- The scheduler can settle a filtered physical page without spawning its worker.

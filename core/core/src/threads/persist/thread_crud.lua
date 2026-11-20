@@ -20,6 +20,9 @@ local event_access = require("event_access")
 local masks = require("core_types")
 local autoinit = require("autoinit")
 local proj_writer = require("proj_writer")
+local proj_worker = require("proj_worker")
+local owned_worker = require("owned_worker")
+local registry = require("registry")
 local retention_repo = require("retention_repo")
 local writer = require("threads_writer")
 local teardown = require("threads_teardown")
@@ -115,6 +118,27 @@ local function declared_identity_error(identity: { [string]: any }): error?
     })
 end
 
+-- Framework-created primary threads must have an admitted installed fold.
+-- Report a bad declaration before creating a cursor that cannot read its input.
+local function validate_maintenance_projection(thread_id: string, impl_id: string, declaration: table): error?
+    local parsed, parse_err = proj_worker.parse(declaration.worker_ref, true)
+    if parse_err then return parse_err end
+    if not parsed then return declaration_response("worker reference") end
+    if owned_worker.core_lifecycle(impl_id, thread_id, declaration.kind, parsed.target_id) then return nil end
+    local worker, worker_err = proj_worker.validate(parsed, true)
+    if worker_err then return worker_err end
+    if not worker or worker.component_owned ~= true or declaration.input_mode ~= "prefetch_events" then
+        return errors.new({kind = errors.INVALID, retryable = false,
+            message = "framework-created primary projections require a private component-owned prefetch worker",
+            details = {code = "thread_declaration_owned_worker_required"}})
+    end
+    local snapshot, snapshot_err = registry.snapshot()
+    if snapshot_err then return snapshot_err end
+    if not snapshot then return declaration_response("registry snapshot") end
+    local _, proof_err = owned_worker.check_package(snapshot, impl_id, worker.target_id)
+    return proof_err
+end
+
 function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_id: string?,
     identity: { [string]: any }, indexes: table?, allow_transition: boolean?, pending_cursor_id: string?): (error?, boolean?)
     local impl_id = trim(declaration_impl_id)
@@ -129,6 +153,10 @@ function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_
     for index, p in ipairs(autoinit.projections_for_impl(impl_id)) do
         if (not indexes or indexes[tostring(index)])
             and (p.on == nil or p.on == "" or p.on == autoinit.PROJECTION_ON.THREAD) then
+            if identity.system == true then
+                local admission_err = validate_maintenance_projection(thread_id, impl_id, p)
+                if admission_err then return admission_err end
+            end
             local proj_err, pending = register_declared_projection(db, thread_id, p :: table, identity, impl_id, source, allow_transition, pending_cursor_id)
             if proj_err then return proj_err end
             if pending then deferred = true end

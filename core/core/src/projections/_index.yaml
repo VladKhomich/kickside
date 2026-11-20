@@ -44,6 +44,7 @@ entries:
       core_db: kickside.core:db
       jobs_config: kickside.core.jobs:config
       lease_status: kickside.core.jobs.persist:lease_status
+      registration: kickside.core.projections.persist:register
       job_types: kickside.core.jobs:types
 
   - name: invoke
@@ -55,6 +56,7 @@ entries:
     imports:
       event_access: kickside.core.threads:event_access
       component_query: kickside.component.persist:component_query
+      owned_worker: kickside.core.projections.persist:owned_worker
       canonical_json: kickside.contract:canonical_json
       lifecycle_consts: kickside.core.lifecycle:consts
       clock: kickside.core.jobs:clock
@@ -76,13 +78,17 @@ entries:
       # runs on the jobs pool's awaited slots.
       job_class: awaited
     security:
-      policies: [kickside.core.threads:event_policy_read]
+      policies:
+        - kickside.core.threads:event_policy_read
+        - kickside.core.projections:owned_worker.actor
+        - kickside.core.projections:owned_worker.scope
     source: file://invoke.lua
     method: run
     modules: [sql, json, time, registry, security, funcs, logger]
     imports:
       event_access: kickside.core.threads:event_access
       component_query: kickside.component.persist:component_query
+      owned_worker: kickside.core.projections.persist:owned_worker
       canonical_json: kickside.contract:canonical_json
       lifecycle_consts: kickside.core.lifecycle:consts
       clock: kickside.core.jobs:clock
@@ -95,6 +101,22 @@ entries:
       execution_identity: kickside.execution:execution_identity
       job_types: kickside.core.jobs:types
       error_envelope: kickside.contract:error_envelope
+
+  - name: owned_worker.actor
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [kickside.core:component_projection]
+      actions: [security.actor.create]
+      effect: allow
+
+  - name: owned_worker.scope
+    kind: security.policy
+    meta: { private: true }
+    policy:
+      resources: [custom]
+      actions: [security.scope.create]
+      effect: allow
 
   # ─── Dependency interface (ns.requirement) ───────────────────────────
   # Runtime DB access resolves the root target_db-injected db_config.

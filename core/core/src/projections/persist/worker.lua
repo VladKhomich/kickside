@@ -38,6 +38,7 @@ local PROC_TIMEOUT_MARKER = "projection worker exceeded max_execution_ms"
 worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
 
 local CHECKPOINT_DECLARATION_REQUIRED = "projection_private_checkpoint_requires_declaration"
+local OWNED_DECLARATION_REQUIRED = "projection_component_owned_requires_declaration"
 
 -- A parsed, optionally validated worker reference.
 type Binding = {
@@ -46,6 +47,7 @@ type Binding = {
     target_id: string,
     checkpointed_apply: boolean?,
     filtered_checkpoint: boolean?,
+    component_owned: boolean?,
 }
 
 -- A pooled connection or open transaction the event prefetch reads through.
@@ -143,7 +145,8 @@ end
 -- A projection retains its stored principal. A declared worker may add only
 -- service-only policies; member scopes and actor overrides remain inadmissible.
 -- Admission is immutable within a registry revision.
-local function validate_declaration(binding: table, system_identity: boolean?, owner_checkpoint: boolean): (Binding?, error?)
+local function validate_declaration(binding: table, system_identity: boolean?, owner_checkpoint: boolean,
+        owned_declaration: boolean): (Binding?, error?)
     local target_id = tostring(binding.target_id)
     local declared_runtime = tostring(binding.worker_runtime)
     local entry, entry_err = registry.get(target_id)
@@ -196,7 +199,19 @@ local function validate_declaration(binding: table, system_identity: boolean?, o
     end
     local checkpointed = meta.checkpointed_apply == true
     local private_checkpoint = checkpointed and expected == types.WORKER_RUNTIME.PROC
-    if scoped or (meta.private == true and system_identity ~= true and not (owner_checkpoint and private_checkpoint)) then
+    local component_owned = meta.component_owned == true
+    if component_owned and (scoped or meta.private ~= true or expected ~= types.WORKER_RUNTIME.FUNC
+        or checkpointed or meta.post_commit_ref ~= nil) then
+        return nil, errors.new({kind = errors.INVALID,
+            message = "component-owned projection requires a private function with service-only policies and no post-commit worker"})
+    end
+    if component_owned and not owned_declaration and system_identity ~= true then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED,
+            message = "component-owned projection requires its installed primary declaration",
+            details = {code = OWNED_DECLARATION_REQUIRED}})
+    end
+    if scoped or (meta.private == true and system_identity ~= true and not (owner_checkpoint and private_checkpoint)
+        and not component_owned) then
         local details = not scoped and private_checkpoint and {code = CHECKPOINT_DECLARATION_REQUIRED} or nil
         return nil, (errors.new({ message = "private or scoped projection worker is not allowed: " .. target_id,
             kind = errors.PERMISSION_DENIED, details = details }) :: error)
@@ -212,7 +227,8 @@ local function validate_declaration(binding: table, system_identity: boolean?, o
         return nil, errors.new({kind = errors.INVALID, message = "checkpointed apply requires a supervised process worker"})
     end
     return { worker_ref = scheme_for(expected) .. target_id, worker_runtime = expected, target_id = target_id,
-        checkpointed_apply = checkpointed or nil, filtered_checkpoint = meta.filtered_checkpoint == true or nil }, nil
+        checkpointed_apply = checkpointed or nil, filtered_checkpoint = meta.filtered_checkpoint == true or nil,
+        component_owned = meta.component_owned == true or nil }, nil
 end
 
 local admitted_version: string? = nil
@@ -231,7 +247,8 @@ local function registry_revision(): (string?, error?)
     return tostring(version:id()), nil
 end
 
-local function validate(binding: table, system_identity: boolean?, owner_revision: string?): (Binding?, error?)
+local function validate(binding: table, system_identity: boolean?, owner_revision: string?,
+        component_owned: boolean?): (Binding?, error?)
     local revision, err = registry_revision()
     if not revision then return nil, err end
     if owner_revision and owner_revision ~= revision then
@@ -242,17 +259,18 @@ local function validate(binding: table, system_identity: boolean?, owner_revisio
         admitted_version, admitted_bindings = revision, {}
     end
     local key = tostring(binding.worker_runtime) .. "://" .. tostring(binding.target_id)
-        .. (system_identity == true and "/system" or (owner_revision and "/declared-checkpoint" or "/member"))
+        .. (component_owned and "/component-owned" or (system_identity == true and "/system"
+            or (owner_revision and "/declared-checkpoint" or "/member")))
     local admitted = admitted_bindings[key]
     if not admitted then
-        local value, validation_err = validate_declaration(binding, system_identity, owner_revision ~= nil)
+        local value, validation_err = validate_declaration(binding, system_identity, owner_revision ~= nil and component_owned ~= true, component_owned == true)
         if validation_err or not value then return nil, validation_err end
         admitted = value
         admitted_bindings[key] = admitted
     end
     return {worker_ref = admitted.worker_ref, worker_runtime = admitted.worker_runtime,
         target_id = admitted.target_id, checkpointed_apply = admitted.checkpointed_apply,
-        filtered_checkpoint = admitted.filtered_checkpoint}, nil
+        filtered_checkpoint = admitted.filtered_checkpoint, component_owned = admitted.component_owned}, nil
 end
 
 function worker.validate(binding: table, system_identity: boolean?): (Binding?, error?)
@@ -262,6 +280,22 @@ end
 function worker.requires_checkpoint_declaration(err: error): boolean
     local details = err:details()
     return type(details) == "table" and details.code == CHECKPOINT_DECLARATION_REQUIRED
+end
+
+function worker.requires_owned_declaration(err: error): boolean
+    local details = err:details()
+    return type(details) == "table" and details.code == OWNED_DECLARATION_REQUIRED
+end
+
+local owned_admissions: {[table]: string} = setmetatable({}, {__mode = "k"})
+function worker.admit_owned(binding: table, system_identity: boolean, revision: string): (Binding?, error?)
+    local admitted, err = validate(binding, system_identity, revision, true)
+    if err then return nil, err end
+    if not admitted or not admitted.component_owned then
+        return nil, event_access.denied()
+    end
+    owned_admissions[admitted] = revision
+    return admitted, nil
 end
 
 function worker.admit_declared_checkpoint(binding: table, cursor: table): (Binding?, error?, table?)
@@ -456,8 +490,10 @@ function worker.run(binding: table, worker_input: table, before_dispatch: (() ->
         return nil, (errors.new({ message = "unsupported worker runtime: " .. runtime, kind = errors.INVALID }) :: error)
     end
 
-    local validated, validate_err = worker.validate(binding, binding.system_identity == true)
+    local owned_revision = owned_admissions[binding]
+    local validated, validate_err = validate(binding, binding.system_identity == true, owned_revision, owned_revision ~= nil)
     if validate_err or not validated then return nil, validate_err end
+    if validated.component_owned and not owned_revision then return nil, event_access.denied() end
 
     local actor, scope, ident_err
     if execution_frame then actor, scope = execution_frame.actor, execution_frame.scope
