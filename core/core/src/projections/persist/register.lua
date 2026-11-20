@@ -394,7 +394,8 @@ end
 -- existing cursor. Lifecycle attachments start new cursors at the retained boundary.
 -- Component-backed registration supplies authorization for the locked thread read.
 function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table,
-    mode: string?, declaration_impl_id: string?, source: table?): (RegisterResult?, error?)
+    mode: string?, declaration_impl_id: string?, source: table?,
+    system_worker_err: error?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -526,6 +527,24 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local worker_changed = false
     local transitioning: table? = nil
     local checkpoint = start_seq
+    local cursor: table? = nil
+    local function load_cursor(): (table?, error?)
+        local rows, err = sql.builder.select("id", "last_seq", "generation", "job_id", "debounce_idle_ms",
+            "debounce_max_ms", "actor_id", "execution_identity_json")
+            :from("kickside_projection_cursor")
+            :where(sql.builder.eq({ projection_id = projection_id, cursor_key = cursor_key }))
+            :limit(1):run_with(tx):query()
+        rows, err = sql_boundary.bounded_rows(rows, err, "failed to load cursor", "cursor.rows", 0, 1, response_error)
+        if err then return nil, err end
+        if not rows then return nil, response_error("cursor.rows") end
+        local row = rows[1]
+        if row and convergence and (tonumber(row.debounce_idle_ms) ~= debounce_idle_ms
+            or tonumber(row.debounce_max_ms) ~= debounce_max_ms) then
+            return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
+        end
+        return row, nil
+    end
+
     local projection_rows, projection_query_err = sql.builder.select("id", "body", "last_event_seq", "actor_id", "actor_context")
         :from("kickside_projection")
         :where(sql.builder.eq({ thread_id = thread_id, kind = kind, projection_key = projection_key }))
@@ -535,6 +554,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         "failed to load projection", "projection.rows", 0, 1, response_error)
     if projection_query_err then return nil, projection_query_err end
     if not projection_rows then return nil, response_error("projection.rows") end
+    if not projection_rows[1] and system_worker_err then return nil, system_worker_err end
 
     -- An array encodes the descriptor and exact installed destination identically
     -- on both SQL engines, including IDs containing punctuation.
@@ -626,6 +646,18 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         else
             declaration_changed = worker_changed
         end
+        if system_worker_err and not transitioning then
+            -- Drift and transitions were checked above. Only ensure on an
+            -- existing cursor with a valid identity can retain this worker.
+            local cursor_err: error?
+            cursor, cursor_err = load_cursor()
+            if cursor_err then return nil, cursor_err end
+            if params.ensure ~= true or not cursor or (cursor.actor_id == nil and cursor.execution_identity_json == nil) then
+                return nil, system_worker_err
+            end
+            local identity, identity_err = execution_identity.from_row(cursor.actor_id, cursor.execution_identity_json)
+            if identity_err or not identity then return nil, identity_err or system_worker_err end
+        end
         if params.ensure ~= true or declaration_changed then
             local projection_update = sql.builder.update("kickside_projection")
                 :set("body", body_to_write)
@@ -712,26 +744,18 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
 
     local cursor_id: string
     local generation = 1
-    local cursor_rows, cursor_query_err = sql.builder.select("id", "last_seq", "generation", "job_id", "debounce_idle_ms", "debounce_max_ms")
-        :from("kickside_projection_cursor")
-        :where(sql.builder.eq({ projection_id = projection_id, cursor_key = cursor_key }))
-        :limit(1):run_with(tx):query()
-    cursor_rows, cursor_query_err = sql_boundary.bounded_rows(cursor_rows, cursor_query_err,
-        "failed to load cursor", "cursor.rows", 0, 1, response_error)
-    if cursor_query_err then return nil, cursor_query_err end
-    if not cursor_rows then return nil, response_error("cursor.rows") end
+    if not cursor then
+        local cursor_err: error?
+        cursor, cursor_err = load_cursor()
+        if cursor_err then return nil, cursor_err end
+    end
     local cursor_head = checkpoint
-    if #cursor_rows > 0 then
-        local cursor = cursor_rows[1]
-        if convergence and (tonumber(cursor.debounce_idle_ms) ~= debounce_idle_ms
-            or tonumber(cursor.debounce_max_ms) ~= debounce_max_ms) then
-            return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
-        end
-        cursor_id = tostring(cursor_rows[1].id)
-        cursor_head = reset and start_seq or tonumber(cursor_rows[1].last_seq)
+    if cursor then
+        cursor_id = tostring(cursor.id)
+        cursor_head = reset and start_seq or tonumber(cursor.last_seq)
         if cursor_head == nil then return fail("projection cursor position is missing", errors.INTERNAL) end
         if cursor_head < pruned_seq then return fail("projection cursor is behind pruned history", errors.CONFLICT) end
-        local prior_generation = tonumber(cursor_rows[1].generation)
+        local prior_generation = tonumber(cursor.generation)
         if prior_generation == nil then return fail("projection cursor generation is missing", errors.INTERNAL) end
         generation = prior_generation
         if params.ensure ~= true then
@@ -792,7 +816,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     local _, link_proof_err = sql_boundary.exact_row_count(linked, link_err,
         "failed to link projection slot", "cursor.link", 1, response_error)
     if link_proof_err then return nil, link_proof_err end
-    if params.ensure ~= true and cursor_rows and cursor_rows[1] and (cursor_head < event_count or reset) then
+    if params.ensure ~= true and cursor and (cursor_head < event_count or reset) then
         local _, wake_err = jobs_wake.wake_job(tx, job_id, { control = true }, dbtype)
         if wake_err then return nil, wake_err end
     end
@@ -830,11 +854,12 @@ end
 -- committing its own transaction off db. On error it rolls back and returns
 -- the error. Delegates to register_projection_tx for the core SQL.
 function writer.register_projection(db: sql.DB, thread_id: string, params: table, mode: string?,
-    declaration_impl_id: string?, source: table?): (RegisterResult?, error?)
+    declaration_impl_id: string?, source: table?, system_worker_err: error?): (RegisterResult?, error?)
     local dbtype, dbtype_err = sql_boundary.database_type(db, "failed to resolve db type", "database.type", response_error)
     if dbtype_err then return nil, dbtype_err end
     local result, err = sql_boundary.transaction(db, function(tx: sql.Transaction): (any?, error?)
-        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id, source)
+        return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id, source,
+            system_worker_err)
     end, "projection registration", response_error)
     if err then return nil, err end
     if result and (result.transitioned or result.deferred) then return result, nil end

@@ -169,6 +169,13 @@ local function define_tests()
             set_private_context_raw(thread_id, "{\"cursor\":\"abc\",\"frozen\":1}")
             local before = private_context_raw(thread_id)
 
+            -- A legacy private context can lack the component identity while the
+            -- already registered cursor still has its original principal.
+            local _, retained_err = as_owner("ensure_thread", {
+                component_id = thread_id, impl_id = "app:provision_test_decl",
+            })
+            test.is_nil(retained_err)
+
             folded.events = {input = {{type = "older.event"}}}
             local stale_db = assert(sql.get(DB))
             assert(stale_db:execute("UPDATE kickside_projection SET body=$1 WHERE thread_id=$2 AND kind='test.count'",
@@ -179,6 +186,7 @@ local function define_tests()
                 component_id = thread_id, impl_id = "app:provision_test_decl",
             })
             test.is_nil(ensured)
+            test.eq(ensure_err and ensure_err:kind(), errors.CONFLICT)
             test.eq(ensure_err and ensure_err:details().code, "projection_declaration_requires_registration")
 
             local event = {
@@ -191,6 +199,7 @@ local function define_tests()
             }
             local refused, refuse_err = as_owner(EMIT, event)
             test.is_nil(refused)
+            test.eq(refuse_err and refuse_err:kind(), errors.CONFLICT)
             test.eq(refuse_err and refuse_err:details().code, "projection_declaration_requires_registration")
             local still_folded = projection_body_of(thread_id, "test.count")
             test.eq(still_folded.events.input[1].type, "older.event")
