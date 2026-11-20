@@ -10,6 +10,18 @@ local agent_ref = require("agent_ref")
 
 local PACK_TOKEN = "kickside.agents.api:pack_start_token"
 local AGENT_RESOLVER_CONTRACT = "wippy.agent:resolver"
+local SETTINGS_CONTRACT = "kickside.settings:settings"
+
+local function start_screen_profile(surface: string): (any, any?)
+    local def = contract.get(SETTINGS_CONTRACT)
+    if not def then return {}, nil end
+    local settings, open_err = def:open()
+    if open_err or not settings then return nil, open_err or "settings unavailable" end
+    local result, err = settings:get_namespace({ namespace = "kickside.ui" })
+    if err or not result or not result.success then return nil, err or "settings unavailable" end
+    local appearance = result.values and result.values.chat_appearance
+    return (type(appearance) == "table" and appearance[surface]) or {}, nil
+end
 local MAX_PICKER_LIMIT = 100
 
 -- Pack a start token via the isolated pack_start_token function (separate pool),
@@ -171,6 +183,33 @@ local function handler()
         if q == nil then return true end
         return string.find(string.lower(title or ""), q, 1, true) ~= nil
             or string.find(string.lower(comment or ""), q, 1, true) ~= nil
+    end
+
+    local surface = req:query("surface")
+    local profile: any = nil
+    if surface and surface ~= "" then
+        if (surface ~= "sessions" and surface ~= "sidebar") or resolve_mode then
+            query_params.bad_request(res, "Invalid chat start surface")
+            return
+        end
+        local profile_err
+        profile, profile_err = start_screen_profile(surface)
+        if profile_err then
+            res:set_status(http.STATUS.SERVICE_UNAVAILABLE)
+            res:write_json({ success = false, error = "Chat settings unavailable" })
+            return
+        end
+        if profile.show_agent_picker == false or type(profile.allowed_agents) == "table" then
+            local ids = profile.allowed_agents or {}
+            if profile.show_agent_picker == false then ids = { profile.default_agent } end
+            local allowed: { [string]: boolean } = {}
+            for _, id in ipairs(ids) do
+                allowed[id] = true
+                local user_id = agent_ref.user_component_id(id)
+                if user_id then wanted_user_ids[#wanted_user_ids + 1] = user_id end
+            end
+            want_ids = allowed
+        end
     end
 
     local start_resolver = nil
@@ -376,11 +415,30 @@ local function handler()
     end)
 
     res:set_status(http.STATUS.OK)
+    local screen = nil
+    if profile then
+        local default_agent = nil
+        for _, agent in ipairs(agents) do
+            if agent.name == profile.default_agent then
+                default_agent = agent.name
+                break
+            end
+        end
+        screen = {
+            intro = profile.intro or "default",
+            markdown = profile.intro == "markdown" and profile.markdown or "",
+            markdown_alignment = profile.markdown_alignment or "left",
+            show_message = (profile.show_message == true) or (profile.show_message == nil and surface == "sessions"),
+            show_agent_picker = profile.show_agent_picker ~= false,
+            default_agent = default_agent,
+        }
+    end
     res:write_json({
         success = true,
         count = #agents,
         agents = agents,
-        grouped = groups
+        grouped = groups,
+        chat_screen = screen
     })
 end
 

@@ -1,30 +1,40 @@
-import { W as o, m as s } from "./wc-runtime-C6gaf4iX.js";
+import { W as s, m as o } from "./wc-runtime-enaNScz7.js";
 import { l as r } from "./lazy-DX8B4FNv.js";
-import { s as n } from "./styles-BfuGB-97.js";
-import { define as i } from "@wippy-fe/proxy";
-class e extends o {
+import { s as i } from "./styles-DuLm13PJ.js";
+import { define as n } from "@wippy-fe/proxy";
+class e extends s {
   static get wippyConfig() {
     return {
-      propsSchema: { type: "object", properties: {} },
+      propsSchema: {
+        type: "object",
+        properties: {
+          surface: {
+            type: "string",
+            enum: ["sessions", "sidebar"],
+            default: "sidebar",
+            description: "Selects the empty-chat profile for the Sessions page or the host sidebar."
+          }
+        }
+      },
       hostCssKeys: ["themeConfigUrl", "primeVueCssUrl"],
-      inlineCss: n
+      inlineCss: i
     };
   }
   static get vueConfig() {
     return {
       lazyConfig: r(
-        () => import("./chat_empty_state-mount-Cz8BC94Q.js").then((t) => t.mountConfig),
+        () => import("./chat_empty_state-mount-gDC-NxNr.js").then((t) => t.mountConfig),
         "Could not load the chat start screen. Reload the page to try again.",
-        s
+        o
       )
     };
   }
 }
-async function u() {
+async function c() {
   return e;
 }
-i(import.meta.url, e);
+n(import.meta.url, e);
 export {
-  u as webComponent
+  c as webComponent
 };
 //# sourceMappingURL=chat_empty_state.js.map

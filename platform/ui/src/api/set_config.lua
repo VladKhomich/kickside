@@ -8,6 +8,7 @@ local json = require("json")
 local security = require("security")
 local contract = require("contract")
 local ui_types = require("ui_types")
+local chat_appearance = require("chat_appearance")
 
 local SETTINGS_CONTRACT = ui_types.CONTRACT.SETTINGS
 local REALTIME_CONTRACT = ui_types.CONTRACT.REALTIME
@@ -84,6 +85,14 @@ local function handler()
     end
 
     local b = body :: { [string]: any }
+    if b.chat_appearance ~= nil then
+        local result = chat_appearance.validate({ value = b.chat_appearance })
+        if not result.valid then
+            res:set_status(http.STATUS.BAD_REQUEST)
+            res:write_json({ success = false, error = result.error })
+            return
+        end
+    end
     local updated = {}
     for key, want in pairs(SETTABLE) do
         local v = b[key]
@@ -114,6 +123,16 @@ local function handler()
             end
             updated[#updated + 1] = key
         end
+    end
+
+    if b.chat_appearance ~= nil then
+        local r = inst:set({ namespace = ui_types.SETTINGS_NS, key = "chat_appearance", value = b.chat_appearance })
+        if not r or not r.success then
+            res:set_status(http.STATUS.BAD_REQUEST)
+            res:write_json({ success = false, error = "chat_appearance: " .. tostring(r and r.error) })
+            return
+        end
+        updated[#updated + 1] = "chat_appearance"
     end
 
     if #updated > 0 then

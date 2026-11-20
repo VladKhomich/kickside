@@ -28,7 +28,7 @@ import {
   slotFor,
 } from './hostRoute.ts'
 import type { HostRoute, LayoutEvent, LayoutLike } from './hostRoute.ts'
-import { closeStartedSession, exchangeStartToken } from './chatStart.ts'
+import { CHAT_START_REQUEST, CHAT_START_RESULT, CHAT_START_STATE, closeStartedSession, exchangeStartToken, sendFirstMessage } from './chatStart.ts'
 
 /**
  * Kickside's chat routing for the host `chat` panel (@HOST/chat-wrapper).
@@ -40,9 +40,6 @@ import { closeStartedSession, exchangeStartToken } from './chatStart.ts'
  * breakpoints. It is eager because it is headless and must hear the first
  * intent.
  */
-
-/** Bus channel on which this coordinator tells the chat empty state whether a start is in flight. */
-const START_CHANNEL = 'kickside:chat-start'
 
 const CHAT_TAB_ID = 'chat-tab'
 const CHAT_TAB = {
@@ -68,6 +65,12 @@ interface ChatIntent {
   context?: IntentContext
 }
 
+interface StartScreenRequest {
+  target: string
+  id: string
+  firstMessage: string
+}
+
 /** A token start whose session has not been announced yet. */
 interface PendingStart {
   token: string
@@ -80,6 +83,7 @@ interface PendingStart {
   section: string
   /** The session the panel held before this start, put back if the start is cancelled. */
   previousSessionId: string
+  screen?: StartScreenRequest
   /**
    * A layout clear cancels only a start whose request marker has arrived.
    */
@@ -276,17 +280,23 @@ function isFullPage(intent: ChatIntent, current: HostRoute): boolean {
  * Set or clear the start in flight. The chat empty state locks its picker
  * while one is, so a second pick cannot race the first.
  */
-function setPending(next: PendingStart | null) {
-  const changed = (pending !== null) !== (next !== null)
-  pending?.controller.abort()
-  pending = next
-  if (changed) bus?.broadcast(START_CHANNEL, { pending: next !== null })
+function reportStart(screen: StartScreenRequest, state: 'accepted' | 'finished' | 'failed', error?: string) {
+  bus?.send(screen.target, CHAT_START_RESULT, { id: screen.id, state, error })
 }
 
-function cancelPending() {
+function setPending(next: PendingStart | null, result: 'finished' | 'failed' = 'failed', error = 'Chat start was cancelled.') {
+  const changed = (pending !== null) !== (next !== null)
+  const previous = pending
+  previous?.controller.abort()
+  pending = next
+  if (previous?.screen) reportStart(previous.screen, result, result === 'failed' ? error : undefined)
+  if (changed) bus?.broadcast(CHAT_START_STATE, { pending: next !== null })
+}
+
+function cancelPending(error?: string) {
   const start = pending
   if (!start) return
-  setPending(null)
+  setPending(null, 'failed', error)
   patchChat({ startRequest: null, sessionId: start.previousSessionId || null })
 }
 
@@ -310,16 +320,29 @@ async function finishStart(start: PendingStart) {
     sessionId = await exchangeStartToken(start.token, start.controller.signal)
   } catch {
     if (pending !== start) return
-    cancelPending()
-    host?.toast({ severity: 'error', summary: 'Could not start chat' })
+    cancelPending('Could not start chat. Please try again.')
+    if (!start.screen) host?.toast({ severity: 'error', summary: 'Could not start chat' })
     return
   }
   if (pending !== start) {
     closeStartedSession(sessionId)
     return
   }
-  setPending(null)
   applyContext(start.context, sessionId)
+  if (start.screen?.firstMessage) {
+    const message = start.screen.firstMessage
+    const result = await sendFirstMessage(sessionId, message)
+    // A newer navigation may have taken ownership while delivery was pending.
+    // Keep the created session, which may now have a committed message.
+    if (pending !== start) return
+    if (result === 'rejected') {
+      drafts.write(sessionId, message)
+      host?.toast({ severity: 'error', summary: 'Could not send the first message', detail: 'The text is still in your draft.' })
+    } else if (result === 'unconfirmed') {
+      host?.toast({ severity: 'warn', summary: 'First message delivery is unconfirmed', detail: 'Check the chat history before sending it again.' })
+    }
+  }
+  setPending(null, 'finished')
   if (start.fullPage) {
     patchChat({ sessionId: start.previousSessionId || null, startRequest: null })
     host?.navigate(sessionPath(sessionId))
@@ -330,13 +353,13 @@ async function finishStart(start: PendingStart) {
   if (isBareSessions(current)) carryIn(sessionId, current)
 }
 
-function startChat(intent: ChatIntent, token: string) {
+function startChat(intent: ChatIntent, token: string, screen?: StartScreenRequest) {
   const layout = readLayout()
   const current = readRoute(layout)
   const fullPage = isFullPage(intent, current)
   const section = pathSection(current.path)
   if (fullPage && layout && isPanelOpen(layout, requireManager().activeBreakpoint, CHAT_PANEL_ID)) hide(layout)
-  const merged = pending?.token === token
+  const merged = !screen && !pending?.screen && pending?.token === token
   if (merged && pending) {
     Object.assign(pending, { fullPage, context: intent.context, section })
   } else {
@@ -344,9 +367,10 @@ function startChat(intent: ChatIntent, token: string) {
       ?? patchedSession ?? text(panelProps(layout, CHAT_PANEL_ID).sessionId)
     const start: PendingStart = {
       token, controller: new AbortController(), request: ++requestSequence,
-      fullPage, context: intent.context, section, previousSessionId, seen: false,
+      fullPage, context: intent.context, section, previousSessionId, screen, seen: false,
     }
     setPending(start)
+    if (screen) reportStart(screen, 'accepted')
     patchChat({ startRequest: start.request, sessionId: null })
     void finishStart(start)
   }
@@ -396,6 +420,24 @@ async function onDraft(event: LayoutEvent) {
 }
 
 function onLayoutEvent(event: LayoutEvent) {
+  if (event.channel === CHAT_START_REQUEST) {
+    const target = event.sourcePanelId
+    if ((target !== MAIN_PANEL_ID && target !== CHAT_PANEL_ID) || !isRecord(event.payload)) return
+    const { id, token, message } = event.payload
+    if (typeof id !== 'string' || !id || typeof token !== 'string' || !token || typeof message !== 'string') return
+    const screen = { id, target, firstMessage: message.trim() }
+    const layout = readLayout()
+    const current = readRoute(layout)
+    const canStartHere = target === MAIN_PANEL_ID
+      ? mainIsAppPage(layout) && isBareSessions(current)
+      : !isSessionsPath(current.path)
+    if (pending || !canStartHere) {
+      reportStart(screen, 'failed', pending ? 'Another chat is starting.' : 'This chat screen is no longer active.')
+      return
+    }
+    startChat({ sidebar: target === CHAT_PANEL_ID }, token, screen)
+    return
+  }
   if (event.channel === DRAFT_CHANNEL) {
     void onDraft(event)
     return
@@ -438,7 +480,8 @@ function onNavigated(prev: HostRoute, next: HostRoute, layout: LayoutLike) {
   // another sub-route, query or hash, keeps it, so `/sessions` to
   // `/sessions?view=artifacts` still opens the new chat on completion. A drawer
   // start is not tied to any page and is never cancelled by navigation.
-  if (pending?.fullPage && pathSection(next.path) !== pending.section) {
+  if (pending?.fullPage && (pathSection(next.path) !== pending.section
+    || (pending.screen?.target === MAIN_PANEL_ID && !isBareSessions(next)))) {
     held = pending.previousSessionId
     cancelPending()
   }

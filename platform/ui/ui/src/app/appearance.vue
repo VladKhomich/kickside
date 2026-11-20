@@ -9,6 +9,8 @@ import { DEFAULT_TONE_FALLBACK, buildToneCss, buildDefaultToneCss, evaluateTone 
 import type { Item, Category, Override } from './appearance.types.ts'
 import { useAppearanceNavigation } from './useAppearanceNavigation.ts'
 import { useAppearanceBranding } from './useAppearanceBranding.ts'
+import ChatAppearance from './ChatAppearance.vue'
+import { chatAppearanceError, loadChatAppearance } from '@widgets/chatAppearance'
 
 // Appearance — a visual editor for the navigation your modules declare. Choose a
 // layout, rename and re-icon surfaces and categories, then drag them into the
@@ -88,12 +90,15 @@ const toneWarning = computed(() =>
 // Home page: the surface path users land on at "/". Stored as a single kickside.ui
 // setting (like title/logo), matched to a surface by its path.
 const home = ref('')
+const chat = ref(loadChatAppearance())
+let savedChat = ''
+const chatError = computed(() => chatAppearanceError(chat.value))
 // Baseline snapshot for dirty detection. Label/icon edits live inside overrides
 // (items) and cats (categories), so tracking those two captures every change.
 const baseline = ref('')
 const snapshot = () => JSON.stringify({
   layout: layout.value, cats: cats.value, overrides: overrides.value,
-  title: title.value, logo: logoUrl.value, home: home.value, tone: primaryColor.value,
+  title: title.value, logo: logoUrl.value, home: home.value, tone: primaryColor.value, chat: chat.value,
   pos: items.value.map(i => [i.id, i.category, i.order, !!i.hidden]),
 })
 const dirty = computed(() => snapshot() !== baseline.value)
@@ -108,6 +113,8 @@ async function load(): Promise<boolean> {
     items.value = (data.items ?? []).map((i: Item) => ({ ...i }))
     layout.value = data.layout === 'horizontal' ? 'horizontal' : 'vertical'
     const cfg = data.config ?? {}
+    chat.value = loadChatAppearance(cfg.chat_appearance)
+    savedChat = JSON.stringify(chat.value)
     cats.value = Array.isArray(cfg.categories) ? cfg.categories.map((c: Category) => ({ ...c })) : []
     overrides.value = (cfg.overrides && typeof cfg.overrides === 'object') ? structuredClone(cfg.overrides) : {}
     title.value = typeof cfg.title === 'string' ? cfg.title : ''
@@ -188,9 +195,10 @@ onBeforeUnmount(() => {
 })
 
 async function save() {
-  if (toneBlocked.value) return // guard: never persist an illegible tone
+  if (toneBlocked.value || chatError.value) return
   const submitted = snapshot()
   const submittedTone = primaryColor.value
+  const submittedChat = JSON.stringify(chat.value)
   saving.value = true
   error.value = ''
   try {
@@ -198,9 +206,11 @@ async function save() {
       layout: layout.value, overrides: overrides.value, categories: cats.value,
       title: title.value, logo_url: logoUrl.value, home: home.value,
       primary_color: primaryColor.value,
+      ...(submittedChat !== savedChat ? { chat_appearance: JSON.parse(submittedChat) } : {}),
     })
     if (!data.success) throw new Error(data.error || 'save failed')
     baseline.value = submitted
+    savedChat = submittedChat
     committedTone = submittedTone // a draft edited during this request is still unsaved
     // Re-assert in case a save→navigate-away race already reverted the overlay: if the user
     // left before this PUT resolved, onBeforeUnmount fired emitTone(pre-save committedTone).
@@ -259,9 +269,10 @@ watch(hostVisible, (visible, previous) => {
     <div class="ap-body">
       <header class="ap-bar">
         <span v-if="toneBlocked" class="ap-dirty ap-dirty-warn">{{ toneInvalid ? 'Invalid color' : 'Tone unreadable' }}</span>
+        <span v-else-if="chatError" class="ap-dirty ap-dirty-warn" role="status">{{ chatError }}</span>
         <span v-else-if="dirty" class="ap-dirty">Unsaved changes</span>
         <button class="ap-btn ap-btn-ghost" :disabled="!dirty || saving" @click="load">Discard</button>
-        <button class="ap-btn ap-btn-primary" :disabled="!dirty || saving || toneBlocked" @click="save">
+        <button class="ap-btn ap-btn-primary" :disabled="!dirty || saving || toneBlocked || !!chatError" @click="save">
           <Icon :icon="saving ? 'tabler:loader-2' : 'tabler:device-floppy'" :class="saving && 'spin'" aria-hidden="true" />
           {{ saving ? 'Saving…' : 'Save' }}
         </button>
@@ -364,6 +375,8 @@ watch(hostVisible, (visible, previous) => {
         </aside>
 
         <!-- Structure tree: the wide working area. -->
+        <div class="ap-content">
+        <ChatAppearance v-model="chat" />
         <section class="ap-card ap-structure">
           <header class="ap-h">
             <Icon icon="tabler:sitemap" aria-hidden="true" /> Structure
@@ -468,6 +481,7 @@ watch(hostVisible, (visible, previous) => {
             </div>
           </div>
         </section>
+        </div>
       </div>
     </div>
   </div>
