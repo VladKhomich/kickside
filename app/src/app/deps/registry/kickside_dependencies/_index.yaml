@@ -153,7 +153,7 @@ entries:
         value: app:processes
 
   # app.deps:kickside_sync
-  - version: ">=0.1.84"
+  - version: ">=0.1.96"
     name: kickside_sync
     kind: ns.dependency
     meta: {}

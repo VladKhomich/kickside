@@ -4,7 +4,7 @@ import { getLayoutManager as W, on as z, define as K } from "@wippy-fe/proxy";
 import { s as b, a as U, l as h, e as V, i as p, C as Z, b as G, m as J, M as Q, c as X, A as i } from "./hostRoute-zAgJIcxb.js";
 import { e as Y, c as $ } from "./chatStart-BnNVHJnO.js";
 import { u as tt } from "./useHostRoute-CdzDcqsP.js";
-import { u as et } from "./useSessionsApi-qNiqKQg2.js";
+import { u as et } from "./useSessionsApi-BIuCYu5K.js";
 const ot = { "aria-hidden": "true" }, y = "artifact-modal", at = /* @__PURE__ */ H({
   __name: "ArtifactCoordinator",
   setup(w) {

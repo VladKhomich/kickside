@@ -17,9 +17,13 @@ local function start_screen_profile(surface: string): (any, any?)
     if not def then return {}, nil end
     local settings, open_err = def:open()
     if open_err or not settings then return nil, open_err or "settings unavailable" end
-    local result, err = settings:get_namespace({ namespace = "kickside.ui" })
+    local result, err = settings:get({ namespace = "kickside.ui", key = "chat_appearance" })
+    -- An older UI module has no declaration for this setting.
+    if not err and result and not result.success and result.error == "undeclared setting" then
+        return {}, nil
+    end
     if err or not result or not result.success then return nil, err or "settings unavailable" end
-    local appearance = result.values and result.values.chat_appearance
+    local appearance = result.value
     return (type(appearance) == "table" and appearance[surface]) or {}, nil
 end
 local MAX_PICKER_LIMIT = 100

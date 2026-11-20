@@ -5,6 +5,7 @@ import type { ArtifactSummary, ChatAgent, ChatAgentGroup, ProviderBadge, Session
 const BASE = '/api/v1'
 
 interface ListResponse { success: boolean, count: number, sessions: Session[], error?: string }
+interface SessionResponse { success: boolean, session?: Session, error?: string }
 interface MessagesResponse { success: boolean, count: number, messages: SessionMessage[], error?: string }
 interface TokenResponse { success: boolean, token?: string, error?: string }
 interface MutationResponse { success: boolean, error?: string }
@@ -31,6 +32,15 @@ export function useSessionsApi() {
     const { data } = await api.get<ListResponse>(`${BASE}/sessions?limit=${limit}&offset=${offset}`)
     if (!data?.success) throw new Error(data?.error || 'Failed to load sessions')
     return { sessions: data.sessions || [], total: data.count || 0 }
+  }
+
+  async function session(id: string): Promise<Session | null> {
+    const { data, status } = await api.get<SessionResponse>(`${BASE}/sessions/get?session_id=${encodeURIComponent(id)}`, {
+      validateStatus: (status: number) => status === 200 || status === 403 || status === 404,
+    })
+    if (status === 403 || status === 404) return null
+    if (!data?.success || data.session?.session_id !== id) throw new Error(data?.error || 'Failed to load session')
+    return data.session
   }
 
   // Resolve agent component ids -> human titles so rows show a name, never a raw
@@ -140,7 +150,7 @@ export function useSessionsApi() {
 
   async function artifact(artifactId: string): Promise<ArtifactSummary> {
     const { data } = await api.get<ArtifactResponse>(`${BASE}/artifact/${encodeURIComponent(artifactId)}`)
-    if (!data?.uuid) throw new Error(data?.error || 'Failed to load artifact')
+    if (data?.uuid !== artifactId) throw new Error(data?.error || 'Failed to load artifact')
     return { ...data, artifact_id: data.artifact_id || data.uuid }
   }
 
@@ -151,5 +161,5 @@ export function useSessionsApi() {
     return typeof data === 'string' ? data : JSON.stringify(data, null, 2)
   }
 
-  return { list, messages, rename, remove, setFavorite, startToken, agentTitles, chatAgents, providerBadges, artifacts, artifact, artifactContent }
+  return { list, session, messages, rename, remove, setFavorite, startToken, agentTitles, chatAgents, providerBadges, artifacts, artifact, artifactContent }
 }

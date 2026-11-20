@@ -9,7 +9,7 @@ entries:
       description: A self-contained web component for managing chat sessions (list, rename, resume, restart, preview, delete). Reuses the wippy/session HTTP API for reads/writes and ships one start-token endpoint so a session can be restarted as a fresh chat with the same agent.
 
   - name: dep.wippy.session
-    version: '*'
+    version: '>=0.7.1'
     kind: ns.dependency
     component: wippy/session
 

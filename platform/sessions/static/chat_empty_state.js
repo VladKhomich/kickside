@@ -1,6 +1,6 @@
 import { W as s, m as o } from "./wc-runtime-enaNScz7.js";
 import { l as r } from "./lazy-DX8B4FNv.js";
-import { s as i } from "./styles-DuLm13PJ.js";
+import { s as i } from "./styles-urvsV3uf.js";
 import { define as n } from "@wippy-fe/proxy";
 class e extends s {
   static get wippyConfig() {
@@ -23,7 +23,7 @@ class e extends s {
   static get vueConfig() {
     return {
       lazyConfig: r(
-        () => import("./chat_empty_state-mount-gDC-NxNr.js").then((t) => t.mountConfig),
+        () => import("./chat_empty_state-mount-QqBf09S8.js").then((t) => t.mountConfig),
         "Could not load the chat start screen. Reload the page to try again.",
         o
       )

@@ -3,7 +3,7 @@ import { mergeProps as ne, openBlock as r, createElementBlock as s, defineCompon
 import { Icon as _ } from "@iconify/vue";
 import { a as _e, s as we } from "./index-AZnOi_Q-.js";
 import { host as M, on as Z } from "@wippy-fe/proxy";
-import { d as Te, u as Se } from "./useSessionsApi-qNiqKQg2.js";
+import { d as Te, u as Se } from "./useSessionsApi-BIuCYu5K.js";
 import Ce from "markdown-it";
 import { i as ze } from "./hostRoute-zAgJIcxb.js";
 import { b as ee, a as te, d as O, C as ae } from "./chatStart-BnNVHJnO.js";
@@ -484,4 +484,4 @@ const Ue = { class: "kx-chat-start-body" }, qe = {
 export {
   _t as mountConfig
 };
-//# sourceMappingURL=chat_empty_state-mount-gDC-NxNr.js.map
+//# sourceMappingURL=chat_empty_state-mount-QqBf09S8.js.map

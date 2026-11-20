@@ -1,7 +1,7 @@
-import { B as m, A as x, g as j, b as w, f as p, d as A, n as C, m as O } from "./wc-runtime-enaNScz7.js";
-import { s as T } from "./index-MlhtjijP.js";
-import { openBlock as i, createElementBlock as g, mergeProps as a, renderSlot as b, createTextVNode as N, toDisplayString as S, resolveComponent as f, resolveDirective as L, withDirectives as E, createBlock as h, resolveDynamicComponent as F, withCtx as D, createCommentVNode as v, normalizeClass as y } from "vue";
-var K = `
+import { B as E, A as _, g as K, b as L, f as k, d as V, n as q, m as X } from "./wc-runtime-enaNScz7.js";
+import { s as Z, a as j } from "./artifactPresentation-DcPCG-aH.js";
+import { openBlock as s, createElementBlock as x, mergeProps as l, renderSlot as g, createTextVNode as G, toDisplayString as U, resolveComponent as F, resolveDirective as H, withDirectives as J, createBlock as I, resolveDynamicComponent as Q, withCtx as W, createCommentVNode as $, normalizeClass as O, ref as C, onBeforeUnmount as Y } from "vue";
+var tt = `
     .p-badge {
         display: inline-flex;
         border-radius: dt('badge.border.radius');
@@ -76,12 +76,12 @@ var K = `
         min-width: dt('badge.xl.min.width');
         height: dt('badge.xl.height');
     }
-`, U = {
-  root: function(t) {
-    var o = t.props, r = t.instance;
+`, nt = {
+  root: function(n) {
+    var o = n.props, r = n.instance;
     return ["p-badge p-component", {
-      "p-badge-circle": j(o.value) && String(o.value).length === 1,
-      "p-badge-dot": x(o.value) && !r.$slots.default,
+      "p-badge-circle": K(o.value) && String(o.value).length === 1,
+      "p-badge-dot": _(o.value) && !r.$slots.default,
       "p-badge-sm": o.size === "small",
       "p-badge-lg": o.size === "large",
       "p-badge-xl": o.size === "xlarge",
@@ -93,13 +93,13 @@ var K = `
       "p-badge-contrast": o.severity === "contrast"
     }];
   }
-}, V = m.extend({
+}, ot = E.extend({
   name: "badge",
-  style: K,
-  classes: U
-}), R = {
+  style: tt,
+  classes: nt
+}), rt = {
   name: "BaseBadge",
-  extends: w,
+  extends: L,
   props: {
     value: {
       type: [String, Number],
@@ -114,7 +114,7 @@ var K = `
       default: null
     }
   },
-  style: V,
+  style: ot,
   provide: function() {
     return {
       $pcBadge: this,
@@ -122,54 +122,54 @@ var K = `
     };
   }
 };
-function l(n) {
+function f(t) {
   "@babel/helpers - typeof";
-  return l = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(t) {
-    return typeof t;
-  } : function(t) {
-    return t && typeof Symbol == "function" && t.constructor === Symbol && t !== Symbol.prototype ? "symbol" : typeof t;
-  }, l(n);
+  return f = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+    return typeof n;
+  } : function(n) {
+    return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
+  }, f(t);
 }
-function k(n, t, o) {
-  return (t = q(t)) in n ? Object.defineProperty(n, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : n[t] = o, n;
+function D(t, n, o) {
+  return (n = et(n)) in t ? Object.defineProperty(t, n, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = o, t;
 }
-function q(n) {
-  var t = G(n, "string");
-  return l(t) == "symbol" ? t : t + "";
+function et(t) {
+  var n = dt(t, "string");
+  return f(n) == "symbol" ? n : n + "";
 }
-function G(n, t) {
-  if (l(n) != "object" || !n) return n;
-  var o = n[Symbol.toPrimitive];
+function dt(t, n) {
+  if (f(t) != "object" || !t) return t;
+  var o = t[Symbol.toPrimitive];
   if (o !== void 0) {
-    var r = o.call(n, t);
-    if (l(r) != "object") return r;
+    var r = o.call(t, n);
+    if (f(r) != "object") return r;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
-  return (t === "string" ? String : Number)(n);
+  return (n === "string" ? String : Number)(t);
 }
-var P = {
+var M = {
   name: "Badge",
-  extends: R,
+  extends: rt,
   inheritAttrs: !1,
   computed: {
     dataP: function() {
-      return p(k(k({
+      return k(D(D({
         circle: this.value != null && String(this.value).length === 1,
         empty: this.value == null && !this.$slots.default
       }, this.severity, this.severity), this.size, this.size));
     }
   }
-}, H = ["data-p"];
-function J(n, t, o, r, z, u) {
-  return i(), g("span", a({
-    class: n.cx("root"),
-    "data-p": u.dataP
-  }, n.ptmi("root")), [b(n.$slots, "default", {}, function() {
-    return [N(S(n.value), 1)];
-  })], 16, H);
+}, at = ["data-p"];
+function it(t, n, o, r, e, d) {
+  return s(), x("span", l({
+    class: t.cx("root"),
+    "data-p": d.dataP
+  }, t.ptmi("root")), [g(t.$slots, "default", {}, function() {
+    return [G(U(t.value), 1)];
+  })], 16, at);
 }
-P.render = J;
-var M = `
+M.render = it;
+var ut = `
     .p-button {
         display: inline-flex;
         cursor: pointer;
@@ -820,35 +820,35 @@ var M = `
         color: dt('button.link.active.color');
     }
 `;
-function c(n) {
+function h(t) {
   "@babel/helpers - typeof";
-  return c = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(t) {
-    return typeof t;
-  } : function(t) {
-    return t && typeof Symbol == "function" && t.constructor === Symbol && t !== Symbol.prototype ? "symbol" : typeof t;
-  }, c(n);
+  return h = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+    return typeof n;
+  } : function(n) {
+    return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
+  }, h(t);
 }
-function d(n, t, o) {
-  return (t = Q(t)) in n ? Object.defineProperty(n, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : n[t] = o, n;
+function u(t, n, o) {
+  return (n = ct(n)) in t ? Object.defineProperty(t, n, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = o, t;
 }
-function Q(n) {
-  var t = W(n, "string");
-  return c(t) == "symbol" ? t : t + "";
+function ct(t) {
+  var n = lt(t, "string");
+  return h(n) == "symbol" ? n : n + "";
 }
-function W(n, t) {
-  if (c(n) != "object" || !n) return n;
-  var o = n[Symbol.toPrimitive];
+function lt(t, n) {
+  if (h(t) != "object" || !t) return t;
+  var o = t[Symbol.toPrimitive];
   if (o !== void 0) {
-    var r = o.call(n, t);
-    if (c(r) != "object") return r;
+    var r = o.call(t, n);
+    if (h(r) != "object") return r;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
-  return (t === "string" ? String : Number)(n);
+  return (n === "string" ? String : Number)(t);
 }
-var X = {
-  root: function(t) {
-    var o = t.instance, r = t.props;
-    return ["p-button p-component", d(d(d(d(d(d(d(d(d({
+var bt = {
+  root: function(n) {
+    var o = n.instance, r = n.props;
+    return ["p-button p-component", u(u(u(u(u(u(u(u(u({
       "p-button-icon-only": o.hasIcon && !r.label && !r.badge,
       "p-button-vertical": (r.iconPos === "top" || r.iconPos === "bottom") && r.label,
       "p-button-loading": r.loading,
@@ -856,18 +856,18 @@ var X = {
     }, "p-button-".concat(r.severity), r.severity), "p-button-raised", r.raised), "p-button-rounded", r.rounded), "p-button-text", r.text || r.variant === "text"), "p-button-outlined", r.outlined || r.variant === "outlined"), "p-button-sm", r.size === "small"), "p-button-lg", r.size === "large"), "p-button-plain", r.plain), "p-button-fluid", o.hasFluid)];
   },
   loadingIcon: "p-button-loading-icon",
-  icon: function(t) {
-    var o = t.props;
-    return ["p-button-icon", d({}, "p-button-icon-".concat(o.iconPos), o.label)];
+  icon: function(n) {
+    var o = n.props;
+    return ["p-button-icon", u({}, "p-button-icon-".concat(o.iconPos), o.label)];
   },
   label: "p-button-label"
-}, Y = m.extend({
+}, st = E.extend({
   name: "button",
-  style: M,
-  classes: X
-}), Z = {
+  style: ut,
+  classes: bt
+}), pt = {
   name: "BaseButton",
-  extends: w,
+  extends: L,
   props: {
     label: {
       type: String,
@@ -954,7 +954,7 @@ var X = {
       default: null
     }
   },
-  style: Y,
+  style: st,
   provide: function() {
     return {
       $pcButton: this,
@@ -962,34 +962,34 @@ var X = {
     };
   }
 };
-function s(n) {
+function v(t) {
   "@babel/helpers - typeof";
-  return s = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(t) {
-    return typeof t;
-  } : function(t) {
-    return t && typeof Symbol == "function" && t.constructor === Symbol && t !== Symbol.prototype ? "symbol" : typeof t;
-  }, s(n);
+  return v = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+    return typeof n;
+  } : function(n) {
+    return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
+  }, v(t);
 }
-function e(n, t, o) {
-  return (t = _(t)) in n ? Object.defineProperty(n, t, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : n[t] = o, n;
+function a(t, n, o) {
+  return (n = gt(n)) in t ? Object.defineProperty(t, n, { value: o, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = o, t;
 }
-function _(n) {
-  var t = nn(n, "string");
-  return s(t) == "symbol" ? t : t + "";
+function gt(t) {
+  var n = ft(t, "string");
+  return v(n) == "symbol" ? n : n + "";
 }
-function nn(n, t) {
-  if (s(n) != "object" || !n) return n;
-  var o = n[Symbol.toPrimitive];
+function ft(t, n) {
+  if (v(t) != "object" || !t) return t;
+  var o = t[Symbol.toPrimitive];
   if (o !== void 0) {
-    var r = o.call(n, t);
-    if (s(r) != "object") return r;
+    var r = o.call(t, n);
+    if (v(r) != "object") return r;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
-  return (t === "string" ? String : Number)(n);
+  return (n === "string" ? String : Number)(t);
 }
-var tn = {
+var ht = {
   name: "Button",
-  extends: Z,
+  extends: pt,
   inheritAttrs: !1,
   inject: {
     $pcFluid: {
@@ -997,9 +997,9 @@ var tn = {
     }
   },
   methods: {
-    getPTOptions: function(t) {
-      var o = t === "root" ? this.ptmi : this.ptm;
-      return o(t, {
+    getPTOptions: function(n) {
+      var o = n === "root" ? this.ptmi : this.ptm;
+      return o(n, {
         context: {
           disabled: this.disabled
         }
@@ -1017,7 +1017,7 @@ var tn = {
       return this.icon || this.$slots.icon;
     },
     attrs: function() {
-      return a(this.asAttrs, this.a11yAttrs, this.getPTOptions("root"));
+      return l(this.asAttrs, this.a11yAttrs, this.getPTOptions("root"));
     },
     asAttrs: function() {
       return this.as === "BUTTON" ? {
@@ -1034,83 +1034,221 @@ var tn = {
       };
     },
     hasFluid: function() {
-      return x(this.fluid) ? !!this.$pcFluid : this.fluid;
+      return _(this.fluid) ? !!this.$pcFluid : this.fluid;
     },
     dataP: function() {
-      return p(e(e(e(e(e(e(e(e(e(e({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge), "loading", this.loading), "fluid", this.hasFluid), "rounded", this.rounded), "raised", this.raised), "outlined", this.outlined || this.variant === "outlined"), "text", this.text || this.variant === "text"), "link", this.link || this.variant === "link"), "vertical", (this.iconPos === "top" || this.iconPos === "bottom") && this.label));
+      return k(a(a(a(a(a(a(a(a(a(a({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge), "loading", this.loading), "fluid", this.hasFluid), "rounded", this.rounded), "raised", this.raised), "outlined", this.outlined || this.variant === "outlined"), "text", this.text || this.variant === "text"), "link", this.link || this.variant === "link"), "vertical", (this.iconPos === "top" || this.iconPos === "bottom") && this.label));
     },
     dataIconP: function() {
-      return p(e(e({}, this.iconPos, this.iconPos), this.size, this.size));
+      return k(a(a({}, this.iconPos, this.iconPos), this.size, this.size));
     },
     dataLabelP: function() {
-      return p(e(e({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge));
+      return k(a(a({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge));
     }
   },
   components: {
-    SpinnerIcon: T,
-    Badge: P
+    SpinnerIcon: Z,
+    Badge: M
   },
   directives: {
-    ripple: A
+    ripple: V
   }
-}, on = ["data-p"], rn = ["data-p"];
-function en(n, t, o, r, z, u) {
-  var $ = f("SpinnerIcon"), B = f("Badge"), I = L("ripple");
-  return n.asChild ? b(n.$slots, "default", {
+}, vt = ["data-p"], yt = ["data-p"];
+function mt(t, n, o, r, e, d) {
+  var c = F("SpinnerIcon"), i = F("Badge"), b = H("ripple");
+  return t.asChild ? g(t.$slots, "default", {
     key: 1,
-    class: y(n.cx("root")),
-    a11yAttrs: u.a11yAttrs
-  }) : E((i(), h(F(n.as), a({
+    class: O(t.cx("root")),
+    a11yAttrs: d.a11yAttrs
+  }) : J((s(), I(Q(t.as), l({
     key: 0,
-    class: n.cx("root"),
-    "data-p": u.dataP
-  }, u.attrs), {
-    default: D(function() {
-      return [b(n.$slots, "default", {}, function() {
-        return [n.loading ? b(n.$slots, "loadingicon", a({
+    class: t.cx("root"),
+    "data-p": d.dataP
+  }, d.attrs), {
+    default: W(function() {
+      return [g(t.$slots, "default", {}, function() {
+        return [t.loading ? g(t.$slots, "loadingicon", l({
           key: 0,
-          class: [n.cx("loadingIcon"), n.cx("icon")]
-        }, n.ptm("loadingIcon")), function() {
-          return [n.loadingIcon ? (i(), g("span", a({
+          class: [t.cx("loadingIcon"), t.cx("icon")]
+        }, t.ptm("loadingIcon")), function() {
+          return [t.loadingIcon ? (s(), x("span", l({
             key: 0,
-            class: [n.cx("loadingIcon"), n.cx("icon"), n.loadingIcon]
-          }, n.ptm("loadingIcon")), null, 16)) : (i(), h($, a({
+            class: [t.cx("loadingIcon"), t.cx("icon"), t.loadingIcon]
+          }, t.ptm("loadingIcon")), null, 16)) : (s(), I(c, l({
             key: 1,
-            class: [n.cx("loadingIcon"), n.cx("icon")],
+            class: [t.cx("loadingIcon"), t.cx("icon")],
             spin: ""
-          }, n.ptm("loadingIcon")), null, 16, ["class"]))];
-        }) : b(n.$slots, "icon", a({
+          }, t.ptm("loadingIcon")), null, 16, ["class"]))];
+        }) : g(t.$slots, "icon", l({
           key: 1,
-          class: [n.cx("icon")]
-        }, n.ptm("icon")), function() {
-          return [n.icon ? (i(), g("span", a({
+          class: [t.cx("icon")]
+        }, t.ptm("icon")), function() {
+          return [t.icon ? (s(), x("span", l({
             key: 0,
-            class: [n.cx("icon"), n.icon, n.iconClass],
-            "data-p": u.dataIconP
-          }, n.ptm("icon")), null, 16, on)) : v("", !0)];
-        }), n.label ? (i(), g("span", a({
+            class: [t.cx("icon"), t.icon, t.iconClass],
+            "data-p": d.dataIconP
+          }, t.ptm("icon")), null, 16, vt)) : $("", !0)];
+        }), t.label ? (s(), x("span", l({
           key: 2,
-          class: n.cx("label")
-        }, n.ptm("label"), {
-          "data-p": u.dataLabelP
-        }), S(n.label), 17, rn)) : v("", !0), n.badge ? (i(), h(B, {
+          class: t.cx("label")
+        }, t.ptm("label"), {
+          "data-p": d.dataLabelP
+        }), U(t.label), 17, yt)) : $("", !0), t.badge ? (s(), I(i, {
           key: 3,
-          value: n.badge,
-          class: y(n.badgeClass),
-          severity: n.badgeSeverity,
-          unstyled: n.unstyled,
-          pt: n.ptm("pcBadge")
-        }, null, 8, ["value", "class", "severity", "unstyled", "pt"])) : v("", !0)];
+          value: t.badge,
+          class: O(t.badgeClass),
+          severity: t.badgeSeverity,
+          unstyled: t.unstyled,
+          pt: t.ptm("pcBadge")
+        }, null, 8, ["value", "class", "severity", "unstyled", "pt"])) : $("", !0)];
       })];
     }),
     _: 3
-  }, 16, ["class", "data-p"])), [[I]]);
+  }, 16, ["class", "data-p"])), [[b]]);
 }
-tn.render = en;
-const bn = () => C(), ln = () => O();
+ht.render = mt;
+const It = () => q(), $t = () => X(), kt = {
+  title: "title",
+  status: "status",
+  kind: "kind",
+  agent: "current_agent",
+  model: "current_model"
+}, B = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:Z|[+-]\d{2}:\d{2})$/;
+function A(t) {
+  return typeof t == "object" && t !== null && !Array.isArray(t);
+}
+function S(t) {
+  if (!(!A(t) || typeof t.topic != "string" || !A(t.data)))
+    return { topic: t.topic, parts: t.topic.split(":"), data: t.data };
+}
+function P(t) {
+  if (!(typeof t != "string" || !t || /[\s\u0000-\u001F\u007F]/.test(t)))
+    return t;
+}
+function w(t) {
+  try {
+    return P(decodeURIComponent(t));
+  } catch {
+    return;
+  }
+}
+function y(t, n) {
+  return t === void 0 || t === n;
+}
+function N(t) {
+  return typeof t == "string" ? Date.parse(t) : typeof t != "number" || !Number.isFinite(t) ? NaN : Math.abs(t) < 1e11 ? t * 1e3 : t;
+}
+function xt(t) {
+  if (t === "" || t === null) return "";
+  if (typeof t == "string" && B.test(t) && Number.isFinite(Date.parse(t))) return t;
+  if (typeof t == "number") {
+    const n = new Date(N(t));
+    if (Number.isFinite(n.getTime())) return n.toISOString();
+  }
+}
+function wt(t) {
+  return A(t) && (t.favorite === void 0 || typeof t.favorite == "boolean");
+}
+function Bt(t) {
+  const n = S(t);
+  if (!n || n.parts.length !== 2 || n.parts[0] !== "session" || n.data.type !== "update")
+    return null;
+  const o = w(n.parts[1]), { data: r } = n;
+  if (!o || !y(r.session_id, o)) return null;
+  const e = {};
+  for (const [m, z] of Object.entries(kt)) {
+    const p = r[m];
+    (typeof p == "string" || p === null) && (e[z] = p ?? "");
+  }
+  const d = xt(r.last_message_date);
+  d !== void 0 && (e.last_message_date = d), wt(r.public_meta) && (e.public_meta = r.public_meta);
+  const c = r.deleted === !0, i = P(r.artifact_added), b = r.refresh === !0;
+  return !c && !i && !b && Object.keys(e).length === 0 ? null : { sessionId: o, patch: e, deleted: c, ...i && { artifactId: i }, ...b && { refresh: !0 } };
+}
+function At(t) {
+  const n = S(t);
+  if (n?.topic === "session.opened") return P(n.data.session_id);
+}
+function Nt(t) {
+  const n = S(t);
+  if (!n || n.parts.length !== 4 || n.parts[0] !== "session" || n.parts[2] !== "message") return;
+  const { data: o } = n;
+  if (o.type !== "received" && o.type !== "content") return;
+  const r = w(n.parts[1]), e = w(n.parts[3]);
+  if (!(!r || !e || !y(o.session_id, r)) && !(o.type === "received" && !y(o.message_id, e)))
+    return r;
+}
+function Tt(t) {
+  const n = S(t);
+  if (!n || n.parts.length !== 2 || n.parts[0] !== "artifact") return null;
+  const o = w(n.parts[1]), { data: r } = n;
+  if (!o || !y(r.artifact_id, o) || !y(r.uuid, o)) return null;
+  const e = P(r.session_id);
+  return { artifactId: o, deleted: r.deleted === !0, ...e && { sessionId: e } };
+}
+function T(t, n) {
+  return t > n ? -1 : t < n ? 1 : 0;
+}
+function R(t, n) {
+  const o = N(t), r = N(n);
+  if (!Number.isFinite(o)) return Number.isFinite(r) ? 1 : 0;
+  if (!Number.isFinite(r)) return -1;
+  if (o !== r) return T(o, r);
+  const e = (typeof t == "string" ? B.exec(t)?.[1] : void 0) ?? "", d = (typeof n == "string" ? B.exec(n)?.[1] : void 0) ?? "";
+  return T(e.padEnd(9, "0").slice(3), d.padEnd(9, "0").slice(3));
+}
+function jt(t, n) {
+  return R(t.created_at, n.created_at) || T(j(t), j(n));
+}
+function Ft(t, n) {
+  return R(t.last_message_date, n.last_message_date);
+}
+function Ot(t, n) {
+  const o = C(!1), r = C(!1);
+  let e, d = !1, c = !1, i = !1;
+  function b() {
+    i || r.value || e !== void 0 || !d && !c || (e = setTimeout(() => {
+      e = void 0, m();
+    }, 100));
+  }
+  async function m() {
+    if (!(i || r.value)) {
+      clearTimeout(e), e = void 0, r.value = !0;
+      try {
+        if (d) {
+          d = !1, o.value = !0;
+          try {
+            await t();
+          } finally {
+            o.value = !1;
+          }
+        }
+        c && !i && (c = !1, await n());
+      } finally {
+        r.value = !1, b();
+      }
+    }
+  }
+  function z() {
+    return d = !0, m();
+  }
+  function p() {
+    c = !0, b();
+  }
+  return Y(() => {
+    i = !0, clearTimeout(e);
+  }), { refreshing: o, syncing: r, refresh: z, queueUpdates: p };
+}
 export {
-  bn as a,
-  tn as s,
-  ln as u
+  Ot as a,
+  Bt as b,
+  jt as c,
+  It as d,
+  At as e,
+  Nt as f,
+  Ft as g,
+  Tt as r,
+  ht as s,
+  $t as u
 };
-//# sourceMappingURL=constants-ZXrDD_gm.js.map
+//# sourceMappingURL=useInventoryRefresh-Buy0ExeO.js.map
