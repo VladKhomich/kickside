@@ -3182,7 +3182,7 @@ entries:
   - name: projection_invoke_native_source
     kind: library.lua
     source: file://projection_invoke_native_source.lua
-    modules: [registry, security]
+    modules: [registry, security, funcs, logger]
     imports:
       event_access: kickside.core.threads:event_access
       component_query: kickside.component.persist:component_query
@@ -3499,7 +3499,7 @@ entries:
   - name: projection_apply_native_source
     kind: library.lua
     source: file://projection_apply_native_source.lua
-    modules: [ctx]
+    modules: [ctx, security, funcs]
     imports:
       error_envelope: kickside.contract:error_envelope
       sql: app:projection_apply_native_sql_adapter

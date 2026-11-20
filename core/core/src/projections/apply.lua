@@ -299,8 +299,9 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         return abort(job_types.lease_lost_error("projection source thread is deleting"))
     end
     local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local cursor_query = [[SELECT generation,last_seq,status,job_id,thread_id,projection_id,continuation
-        FROM kickside_projection_cursor WHERE id=$1]]
+    -- Hot registry publication can precede migration 20. A pre-migration row
+    -- simply has no optional lifecycle handoff position.
+    local cursor_query = "SELECT * FROM kickside_projection_cursor WHERE id=$1"
     if checkpoint and checkpoint.manifest then
         cursor_query = [[SELECT c.generation,c.last_seq,c.status,c.job_id,c.thread_id,c.projection_id,c.continuation,
             p.reset_generation FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
@@ -476,6 +477,8 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "projection apply commit failed") end
     local result = { self_completed = not effect, completion = done, last_seq = last,
+        pending_transition = not checkpoint and cursor.pending_transition_seq ~= nil
+            and last >= (tonumber(cursor.pending_transition_seq) or math.huge) or nil,
         continuation = effect and continuation or nil }
     if not checkpoint then
         local notify_err = notify_progress(snapshot, last, last > prior or #writes > 0)
@@ -589,14 +592,27 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
         checkpoint: Checkpoint?, empty_scan: boolean?): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
-    if #writes > 0 and (snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
-        local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
-        if identity_err then return nil, identity_err end
-        if type(identity) ~= "table" then return nil, response_error("execution_identity") end
-        local admitted, admission_err = execution_identity.run_as(identity,
-            "kickside.core.threads:authorize_projection_writes", { writes = writes }, {
-                deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
-            })
+    local in_owner_process = checkpoint and checkpoint.owner and checkpoint.write
+    if #writes > 0 and (in_owner_process or snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
+        local admitted, admission_err
+        if in_owner_process then
+            -- A supervised checkpoint process already runs in the projection's
+            -- admitted actor and scope. Authorize its effects in that frame.
+            local actor, actor_err = require("security").actor()
+            if actor_err then return nil, actor_err end
+            if not actor or not snapshot.actor_id or actor:id() ~= snapshot.actor_id then
+                return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "checkpoint actor differs from its admitted cursor"})
+            end
+            admitted, admission_err = require("funcs").call("kickside.core.threads:authorize_projection_writes", {writes = writes})
+        else
+            local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
+            if identity_err then return nil, identity_err end
+            if type(identity) ~= "table" then return nil, response_error("execution_identity") end
+            admitted, admission_err = execution_identity.run_as(identity,
+                "kickside.core.threads:authorize_projection_writes", { writes = writes }, {
+                    deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
+                })
+        end
         if admission_err then return nil, admission_err end
         if type(admitted) ~= "table" or type(admitted.writes) ~= "table" then
             return nil, response_error("admitted.writes")

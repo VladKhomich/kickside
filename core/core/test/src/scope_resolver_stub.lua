@@ -18,6 +18,15 @@ function M.resolve(args: any): (any?, error?)
     end
     local checked, check_err = execution_identity.check_principal(principal, "principal")
     if check_err or not checked then return nil, check_err end
+    -- A member checkpoint process cannot exercise the Jobs dispatcher's
+    -- deferred-owner grant when it emits its own authorized effects.
+    if string.find(checked.id, "checkpoint-member-", 1, true) == 1
+        and args.deferred_owner == "kickside.core.projections:tick" then
+        local actor = security.actor()
+        if actor and actor:id() == checked.id then
+            return nil, errors.new({message = "member has no projection tick grant", kind = errors.PERMISSION_DENIED})
+        end
+    end
     if string.sub(checked.id, 1, 16) == "lifecycle-token-" then
         local db, open_err = sql.get("app:db")
         if open_err then return nil, open_err end

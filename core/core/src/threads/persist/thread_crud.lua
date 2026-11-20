@@ -68,7 +68,7 @@ end
 
 -- identity: { row?, system?, error? } from the contract's declared_identity.
 local function register_declared_projection(db: DB, thread_id: string, p: table, identity: { [string]: any },
-    transition_impl_id: string?, source: table?): error?
+    impl_id: string, source: table?, allow_transition: boolean?, pending_cursor_id: string?): (error?, boolean?)
     local params = {
         kind = p.kind,
         worker_ref = p.worker_ref,
@@ -82,6 +82,7 @@ local function register_declared_projection(db: DB, thread_id: string, p: table,
         execution_identity_row = identity.row,
         system_identity = identity.system == true,
         ensure = true,
+        pending_cursor_id = pending_cursor_id,
     }
     -- Validate existing cursor identities, then refresh through the registration
     -- transaction that serializes on the thread row.
@@ -96,10 +97,10 @@ local function register_declared_projection(db: DB, thread_id: string, p: table,
     for _, row in ipairs(rows :: table[]) do
         if type(row.id) ~= "string" or row.id == "" then return declaration_response("cursor id") end
     end
-    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, "convergence", transition_impl_id, source)
+    local projection, proj_err = proj_writer.register_projection(db, thread_id, params, allow_transition and "convergence" or "ensure_declared", impl_id, source)
     if proj_err then return errors.wrap(proj_err, "register declared projection") end
     if type(projection) ~= "table" then return declaration_response("registration") end
-    return nil
+    return nil, projection.deferred
 end
 
 -- Declared projections run under an explicit identity: the v2 row, or the
@@ -115,7 +116,7 @@ local function declared_identity_error(identity: { [string]: any }): error?
 end
 
 function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_id: string?,
-    identity: { [string]: any }, indexes: table?, allow_transition: boolean?): error?
+    identity: { [string]: any }, indexes: table?, allow_transition: boolean?, pending_cursor_id: string?): (error?, boolean?)
     local impl_id = trim(declaration_impl_id)
     if impl_id == "" then return nil end
     if not has_thread_projections(impl_id) then return nil end
@@ -124,14 +125,16 @@ function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_
     local restricted, policy_err = event_access.restricted(impl_id)
     if policy_err then return policy_err end
     local source = restricted and {write = true} or nil
+    local deferred = false
     for index, p in ipairs(autoinit.projections_for_impl(impl_id)) do
         if (not indexes or indexes[tostring(index)])
             and (p.on == nil or p.on == "" or p.on == autoinit.PROJECTION_ON.THREAD) then
-            local proj_err = register_declared_projection(db, thread_id, p :: table, identity, allow_transition and impl_id or nil, source)
+            local proj_err, pending = register_declared_projection(db, thread_id, p :: table, identity, impl_id, source, allow_transition, pending_cursor_id)
             if proj_err then return proj_err end
+            if pending then deferred = true end
         end
     end
-    return nil
+    return nil, deferred
 end
 
 -- A check-constraint or FK failure on an update is a caller error (INVALID); any
