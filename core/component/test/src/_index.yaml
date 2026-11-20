@@ -3089,8 +3089,9 @@ entries:
   - name: placement_writer_source
     kind: library.lua
     source: file://placement_writer_source.lua
-    modules: [time, uuid]
+    modules: [time, uuid, process]
     imports:
+      access_ops: kickside.component.persist:access_ops
       kind_authority: kickside.component:kind_authority
       secrets_document: kickside.component:secrets_document
       sql: app:placement_writer_sql

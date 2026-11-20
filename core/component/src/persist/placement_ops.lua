@@ -11,6 +11,8 @@ local component_types = require("component_types")
 local context_policy = require("context_policy")
 local placement_rules = require("placement_rules")
 local kind_authority = require("kind_authority")
+local access_ops = require("access_ops")
+local process = require("process")
 type Executor = sql.DB | sql.Transaction
 
 -- Encode a private-context value to its stored JSON string.
@@ -32,6 +34,29 @@ local audit_policy = require("audit_policy")
 local function already_exists(): error
     return errors.new({message = "component already exists", kind = errors.CONFLICT,
         retryable = false, details = {code = "component_already_exists"}})
+end
+
+-- A library runs inside the enclosing function. Derive the producer here from
+-- the runtime frame each time, including when installed callbacks call Component.
+local function admit_parent_custody(tx: Executor, payload: table, parent_id: string, parent_kind: string): error?
+    local denied = errors.new({kind = errors.PERMISSION_DENIED, message = "owned child registration is not authorized",
+        details = {code = "component_owned_child_denied"}})
+    local actor, actor_err = security.actor()
+    if actor_err then return actor_err end
+    if not actor then return denied end
+    local creator, creator_err = actor:id()
+    if creator_err then return creator_err end
+    if creator ~= payload.actor_id then return denied end
+    local producer, origin_err = process.id()
+    if origin_err then return origin_err end
+    if not producer then return denied end
+    local allowed, permission_err = placement_rules.admits_owned_child(parent_kind, payload.impl_id, producer)
+    if permission_err then return permission_err end
+    if allowed ~= true then return denied end
+    local writable, access_err = access_ops.check_user_access(tx, creator, parent_id, component_types.ACCESS.WRITE)
+    if access_err then return access_err end
+    if not writable then return denied end
+    return nil
 end
 
 -- CREATE_COMPONENT payload: { component_id?, impl_id, private_context?,
@@ -159,6 +184,16 @@ local function create_component(tx: Executor, db: Executor, command: component_t
     local placement_err = placement_rules.check(rule, payload.impl_id :: string, parent_kind, false)
     if placement_err then return nil, placement_err end
 
+    local recorded_owner = payload.actor_id
+    if payload.parent_custody == true then
+        if not parent_id then
+            return nil, errors.new({kind = errors.INVALID, message = "owned child registration requires a parent"})
+        end
+        local custody_err = admit_parent_custody(tx, payload, parent_id, parent_kind)
+        if custody_err then return nil, custody_err end
+        recorded_owner = parent_id
+    end
+
     local node_path = placement.build_path(db, component_id, parent_path)
 
     -- Resolve sibling position: explicit, else append after last sibling.
@@ -201,7 +236,7 @@ local function create_component(tx: Executor, db: Executor, command: component_t
         return nil, errors.new({message = "component insert returns no affected-row proof", kind = errors.INTERNAL,
             retryable = false, details = {code = "component_insert_result_invalid"}})
     end
-    -- Grant full access to the owner. This is a DIRECT grant: source = the
+    -- Grant full access to the creator. This is a DIRECT grant: source = the
     -- component itself, inherited = 0.
     local _, access_err = sql.builder.insert(component_types.TABLES.ACCESS)
         :set_map({
@@ -241,14 +276,13 @@ local function create_component(tx: Executor, db: Executor, command: component_t
         end
     end
 
-    -- Record the owner (the creator) as reserved metadata so the share UI can
-    -- mark and protect them — ownership is explicit, not just an implied grant.
+    -- Record custody in the same owner row used by sharing and lifecycle.
     local _, owner_err = sql.builder.insert(component_types.TABLES.META)
         :set_map({
             meta_id = uuid.v7(),
             component_id = component_id,
             key = component_types.OWNER_META_KEY,
-            value = payload.actor_id,
+            value = recorded_owner,
             created_at = now_ts,
             updated_at = now_ts,
         })

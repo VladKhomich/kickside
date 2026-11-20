@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
@@ -41,16 +42,15 @@ local function validate_additional_access(additional_access): error?
         if type_err then
             return additional_access_error(i, type_err)
         end
-        local mask, mask_err = access_policy.normalize_access_mask(access_rule.access_mask)
+        local _, mask_err = access_policy.normalize_access_mask(access_rule.access_mask)
         if mask_err then
             return additional_access_error(i, mask_err)
         end
-        access_rule.access_mask = mask
     end
     return nil
 end
 
-local function handle(request_dto)
+local function register(request_dto, owned_child: boolean?)
     if not request_dto or type(request_dto) ~= "table" then
         return envelope.fail(VALIDATION_ERRORS.INVALID_REQUEST, errors.INVALID)
     end
@@ -72,6 +72,14 @@ local function handle(request_dto)
     local private_context = request_dto.private_context or {}
     if type(private_context) ~= "table" then
         return envelope.fail(VALIDATION_ERRORS.INVALID_PRIVATE_CONTEXT, errors.INVALID)
+    end
+
+    if owned_child then
+        -- The SQL writer captures execution identity in the storage document.
+        -- A caller may reuse its original context after a transaction error.
+        local storage_context = {}
+        for key, value in pairs(private_context) do storage_context[key] = value end
+        private_context = storage_context
     end
 
     local meta = request_dto.meta or {}
@@ -101,6 +109,10 @@ local function handle(request_dto)
     local parent_id = request_dto.parent_id
     if parent_id ~= nil and (type(parent_id) ~= "string" or parent_id == "") then
         return envelope.fail(VALIDATION_ERRORS.INVALID_PARENT_ID, errors.INVALID)
+    end
+
+    if owned_child and (not parent_id or not uuid.validate(parent_id)) then
+        return envelope.fail("owned child registration requires a parent component UUID", errors.INVALID)
     end
 
     local position = request_dto.position
@@ -134,6 +146,7 @@ local function handle(request_dto)
                 private_context = private_context,
                 initial_meta = meta,
                 actor_id = user_id,
+                parent_custody = owned_child,
                 parent_id = parent_id,
                 position = position
             }
@@ -198,4 +211,4 @@ local function handle(request_dto)
     }
 end
 
-return { handle = handle }
+return {handle = register}
