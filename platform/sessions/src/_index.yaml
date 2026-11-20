@@ -158,7 +158,11 @@ entries:
       announced: true
     props:
       type: object
-      properties: {}
+      properties:
+        surface:
+          type: string
+          enum: [sessions, sidebar]
+          default: sidebar
 
   # App navigation entry. Discovered by platform/ui nav aggregation; the SPA
   # mounts the kickside-sessions web component by tag. Hide/show and "set as

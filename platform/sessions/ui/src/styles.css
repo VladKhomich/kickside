@@ -2,6 +2,9 @@
 @import "@kickside/ui-kit/spin.css";
 @import "@kickside/ui-kit/kx-head.css";
 @import "@kickside/ui-kit/kx-state.css";
+@import "@kickside/ui-kit/kx-tokens.css";
+@import "@kickside/ui-kit/kx-controls.css";
+@import "../../../widgets/ui/src/chatIntro.css";
 
 /* Tailwind base. The theme's PrimeVue CSS is @apply-based and assumes
    preflight; without it PrimeVue controls keep UA defaults the theme never
@@ -292,45 +295,142 @@ wippy-loading ~ wippy-loading { display: none; }
    host's own (the chat's Inter): the Tailwind base above gives every shadow
    root `ui-sans-serif`, which this one element hands back. */
 :host(kickside-chat-empty-state) { font-family: inherit; }
-.kx-chat-start { position: relative; height: 100%; min-height: 0; padding: 2rem; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--p-surface-500); }
-.kx-chat-start-icon { width: 3rem; height: 3rem; margin-bottom: 1rem; color: var(--p-surface-300); }
-.kx-chat-start-title { margin: 0 0 .5rem; color: var(--p-surface-700); font-size: 1.25rem; font-weight: 600; }
-.kx-chat-start-text { margin: 0 0 1.5rem; max-width: 24rem; }
-.kx-chat-start-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .75rem; }
-.kx-chat-start-agent { position: relative; }
-.kx-chat-start .p-button { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
-.kx-chat-start .p-button:disabled { cursor: default; }
-.kx-chat-start-caret { font-size: .75rem; }
-.kx-chat-start-menu { position: absolute; z-index: 5; bottom: calc(100% + .25rem); left: 50%; transform: translateX(-50%); width: max-content; min-width: 14rem; max-width: min(18rem, 80vw); overflow: hidden; text-align: left; border: 1px solid var(--p-content-border-color); border-radius: .375rem; background: var(--p-content-background); color: var(--p-text-color); box-shadow: var(--p-popover-shadow); }
-.kx-chat-start-search { padding: .5rem; border-bottom: 1px solid var(--p-content-border-color); }
-.kx-chat-start-search .p-inputtext { width: 100%; font-size: .875rem; }
-.kx-chat-start-list { max-height: min(25rem, 45vh); overflow-y: auto; padding: .25rem; }
-.kx-chat-start-group { padding: .5rem .5rem .25rem; color: var(--p-text-muted-color); font-size: .75rem; font-weight: 600; }
-.kx-chat-start-item { display: block; width: 100%; padding: .4rem .5rem; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.kx-chat-start-item:hover, .kx-chat-start-item[aria-current='true'] { background: color-mix(in srgb, var(--p-text-color) 7%, transparent); }
-.kx-chat-start-item-title { display: flex; align-items: center; gap: .25rem; }
-.kx-chat-start-item-comment { display: block; padding-inline-start: 1.25rem; color: var(--p-text-muted-color); font-size: .8rem; }
-.kx-chat-start-empty { margin: 0; padding: .5rem; color: var(--p-text-muted-color); font-size: .875rem; }
-.kx-chat-start-note { margin: 1rem 0 0; display: flex; align-items: center; justify-content: center; gap: .5rem; font-size: .875rem; color: var(--p-surface-600); }
-.kx-chat-start-note.is-error { color: var(--p-danger-600, var(--p-danger-500)); }
-.kx-chat-start-note svg { width: 1rem; height: 1rem; flex: none; color: var(--p-warn-500); }
-.kx-chat-start-retry { padding: 2px 6px; border-radius: 6px; background: transparent; color: var(--p-primary-color); font: inherit; font-weight: 600; cursor: pointer; }
-/* Dark: the surface scale does not invert, so these four swap explicitly. Same
-   two selectors as the rest of this sheet: a forced theme class on the host and
-   the system scheme. */
-:host(.w-theme-dark) .kx-chat-start { color: var(--p-surface-400); }
-:host(.w-theme-dark) .kx-chat-start-icon { color: var(--p-surface-600); }
-:host(.w-theme-dark) .kx-chat-start-title { color: var(--p-surface-200); }
-:host(.w-theme-dark) .kx-chat-start-note { color: var(--p-surface-300); }
-@media (prefers-color-scheme: dark) {
-  :host(:not(.w-theme-light)) .kx-chat-start { color: var(--p-surface-400); }
-  :host(:not(.w-theme-light)) .kx-chat-start-icon { color: var(--p-surface-600); }
-  :host(:not(.w-theme-light)) .kx-chat-start-title { color: var(--p-surface-200); }
-  :host(:not(.w-theme-light)) .kx-chat-start-note { color: var(--p-surface-300); }
+/* The inline chat and the drawer use the same controls and theme tokens. */
+.kx-chat-start {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  min-block-size: 0;
+  block-size: 100%;
+  padding: clamp(.875rem, 4vw, 1.5rem);
+  padding-block-start: clamp(1.25rem, 11vh, 5rem);
+  overflow-y: auto;
 }
+.kx-chat-start--sessions {
+  block-size: auto;
+  inline-size: min(100%, 45rem);
+  padding: 0;
+  overflow: visible;
+}
+.kx-chat-start-body {
+  display: grid;
+  gap: 1rem;
+  inline-size: min(100%, 45rem);
+  min-inline-size: 0;
+}
+.kx-chat-start-intro { margin: 0; }
+.kx-chat-start--sessions .kx-chat-start-intro:not(.kx-chat-intro-markdown) { text-align: center; }
+.kx-chat-start-icon {
+  display: grid;
+  place-items: center;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  margin-block-end: .75rem;
+  border-radius: var(--kx-radius-14);
+  background: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
+  color: var(--p-primary-color);
+}
+.kx-chat-start-icon svg { inline-size: 1.5rem; block-size: 1.5rem; }
+.kx-chat-start-title {
+  margin: 0;
+  color: var(--p-text-color);
+  font-family: var(--kx-font-heading);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.kx-chat-start--sessions .kx-chat-start-title { font-size: clamp(1.625rem, 3vw, 2.125rem); }
+.kx-chat-start-text {
+  margin: .375rem 0 0;
+  color: var(--p-text-muted-color);
+  line-height: 1.5;
+}
+.kx-chat-start-compose {
+  --chat-compose-padding: .875rem;
+  position: relative;
+  display: grid;
+  gap: .75rem;
+  padding: var(--chat-compose-padding);
+  border: 1px solid var(--p-content-border-color);
+  border-radius: var(--kx-radius-14);
+  background: var(--kx-surface-1);
+}
+.kx-chat-start-field {
+  display: grid;
+  gap: .375rem;
+  min-inline-size: 0;
+  color: var(--p-text-color);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.kx-chat-start-optional { font-weight: 400; color: var(--p-text-muted-color); }
+.kx-chat-start-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  min-inline-size: 0;
+}
+.kx-chat-start-agent, .kx-chat-start-default { min-inline-size: 0; max-inline-size: 100%; }
+.kx-chat-start-picker { max-inline-size: 100%; background: var(--p-content-background); }
+.kx-chat-start-picker span, .kx-chat-start-default span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kx-chat-start-picker svg, .kx-chat-start-default svg { flex: none; }
+.kx-chat-start-submit { margin-inline-start: auto; }
+.kx-chat-start-controls .kx-btn { min-block-size: 2.5rem; }
+.kx-chat-start-controls .kx-btn:focus-visible {
+  outline: none;
+  border-color: var(--p-focus-ring-color);
+  box-shadow: var(--p-focus-ring-shadow);
+}
+.kx-chat-start-default {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  color: var(--p-text-muted-color);
+  font-size: .875rem;
+}
+.kx-chat-start-default svg { inline-size: 1rem; block-size: 1rem; color: var(--p-text-color); }
+.kx-chat-start-menu {
+  position: absolute;
+  z-index: 5;
+  inset-inline-start: var(--chat-compose-padding);
+  inset-block-start: calc(100% + .25rem);
+  inline-size: min(19rem, calc(100% - 2 * var(--chat-compose-padding)));
+  overflow: hidden;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: var(--kx-radius-10);
+  background: var(--p-content-background);
+  color: var(--p-text-color);
+  box-shadow: var(--p-popover-shadow);
+}
+.kx-chat-start-search { padding: .625rem; border-block-end: 1px solid var(--p-content-border-color); }
+.kx-chat-start-list { max-block-size: min(20rem, 36dvh); overflow-y: auto; padding: .375rem; }
+.kx-chat-start-group { padding: .5rem .5rem .25rem; color: var(--p-text-muted-color); font-size: .875rem; font-weight: 600; }
+.kx-chat-start-item {
+  display: block;
+  inline-size: 100%;
+  padding: .5rem;
+  border-radius: var(--kx-radius-8);
+  background: transparent;
+  color: var(--p-text-color);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.kx-chat-start-item:hover, .kx-chat-start-item[aria-current='true'] { background: var(--kx-surface-2); }
+.kx-chat-start-list .kx-chat-start-item:focus-visible { outline-offset: calc(-1 * var(--p-focus-ring-width)); }
+.kx-chat-start-item-title { display: flex; align-items: center; gap: .5rem; min-inline-size: 0; overflow-wrap: anywhere; }
+.kx-chat-start-item-title svg { flex: none; }
+.kx-chat-start-item-comment { display: block; padding-inline-start: 1.5rem; color: var(--p-text-muted-color); font-size: .875rem; overflow-wrap: anywhere; }
+.kx-chat-start-empty { margin: 0; padding: .625rem; color: var(--p-text-muted-color); font-size: .875rem; }
+.kx-chat-start-note { margin: 0; display: flex; align-items: center; gap: .5rem; color: var(--p-text-muted-color); font-size: .875rem; }
+.kx-chat-start-note.is-error { color: var(--p-message-error-color, var(--p-danger-500)); }
+.kx-chat-start-note svg { inline-size: 1rem; block-size: 1rem; flex: none; }
+.kx-chat-start-retry { padding: .25rem .375rem; border-radius: var(--kx-radius-6); color: var(--p-primary-color); font: inherit; font-weight: 600; cursor: pointer; }
 
 /* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 640px) {
+  .kx-chat-start--sessions { padding-block-start: var(--kx-control-height); }
   .kx-head { padding: 16px 16px 12px; }
   .kx-head-actions { margin-left: 0; width: 100%; }
   .kx-search { flex: 1; }

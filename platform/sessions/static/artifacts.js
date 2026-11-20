@@ -1,6 +1,6 @@
-import { W as o, m as r } from "./wc-runtime-C6gaf4iX.js";
+import { W as o, m as r } from "./wc-runtime-enaNScz7.js";
 import { l as s } from "./lazy-DX8B4FNv.js";
-import { s as i } from "./styles-BfuGB-97.js";
+import { s as i } from "./styles-urvsV3uf.js";
 import { define as n } from "@wippy-fe/proxy";
 class e extends o {
   static get wippyConfig() {
@@ -13,7 +13,7 @@ class e extends o {
   static get vueConfig() {
     return {
       lazyConfig: s(
-        () => import("./artifacts-mount-1Ilpow_V.js").then((t) => t.mountConfig),
+        () => import("./artifacts-mount-UnuEbW2s.js").then((t) => t.mountConfig),
         "Could not load the artifact gallery. Reload the page to try again.",
         r
       )

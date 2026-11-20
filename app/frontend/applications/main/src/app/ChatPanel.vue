@@ -34,6 +34,9 @@ let attempt = 0
 let draftBinding: ReturnType<typeof bindChatDraftComposer> | undefined
 const initialMessage = ref('')
 const blankChat = computed(() => !props.sessionId && !props.startToken)
+const configurableEmptyState = ref(false)
+const emptyStateTag = 'kickside-chat-empty-state'
+let emptyState: HTMLElement | undefined
 
 function sessionIdFromEvent(event: Event): string {
   const detail = (event as CustomEvent).detail
@@ -53,6 +56,8 @@ function detachChat() {
   element?.removeEventListener('error', onError)
   element?.removeEventListener('session-started', onSessionStarted)
   element = null
+  emptyState = undefined
+  configurableEmptyState.value = false
 }
 
 function detach() {
@@ -107,7 +112,39 @@ function syncAttributes() {
     element?.setAttribute('meta-placement', 'before-composer')
   else
     element?.removeAttribute('meta-placement')
+  syncEmptyState()
   void nextTick(() => draftBinding?.sync())
+}
+
+function syncEmptyState() {
+  if (!element || !configurableEmptyState.value || !blankChat.value) {
+    emptyState?.remove()
+    emptyState = undefined
+    return
+  }
+  if (!emptyState) {
+    emptyState = document.createElement(emptyStateTag)
+    emptyState.setAttribute('slot', 'empty-state')
+    emptyState.setAttribute('surface', 'sessions')
+    emptyState.style.display = 'block'
+    emptyState.style.width = '100%'
+    element.append(emptyState)
+  }
+}
+
+function attachEmptyStateWhenReady(chat: HTMLElement) {
+  void waitForCustomElement(emptyStateTag, 5000).then(() => {
+    if (element !== chat) return
+    const constructor = customElements.get(emptyStateTag) as (CustomElementConstructor & {
+      wippyConfig?: { propsSchema?: { properties?: Record<string, unknown> } }
+    }) | undefined
+    // The released Sessions module can still supply the older drawer-only element.
+    if (!constructor?.wippyConfig?.propsSchema?.properties?.surface) return
+    configurableEmptyState.value = true
+    syncEmptyState()
+  }).catch(() => {
+    // An older Sessions module can still use the Host's original inline start.
+  })
 }
 
 function createChatElement(): HTMLElement {
@@ -118,6 +155,7 @@ function createChatElement(): HTMLElement {
   chat.addEventListener('load', onLoad)
   chat.addEventListener('error', onError)
   chat.addEventListener('session-started', onSessionStarted)
+  attachEmptyStateWhenReady(chat)
   return chat
 }
 
@@ -175,8 +213,11 @@ onBeforeUnmount(() => { attempt++; detach() })
 
 <template>
   <section class="chat-panel" aria-label="Chat">
-    <div class="chat-panel__body" :class="{ 'chat-panel__body--blank': blankChat && !failure }">
-      <ChatEmptyState v-if="blankChat && !failure" v-model="initialMessage" />
+    <div class="chat-panel__body" :class="{
+      'chat-panel__body--blank': blankChat && !failure,
+      'chat-panel__body--configured': blankChat && !failure && configurableEmptyState,
+    }">
+      <ChatEmptyState v-if="blankChat && !failure && !configurableEmptyState" v-model="initialMessage" />
       <div v-if="mounting && !blankChat && !failure" class="chat-panel__mounting" role="status">
         <Icon icon="tabler:loader-2" aria-hidden="true" />
         <span>Loading chat…</span>
@@ -204,6 +245,7 @@ onBeforeUnmount(() => { attempt++; detach() })
 .chat-panel__body { position: relative; flex: 1 1 auto; width: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .chat-panel__body--blank { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; padding: 24px; overflow-y: auto; }
 .chat-panel__body--blank .chat-panel__host { width: min(760px, 100%); height: 80px; flex: 0 0 auto; }
+.chat-panel__body--configured .chat-panel__host { height: 100%; min-height: min-content; flex: 1 0 auto; }
 .chat-panel__host { width: 100%; height: 100%; min-width: 0; min-height: 0; }
 .chat-panel__failure { height: 100%; display: grid; place-content: center; gap: .75rem; padding: 1.5rem; text-align: center; color: var(--p-text-muted-color); }
 .chat-panel__failure strong { color: var(--p-text-color); }

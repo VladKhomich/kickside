@@ -28,7 +28,7 @@ export default defineConfig({
     rollupOptions: {
       preserveEntrySignatures: 'strict',
       input: { index: resolve(__dirname, 'src/index.ts') },
-      external: hostExternals,
+      external: [...hostExternals, 'markdown-it'],
       output: {
         manualChunks: wcRuntimeChunk,
         entryFileNames: '[name].js',

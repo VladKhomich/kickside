@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 import { on, ws } from '@wippy-fe/proxy'
 
+export const CHAT_START_COORDINATOR = '@COORDINATOR/chat'
+export const CHAT_START_REQUEST = 'kickside:chat-start-request'
+export const CHAT_START_RESULT = 'kickside:chat-start-result'
+export const CHAT_START_STATE = 'kickside:chat-start'
+
 function waitForWelcome(signal: AbortSignal) {
   signal.throwIfAborted()
   return new Promise<void>((resolve, reject) => {
@@ -34,4 +39,18 @@ export async function exchangeStartToken(token: string, signal: AbortSignal): Pr
 
 export function closeStartedSession(sessionId: string) {
   ws.send({ type: 'session_close', session_id: sessionId })
+}
+
+export async function sendFirstMessage(sessionId: string, message: string): Promise<'sent' | 'rejected' | 'unconfirmed'> {
+  try {
+    const response = await ws.sendWithResponse({ type: 'session_message', session_id: sessionId, data: { text: message } })
+    const data = response.data
+    const kind = data && 'type' in data ? data.type : undefined
+    if (response.topic.startsWith('session:' + sessionId + ':message:') && kind === 'received') return 'sent'
+    if (response.topic === 'error' || kind === 'error') return 'rejected'
+    if (data && kind === 'command_response' && 'success' in data && data.success === false) return 'rejected'
+  } catch {
+    // A lost reply can follow a committed message. Never send it again here.
+  }
+  return 'unconfirmed'
 }

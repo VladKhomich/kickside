@@ -1,4 +1,5 @@
 import { api } from '@wippy-fe/proxy'
+import { defaultChatScreen, type ChatScreen, type ChatSurface } from '@widgets/chatAppearance'
 import type { ArtifactSummary, ChatAgent, ChatAgentGroup, ProviderBadge, Session, SessionMessage } from '../types.ts'
 
 const BASE = '/api/v1'
@@ -14,6 +15,7 @@ interface ChatAgentsResponse {
   agents?: ChatAgent[]
   grouped?: { title?: string, agents?: ChatAgent[] }[]
   error?: string
+  chat_screen?: Partial<ChatScreen>
 }
 interface ProviderBadgesResponse { success: boolean, providers?: { provider?: string, title?: string, icon?: string }[] }
 interface ArtifactsResponse {
@@ -60,17 +62,17 @@ export function useSessionsApi() {
   // The agents a new chat can start with, grouped as the host's own agent
   // picker groups them. An agent without a start token cannot start a chat, and
   // one the API puts in no group is listed last so it is not lost.
-  async function chatAgents(): Promise<ChatAgentGroup[]> {
-    const { data } = await api.get<ChatAgentsResponse>(`${BASE}/agents/list`)
+  async function chatAgents(surface: ChatSurface): Promise<{ groups: ChatAgentGroup[], screen: ChatScreen }> {
+    const { data } = await api.get<ChatAgentsResponse>(`${BASE}/agents/list?surface=${surface}`)
     if (!data?.success) throw new Error(data?.error || 'Failed to load agents')
-    const usable = (list?: ChatAgent[]) => (list || []).filter((agent: ChatAgent) => agent.name && agent.start_token)
-    const groups: ChatAgentGroup[] = (data.grouped || [])
+    const usable = (list?: ChatAgent[]) => Array.isArray(list) ? list.filter(agent => agent?.name && agent.start_token) : []
+    const groups: ChatAgentGroup[] = (Array.isArray(data.grouped) ? data.grouped : [])
       .map((group: { title?: string, agents?: ChatAgent[] }) => ({ title: group.title || '', agents: usable(group.agents) }))
       .filter((group: ChatAgentGroup) => group.agents.length > 0)
     const listed = new Set(groups.flatMap(group => group.agents.map(agent => agent.name)))
     const rest = usable(data.agents).filter((agent: ChatAgent) => !listed.has(agent.name))
     if (rest.length > 0) groups.push({ title: groups.length > 0 ? 'Other' : '', agents: rest })
-    return groups
+    return { groups, screen: { ...defaultChatScreen(surface), ...data.chat_screen } }
   }
 
   // A compact, authenticated registry catalogue. It deliberately contains
