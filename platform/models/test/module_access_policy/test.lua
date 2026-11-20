@@ -73,6 +73,45 @@ local function define_tests()
             local serialized = require("json").encode(resolved)
             test.is_nil(serialized:find("fixture-provider-secret", 1, true), "Resolution discloses a saved provider credential")
         end)
+        test.it("exposes pricing and tier overrides without credential fields to model readers", function()
+            local json = require("json")
+            local sql = require("sql")
+            local name = "member-model-pricing"
+            local rates = {
+                input = 2,
+                completion = "0.00001",
+                overrides = {{ prompt = "0.000004", min_prompt_tokens = 1000, access_key = "fixture-private-price-data" }},
+            }
+            local function check(pricing)
+                test.eq(pricing.input, 2)
+                test.eq(pricing.completion, "0.00001")
+                test.eq(pricing.overrides[1].prompt, "0.000004")
+                test.eq(pricing.overrides[1].min_prompt_tokens, 1000)
+                test.is_nil(pricing.overrides[1].access_key)
+            end
+
+            local saved = assert(models_repo.upsert_card({ name = name, capabilities = {"generate"},
+                pricing = rates, metadata = { discovered = { pricing = rates } } }))
+            check(saved.pricing)
+            check(saved.metadata.discovered.pricing)
+
+            -- Older rows can predate the write-time projection. The read-time
+            -- projection must protect both the card and its discovery metadata.
+            local database = assert(sql.get("app:db"))
+            local _, write_err = database:execute("UPDATE kickside_model_cards SET pricing_json = $1, metadata_json = $2 WHERE name = $3",
+                {assert(json.encode(rates)), assert(json.encode({ discovered = { pricing = rates } })), name})
+            database:release()
+            test.is_nil(write_err, tostring(write_err))
+            assert(models_repo.reload())
+
+            local actor = security.new_actor("pricing-member", {})
+            local scope = assert(security.named_scope("app:selected_model_members"))
+            local caller = funcs.new():with_actor(actor):with_scope(scope)
+            local resolved = assert(caller:call("kickside.models.test.module_access:resolve_probe", {model = name}))
+            check(resolved.pricing)
+            check(resolved.metadata.discovered.pricing)
+            assert(models_repo.delete_card(name))
+        end)
         test.it("executes saved routes inside the owner frame without database access", function()
             local profile = assert(models_repo.create_profile({id = "binding-profile", name = "Binding profile",
                 provider_id = "kickside.models.providers:fixture_provider", api_key = "fixture-provider-secret"}))
