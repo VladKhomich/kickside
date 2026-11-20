@@ -62,6 +62,19 @@ entries:
       comment: Local file storage for upload-backed knowledge tests.
     directory: ./storage
 
+  - name: upload_storage_fixture
+    kind: library.lua
+    source: file://upload_storage_fixture.lua
+    imports:
+      storage: kickside.uploads.binding:storage_adapter_default
+
+  - name: deny_upload_callback_database
+    kind: security.policy
+    policy:
+      resources: app:db
+      actions: db.get
+      effect: deny
+
   - name: processes
     kind: process.host
     lifecycle:
@@ -150,10 +163,12 @@ entries:
       title: File harness engine
       store_contract: shared:kb_store
       accepts_files: true
+      upload_publication_match: app:maintenance_stub
       events:
         output:
           - type: kickside.knowledge.events:content.upserted
           - type: kickside.knowledge.events:content.deleted
+          - type: kickside.knowledge.events:delivery.claimed
       projections:
         - kind: knowledge.injection.source
           projection_key: source
@@ -289,6 +304,8 @@ entries:
         value: app:db
       - name: kickside.uploads:storage_id
         value: app:uploads
+      - name: kickside.uploads:storage_adapter
+        value: app:upload_storage_fixture
       - name: kickside.uploads:env_storage
         value: app:env_storage
       - name: kickside.uploads:api_router

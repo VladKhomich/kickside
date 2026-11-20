@@ -42,11 +42,17 @@ local function deliver_reply(respond_to: string, payload: any): (boolean, error?
 end
 
 local function is_missing_kb(err: any): boolean
-    return errors.is(err, errors.NOT_FOUND) == true
+    if not errors.is(err, errors.NOT_FOUND) then return false end
+    return (err:details() or {}).code == "knowledge_base_not_found"
 end
 
 local function is_missing_primary_artifact(err: any): boolean
-    return errors.is(err, errors.INVALID) == true
+    if type(err) ~= "userdata" or err:retryable() == true then return false end
+    if errors.is(err, errors.INVALID) then return true end
+    if not errors.is(err, errors.NOT_FOUND) then return false end
+    local details = err:details() or {}
+    return details.artifact_read_source ~= nil or details.code == "upload_not_found"
+        or details.code == "upload_content_read_failed" or details.code == "artifact_reference_not_found"
 end
 
 local function handler(params)
@@ -128,10 +134,12 @@ local function handler(params)
         end
         log:warn("upload ingest queue failed", { kb_id = kb_id, upload_id = upload_id, error = tostring(ingest_err) })
         local respond_err = respond(params, { success = false, error = tostring(ingest_err), upload_id = upload_id, kb_id = kb_id })
-        if respond_err then
-            return nil, "failed to queue upload artifact: " .. tostring(ingest_err) .. "; completion reply failed: " .. tostring(respond_err)
+        local failure = "failed to queue upload artifact"
+        if respond_err then failure = failure .. " (completion reply failed: " .. tostring(respond_err) .. ")" end
+        if type(ingest_err) == "userdata" then
+            return nil, errors.wrap(ingest_err, failure)
         end
-        return nil, "failed to queue upload artifact: " .. tostring(ingest_err)
+        return nil, failure .. ": " .. tostring(ingest_err)
     end
 
     local respond_err = respond(params, {

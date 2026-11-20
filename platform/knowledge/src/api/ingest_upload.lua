@@ -133,8 +133,8 @@ local function read_upload_content(upload_id: string): (any?, any)
     end
 
     local content, content_err = provider:get_content({})
-    if content_err or not content then
-        if content_err then return nil, typed(errors.INVALID, tostring(content_err)) end
+    if content_err then return nil, content_err end
+    if not content then
         return nil, typed(errors.INVALID, "failed to get primary upload artifact")
     end
     if content.success == false then
@@ -146,13 +146,13 @@ end
 local ingest_impl
 
 local function ensure_kb_exists(kb_id: string): (any, any?)
-    local service, svc_err = component.get_service()
-    if svc_err or not service then
-        return typed(errors.UNAVAILABLE, "component service unavailable: " .. tostring(svc_err))
-    end
-    local comp, comp_err = service:get({ component_id = kb_id })
+    local rows, comp_err = component.query({ component_ids = { kb_id }, access_mask = component.ACCESS.READ,
+        include = { meta = false } })
+    if comp_err then return comp_err end
+    local comp = rows and rows[1]
     if not comp or not comp.impl_id then
-        return typed(errors.NOT_FOUND, "knowledge base not found: " .. tostring(comp_err))
+        return errors.new({ kind = errors.NOT_FOUND, message = "knowledge base not found", retryable = false,
+            details = { code = "knowledge_base_not_found" } })
     end
     return nil, comp
 end
@@ -262,7 +262,9 @@ function ingest_impl(kb_id: any, upload_id: any, file: any, seen: { [string]: bo
 
     local primary, content_err = read_upload_content(upload_id)
     if content_err or not primary then
-        if upload_delivery then return nil, content_err or typed(errors.INVALID, "upload has no primary artifact") end
+        if upload_delivery or (type(content_err) == "userdata" and content_err:retryable() == true) then
+            return nil, content_err or typed(errors.INVALID, "upload has no primary artifact")
+        end
         local archive_result, archive_err = ingest_archive_children(kb_id, upload_id, file, seen, reingest_key)
         if archive_result or archive_err then return archive_result, archive_err end
 
