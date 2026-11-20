@@ -58,11 +58,24 @@ end
 
 -- The installed parent kind admits the exact child kind and enclosing producer.
 -- Ordinary registration and placement never consult this declaration.
-function M.admits_owned_child(parent_kind: string, child_kind: string, producer: string): (boolean, error?)
-    local entry, err = registry.get(parent_kind)
+function M.admits_owned_child(owner_kind: string, child_kind: string, producer: string, plugin_id: string?): (boolean, error?)
+    local entry, err = registry.get(owner_kind)
     if err then return false, err end
-    local declarations = entry and entry.kind == "contract.binding" and entry.meta and entry.meta.owned_child_producers
-    local producers = type(declarations) == "table" and declarations[child_kind]
+    if not entry or entry.kind ~= "contract.binding" or type(entry.meta) ~= "table" then return false, nil end
+    local declarations = entry.meta.owned_child_producers
+    local key = child_kind
+    if plugin_id ~= nil then
+        -- Plugins contribute their own attachment implementation. The installed
+        -- owner kind admits a producer for that specific plugin manifest type.
+        declarations = entry.meta.root_attachment_producers
+        if type(declarations) ~= "table" then return false, nil end
+        local plugin, plugin_err = registry.get(plugin_id)
+        if plugin_err then return false, plugin_err end
+        local meta = plugin and plugin.kind == "registry.entry" and plugin.meta
+        if type(meta) ~= "table" or type(meta.type) ~= "string" or meta.attachment ~= child_kind then return false, nil end
+        key = meta.type
+    end
+    local producers = type(declarations) == "table" and declarations[key]
     if type(producers) == "table" then
         for _, id in ipairs(producers) do
             if id == producer then return true, nil end

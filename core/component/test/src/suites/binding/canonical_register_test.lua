@@ -137,6 +137,22 @@ local function define_tests()
             test.eq(meta_value(direct.component_id, "owner"), owner)
         end)
 
+        test.it("records a plugin attachment under its custodian while preserving root placement", function()
+            local service = open_as_owner()
+            local catalog = assert(service:register({impl_id = "app:placement_parent"}))
+            local id = uuid.v7()
+            local producer = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(test_scope())
+            local attachment = assert(producer:call("app.component_suites.binding:register_test_child", {
+                component_id = id, impl_id = "app:placement_root", custodian = catalog.component_id,
+                plugin = "app:root_attachment_plugin", private_context = {label = "attachment"}
+            }))
+            test.is_true(attachment.success, attachment.error)
+            test.is_nil(attachment.parent_id)
+            test.eq(meta_value(id, "owner"), catalog.component_id)
+            test.eq(private_context(id)._execution_identity.principal.id, owner)
+            test.is_true(owner_access_count(id) > 0)
+        end)
+
         test.it("preserves authenticated identity restrictions and provenance at registration", function()
             local admitted = { version = 2, principal = {kind = "user", id = owner},
                 authorized_by = {kind = "user", id = "original-authorizer"},

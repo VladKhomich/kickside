@@ -50,7 +50,7 @@ local function validate_additional_access(additional_access): error?
     return nil
 end
 
-local function register(request_dto, owned_child: boolean?)
+local function register(request_dto, owned_child: boolean?, root_attachment: table?)
     if not request_dto or type(request_dto) ~= "table" then
         return envelope.fail(VALIDATION_ERRORS.INVALID_REQUEST, errors.INVALID)
     end
@@ -74,7 +74,7 @@ local function register(request_dto, owned_child: boolean?)
         return envelope.fail(VALIDATION_ERRORS.INVALID_PRIVATE_CONTEXT, errors.INVALID)
     end
 
-    if owned_child then
+    if owned_child or root_attachment then
         -- The SQL writer captures execution identity in the storage document.
         -- A caller may reuse its original context after a transaction error.
         local storage_context = {}
@@ -100,6 +100,11 @@ local function register(request_dto, owned_child: boolean?)
     local component_id = request_dto.component_id
     if component_id and (type(component_id) ~= "string" or component_id == "") then
         return envelope.fail(VALIDATION_ERRORS.INVALID_COMPONENT_ID, errors.INVALID)
+    end
+    if root_attachment and (not component_id or not uuid.validate(component_id)
+        or type(root_attachment.custodian_id) ~= "string" or not uuid.validate(root_attachment.custodian_id)
+        or type(root_attachment.plugin_id) ~= "string" or root_attachment.plugin_id == "" or request_dto.parent_id ~= nil) then
+        return envelope.fail("root attachment registration requires a child UUID, custodian UUID, plugin and root placement", errors.INVALID)
     end
     if not component_id then
         component_id = uuid.v7()
@@ -147,6 +152,7 @@ local function register(request_dto, owned_child: boolean?)
                 initial_meta = meta,
                 actor_id = user_id,
                 parent_custody = owned_child,
+                root_attachment = root_attachment,
                 parent_id = parent_id,
                 position = position
             }
