@@ -22,8 +22,7 @@ entries:
     modules: [json]
     imports:
       http: app:card_save_fake_http
-      models_repo: kickside.models.persist:repo
-      model_catalog: kickside.models.catalog:model_catalog
+      card_service: kickside.models.catalog:card_service
 
   - name: card_save_admin
     kind: library.lua

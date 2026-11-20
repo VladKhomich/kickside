@@ -395,6 +395,27 @@ function M.upsert_card(input: any, base: any?, inferred_capabilities: any?): (an
     return card_policy.public_card(card)
 end
 
+-- Retire an existing card without rewriting its fields or recreating a deleted
+-- row. Repeated retirement leaves its modification time intact.
+function M.disable_card(name: string): (any?, any?)
+    local handle, derr = db()
+    if not handle then return nil, derr end
+    local dbh = handle :: sql.DB
+    local _, write_err = dbh:execute([[
+        UPDATE kickside_model_cards SET enabled = 0, updated_at = $1
+        WHERE name = $2 AND enabled <> 0
+    ]], { now(), name })
+    dbh:release()
+    if write_err then return nil, write_err end
+
+    local snapshot, reload_err = M.reload()
+    if reload_err then return nil, reload_err end
+    for _, card in ipairs(snapshot.cards) do
+        if card.name == name then return card_policy.public_card(card) end
+    end
+    return nil, "No stored model card named: " .. name
+end
+
 -- The portable model setup: every provider profile (non-secret config, env
 -- pointers, and the names of omitted stored secrets) and every stored card.
 function M.export(): (any?, any?)

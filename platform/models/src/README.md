@@ -109,6 +109,18 @@ Discovery updates cards by the same names: it keeps an imported card's
 classes, enabled state, and capability overrides, keeps its token limits where
 the provider reports none, and rewrites the other discovered fields.
 
+## Cards contract
+
+`kickside.models.cards:cards` lets a module register and retire model cards
+without the admin HTTP surface. `upsert_card(card)` creates or updates the card
+by name through the same write path as `PUT /models/cards`; `disable_card({name})`
+disables a stored card and keeps its row. When `metadata.train` is present it
+must carry `weights_digest` and `manifest_sha256`. Card writes discard
+credential fields and reject URLs containing credentials. Replies redact
+credential-bearing URLs already stored on legacy cards. The contract is outside the
+member module grant; a module receives it through the
+`kickside.models.security:card_registrar` policy.
+
 ## Runtime resolution
 
 `kickside.models:model_resolver` binds `wippy.llm:model_resolver`, so

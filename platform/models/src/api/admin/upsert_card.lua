@@ -1,7 +1,6 @@
 local http = require("http")
 local json = require("json")
-local models_repo = require("models_repo")
-local model_catalog = require("model_catalog")
+local card_service = require("card_service")
 
 local function handler()
     local req = http.request()
@@ -21,14 +20,8 @@ local function handler()
         res:write_json({ success = false, error = "Invalid JSON: " .. tostring(err) })
         return
     end
-    if type(data) ~= "table" or type(data.name) ~= "string" or data.name == "" then
-        res:set_status(http.STATUS.BAD_REQUEST)
-        res:write_json({ success = false, error = "Model name is required" })
-        return
-    end
 
-    local base = model_catalog.get_by_name(data.name)
-    local card, cerr = models_repo.upsert_card(data, base)
+    local card, cerr = card_service.save(data)
     if not card then
         res:set_status(http.STATUS.BAD_REQUEST)
         res:write_json({ success = false, error = cerr })
