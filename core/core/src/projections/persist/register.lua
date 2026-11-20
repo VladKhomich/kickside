@@ -395,7 +395,7 @@ end
 -- Component-backed registration supplies authorization for the locked thread read.
 function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thread_id: string, params: table,
     mode: string?, declaration_impl_id: string?, source: table?,
-    validate_system_worker: (() -> error?)?): (RegisterResult?, error?)
+    system_worker_err: error?): (RegisterResult?, error?)
     if type(params) ~= "table" then
         return nil, (errors.new({ message = "projection registration params must be an object", kind = errors.INVALID }) :: error)
     end
@@ -727,16 +727,14 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         or tonumber(cursor.debounce_max_ms) ~= debounce_max_ms) then
         return nil, writer.declaration_refusal(thread_id, projection_id, kind, projection_key, cursor_key)
     end
-    if validate_system_worker then
-        -- Ensure preserves the identity stored on an existing cursor. A new
-        -- cursor or one without a principal needs an admitted installed worker.
-        if cursor and (cursor.actor_id ~= nil or cursor.execution_identity_json ~= nil) then
-            local _, identity_err = execution_identity.from_row(cursor.actor_id, cursor.execution_identity_json)
-            if identity_err then return nil, identity_err end
-        else
-            local admission_err = validate_system_worker()
-            if admission_err then return nil, admission_err end
+    if system_worker_err then
+        -- Ensure can retain a cursor that already has its own valid identity.
+        -- Any new or actorless cursor needs an admitted system worker.
+        if params.ensure ~= true or not cursor or (cursor.actor_id == nil and cursor.execution_identity_json == nil) then
+            return nil, system_worker_err
         end
+        local identity, identity_err = execution_identity.from_row(cursor.actor_id, cursor.execution_identity_json)
+        if identity_err or not identity then return nil, identity_err or system_worker_err end
     end
     local cursor_head = checkpoint
     if cursor then
@@ -843,12 +841,12 @@ end
 -- committing its own transaction off db. On error it rolls back and returns
 -- the error. Delegates to register_projection_tx for the core SQL.
 function writer.register_projection(db: sql.DB, thread_id: string, params: table, mode: string?,
-    declaration_impl_id: string?, source: table?, validate_system_worker: (() -> error?)?): (RegisterResult?, error?)
+    declaration_impl_id: string?, source: table?, system_worker_err: error?): (RegisterResult?, error?)
     local dbtype, dbtype_err = sql_boundary.database_type(db, "failed to resolve db type", "database.type", response_error)
     if dbtype_err then return nil, dbtype_err end
     local result, err = sql_boundary.transaction(db, function(tx: sql.Transaction): (any?, error?)
         return writer.register_projection_tx(tx, dbtype :: string, thread_id, params, mode, declaration_impl_id, source,
-            validate_system_worker)
+            system_worker_err)
     end, "projection registration", response_error)
     if err then return nil, err end
     if result and (result.transitioned or result.deferred) then return result, nil end

@@ -72,7 +72,7 @@ end
 -- identity: { row?, system?, error? } from the contract's declared_identity.
 local function register_declared_projection(db: DB, thread_id: string, p: table, identity: { [string]: any },
     impl_id: string, source: table?, allow_transition: boolean?, pending_cursor_id: string?,
-    validate_system_worker: (() -> error?)?): (error?, boolean?)
+    system_worker_err: error?): (error?, boolean?)
     local params = {
         kind = p.kind,
         worker_ref = p.worker_ref,
@@ -102,7 +102,7 @@ local function register_declared_projection(db: DB, thread_id: string, p: table,
         if type(row.id) ~= "string" or row.id == "" then return declaration_response("cursor id") end
     end
     local projection, proj_err = proj_writer.register_projection(db, thread_id, params,
-        allow_transition and "convergence" or "ensure_declared", impl_id, source, validate_system_worker)
+        allow_transition and "convergence" or "ensure_declared", impl_id, source, system_worker_err)
     if proj_err then return errors.wrap(proj_err, "register declared projection") end
     if type(projection) ~= "table" then return declaration_response("registration") end
     return nil, projection.deferred
@@ -155,14 +155,14 @@ function M.apply_thread_declaration(db: DB, thread_id: string, declaration_impl_
     for index, p in ipairs(autoinit.projections_for_impl(impl_id)) do
         if (not indexes or indexes[tostring(index)])
             and (p.on == nil or p.on == "" or p.on == autoinit.PROJECTION_ON.THREAD) then
-            local validate_system_worker: (() -> error?)? = nil
+            -- Resolve registry proof before taking SQL write locks. The
+            -- registration transaction determines whether the cursor needs it.
+            local system_worker_err: error? = nil
             if identity.system == true then
-                validate_system_worker = function(): error?
-                    return validate_maintenance_projection(thread_id, impl_id, p)
-                end
+                system_worker_err = validate_maintenance_projection(thread_id, impl_id, p)
             end
             local proj_err, pending = register_declared_projection(db, thread_id, p :: table, identity, impl_id, source,
-                allow_transition, pending_cursor_id, validate_system_worker)
+                allow_transition, pending_cursor_id, system_worker_err)
             if proj_err then return proj_err end
             if pending then deferred = true end
         end
