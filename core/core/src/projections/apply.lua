@@ -299,7 +299,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         return abort(job_types.lease_lost_error("projection source thread is deleting"))
     end
     local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local cursor_query = [[SELECT generation,last_seq,status,job_id,thread_id,projection_id,continuation
+    local cursor_query = [[SELECT generation,last_seq,status,job_id,thread_id,projection_id,continuation,pending_transition_seq
         FROM kickside_projection_cursor WHERE id=$1]]
     if checkpoint and checkpoint.manifest then
         cursor_query = [[SELECT c.generation,c.last_seq,c.status,c.job_id,c.thread_id,c.projection_id,c.continuation,
@@ -476,6 +476,8 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "projection apply commit failed") end
     local result = { self_completed = not effect, completion = done, last_seq = last,
+        pending_transition = not checkpoint and cursor.pending_transition_seq ~= nil
+            and last >= (tonumber(cursor.pending_transition_seq) or math.huge) or nil,
         continuation = effect and continuation or nil }
     if not checkpoint then
         local notify_err = notify_progress(snapshot, last, last > prior or #writes > 0)

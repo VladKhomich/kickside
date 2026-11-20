@@ -51,7 +51,7 @@ entries:
     meta:
       comment: Load a projection cursor batch and invoke its declared worker.
     source: file://invoke.lua
-    modules: [sql, json, time, registry, security]
+    modules: [sql, json, time, registry, security, funcs, logger]
     imports:
       event_access: kickside.core.threads:event_access
       component_query: kickside.component.persist:component_query
@@ -79,7 +79,7 @@ entries:
       policies: [kickside.core.threads:event_policy_read]
     source: file://invoke.lua
     method: run
-    modules: [sql, json, time, registry, security]
+    modules: [sql, json, time, registry, security, funcs, logger]
     imports:
       event_access: kickside.core.threads:event_access
       component_query: kickside.component.persist:component_query

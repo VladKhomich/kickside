@@ -258,6 +258,16 @@ entries:
       migration_runner: wippy.migration:runner
       core_db: kickside.core:db
 
+  - name: resume_projection_transition
+    kind: function.lua
+    meta:
+      private: true
+      comment: Recheck an install-requested transition after its ordinary Jobs slot settles.
+    source: file://resume_projection_transition.lua
+    method: run
+    imports:
+      provision: kickside.core.threads:provision
+
   - name: migrations_applied_transport
     kind: security.policy
     meta:

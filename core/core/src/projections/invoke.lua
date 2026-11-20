@@ -556,6 +556,14 @@ function M.run(input: any): (table?, error?)
         end
     end
     local current = row :: table
+    if result and result.pending_transition then
+        result.pending_transition = nil
+        local _, transition_err = require("funcs").call("kickside.core.lifecycle:resume_projection_transition", cursor_id)
+        if transition_err then
+            require("logger"):named("kickside.projections"):warn("deferred projection transition failed",
+                {cursor_id = cursor_id, error = tostring(transition_err)})
+        end
+    end
     if not attempt_err or result then return result, attempt_err end
     if job_types.is_lease_lost_error(attempt_err) then return nil, attempt_err end
     -- Access, identity, worker and apply failures share the existing cursor

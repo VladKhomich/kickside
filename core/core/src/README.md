@@ -206,9 +206,14 @@ also bind it to their cursor, input identities and authorized component owner.
 
 A filtered destination may declare a `transition_from` with the exact
 predecessor `worker_ref` and its `target_db_config` registry entry. Core
-requires the predecessor to drain to the thread head, its cursor to be
-paused, and its Jobs slot to be settled. Convergence preserves the fold,
-position, IDs and paused state. A subsequent resume handles new work.
+switches a caught-up predecessor while its existing Jobs slot is pending and
+unleased. If the slot is busy or backlogged, lifecycle records the current
+thread head as the handoff position. The predecessor continues processing
+through that position, including any in-flight fold. Subsequent appends keep
+their existing Jobs demand. Ordinary completion retries the transition after
+the predecessor's post-commit callback. A paused cursor keeps its pause and
+can process a pending backlog when its operator resumes it. Convergence
+preserves the fold, cursor position, IDs and reset generation.
 A successful transition authorizes the change in worker declaration. The
 destination owns durable publication and recovery in a separate target store.
 

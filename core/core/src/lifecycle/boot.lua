@@ -30,8 +30,9 @@ local function converge_page(actor: any, scope: any, continuation: table?): (tab
     local summary, err = provision.converge(actor, scope, continuation)
     if type(summary) ~= "table" then return nil, err or response_error("converge") end
     local skipped = type(summary.skipped) == "table" and #(summary.skipped :: { any }) or 0
-    if (tonumber(summary.healed) or 0) > 0 or skipped > 0 then
-        logger:info("declared-thread convergence", {checked = summary.checked, healed = summary.healed, skipped = skipped})
+    local deferred = tonumber(summary.deferred) or 0
+    if (tonumber(summary.healed) or 0) > 0 or skipped > 0 or deferred > 0 then
+        logger:info("declared-thread convergence", {checked = summary.checked, healed = summary.healed, deferred = deferred, skipped = skipped})
         for _, entry in ipairs((summary.skipped :: { any }) or {}) do
             local details = (entry.error or {}).details or {}
             logger:error("declared thread not convergeable", {

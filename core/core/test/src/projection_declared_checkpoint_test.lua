@@ -30,7 +30,7 @@ end
 
 local function registration(db, component_id, projection_key, cursor_key)
     local rows = assert(db:query([[SELECT c.id,c.job_id,c.actor_id,c.execution_identity_json,c.generation,c.last_seq,
-        c.status,c.last_error,c.continuation,c.projection_id,p.body,p.last_event_seq,p.reset_generation,p.actor_context FROM kickside_projection_cursor c
+        c.status,c.last_error,c.pending_transition,c.continuation,c.projection_id,p.body,p.last_event_seq,p.reset_generation,p.actor_context FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id
         WHERE c.thread_id=$1 AND p.kind=$2 AND p.projection_key=$3 AND c.cursor_key=$4]],
         {component_id, KIND, projection_key, cursor_key}))
@@ -206,20 +206,25 @@ return {run = test.run_cases(function()
             install("func://app:test_count_worker")
             append({TRIGGER, TRIGGER})
             control("pause_projection")
-            test.contains(tostring(converge()), "drain the predecessor")
-            control("resume_projection")
-            execute(current())
-            local old = current()
-            test.eq(decoded(old).stats.count, 2)
-            control("pause_projection")
             test.is_nil(converge())
+            local old = current()
+            test.eq(old.status, "paused")
+            test.eq(assert(json.decode(old.pending_transition))[1], "app:declared_checkpoint_descriptor")
+            test.eq(decoded(old).meta.worker_ref, "func://app:test_count_worker")
+            control("resume_projection")
+            test.is_nil(converge())
+            test.eq(current().status, "active")
+            test.eq(current().last_seq, 0)
+            execute(current())
             local installed = current()
+            test.is_nil(installed.pending_transition)
+            test.eq(installed.status, "active")
+            test.eq(decoded(installed).meta.worker_ref, "proc://app:range_checkpoint_worker")
             test.eq(installed.id, old.id)
             test.eq(installed.job_id, old.job_id)
-            test.eq(installed.last_seq, old.last_seq)
+            test.eq(installed.last_seq, 2)
             test.eq(installed.reset_generation, old.reset_generation)
             test.eq(decoded(installed).stats.count, 2)
-            control("resume_projection")
             append({CHANGED, TRIGGER, CHANGED, TRIGGER, CHANGED})
             execute(current())
             local published = current()
@@ -251,6 +256,60 @@ return {run = test.run_cases(function()
             test.is_true(successor.projection_id ~= reset.projection_id)
             test.eq(successor.reset_generation, 1)
         end)
+
+        for _, later in ipairs({0, 32}) do
+            test.it("hands off a running predecessor with " .. later .. " later events", function()
+                local f = fixture.new()
+                local id = uuid.v7()
+                created_component = id
+                local impl = "app:declared_checkpoint_descriptor"
+                assert(f.register_bare_component(f.owner, id, "app:declared_checkpoint_component", {}))
+                assert(f.run_as(f.owner, "ensure_thread", {component_id = id, impl_id = impl}))
+                local function current()
+                    return in_db(function(db) return registration(db, id, "ranged", "ranged") end)
+                end
+                local original = current()
+                local body = type(original.body) == "table" and original.body or assert(json.decode(original.body))
+                in_db(function(db)
+                    assert(projections.register_projection(db, id, {kind = KIND, projection_key = "ranged", cursor_key = "ranged",
+                        worker_ref = "func://app:test_count_worker", worker_input_mode = "prefetch_events",
+                        events = body.events, execution_identity_row = {actor_id = original.actor_id, actor_context = original.execution_identity_json}}))
+                    assert(threads_writer.append_system(db, id, {{type = TRIGGER, role = "system", body_json = "{}"}}))
+                end)
+                local old = current()
+                old.thread_id = id
+                old.body = type(old.body) == "table" and old.body or assert(json.decode(old.body))
+                local job = lease(old)
+                local opener = assert(security.new_actor("system:lifecycle", {system = true, groups = {"system", "lifecycle"}}))
+                local continuation
+                repeat
+                    local summary = assert(provision.converge(opener, f.test_scope(), continuation))
+                    for _, skip in ipairs(summary.skipped) do assert(skip.component_id ~= id, skip.reason) end
+                    continuation = summary.continuation
+                until not continuation
+                -- Complete the lease through the old apply contract. This deliberately
+                -- discards the follow-up marker, just as an invocation of old Core does.
+                old.body.stats = {count = 1}
+                assert(apply.advance("app:db", job, old, 1, {body = old.body, last_seq = 1}))
+                in_db(function(db)
+                    local slot = assert(db:query("SELECT scheduled_at FROM kickside_job WHERE id=$1", {old.job_id}))[1]
+                    assert(slot.scheduled_at, "control wake must survive old head-satisfied settlement")
+                    if later > 0 then
+                        local events = {}
+                        for i = 1, later do events[i] = {type = TRIGGER, role = "system", body_json = "{}"} end
+                        assert(threads_writer.append_system(db, id, events))
+                    end
+                end)
+                execute(current())
+                local updated = current()
+                local installed = type(updated.body) == "table" and updated.body or assert(json.decode(updated.body))
+                test.eq(installed.meta.worker_ref, "proc://app:range_checkpoint_worker")
+                test.eq(updated.job_id, old.job_id)
+                test.eq(updated.id, old.id)
+                test.is_nil(updated.pending_transition)
+                if later > 0 then test.is_true(tonumber(updated.last_seq) < later + 1) end
+            end)
+        end
 
         for _, case in ipairs({
             {name = "runs the installed descriptor under its persisted actor", allowed = true},

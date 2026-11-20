@@ -397,8 +397,67 @@ end
 
 -- Each pass seeks a bounded page of owners and jobs. Scan without locks, and
 -- commit each repair before proceeding to another projection or owner.
+-- Only the lifecycle converger may switch an existing worker. The
+-- callable thread completion method can repair missing state under WRITE.
+local function repair_transitions(db: sql.DB, impl_id: string, indexes: table, component_id: string, cursor_id: string?): (error?, boolean?)
+    local stored, load_err = component_identity.execution_identity_of(component_id)
+    if load_err then return load_err end
+    if not stored then
+        return errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "projection transition requires the stored component identity"})
+    end
+    local authorized, auth_err = execution_identity.authorize(stored,
+        {deferred_owner = CONVERGE_OWNER, execution_root = component_id})
+    if auth_err then return auth_err end
+    if not authorized then return missing_result("transition.authority") end
+    local row, row_err = execution_identity.to_row(stored)
+    if row_err then return row_err end
+    if not row then return missing_result("transition.identity") end
+    return thread_crud.apply_thread_declaration(db, component_id, impl_id, {row = row}, indexes, true, cursor_id)
+end
+
+-- Jobs calls this after its ordinary worker has settled at the thread head.
+-- The cursor marker was written by lifecycle under the component, thread,
+-- cursor and slot fences. Read the installed declaration anew and repeat
+-- those same checks in the registration transaction.
+function M.resume_transition(cursor_id: string): (boolean?, error?)
+    local db, db_err = sql.get(core_db.id())
+    if not db then return nil, db_err end
+    local rows, err = db:query([[SELECT c.thread_id,c.cursor_key,c.generation,c.pending_transition,p.kind,p.projection_key
+        FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
+        WHERE c.id=$1 AND c.pending_transition IS NOT NULL]], {cursor_id})
+    local cursor = rows and rows[1]
+    if cursor and not err then
+        local marker, decode_err = persisted_json.decode_table(cursor.pending_transition, "pending_transition")
+        err = decode_err
+        if not err and marker then
+            local matched = false
+            for index, decl in ipairs(autoinit.projections_for_impl(marker[1])) do
+                if (decl.on == nil or decl.on == "" or decl.on == autoinit.PROJECTION_ON.THREAD)
+                    and decl.kind == cursor.kind and decl.worker_ref == marker[2]
+                    and proj_register.declaration_key(decl.projection_key) == cursor.projection_key
+                    and proj_register.declaration_key(decl.cursor_key) == cursor.cursor_key then
+                    matched = true
+                    err = repair_transitions(db, marker[1], {[tostring(index)] = true}, cursor.thread_id, cursor_id)
+                    break
+                end
+            end
+            local details = err and err:details()
+            if not matched or (details and details.code == "projection_transition_obsolete") then
+                local _
+                _, err = db:execute([[UPDATE kickside_projection_cursor SET pending_transition=NULL,pending_transition_seq=NULL
+                    WHERE id=$1 AND generation=$2 AND pending_transition=$3]],
+                    {cursor_id, cursor.generation, cursor.pending_transition})
+            end
+        end
+    end
+    local _, release_err = db:release()
+    if err or release_err then return nil, err or release_err end
+    return true, nil
+end
+
 function M.converge(opener_actor: any, opener_scope: any, continuation: table?): ({ [string]: any }, error?)
-    local summary: { [string]: any } = {examined = 0, checked = 0, healed = 0, skipped = {}}
+    local summary: { [string]: any } = {examined = 0, checked = 0, healed = 0, deferred = 0, skipped = {}}
     local function skip(component_id: string?, impl_id: string, cause: error)
         summary.skipped[#summary.skipped + 1] = {component_id = component_id, impl_id = impl_id,
             reason = cause:message(), error = error_envelope.encode(cause)}
@@ -447,25 +506,6 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
             impl_id = kind.impl_id, thread_class = kind.class,
             projection_indexes = state.has_primary and state.thread_missing or nil})
         return converge_err and errors.wrap(converge_err, "converge_thread failed") or nil
-    end
-    -- Only the lifecycle converger may switch an existing worker. The
-    -- callable thread completion method can repair missing state under WRITE.
-    local function repair_transitions(kind: table, state: table, component_id: string): error?
-        local stored, load_err = component_identity.execution_identity_of(component_id)
-        if load_err then return load_err end
-        if not stored then
-            return errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
-                message = "projection transition requires the stored component identity"})
-        end
-        local authorized, auth_err = execution_identity.authorize(stored,
-            {deferred_owner = CONVERGE_OWNER, execution_root = component_id})
-        if auth_err then return auth_err end
-        if not authorized then return missing_result("transition.authority") end
-        local row, row_err = execution_identity.to_row(stored)
-        if row_err then return row_err end
-        if not row then return missing_result("transition.identity") end
-        return thread_crud.apply_thread_declaration(db, component_id, kind.impl_id, {row = row},
-            state.transitions, true)
     end
     local function repair_lifecycle(kind: table, component_id: string, declaration: table): error?
         local tx, begin_err = db:begin()
@@ -533,8 +573,10 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                                 skip(id, kind.impl_id, err)
                             end
                         end
+                        local deferred = false
                         if transition then
-                            local err = repair_transitions(kind, state, id)
+                            local err, pending = repair_transitions(db, kind.impl_id, state.transitions, id, nil)
+                            deferred = pending == true
                             if err then
                                 failed = true
                                 skip(id, kind.impl_id, err)
@@ -547,7 +589,8 @@ function M.converge(opener_actor: any, opener_scope: any, continuation: table?):
                                 skip(id, kind.impl_id, err)
                             end
                         end
-                        if not failed then summary.healed = summary.healed + 1 end
+                        if deferred then summary.deferred = summary.deferred + 1
+                        elseif not failed then summary.healed = summary.healed + 1 end
                     end
                     positions[kind.impl_id] = id
                 end
