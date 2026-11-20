@@ -114,10 +114,12 @@ the provider reports none, and rewrites the other discovered fields.
 `kickside.models.cards:cards` lets a module register and retire model cards
 without the admin HTTP surface. `upsert_card(card)` creates or updates the card
 by name through the same write path as `PUT /models/cards`; `disable_card({name})`
-disables a stored card and keeps its row. When `metadata.train` is present it
-must carry `weights_digest` and `manifest_sha256`. Card writes discard
-credential fields and reject URLs containing credentials. Replies redact
-credential-bearing URLs already stored on legacy cards. The contract is outside the
+disables a stored card and keeps its row; `delete_card({name})` deletes a stored
+card once it is disabled and refuses an enabled one, which is in use. When
+`metadata.train` is present it must carry `weights_digest` and
+`manifest_sha256`. Card writes discard credential fields and reject URLs
+containing credentials. Replies redact credential-bearing URLs already stored
+on legacy cards. The contract is outside the
 member module grant; a module receives it through the
 `kickside.models.security:card_registrar` policy.
 

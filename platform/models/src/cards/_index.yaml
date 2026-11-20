@@ -11,7 +11,7 @@ entries:
     kind: security.policy
     meta:
       private: true
-      comment: Read the Models database binding when retiring a stored card.
+      comment: Read the Models database binding when retiring or deleting a stored card.
     policy:
       resources: [kickside.models:db_config]
       actions: [registry.get]
@@ -21,7 +21,7 @@ entries:
     kind: contract.definition
     meta:
       title: Model Cards
-      description: Register and retire model cards without the admin HTTP surface. Upserts share the PUT /models/cards save path. Retirement keeps the stored row and refreshes the cache.
+      description: Register, retire and delete model cards without the admin HTTP surface. Upserts share the PUT /models/cards save path. Retirement keeps the stored row; deleting a retired card removes it. Both refresh the cache.
     methods:
       - name: upsert_card
         description: upsert_card(card) -> { success, model?, error? }. Creates or updates the card by name; omitted fields keep the saved values.
@@ -82,6 +82,20 @@ entries:
                 "properties": { "success": { "type": "boolean" }, "model": { "type": "object" }, "error": { "type": "string" } },
                 "required": ["success"] }
             format: application/schema+json
+      - name: delete_card
+        description: delete_card({ name }) -> { success, error? }. Deletes a stored card that is disabled; an enabled card is in use and is refused, so a caller retires a card with disable_card before deleting it.
+        input_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "name": { "type": "string", "minLength": 1 } },
+                "required": ["name"] }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "success": { "type": "boolean" }, "error": { "type": "string" } },
+                "required": ["success"] }
+            format: application/schema+json
 
   - name: upsert_card
     kind: function.lua
@@ -114,6 +128,21 @@ entries:
         - kickside.models.catalog:catalog_database
         - kickside.models:reload_profiles_call
 
+  - name: delete_card
+    kind: function.lua
+    meta:
+      comment: cards contract -- delete a retired stored card.
+    source: file://cards_contract.lua
+    method: delete_card
+    imports:
+      card_service: kickside.models.catalog:card_service
+      policy: kickside.models.catalog:policy
+    security:
+      policies:
+        - kickside.models.cards:database_config_read
+        - kickside.models.catalog:catalog_database
+        - kickside.models:reload_profiles_call
+
   - name: cards_binding
     kind: contract.binding
     meta:
@@ -125,3 +154,4 @@ entries:
         methods:
           upsert_card: kickside.models.cards:upsert_card
           disable_card: kickside.models.cards:disable_card
+          delete_card: kickside.models.cards:delete_card
