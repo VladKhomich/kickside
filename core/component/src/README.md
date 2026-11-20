@@ -55,6 +55,11 @@ owned_child_producers:
     - example.service:create_view
 ```
 
+Static invocation uses the owning service's existing actor and scope. The
+service must be able to open Component, call its ordinary register method and
+perform the registration work required by the child kind. Work board views are
+the first qualified consumer.
+
 The Component writer obtains the enclosing function ID from `process.id()`,
 checks it against the declaration, and verifies the authenticated creator can
 write to the live parent. Registration records the parent's ID in the existing

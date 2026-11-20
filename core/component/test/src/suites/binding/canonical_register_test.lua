@@ -125,7 +125,7 @@ local function define_tests()
             local service = open_as_owner()
             local parent = assert(service:register({impl_id = "app:placement_parent"}))
             test.is_true(parent.success)
-            local request = {impl_id = "app:placement_child", parent_id = parent.component_id}
+            local request = {impl_id = "app:placement_child", parent_id = parent.component_id, private_context = {label = "child"}}
             local producer = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(test_scope())
             local child = assert(producer:call("app.component_suites.binding:register_test_child", request))
             test.is_true(child.success, child.error)

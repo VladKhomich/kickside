@@ -1,7 +1,7 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
 local uuid = require("uuid")
 local time = require("time")
-local process = require("process")
 local security = require("security")
 local ops = require("component_ops")
 local component_command = require("component_command")
@@ -42,16 +42,15 @@ local function validate_additional_access(additional_access): error?
         if type_err then
             return additional_access_error(i, type_err)
         end
-        local mask, mask_err = access_policy.normalize_access_mask(access_rule.access_mask)
+        local _, mask_err = access_policy.normalize_access_mask(access_rule.access_mask)
         if mask_err then
             return additional_access_error(i, mask_err)
         end
-        access_rule.access_mask = mask
     end
     return nil
 end
 
-local function register(request_dto, owned_child: boolean)
+local function register(request_dto, owned_child: boolean?)
     if not request_dto or type(request_dto) ~= "table" then
         return envelope.fail(VALIDATION_ERRORS.INVALID_REQUEST, errors.INVALID)
     end
@@ -73,6 +72,14 @@ local function register(request_dto, owned_child: boolean)
     local private_context = request_dto.private_context or {}
     if type(private_context) ~= "table" then
         return envelope.fail(VALIDATION_ERRORS.INVALID_PRIVATE_CONTEXT, errors.INVALID)
+    end
+
+    if owned_child then
+        -- The SQL writer captures execution identity in the storage document.
+        -- A caller may reuse its original context after a transaction error.
+        local storage_context = {}
+        for key, value in pairs(private_context) do storage_context[key] = value end
+        private_context = storage_context
     end
 
     local meta = request_dto.meta or {}
@@ -204,22 +211,4 @@ local function register(request_dto, owned_child: boolean)
     }
 end
 
-return {
-    handle = function(request_dto)
-        local entry, err = process.id()
-        if err then return envelope.from_error(err) end
-        if entry ~= "kickside.component.binding:register_component_func" then
-            return envelope.fail("ordinary registration requires the Component service", errors.PERMISSION_DENIED)
-        end
-        return register(request_dto, false)
-    end,
-    register_owned_child = function(request_dto)
-        -- The inline producer retains the ordinary register method's admission.
-        local allowed, err = security.can("contract.call", "register")
-        if err then return envelope.from_error(err) end
-        if allowed ~= true then
-            return envelope.fail("not allowed to call method: register", errors.PERMISSION_DENIED)
-        end
-        return register(request_dto, true)
-    end,
-}
+return {handle = register}

@@ -2149,10 +2149,6 @@ entries:
       component_ops: app:registration_tx_ops
       component_lifecycle: app:registration_tx_lifecycle
 
-  - name: registration_binding_frame
-    kind: library.lua
-    source: 'return {id = function() return "kickside.component.binding:register_component_func" end}'
-
   - name: registration_tx_source
     kind: library.lua
     source: file://registration_tx_source.lua
@@ -2161,7 +2157,6 @@ entries:
     - uuid
     - time
     imports:
-      process: app:registration_binding_frame
       committed_error: kickside.contract:committed_error
       sql: app:registration_tx_sql
       security: app:registration_tx_security
@@ -2335,7 +2330,6 @@ entries:
     - uuid
     - time
     imports:
-      process: app:registration_binding_frame
       sql: app:committed_retry_sql
       security: app:committed_retry_security
       component_ops: app:committed_retry_ops
