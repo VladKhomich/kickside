@@ -66,7 +66,8 @@ local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?,
     if key_err then return nil, key_err end
     local rows, err = db:query([[SELECT k.id,k.projection_id,k.thread_id,k.cursor_key,k.last_seq,
         k.generation,k.status,k.job_id,k.last_error,k.debounce_idle_ms,k.debounce_max_ms,k.continuation,
-        k.actor_id,k.execution_identity_json,p.kind,p.projection_key,p.body,t.thread_class,t.event_count,t.deleting_at, ]] .. table.concat(event_access.binding_columns, ",") .. [[
+        k.actor_id,k.execution_identity_json,p.kind,p.projection_key,p.body,t.thread_class,t.event_count,t.deleting_at,
+        c.identity_generation AS component_identity_generation, ]] .. table.concat(event_access.binding_columns, ",") .. [[
         FROM kickside_projection_cursor k
         JOIN kickside_projection p ON p.id=k.projection_id AND p.thread_id=k.thread_id
         JOIN kickside_thread t ON t.id=k.thread_id
@@ -269,12 +270,14 @@ local function defer(db: sql.DB, job: table, due: string): (table?, error?)
 end
 
 local function run_checkpointed(binding: table, input: table, host: string, db_id: string, job: table,
-        current: table, prefetched_last: number, before_dispatch: () -> error?, execution_frame: table?): (table?, error?, table?)
+        current: table, prefetched_last: number, before_dispatch: () -> error?, execution_frame: table?,
+        owner: table?): (table?, error?, table?, table?)
     local first = tonumber(current.last_seq)
     if first == nil then return nil, response_error("cursor.position"), current end
     local first_continuation = current.continuation
     local assigned_cursor = {}
     for key, value in pairs(current) do assigned_cursor[key] = value end
+    assigned_cursor.component_identity_generation = nil
     input.checkpoint = {
         job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq},
         cursor = assigned_cursor,
@@ -293,23 +296,25 @@ local function run_checkpointed(binding: table, input: table, host: string, db_i
     if not db then return nil, response_error("checkpoint.database") end
     local latest, row_err = snapshot(db, tostring(current.id), tostring(job.id))
     local read_err = release(db, row_err)
-    if read_err then return nil, read_err end
+    if read_err then return nil, read_err, owner and current or nil, owner end
     if not latest then return nil, response_error("checkpoint.snapshot") end
     if latest.status ~= "active" or latest.generation ~= current.generation then
         return apply.advance(db_id, job, current, first, {last_seq = first})
     end
-    if run_err then return nil, run_err, latest end
+    if run_err then return nil, run_err, latest, owner end
     if type(result) ~= "table" or result.checkpointed ~= true then
-        return nil, response_error("checkpoint.worker_receipt"), latest
+        return nil, response_error("checkpoint.worker_receipt"), latest, owner
     end
     if tonumber(latest.last_seq) == first and latest.continuation == first_continuation then
         return nil, errors.new({kind = errors.INVALID, retryable = false,
-            message = "checkpoint worker returned without advancing the position"}), latest
+            message = "checkpoint worker returned without advancing the position"}), latest, owner
     end
-    return apply.finish_checkpointed(db_id, job, latest, first)
+    local settled, settle_err = apply.finish_checkpointed(db_id, job, latest, first, owner)
+    if owner and not settled and settle_err then return nil, settle_err, latest, owner end
+    return settled, settle_err
 end
 
-local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?, table?)
+local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?, table?, table?)
     local db: sql.DB? = connection
     local cursor_id = tostring(current.id)
     local head = tonumber(current.event_count)
@@ -381,13 +386,14 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         end
         local acl: any = nil
         local execution_frame: table? = nil
+        local checkpoint_owner: table? = nil
         if component_backed or needs_declaration then
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
             if needs_declaration then
-                local admitted, declaration_err = worker.admit_declared_checkpoint(binding, current)
+                local admitted, declaration_err, owner = worker.admit_declared_checkpoint(binding, current)
                 if not admitted then return nil, declaration_err or response_error("worker.declaration") end
-                binding = admitted
+                binding, checkpoint_owner = admitted, owner
             end
             if component_backed then
                 local access_err: error?
@@ -443,7 +449,8 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                 if host_err then return nil, host_err end
                 if type(host) ~= "string" or host == "" then return nil, response_error("process_host") end
                 if binding.checkpointed_apply then
-                    return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last, before_dispatch, execution_frame)
+                    return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last, before_dispatch,
+                        execution_frame, checkpoint_owner)
                 end
                 output, row_err = worker.run_proc_supervised(binding, work_input, {
                     proc_host = host,
@@ -521,24 +528,25 @@ function M.run(input: any): (table?, error?)
     local result: table? = nil
     local attempt_err: error? = nil
     local checkpoint_failed = false
+    local failed_owner: table? = nil
     if row_err then
         attempt_err = release(db, row_err)
         if not row then return nil, attempt_err end
     else
         local failed_at
-        result, attempt_err, failed_at = attempt(db, db_id, job, row :: table, page_size)
+        result, attempt_err, failed_at, failed_owner = attempt(db, db_id, job, row :: table, page_size)
         if failed_at then
             row = failed_at
             checkpoint_failed = true
         end
     end
     local current = row :: table
-    if not attempt_err then return result, nil end
+    if not attempt_err or result then return result, attempt_err end
     if job_types.is_lease_lost_error(attempt_err) then return nil, attempt_err end
     -- Access, identity, worker and apply failures share the existing cursor
     -- failure transition. Its fence protects a resumed or committed cursor.
     local deterministic = job_types.is_deterministic_kind(attempt_err:kind())
-    local failed, fail_err = apply.fail(db_id, job, current, attempt_err, deterministic, checkpoint_failed or nil)
+    local failed, fail_err = apply.fail(db_id, job, current, attempt_err, deterministic, checkpoint_failed or nil, failed_owner)
     if fail_err then return nil, fail_err end
     if failed then return failed, nil end
     return nil, attempt_err

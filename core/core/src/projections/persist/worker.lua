@@ -259,7 +259,7 @@ function worker.requires_checkpoint_declaration(err: error): boolean
     return type(details) == "table" and details.code == CHECKPOINT_DECLARATION_REQUIRED
 end
 
-function worker.admit_declared_checkpoint(binding: table, cursor: table): (Binding?, error?)
+function worker.admit_declared_checkpoint(binding: table, cursor: table): (Binding?, error?, table?)
     local revision, registry_err = registry_revision()
     if not revision then return nil, registry_err end
     local meta = cursor.body and cursor.body.meta
@@ -269,6 +269,13 @@ function worker.admit_declared_checkpoint(binding: table, cursor: table): (Bindi
     end
     local err = checkpoint_declaration.check(cursor, revision)
     if err then return nil, err end
+    local generation = tonumber(cursor.component_identity_generation)
+    if generation == nil or type(cursor.component_incarnation) ~= "string" then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
+            message = "private checkpoint requires an observed component identity generation"})
+    end
+    local owner = {component_id = cursor.component_id, incarnation = cursor.component_incarnation,
+        generation = generation}
     local admitted, admit_err = validate(binding, false, revision)
     if not admitted then return nil, admit_err end
     if not admitted.checkpointed_apply or admitted.worker_ref ~= meta.worker_ref then
@@ -279,8 +286,8 @@ function worker.admit_declared_checkpoint(binding: table, cursor: table): (Bindi
     actor_binding.actor_id = cursor.actor_id
     actor_binding.actor_context = cursor.execution_identity_json
     declared_checkpoints[actor_binding] = {revision = revision, worker_ref = admitted.worker_ref,
-        actor_id = actor_binding.actor_id, actor_context = actor_binding.actor_context}
-    return admitted, nil
+        actor_id = actor_binding.actor_id, actor_context = actor_binding.actor_context, cursor_id = cursor.id, owner = owner}
+    return admitted, nil, owner
 end
 
 -- Optional notification worker is declared on the fold worker, never supplied
@@ -573,7 +580,14 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
         spawn = function(): (string?, error?)
             local admission_err = admit_process(actor, target_id, host)
             if admission_err then return nil, admission_err end
-            local builder = process.with_context({})
+            local context = {}
+            if proof then
+                local assignment = worker_input.checkpoint
+                local job = assignment.job
+                context["kickside.core.projection_checkpoint"] = {owner = proof.owner, cursor_id = proof.cursor_id,
+                    job_id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq}
+            end
+            local builder = process.with_context(context)
             if actor then
                 builder = builder:with_actor(actor):with_scope(scope)
             end
