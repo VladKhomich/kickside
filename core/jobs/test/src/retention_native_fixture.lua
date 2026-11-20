@@ -36,6 +36,21 @@ function M.database(): any
         return true, nil
     end
     function db:query(statement, params)
+        if statement:find("SELECT last_key,upper_key FROM kickside_job_wake_retention", 1, true) == 1 then
+            if M.mode == "wake" then return M.result("position", {}) end
+            return {}, nil
+        end
+        if statement:find("SELECT key FROM kickside_wake_fanout ORDER BY key DESC LIMIT 1", 1, true) == 1 then
+            if M.mode == "wake" then return M.result("upper", {{key = "wake"}}) end
+            return {}, nil
+        end
+        if statement:find("SELECT page.key,", 1, true) == 1 then
+            if M.mode == "wake" then return M.result("candidates", {{key = "wake", orphan = true}}) end
+            return {}, nil
+        end
+        if statement:find("SELECT key FROM kickside_wake_fanout WHERE key IN", 1, true) == 1 then
+            return M.result("lock", {{key = "wake"}})
+        end
         if statement:find("INSERT INTO kickside_job_thread_cleanup", 1, true) == 1 then
             M.fence_calls, M.fenced_ids, M.writes_at_fence = M.fence_calls + 1, params, M.writes
             local rows = {}
@@ -57,6 +72,9 @@ function M.database(): any
     end
     function db:execute(statement, params)
         M.writes = M.writes + 1
+        if statement:find("INSERT INTO kickside_job_wake_retention", 1, true) == 1 then
+            return M.result("advance", {rows_affected = 1})
+        end
         if M.mode == "receipts" or M.mode == "fences" then
             if M.active == M.mode and M.begins > 0 then return M.result("delete", {rows_affected = 1}) end
             return {rows_affected = 0}, nil

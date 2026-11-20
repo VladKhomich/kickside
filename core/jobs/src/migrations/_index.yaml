@@ -205,3 +205,16 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 32_wake_retention
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Stores the durable position of the bounded wake fanout sweep.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-20T00:00:32Z"
+    source: file://32_wake_retention.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
