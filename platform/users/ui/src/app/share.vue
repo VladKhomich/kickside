@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Icon } from '@iconify/vue'
 import { api, host } from '@wippy-fe/proxy'
 import Dialog from 'primevue/dialog'
@@ -120,18 +120,12 @@ async function loadAccess() {
 // The modal shell is PrimeVue's Dialog; `dialogOpen` drives its visibility, and any
 // dismissal (mask click, X, or the Escape handler below) flips it false → emitClose.
 const dialogOpen = ref(true)
-let confirmingRevoke = false
+const confirmingRevoke = ref(false)
 function emitClose() { emit('close', undefined) }
 function onDialogVisible(v: boolean) { if (!v) emitClose() }
-function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || confirmingRevoke) return
-  dialogOpen.value = false
-}
+function onEscape() { dialogOpen.value = false }
 
-onMounted(() => { loadCaps(); window.addEventListener('keydown', onKey) })
-onUnmounted(() => {
-  window.removeEventListener('keydown', onKey)
-})
+onMounted(loadCaps)
 watch(() => cfg.value.access_url, () => loadAccess(), { immediate: true })
 
 const selected = ref<Principal | null>(null)
@@ -185,12 +179,13 @@ async function toggleRow(row: AccessRow, bit: number) {
 
 async function revoke(row: AccessRow) {
   const { share_url: shareUrl, resource_id: resourceId, title } = cfg.value
-  if (row.owner || confirmingRevoke || !shareUrl) return
+  if (row.owner || !shareUrl) return
   const name = title?.trim() || resourceId
   const resource = name ? `“${name}”` : 'this resource'
 
-  confirmingRevoke = true
+  confirmingRevoke.value = true
   try {
+    await nextTick()
     const accepted = await host.confirm({
       header: 'Remove access',
       message: `Remove ${row.label}’s access to ${resource}?`,
@@ -198,25 +193,30 @@ async function revoke(row: AccessRow) {
       acceptLabel: 'Remove access',
       rejectLabel: 'Cancel',
       acceptClass: 'p-button-danger',
+      defaultFocus: 'reject',
     })
     if (accepted && dialogOpen.value && cfg.value.share_url === shareUrl) {
       await apply(row.id, row.type, 0, true)
     }
   } finally {
-    confirmingRevoke = false
+    confirmingRevoke.value = false
   }
 }
 </script>
 
 <template>
+  <!-- The shadow portal uses the browser's top layer. Yield it to host confirmation. -->
   <Dialog
     v-model:visible="dialogOpen"
     modal
     :dismissable-mask="true"
     :close-on-escape="false"
+    :append-to="confirmingRevoke ? 'self' : 'body'"
+    :auto-z-index="!confirmingRevoke"
     :style="{ width: '560px', maxWidth: 'calc(100vw - 48px)' }"
     aria-label="Share"
     class="kxs-dialog"
+    @keydown.esc="onEscape"
     @update:visible="onDialogVisible"
   >
     <template #header>

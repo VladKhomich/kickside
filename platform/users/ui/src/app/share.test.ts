@@ -102,3 +102,9 @@ it('updates a grant directly when a permission remains selected', async () => {
     subject_id: 'riley', subject_type: 'user', access_mask: 1,
   })
 })
+
+it('closes Share when Escape is pressed inside it', async () => {
+  const view = await openShare(9)
+  await view.get('.kxs').trigger('keydown', { key: 'Escape' })
+  expect(view.find('.kxs').exists()).toBe(false)
+})
