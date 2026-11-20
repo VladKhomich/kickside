@@ -66,7 +66,7 @@ local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?,
     if key_err then return nil, key_err end
     local rows, err = db:query([[SELECT k.id,k.projection_id,k.thread_id,k.cursor_key,k.last_seq,
         k.generation,k.status,k.job_id,k.last_error,k.debounce_idle_ms,k.debounce_max_ms,k.continuation,
-        k.actor_id,k.execution_identity_json,p.kind,p.projection_key,p.body,t.thread_class,t.event_count,t.deleting_at,
+        k.actor_id,k.execution_identity_json,p.kind,p.projection_key,p.reset_generation,p.body,t.thread_class,t.event_count,t.deleting_at,
         c.identity_generation AS component_identity_generation, ]] .. table.concat(event_access.binding_columns, ",") .. [[
         FROM kickside_projection_cursor k
         JOIN kickside_projection p ON p.id=k.projection_id AND p.thread_id=k.thread_id
@@ -405,13 +405,20 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             if open_err then return nil, open_err end
             if not db then return nil, response_error("database") end
         end
+        if binding.filtered_checkpoint then
+            types = event_types(body)
+            if not checkpoint_owner or not types or pinned then
+                return nil, release(db, response_error("filtered checkpoint declaration"))
+            end
+            target = math.min(head, last + page_size)
+        end
         local fence, fence_err = input_fence(db, current, job, acl)
         if fence_err then return nil, release(db, fence_err) end
         local events, events_err = worker.query_event_rows(db, tostring(current.thread_id), from, target, page_size, types, fence)
         if events_err then return nil, release(db, events_err) end
         if type(events) ~= "table" then return nil, release(db, response_error("events")) end
         local batch = events :: table[]
-        if binding.checkpointed_apply and (#batch == 0 or (pinned and batch[1].id ~= pinned.event_id)) then
+        if binding.checkpointed_apply and not binding.filtered_checkpoint and (#batch == 0 or (pinned and batch[1].id ~= pinned.event_id)) then
             return nil, release(db, errors.new({kind = errors.NOT_FOUND, retryable = false,
                 message = "projection checkpoint input is missing"})), current
         end
@@ -434,6 +441,12 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             range = { from_seq = from, to_seq = seen_last, target_seq = target, processed_count = #batch },
             events = mode == "prefetch_events" and batch or nil,
         }
+        if binding.filtered_checkpoint and #batch == 0 then
+            local release_err = release(db, nil)
+            if release_err then return nil, release_err end
+            local result, empty_err = apply.advance_filtered_empty(db_id, job, current, seen_last, checkpoint_owner :: table)
+            return result, empty_err, current, checkpoint_owner
+        end
         if #batch > 0 then
             committed_input = work_input
             -- Workers may read or write the shared core database. SQLite has a

@@ -12,6 +12,7 @@ local provision = require("provision")
 local sql = require("sql")
 local test = require("test")
 local time = require("time")
+local threads_writer = require("threads")
 local uuid = require("uuid")
 
 local WORKER = "proc://app:declared_checkpoint_worker"
@@ -29,7 +30,7 @@ end
 
 local function registration(db, component_id, projection_key, cursor_key)
     local rows = assert(db:query([[SELECT c.id,c.job_id,c.actor_id,c.execution_identity_json,c.generation,c.last_seq,
-        c.status,c.last_error,c.continuation,c.projection_id,p.body,p.last_event_seq,p.actor_context FROM kickside_projection_cursor c
+        c.status,c.last_error,c.continuation,c.projection_id,p.body,p.last_event_seq,p.reset_generation,p.actor_context FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id
         WHERE c.thread_id=$1 AND p.kind=$2 AND p.projection_key=$3 AND c.cursor_key=$4]],
         {component_id, KIND, projection_key, cursor_key}))
@@ -160,6 +161,95 @@ return {run = test.run_cases(function()
                 test.eq(settled.job_id, before.job_id)
                 test.eq(tonumber(settled.last_seq), 1)
             end)
+        end)
+
+        test.it("drains a populated predecessor and publishes only newly selected inputs after cutover", function()
+            local f = fixture.new()
+            local id = uuid.v7()
+            created_component = id
+            assert(f.register_bare_component(f.owner, id, "app:declared_checkpoint_component", {}))
+            assert(f.run_as(f.owner, "ensure_thread", {component_id = id, impl_id = "app:declared_checkpoint_descriptor"}))
+            local function current()
+                return in_db(function(db) return registration(db, id, "ranged", "ranged") end)
+            end
+            local function decoded(row)
+                return type(row.body) == "table" and row.body or assert(json.decode(row.body))
+            end
+            local function control(method)
+                return assert(f.run_as(f.owner, method, {thread_id = id, cursor_id = current().id}))
+            end
+            local function append(types)
+                local events = {}
+                for _, kind in ipairs(types) do events[#events + 1] = {type = kind, role = "system", body_json = "{}"} end
+                in_db(function(db) assert(threads_writer.append_system(db, id, events)) end)
+            end
+            local function install(ref, reset)
+                in_db(function(db)
+                    local row = registration(db, id, "ranged", "ranged")
+                    assert(projections.register_projection(db, id, {kind = KIND, projection_key = "ranged",
+                        cursor_key = "ranged", worker_ref = ref, worker_input_mode = "prefetch_events",
+                        events = decoded(row).events, start_seq = row.last_seq, reset = reset,
+                        execution_identity_row = {actor_id = row.actor_id, actor_context = row.execution_identity_json}}))
+                end)
+            end
+            local opener = assert(security.new_actor("system:lifecycle", {system = true, groups = {"system", "lifecycle"}}))
+            local function converge()
+                local continuation
+                repeat
+                    local summary = assert(provision.converge(opener, f.test_scope(), continuation))
+                    for _, skipped in ipairs(summary.skipped) do
+                        if skipped.component_id == id then return skipped.reason end
+                    end
+                    continuation = summary.continuation
+                until not continuation
+            end
+            install("func://app:test_count_worker")
+            append({TRIGGER, TRIGGER})
+            control("pause_projection")
+            test.contains(tostring(converge()), "drain the predecessor")
+            control("resume_projection")
+            execute(current())
+            local old = current()
+            test.eq(decoded(old).stats.count, 2)
+            control("pause_projection")
+            test.is_nil(converge())
+            local installed = current()
+            test.eq(installed.id, old.id)
+            test.eq(installed.job_id, old.job_id)
+            test.eq(installed.last_seq, old.last_seq)
+            test.eq(installed.reset_generation, old.reset_generation)
+            test.eq(decoded(installed).stats.count, 2)
+            control("resume_projection")
+            append({CHANGED, TRIGGER, CHANGED, TRIGGER, CHANGED})
+            execute(current())
+            local published = current()
+            test.eq(published.last_seq, 7)
+            test.eq(decoded(published).stats.count, 2)
+            test.eq(decoded(published).offered, 2)
+            test.eq(decoded(published).publications, 1)
+            test.eq(decoded(published).reset_generation, 1)
+            control("pause_projection")
+            control("resume_projection")
+            test.eq(current().reset_generation, published.reset_generation)
+            install("proc://app:range_checkpoint_worker", true)
+            local reset = current()
+            test.eq(reset.id, old.id)
+            test.eq(reset.last_seq, published.last_seq)
+            test.eq(reset.reset_generation, published.reset_generation + 1)
+            test.is_nil(decoded(reset).publications)
+            append({CHANGED})
+            execute(current())
+            test.eq(current().last_seq, 8)
+            test.is_nil(decoded(current()).publications)
+            append({TRIGGER})
+            execute(current())
+            test.eq(decoded(current()).reset_generation, 2)
+            assert(f.run_as(f.owner, "remove_projection", {thread_id = id, projection_id = reset.projection_id}))
+            assert(f.run_as(f.owner, "ensure_thread", {component_id = id, impl_id = "app:declared_checkpoint_descriptor"}))
+            local successor = current()
+            test.is_true(successor.id ~= reset.id)
+            test.is_true(successor.projection_id ~= reset.projection_id)
+            test.eq(successor.reset_generation, 1)
         end)
 
         for _, case in ipairs({
