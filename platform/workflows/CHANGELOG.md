@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.20](https://github.com/kicksideai/kickside/compare/workflows-v0.2.19...workflows-v0.2.20) (2026-11-20)
+
+
+### Features
+
+* **workflows:** resolve exact runs for Automation history ([#767](https://github.com/kicksideai/kickside/issues/767)) ([2da89d9](https://github.com/kicksideai/kickside/commit/2da89d9df4fc5be3fe52f6fbb36308198bcbabb6))
+
 ## [0.2.19](https://github.com/kicksideai/kickside/compare/workflows-v0.2.18...workflows-v0.2.19) (2026-11-19)
 
 
