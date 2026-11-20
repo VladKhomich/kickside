@@ -22,17 +22,16 @@ function M.lookup(automation_id: string, keys: { string }): (any?, any?)
     local args: { string } = {}
     for _, key in ipairs(keys) do
         local first = #args + 1
-        args[first], args[first + 1], args[first + 2] = automation_id, automation_id, key
+        args[first], args[first + 1] = automation_id, key
         -- Two candidates detect ambiguity across Workflows without reading all
-        -- runs sharing a key. Use unique, ordered markers for SQLite binding.
-        selects[#selects + 1] = "SELECT * FROM (SELECT workflow_id,run_id,dedup_key,status,error"
+        -- runs sharing a key. Check admission and origin after the bounded read.
+        selects[#selects + 1] = "SELECT * FROM (SELECT workflow_id,run_id,dedup_key,status,error,"
+            .. " admission_state,origin,trigger_kind,binding_id,binding_revision"
             .. " FROM " .. types.TABLES.RUNS
             .. " WHERE trigger_id=$" .. tostring(first)
-            .. " AND binding_id=$" .. tostring(first + 1)
-            .. " AND dedup_key=$" .. tostring(first + 2)
-            .. " AND dedup_key IS NOT NULL AND superseded_by IS NULL AND admission_state='admitted'"
-            .. " AND origin='automation' AND trigger_kind='binding' AND binding_id IS NOT NULL AND binding_revision>0"
-            .. " ORDER BY run_id LIMIT 2) AS matches"
+            .. " AND dedup_key=$" .. tostring(first + 1)
+            .. " AND dedup_key IS NOT NULL AND superseded_by IS NULL"
+            .. " ORDER BY workflow_id LIMIT 2) AS matches"
     end
     local db, db_err = store.open_db()
     if not db then return nil, db_err end
@@ -48,7 +47,9 @@ function M.lookup(automation_id: string, keys: { string }): (any?, any?)
     local access: { [string]: boolean } = {}
     local out: { [string]: any } = {}
     for key, row in pairs(candidates) do
-        if row then
+        if row and row.admission_state == "admitted" and row.origin == "automation"
+            and row.trigger_kind == "binding" and row.binding_id == automation_id
+            and (tonumber(row.binding_revision) or 0) > 0 then
             local id = row.workflow_id
             if access[id] == nil then
                 local _, access_err = component.validate_access(id, component.ACCESS.READ)
