@@ -7,6 +7,7 @@ local automation_types = require("types")
 local support = require("engine_support")
 local errors = require("errors")
 local history = require("history_reader")
+local workflow_history = require("workflow_history")
 
 type Map = { [string]: any }
 
@@ -157,9 +158,30 @@ function part.attach(M: any, dependencies: any, P: any): ()
         local component = dependencies.component :: any
         local _, access_err = component.validate_access(component_id, component.ACCESS.ADMIN)
         if access_err then return nil, access_err end
-        return read_executor(function(db: any): (any?, any)
+        local page, history_err = read_executor(function(db: any): (any?, any)
             return history.list(db, component_id, opts, (dependencies.execution_identity :: any).validate)
         end)
+        if history_err or not page or page.kind ~= "deliveries" or not workflow_history.lookup then
+            return page, history_err
+        end
+        local keys: { string } = {}
+        local seen: { [string]: boolean } = {}
+        for _, entry in ipairs(page.entries) do
+            if entry.state == "resolved" and not seen[entry.identity_key] then
+                seen[entry.identity_key] = true
+                keys[#keys + 1] = entry.identity_key
+            end
+        end
+        if #keys == 0 then return page, nil end
+        local outcomes, workflow_err = workflow_history.lookup(component_id, keys)
+        if workflow_err then
+            (dependencies.logger :: any):named("automation.history"):warn("could not read Workflow outcomes")
+        elseif outcomes then
+            for _, entry in ipairs(page.entries) do
+                if entry.state == "resolved" then entry.workflow_run = outcomes[entry.identity_key] end
+            end
+        end
+        return page, nil
     end
 
     -- Read the canonical drive, command and ledger status.
