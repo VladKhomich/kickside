@@ -89,6 +89,13 @@ entries:
       resources: [kickside.component.env:encryption_key]
       actions: env.get
       effect: allow
+  - name: attachment_seal_access
+    kind: security.policy
+    meta: {service_only: true, comment: Allow an attachment provisioning function to seal initial values through Component.}
+    policy:
+      resources: [kickside.component.system:seal_secrets]
+      actions: funcs.call
+      effect: allow
   - name: secrets_codec_access
     kind: security.policy
     meta: {private: true, service_only: true}

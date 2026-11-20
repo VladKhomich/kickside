@@ -83,6 +83,10 @@ reads the installed plugin's `meta.type` and `meta.attachment`. The declared
 attachment must equal the requested implementation. Creation records the
 custodian as owner while leaving placement at the root. The provisioning
 service verifies its own durable association and handles existing instances.
+Attach `kickside.component:attachment_seal_access` to the producer function
+when plugin kinds can declare secret fields. This policy allows the
+Component seal operation for initial values. The installation key and the
+open operation keep their existing service policies.
 
 ## Kind mutation admission (SPEC)
 
