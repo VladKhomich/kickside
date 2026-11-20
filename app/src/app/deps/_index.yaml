@@ -247,7 +247,7 @@ entries:
         value: app:gateway
 
   # app.deps:kickside_agents
-  - version: ">=0.2.3"
+  - version: ">=0.2.23"
     name: kickside_agents
     kind: ns.dependency
     meta: {}

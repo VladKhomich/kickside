@@ -126,7 +126,7 @@ entries:
         value: app:processes
 
   # app.deps:kickside_sessions
-  - version: ">=0.1.40"
+  - version: ">=0.1.45"
     name: kickside_sessions
     kind: ns.dependency
     meta: {}
@@ -176,7 +176,7 @@ entries:
         value: app:gateway
 
   # app.deps:kickside_ui
-  - version: ">=0.2.3"
+  - version: ">=0.2.16"
     name: kickside_ui
     kind: ns.dependency
     meta: {}
