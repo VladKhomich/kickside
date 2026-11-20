@@ -180,18 +180,22 @@ reserved worker capacity. Read endpoints continue to read committed state.
 ### Fold a framework-created component's primary thread
 
 For a component created by your module without a stored user execution
-identity, declare the fold in the kind's `meta.projections` and set `meta.component_owned` on its function worker.
+identity, declare the fold in the kind's `meta.projections` with
+`input_mode: prefetch_events`. Mark its function worker as private and
+component-owned.
 
 ```yaml
 kind: function.lua
 meta:
   type: projection.worker
+  private: true
   component_owned: true
 ```
 
-The kind, worker and worker policies must belong to the same installed module. Core
-matches the primary thread, projection and cursor keys, worker, event filter,
-configuration and debounce settings to the installed declaration. It delivers
+The kind, worker and worker policies must belong to the same installed module.
+Core validates the framework-created component's declaration when it attaches
+the primary projection. On dispatch it matches the thread, projection and cursor
+keys, worker, event filter, configuration and debounce settings. It delivers
 the assigned range under an isolated actor with an empty caller scope. Give
 the worker a service-only policy for any SQL resource or owner function it
 uses. For example, a fold can update its own tables and return `body` and
