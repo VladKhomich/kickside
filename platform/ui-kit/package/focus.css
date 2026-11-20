@@ -35,3 +35,17 @@
   outline-offset: var(--p-focus-ring-offset);
   box-shadow: none;
 }
+
+/* PrimeVue supplies default focus styles through later adopted stylesheets.
+   An explicit helper on a PrimeVue button takes precedence in every theme. */
+.p-button.kx-focus-halo:focus-visible {
+  border-color: var(--p-focus-ring-color) !important;
+  outline: none !important;
+  box-shadow: var(--p-focus-ring-shadow) !important;
+}
+
+.p-button.kx-focus-outline:focus-visible {
+  outline: var(--p-focus-ring-width) var(--p-focus-ring-style) var(--p-focus-ring-color) !important;
+  outline-offset: var(--p-focus-ring-offset) !important;
+  box-shadow: none !important;
+}
