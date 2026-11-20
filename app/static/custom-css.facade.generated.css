@@ -400,6 +400,11 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 .p-confirmdialog .p-confirmdialog-message { font-size: 13px; color: var(--p-text-color); line-height: 1.5; }
 .p-confirmdialog .p-confirmdialog-icon { color: var(--p-warn-500); }
 
+.p-confirmdialog:has(.kxs-revoke-accept) {
+  max-inline-size: calc(100% - 32px);
+  overflow-wrap: anywhere;
+}
+
 /* --- custom/55-tag.css --- */
 /* Tag: the warn severity, restored to the amber the product had before.
  *

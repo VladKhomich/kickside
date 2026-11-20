@@ -11,7 +11,7 @@
    The styles below dress the module's own body content and header slot, using the
    universal --p-* theme vocabulary so it renders correctly in any host. */
 :host { display: block; }
-.kxs { width: 100%; display: flex; flex-direction: column; gap: 12px; font-family: 'Inter', system-ui, sans-serif; color: var(--p-text-color); }
+.kxs { width: 100%; container-type: inline-size; display: flex; flex-direction: column; gap: 12px; font-family: 'Inter', system-ui, sans-serif; color: var(--p-text-color); }
 .kxs *, .kxs *::before, .kxs *::after { box-sizing: border-box; }
 
 .kxs-head-text { display: flex; flex-direction: column; }
@@ -68,6 +68,7 @@
 .kxs-cap-locked.kxs-cap-on { opacity: 1; }
 
 .kxs-owner {
+  flex: none;
   margin-left: 7px; font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
   color: var(--p-primary-color); background: color-mix(in srgb, var(--p-primary-color) 12%, transparent);
   padding: 1px 5px; border-radius: 6px; vertical-align: middle;
@@ -92,8 +93,13 @@
 .kxs-loading svg, .kxs-empty svg { width: 15px; height: 15px; }
 
 .kxs-list { display: flex; flex-direction: column; gap: 6px; }
-.kxs-row { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--p-text-color) 3.5%, transparent); }
-.kxs-row-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.kxs-row {
+  display: grid; grid-template-columns: auto minmax(11rem, 1fr) minmax(0, auto) auto;
+  align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px;
+  background: color-mix(in srgb, var(--p-text-color) 3.5%, transparent);
+}
+.kxs-row-text { display: flex; flex-direction: column; min-width: 0; }
+.kxs-row-name { display: flex; align-items: center; }
 .kxs-row-label { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A principal resolvePrincipals() couldn't match falls back to a neutral name;
    the raw id still rides along here, as a small mono secondary — never primary. */
@@ -105,3 +111,13 @@
 }
 .kxs-icon-btn svg { width: 15px; height: 15px; }
 .kxs-icon-btn:hover { background: color-mix(in srgb, var(--p-danger-500) 12%, transparent); color: var(--p-danger-500); }
+
+@container (max-width: 27rem) {
+  .kxs-add { flex-direction: column; }
+  .kxs-pick { flex: none; }
+  .kxs-add .kxs-btn { justify-content: center; }
+
+  .kxs-row { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: 4px; }
+  .kxs-row-text { grid-column: 2 / -1; }
+  .kxs-row > .kxs-caps { grid-column: 2; }
+}
