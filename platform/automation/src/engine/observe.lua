@@ -10,6 +10,7 @@ local history = require("history_reader")
 local workflow_history = require("workflow_history")
 
 type Map = { [string]: any }
+type CurrentFailureReader = (string, any) -> (Map?, any?)
 
 local part = {}
 
@@ -204,6 +205,7 @@ function part.attach(M: any, dependencies: any, P: any): ()
         local drive = dependencies.drive :: any
         local command = dependencies.command :: any
         local json_mod = dependencies.json :: any
+        local read_current_failure = (workflow_history :: { current_failure: CurrentFailureReader? }).current_failure
         local flow_ref: any = nil
         local status, status_err = read_executor(function(db: any): (any?, any)
             local rows, next_key, list_err = drive.list(db, component_id, { after_key = o.page_token, limit = page_size })
@@ -211,7 +213,7 @@ function part.attach(M: any, dependencies: any, P: any): ()
             local drives: { Map } = {}
             for _, row in ipairs(rows or {}) do
                 drives[#drives + 1] = public_drive(row, json_mod)
-                if workflow_history.current_failure and row.drive_key == "main" then
+                if read_current_failure and row.drive_key == "main" then
                     local declaration = row.applied and row.applied.declaration
                     if type(declaration) == "table" and declaration.sink_port == "kickside.workflows:run_sink"
                         and type(declaration.sink_config) == "table" then
@@ -252,8 +254,8 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 next_page_token = next_key,
             }, nil
         end)
-        if status_err or not status or not flow_ref then return status, status_err end
-        local failure, failure_err = workflow_history.current_failure(component_id, flow_ref)
+        if status_err or not status or not flow_ref or not read_current_failure then return status, status_err end
+        local failure, failure_err = read_current_failure(component_id, flow_ref)
         if failure_err then
             (dependencies.logger :: any):named("automation.status"):warn("could not read current Workflow failure")
         else
