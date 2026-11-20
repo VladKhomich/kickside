@@ -4,6 +4,18 @@ namespace: kickside.workflows.migrations
 # target_db is injected by the root kickside.workflows:target_db requirement.
 
 entries:
+  - name: 11_current_automation_failure_index
+    kind: function.lua
+    meta:
+      type: migration
+      comment: Bound the latest failure for one exact Automation and Workflow pair.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-20T01:00:00Z"
+    source: file://11_current_automation_failure_index.lua
+    method: migration
+    imports:
+      migration: wippy.migration:migration
+
   - name: 10_automation_history_index
     kind: function.lua
     meta:

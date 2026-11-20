@@ -1,11 +1,19 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local store = require("workflow_store")
 local component = require("component")
+local flow_ref = require("flow_ref")
 local json = require("json")
 local types = require("types")
 
 local M = {}
 local MAX_PAGE_SIZE = 100
+
+local function readable_workflows(ids: { string }): (any?, any?)
+    return component.query({
+        component_ids = ids, access_mask = component.ACCESS.READ,
+        include = { meta = false }, limit = #ids,
+    })
+end
 
 local function failure_message(value: any): string?
     if type(value) ~= "string" or value == "" then return nil end
@@ -61,10 +69,7 @@ function M.lookup(automation_id: string, keys: { string }): (any?, any?)
         end
     end
     if #workflow_ids == 0 then return {}, nil end
-    local permitted, access_err = component.query({
-        component_ids = workflow_ids, access_mask = component.ACCESS.READ,
-        include = { meta = false }, limit = #workflow_ids,
-    })
+    local permitted, access_err = readable_workflows(workflow_ids)
     if access_err then return nil, access_err end
     local access: { [string]: boolean } = {}
     for _, row in ipairs(permitted or {}) do access[row.component_id] = true end
@@ -78,6 +83,27 @@ function M.lookup(automation_id: string, keys: { string }): (any?, any?)
         end
     end
     return out, nil
+end
+
+function M.current_failure(automation_id: string, configured_ref: any): (any?, any?)
+    local ref = select(1, flow_ref.validate(configured_ref))
+    if not ref then return nil, nil end
+    local permitted, access_err = readable_workflows({ref.id})
+    if access_err or not permitted or #permitted == 0 then return nil, access_err end
+
+    local db, db_err = store.open_db()
+    if not db then return nil, db_err end
+    local rows, read_err = db:query("SELECT workflow_id,run_id,status,error,finished_at FROM " .. types.TABLES.RUNS
+        .. " WHERE trigger_id=$1 AND workflow_id=$2 AND binding_id=$3"
+        .. " AND status='failed' AND admission_state='admitted' AND origin='automation'"
+        .. " AND trigger_kind='binding' AND binding_revision>0 AND superseded_by IS NULL"
+        .. " AND finished_at IS NOT NULL ORDER BY finished_at DESC, run_id DESC LIMIT 1",
+        {automation_id, ref.id, automation_id})
+    db:release()
+    if read_err then return nil, read_err end
+    local failure = rows and rows[1]
+    if failure then failure.error = failure_message(failure.error) end
+    return failure, nil
 end
 
 return M

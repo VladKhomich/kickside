@@ -204,11 +204,21 @@ function part.attach(M: any, dependencies: any, P: any): ()
         local drive = dependencies.drive :: any
         local command = dependencies.command :: any
         local json_mod = dependencies.json :: any
-        return read_executor(function(db: any): (any?, any)
+        local flow_ref: any = nil
+        local status, status_err = read_executor(function(db: any): (any?, any)
             local rows, next_key, list_err = drive.list(db, component_id, { after_key = o.page_token, limit = page_size })
             if list_err then return nil, list_err end
             local drives: { Map } = {}
-            for _, row in ipairs(rows or {}) do drives[#drives + 1] = public_drive(row, json_mod) end
+            for _, row in ipairs(rows or {}) do
+                drives[#drives + 1] = public_drive(row, json_mod)
+                if workflow_history.current_failure and row.drive_key == "main" then
+                    local declaration = row.applied and row.applied.declaration
+                    if type(declaration) == "table" and declaration.sink_port == "kickside.workflows:run_sink"
+                        and type(declaration.sink_config) == "table" then
+                        flow_ref = declaration.sink_config.flow_ref
+                    end
+                end
+            end
             local state, state_err = command.state(db, component_id)
             if state_err or not state then return nil, state_err end
             local counts, count_err = db:query("SELECT COALESCE(SUM(unresolved_count), 0) AS unresolved,"
@@ -242,6 +252,14 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 next_page_token = next_key,
             }, nil
         end)
+        if status_err or not status or not flow_ref then return status, status_err end
+        local failure, failure_err = workflow_history.current_failure(component_id, flow_ref)
+        if failure_err then
+            (dependencies.logger :: any):named("automation.status"):warn("could not read current Workflow failure")
+        else
+            status.current_workflow_failure = failure
+        end
+        return status, nil
     end
 
     -- drive_statuses(ids) -> { [automation_id] = { drives } }: the
