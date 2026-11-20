@@ -124,6 +124,8 @@ entries:
         path: .meta.router
       - entry: kickside.knowledge.api:ingest_existing_upload.endpoint
         path: .meta.router
+      - entry: kickside.knowledge.api:retry_source.endpoint
+        path: .meta.router
       - entry: kickside.knowledge.api:search.endpoint
         path: .meta.router
       - entry: kickside.knowledge.api:ask.endpoint

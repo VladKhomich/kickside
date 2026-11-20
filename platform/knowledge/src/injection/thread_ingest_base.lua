@@ -40,6 +40,7 @@ local SOURCE_CURSOR_KEY = "source"
 M.EVENT_CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 M.EVENT_CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 M.EVENT_DELIVERY_CLAIMED = "kickside.knowledge.events:delivery.claimed"
+M.UPLOAD_INTENT_SOURCE = "knowledge.kb.upload-intent"
 M.EVENT_GRAPH_CHANGED = "kickside.knowledge.events:graph.changed"
 
 -- ─── helpers ───────────────────────────────────────────────────────────

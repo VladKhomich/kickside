@@ -23,6 +23,7 @@ local function define_tests()
                 "kickside.knowledge.api:list_engines.endpoint",
                 "kickside.knowledge.api:list_kb.endpoint",
                 "kickside.knowledge.api:organize.endpoint",
+                "kickside.knowledge.api:retry_source.endpoint",
                 "kickside.knowledge.api:search.endpoint",
                 "kickside.knowledge.api:update_kb.endpoint",
                 "kickside.knowledge.api:upload_token.endpoint",
