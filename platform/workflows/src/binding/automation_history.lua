@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local store = require("workflow_store")
 local component = require("component")
 local json = require("json")
