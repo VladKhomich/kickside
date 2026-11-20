@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local access_subjects = require("access_subjects")
 local component_query = require("component_query")
 local component_reader = require("component_reader")
@@ -9,6 +10,23 @@ local uuid = require("uuid")
 local SERIES = [[WITH RECURSIVE subjects(i) AS (
     SELECT 1 UNION ALL SELECT i+1 FROM subjects WHERE i<12000
 ) ]]
+local TABLES = {"kickside_components", "kickside_component_ancestor", "kickside_component_access", "kickside_component_meta"}
+
+local function copy_schema(tx: sql.Transaction, postgres: boolean)
+    for _, name in ipairs(TABLES) do
+        if postgres then
+            assert(tx:execute("CREATE TEMP TABLE " .. name .. " (LIKE public." .. name .. " INCLUDING ALL) ON COMMIT DROP", {}))
+        else
+            local schema = assert(tx:query([[SELECT sql FROM main.sqlite_master
+                WHERE tbl_name=$1 AND sql IS NOT NULL ORDER BY type DESC]], {name}))
+            for _, row in ipairs(schema) do
+                -- Indexes inherit the schema of their temporary table.
+                local statement = row.sql:gsub("^CREATE TABLE ", "CREATE TEMP TABLE ")
+                assert(tx:execute(statement, {}))
+            end
+        end
+    end
+end
 
 local function seed(tx: sql.Transaction, postgres: boolean, parent: string, reader: string, impl: string)
     local function id(prefix: string, suffix: string): string
@@ -37,8 +55,9 @@ local function seed(tx: sql.Transaction, postgres: boolean, parent: string, read
         .. metas .. "," .. cmp .. [[,CASE WHEN k=0 THEN 'ui' ELSE 'other-' || CAST(k AS TEXT) END,
         CASE WHEN k<>0 THEN 'value-' || CAST(i AS TEXT) WHEN i%101=0 THEN 'sparse'
              WHEN i%3<>0 THEN 'common' ELSE '' END FROM subjects CROSS JOIN keys]], {}))
-    for _, name in ipairs({"kickside_components", "kickside_component_ancestor", "kickside_component_access", "kickside_component_meta"}) do
-        assert(tx:execute("ANALYZE " .. name, {}))
+    local schema = postgres and "pg_temp." or "temp."
+    for _, name in ipairs(TABLES) do
+        assert(tx:execute("ANALYZE " .. schema .. name, {}))
     end
 end
 
@@ -72,6 +91,8 @@ return test.run_cases(function()
                 return {id = function() return reader end, meta = function() return {security_groups = {reader}} end}
             end})
             local ok, failure = pcall(function()
+                -- Keep both the fixture data and optimizer statistics away from other suites.
+                copy_schema(tx, postgres)
                 seed(tx, postgres, parent, reader, impl)
                 for _, sample in ipairs({"sparse", "common", "missing"}) do
                     local state = component_reader.new():with_user(reader):with_access_mask(1):with_impl_ids(impl)
@@ -91,9 +112,9 @@ return test.run_cases(function()
                     end
                 end
             end)
+            rawset(access_subjects, "_security", previous)
             assert(tx:rollback())
             db:release()
-            rawset(access_subjects, "_security", previous)
             if not ok then error(failure) end
         end)
     end)
