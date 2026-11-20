@@ -86,6 +86,7 @@ entries:
     modules: [http, json, security, registry]
     imports:
       http_errors: kickside.contract:http_errors
+      canonical_json: kickside.contract:canonical_json
       component: kickside.component:component
       engines: kickside.knowledge:engines
       stores: kickside.knowledge:stores

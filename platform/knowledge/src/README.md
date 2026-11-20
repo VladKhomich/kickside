@@ -79,6 +79,9 @@ binding), UI tags, stats labels, and default config there. The knowledge control
 create, read/list, query, delete, and source projection from that descriptor
 instead of branching on engine names.
 
+Knowledge detail responses return stored configuration overrides in `config`.
+An empty override map is a JSON object. Engine defaults are resolved when used.
+
 Engines may set `store_stats_batch: true` on a descriptor with a named store
 binding. The existing `get_store` operation then returns a complete `stats`
 object with the detail row when asked for `stats = true`, and statistics alone
