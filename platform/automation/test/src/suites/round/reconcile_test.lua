@@ -98,6 +98,12 @@ local function define_tests()
         test.it("deletes the destinations whose source keys vanished and keeps the rest", function()
             local before = receipt_rows()
             deliver_main("rec_main", { "rv-a", "rv-b", "rv-c" })
+            local origins = h.query("SELECT source_kind FROM kickside_automation_receipt"
+                .. " WHERE owner_id=$1 AND item_key LIKE 'rv-%'", { automation_id })
+            test.eq(#origins, 3)
+            for _, receipt in ipairs(origins) do
+                test.eq(receipt.source_kind, "collection")
+            end
             test.eq(#receipts("rv-"), 3)
             test.eq(receipt_rows(), before + 3)
             reconcile_drive({ "rv-a", "rv-c" }, 1)

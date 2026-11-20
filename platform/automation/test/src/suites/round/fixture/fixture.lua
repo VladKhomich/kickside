@@ -87,11 +87,12 @@ end
 -- the named thread's events from the named start, with the input's page_size
 -- as the declaration's round override.
 local function event_source(input: any): Map
-    local thread_id = type(input) == "table" and tostring((input :: Map).thread_id or "") or ""
-    local start = type(input) == "table" and tostring((input :: Map).start or "all") or "all"
-    local source: Map = { source_kind = "event", source_ref = "fixture:events", source_thread_id = thread_id,
-        event_type = "kickside.automation.round.fixture.events:source.received", start = start }
-    if type(input) == "table" and (input :: Map).page_size ~= nil then source.round = { page_size = (input :: Map).page_size } end
+    local config = type(input) == "table" and (input :: Map) or {}
+    if config.remove_source == true then return { source_kind = "none" } end
+    local source: Map = { source_kind = "event", source_ref = config.source_port or "fixture:events",
+        source_thread_id = tostring(config.thread_id or ""), start = tostring(config.start or "all"),
+        event_type = "kickside.automation.round.fixture.events:source.received" }
+    if config.page_size ~= nil then source.round = { page_size = config.page_size } end
     return source
 end
 
@@ -143,8 +144,7 @@ end
 -- through the automation's declaration command.
 function M.reconfigure_event(input: any): (any, any)
     local id = tostring(ctx.get("component_id") or "")
-    return automations_lib.update_portable_input(id, { thread_id = input.thread_id, start = input.start, page_size = input.page_size },
-        { source = event_source(input) })
+    return automations_lib.update_portable_input(id, input, { source = event_source(input) })
 end
 
 local function directive(item: Map): string
