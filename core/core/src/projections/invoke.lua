@@ -469,7 +469,9 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         if release_err then return nil, release_err end
     end
     if type(output) ~= "table" then return nil, response_error("worker.output") end
-    local result, apply_err = apply.advance(db_id, job, current, seen_last, output)
+    -- The authorized range advanced without invoking a worker or changing its fold.
+    local empty_scan = committed_input == nil and seen_last > last
+    local result, apply_err = apply.advance(db_id, job, current, seen_last, output, empty_scan)
     if apply_err then return nil, apply_err end
     if type(result) ~= "table" then return nil, response_error("advance") end
     -- Match apply's cursor/retention notifications: successful durable commit

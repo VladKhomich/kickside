@@ -62,6 +62,7 @@ function M.fail(_db: any, _job: any, _snapshot: any, _failure: any, deterministi
     return M.outcome("failure", nil)
 end
 function M.advance(...: any): (any, error?)
+    M.empty_scan = select(6, ...)
     M.advances = M.advances + 1
     return M.outcome("advance", {last_seq = 1})
 end
