@@ -183,10 +183,9 @@ async function revoke(row: AccessRow) {
     const accepted = await host.confirm({
       header: 'Remove access',
       message: `Remove ${row.label}’s access to ${resource}?`,
-      icon: 'tabler:user-minus',
       acceptLabel: 'Remove access',
       rejectLabel: 'Cancel',
-      acceptClass: 'p-button-danger',
+      acceptClass: 'p-button-danger kxs-revoke-accept',
       defaultFocus: 'reject',
     })
     if (accepted && dialogOpen.value && cfg.value.share_url === shareUrl) {
@@ -223,7 +222,9 @@ async function revoke(row: AccessRow) {
     <div class="kxs">
     <!-- Add people/groups -->
     <div class="kxs-add" @click.stop>
-      <PrincipalPicker :key="principalPickerKey" class="kxs-pick" kinds="user,group" @change="pick" />
+      <div class="kxs-pick">
+        <PrincipalPicker :key="principalPickerKey" kinds="user,group" @change="pick" />
+      </div>
       <button class="kxs-btn kxs-btn-primary" :disabled="!selected || newMask === 0 || granting" @click="grant">
         <Icon :icon="granting ? 'tabler:loader-2' : 'tabler:plus'" :class="granting && 'spin'" aria-hidden="true" /> Share
       </button>
@@ -248,7 +249,10 @@ async function revoke(row: AccessRow) {
           <Icon :icon="row.type === 'group' ? 'tabler:users-group' : 'tabler:user'" aria-hidden="true" />
         </span>
         <div class="kxs-row-text">
-          <span class="kxs-row-label">{{ row.label }}<span v-if="!row.resolved" class="kxs-id"> {{ row.id }}</span><span v-if="row.owner" class="kxs-owner">Owner</span></span>
+          <div class="kxs-row-name">
+            <span class="kxs-row-label" :title="row.label">{{ row.label }}<span v-if="!row.resolved" class="kxs-id"> {{ row.id }}</span></span>
+            <span v-if="row.owner" class="kxs-owner">Owner</span>
+          </div>
           <span v-if="row.sublabel" class="kxs-row-sub">{{ row.sublabel }}</span>
         </div>
         <div class="kxs-caps">
