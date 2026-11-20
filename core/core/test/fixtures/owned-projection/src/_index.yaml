@@ -37,6 +37,8 @@ entries:
     kind: contract.binding
     meta:
       thread: {class: core.owned.fixture}
+      events:
+        input: [{type: "kickside.threads:message.created"}]
       projections:
         - kind: owned.fixture
           worker_ref: func://core.owned.fixture:fold
@@ -49,6 +51,8 @@ entries:
     kind: contract.binding
     meta:
       thread: {class: core.owned.fixture.returning}
+      events:
+        input: [{type: "kickside.threads:message.created"}]
       projections:
         - kind: owned.fixture
           worker_ref: func://core.owned.fixture:fold
