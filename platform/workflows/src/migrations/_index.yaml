@@ -4,6 +4,18 @@ namespace: kickside.workflows.migrations
 # target_db is injected by the root kickside.workflows:target_db requirement.
 
 entries:
+  - name: 10_automation_history_index
+    kind: function.lua
+    meta:
+      type: migration
+      comment: Bound Workflow run lookups for the current Automation history page.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-20T00:00:00Z"
+    source: file://10_automation_history_index.lua
+    method: migration
+    imports:
+      migration: wippy.migration:migration
+
   - name: 09_automation_delete_admission_index
     kind: function.lua
     meta:

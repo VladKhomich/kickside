@@ -51,7 +51,7 @@ local EXPECTED_INDEXES: { [string]: boolean } = {
     idx_wf_runs_recent = true,
     idx_wf_runs_status = true,
     idx_wf_runs_dataflow = true,
-    uq_workflow_live_dedup = true,
+    uq_workflow_live_dedup_by_trigger = true,
     idx_workflow_completion_due = true,
     idx_workflow_event_due = true,
     idx_workflow_admission_count = true,
@@ -114,8 +114,8 @@ local function define_tests()
             for name, _ in pairs(EXPECTED_INDEXES) do
                 test.is_true(actual[name], "missing index " .. name)
             end
-            test.is_nil(actual.uq_workflow_live_delivery,
-                "delivery admission must reuse the workflow dedup index")
+            test.is_nil(actual.uq_workflow_live_dedup, "the previous column order must be replaced")
+            test.is_nil(actual.uq_workflow_live_delivery, "delivery admission must reuse the workflow dedup index")
         end)
     end)
 end
