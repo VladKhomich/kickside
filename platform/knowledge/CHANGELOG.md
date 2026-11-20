@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.105](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.104...knowledge-v0.1.105) (2026-11-20)
+
+
+### Features
+
+* **knowledge:** retry a failed upload publication ([#795](https://github.com/kicksideai/kickside/issues/795)) ([764dde0](https://github.com/kicksideai/kickside/commit/764dde0c2c9b2db8aa923af2fbd313d99e57c789))
+
 ## [0.1.104](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.103...knowledge-v0.1.104) (2026-11-20)
 
 
