@@ -592,14 +592,27 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
         checkpoint: Checkpoint?, empty_scan: boolean?): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
-    if #writes > 0 and (snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
-        local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
-        if identity_err then return nil, identity_err end
-        if type(identity) ~= "table" then return nil, response_error("execution_identity") end
-        local admitted, admission_err = execution_identity.run_as(identity,
-            "kickside.core.threads:authorize_projection_writes", { writes = writes }, {
-                deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
-            })
+    local in_owner_process = checkpoint and checkpoint.owner and checkpoint.write
+    if #writes > 0 and (in_owner_process or snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
+        local admitted, admission_err
+        if in_owner_process then
+            -- A supervised checkpoint process already runs in the projection's
+            -- admitted actor and scope. Authorize its effects in that frame.
+            local actor, actor_err = require("security").actor()
+            if actor_err then return nil, actor_err end
+            if not actor or not snapshot.actor_id or actor:id() ~= snapshot.actor_id then
+                return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "checkpoint actor differs from its admitted cursor"})
+            end
+            admitted, admission_err = require("funcs").call("kickside.core.threads:authorize_projection_writes", {writes = writes})
+        else
+            local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
+            if identity_err then return nil, identity_err end
+            if type(identity) ~= "table" then return nil, response_error("execution_identity") end
+            admitted, admission_err = execution_identity.run_as(identity,
+                "kickside.core.threads:authorize_projection_writes", { writes = writes }, {
+                    deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
+                })
+        end
         if admission_err then return nil, admission_err end
         if type(admitted) ~= "table" or type(admitted.writes) ~= "table" then
             return nil, response_error("admitted.writes")
