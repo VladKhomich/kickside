@@ -22,6 +22,7 @@ entries:
     kind: function.lua
     source: file://worker.lua
     method: effect
+    modules: [funcs, security]
 
   - name: fold
     kind: function.lua
@@ -36,6 +37,8 @@ entries:
     kind: contract.binding
     meta:
       thread: {class: core.owned.fixture}
+      events:
+        input: [{type: "kickside.threads:message.created"}]
       projections:
         - kind: owned.fixture
           worker_ref: func://core.owned.fixture:fold
@@ -48,6 +51,8 @@ entries:
     kind: contract.binding
     meta:
       thread: {class: core.owned.fixture.returning}
+      events:
+        input: [{type: "kickside.threads:message.created"}]
       projections:
         - kind: owned.fixture
           worker_ref: func://core.owned.fixture:fold
@@ -62,6 +67,7 @@ entries:
     meta: {type: projection.worker}
     source: file://worker.lua
     method: effect
+    modules: [funcs, security]
 
   - name: unmarked_kind
     kind: contract.binding

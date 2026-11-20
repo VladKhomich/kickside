@@ -33,7 +33,7 @@ function M.decode(_raw: any): (any, error?) return M.outcome("decode", {meta = {
 function M.from_row(_actor: any, _raw: any): (any, error?) return M.outcome("identity", {}) end
 function M.parse(_ref: any, _system: any): (any, error?) return M.outcome("parse", {}) end
 function M.validate(_parsed: any, _system: any): (any, error?)
-    return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func"})
+    return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func", target_id = "app:worker"})
 end
 function M.requires_checkpoint_declaration(_err: any): boolean return false end
 function M.requires_owned_declaration(_err: any): boolean return false end

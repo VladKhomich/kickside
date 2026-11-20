@@ -4,7 +4,8 @@ function M.reset(stage: string, source: error?)
     M.reads, M.registers = 0, 0
 end
 function M.projections(...): any
-    return {{kind = "guard_projection", worker_ref = "app:guard_worker", on = "thread"}}
+    return {{kind = "owned.fixture", worker_ref = "func://core.owned.fixture:fold",
+        input_mode = "prefetch_events", on = "thread"}}
 end
 function M.database(): any
     return {query = function()

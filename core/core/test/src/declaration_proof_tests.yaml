@@ -7,6 +7,7 @@ entries:
   modules:
   - sql
   - uuid
+  - registry
   imports:
     event_access: kickside.core.threads:event_access
     event_declaration: kickside.core.threads:event_declaration
@@ -18,6 +19,8 @@ entries:
     core_types: kickside.core:types
     autoinit: app:declaration_proof_autoinit
     proj_writer: app:declaration_proof_writer
+    proj_worker: kickside.core.projections.persist:worker
+    owned_worker: kickside.core.projections.persist:owned_worker
     retention_repo: app:attachment_errors_retention
     threads_writer: kickside.core.threads.persist:writer
     threads_teardown: app:attachment_errors_teardown
