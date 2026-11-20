@@ -15,7 +15,7 @@ local THREADS_CONTRACT = "kickside.core:threads"
 local APPEND_PROBE = "app:thread_ingest_append_probe"
 -- The KB engine binding the KB primary thread is declared under; it carries the
 -- source projection in meta.projections (test harness engine descriptor).
-local ENGINE_IMPL = "app:test_engine_wiki"
+local ENGINE_IMPL = "knowledge.fixture:test_engine_wiki"
 local THREAD_CLASS = "kickside.knowledge.injection"
 
 local function db()
@@ -319,7 +319,7 @@ local function define_tests()
                 security_groups = {"app.security:user"}})
             local threads = contract.get(THREADS_CONTRACT):with_actor(actor):with_scope(limited_scope()):open()
             local _, ensure_err = threads:ensure_thread({component_id = component_id,
-                impl_id = "app:test_engine_ledger"})
+                impl_id = "knowledge.fixture:test_engine_ledger"})
             test.is_nil(ensure_err, tostring(ensure_err))
             local result, append_err = funcs.new():with_actor(actor):with_scope(limited_scope()):call(APPEND_PROBE,
                 {kb_id = component_id, content = "A ledger knowledge event", external_id = "ledger-content",

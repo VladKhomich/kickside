@@ -169,12 +169,12 @@ local function seed_upload_delivery(owner: string, storage_id: string, path: str
     local kb_id, upload_id = uuid.v7(), uuid.v7()
     fixtures[#fixtures + 1] = kb_id
     upload_fixtures[#upload_fixtures + 1] = upload_id
-    seed_kb(kb_id, owner, "app:test_engine_files")
+    seed_kb(kb_id, owner, "knowledge.fixture:test_engine_files")
     local actor = security.new_actor(owner, {})
     local def = assert(contract.get("kickside.core:threads"))
     local threads = assert(def:with_actor(actor):with_scope(scope()):open())
     local _, ensure_err = threads:ensure_thread({ component_id = kb_id,
-        impl_id = "app:test_engine_files", thread_class = "kickside.knowledge.injection" })
+        impl_id = "knowledge.fixture:test_engine_files", thread_class = "kickside.knowledge.injection" })
     test.is_nil(ensure_err, tostring(ensure_err))
     seed_upload_without_primary(upload_id, owner, "text/plain", path or upload_id)
     local d = db()
@@ -530,7 +530,7 @@ local function define_tests()
         test.it("requires both an opted-in engine and an upload reference for textless appends", function()
             for _, entry in ipairs({
                 { impl_id = "test.kb:embeddable", source_ref = { kind = "upload", upload_id = "file" } },
-                { impl_id = "app:test_engine_files", source_ref = {} },
+                { impl_id = "knowledge.fixture:test_engine_files", source_ref = {} },
             }) do
                 local owner, component_id = uuid.v4(), uuid.v7()
                 fixtures[#fixtures + 1] = component_id
@@ -555,7 +555,7 @@ local function define_tests()
                 local owner = uuid.v4()
                 local component_id, upload_id = uuid.v7(), uuid.v7()
                 fixtures[#fixtures + 1] = component_id
-                seed_kb(component_id, owner, "app:test_engine_files")
+                seed_kb(component_id, owner, "knowledge.fixture:test_engine_files")
                 local original_mime = case.original and case.mime or "application/octet-stream"
                 seed_upload_without_primary(upload_id, owner, original_mime, upload_id)
                 local artifact = nil
@@ -581,7 +581,7 @@ local function define_tests()
                 local threads, open_err = def:with_actor(actor):with_scope(actor_scope):open()
                 test.is_nil(open_err)
                 local _, ensure_err = threads:ensure_thread({ component_id = component_id,
-                    impl_id = "app:test_engine_files", thread_class = "kickside.knowledge.injection" })
+                    impl_id = "knowledge.fixture:test_engine_files", thread_class = "kickside.knowledge.injection" })
                 test.is_nil(ensure_err)
 
                 local admission, admission_err = funcs.new():with_actor(actor):with_scope(actor_scope):call("app:ingest_upload_probe", {

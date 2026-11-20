@@ -12,6 +12,7 @@ override:
   "kickside.users.security:tokens:data.token_key": "0123456789abcdef0123456789abcdef"
 workspace:
   replacements:
+    kickside/knowledge-engine-fixture: ./fixtures/engine
     kickside/realtime: ../../realtime
     kickside/realtime-dispatch: ../../../core/realtime-dispatch
     kickside/component: ../../../core/component
