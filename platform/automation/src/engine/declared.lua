@@ -96,6 +96,7 @@ function part.attach(M: any, dependencies: any, P: any): ()
         local command = dependencies.command :: any
         local drive = dependencies.drive :: any
         local input = type(pending.input) == "table" and pending.input or {}
+        local update = type(input.source_update) == "table" and (input.source_update :: Map) or nil
         local finalized, final_err = in_automation_tx(function(tx: any): (any?, any)
             local result, err = command.finalize_tx(tx, {
                 automation_id = pending.automation_id, request_id = pending.request_id,
@@ -104,15 +105,9 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 required_receipts = pending.kind == "install_selected" and {"declaration", "identity"} or nil,
             })
             if err then return nil, err end
-            if state == "succeeded" and type(input.source_update) == "table" then
-                local update = input.source_update :: Map
-                if not update.changed then
-                    local update_err = P.apply_source_update_tx(tx, pending, update)
-                    if update_err then return nil, update_err end
-                elseif type(update.old_pin) == "table" then
-                    local _, release_err = P.reserve_pin_release_tx(tx, pending, { update.old_pin :: Map }, false)
-                    if release_err then return nil, release_err end
-                end
+            if state == "succeeded" and update and not update.changed then
+                local update_err = P.apply_source_update_tx(tx, pending, update)
+                if update_err then return nil, update_err end
             end
             -- A succeeded reconfigure follows the declared enabled state, and
             -- its declaration is the correction a drive blocked on its
@@ -148,6 +143,12 @@ function part.attach(M: any, dependencies: any, P: any): ()
                             if not changed then return nil, automation_error("drive " .. key .. " lost its declaration fence", errors.CONFLICT) end
                         end
                     end
+                end
+                -- Reserving pin release advances the drive command generation.
+                -- Apply the reconfigure's drive state before that reservation.
+                if update and update.changed and type(update.old_pin) == "table" then
+                    local _, release_err = P.reserve_pin_release_tx(tx, pending, { update.old_pin :: Map }, false)
+                    if release_err then return nil, release_err end
                 end
             end
             if state == "succeeded" and pending.kind == "install_selected" then
