@@ -15,12 +15,13 @@ local function repository()
     return (M :: any)._repo or user_groups_repo
 end
 
-local function failure(subject_id: string, message: string, kind: string, error_kind: string, retriable: boolean): any
+local function failure(subject_id: string, message: string, kind: string, error_kind: string, retriable: boolean,
+    source: string?): any
     return {
         success = false,
         subject_id = subject_id,
         groups = {},
-        error = { message = message, kind = kind },
+        error = { message = message, kind = kind, source = source },
         error_kind = error_kind,
         retriable = retriable,
     }
@@ -55,7 +56,7 @@ local function lookup(args: any, credential: boolean?): any
     local scope_name, _, effective_groups, scope_err, resolved = consts.resolve_scope(config, user.security_groups, true, include_baseline)
     if scope_err then
         if errors.is(scope_err, errors.NOT_FOUND) then
-            return failure(subject_id, tostring(scope_err), errors.NOT_FOUND, "subject", false)
+            return failure(subject_id, tostring(scope_err), errors.NOT_FOUND, "subject", false, "scope")
         end
         if errors.is(scope_err, errors.PERMISSION_DENIED) then
             return failure(subject_id, tostring(scope_err), errors.PERMISSION_DENIED, "subject", false)
