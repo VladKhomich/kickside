@@ -444,7 +444,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         if binding.filtered_checkpoint and #batch == 0 then
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
-            local result, empty_err = apply.advance_filtered_empty(db_id, job, current, seen_last, checkpoint_owner)
+            local result, empty_err = apply.advance_filtered_empty(db_id, job, current, seen_last, checkpoint_owner :: table)
             return result, empty_err, current, checkpoint_owner
         end
         if #batch > 0 then

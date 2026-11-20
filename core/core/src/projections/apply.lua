@@ -365,6 +365,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         if partial or (cursor.continuation or "") ~= "" then
             return abort(invalid("a filtered checkpoint cannot continue inside an event"))
         end
+        if not checkpoint.filter then return abort(invalid("filtered checkpoint requires an input filter")) end
         local range_err = check_range(tx, snapshot.thread_id, prior, last, checkpoint.filter, checkpoint.manifest)
         if range_err then return abort(range_err) end
     end
@@ -661,7 +662,8 @@ function M.checkpoint(target_db: string, job: table, snapshot: table, prefetched
         or tonumber(proof.execution_seq) ~= tonumber(job.execution_seq)) then
         return nil, invalid("projection checkpoint does not match its admitted owner and lease")
     end
-    local filter = proof and proof.filter
+    local filter: table? = nil
+    if proof ~= nil then filter = proof.filter end
     if filter or manifest ~= nil then
         if type(filter) ~= "table" or type(manifest) ~= "table" or #manifest == 0
             or proof.from_seq ~= snapshot.last_seq or proof.to_seq ~= prefetched_last

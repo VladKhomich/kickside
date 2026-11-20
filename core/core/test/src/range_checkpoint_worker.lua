@@ -18,9 +18,12 @@ return {run = function(input)
     end
     if #manifest > 1 then
         local called = false
-        local incomplete, err = commit({manifest[1]}, function() called = true; return true end)
+        local incomplete, err = commit({manifest[1]}, function()
+            called = true
+            return true, nil
+        end)
         assert(not incomplete and err and not called)
     end
-    assert(commit(manifest, function() return true end))
+    assert(commit(manifest, function() return true, nil end))
     return {checkpointed = true}
 end}
