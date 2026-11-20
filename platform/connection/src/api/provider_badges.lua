@@ -45,10 +45,10 @@ local function safe_icon(value: any): (string, boolean)
     return FALLBACK_ICON, false
 end
 
-local function badge(entry: any): any?
-    if type(entry) ~= "table" or entry.kind ~= "contract.binding" then return nil end
+local function badge(entry: any, kind: string, provider_field: string): any?
+    if type(entry) ~= "table" or entry.kind ~= kind then return nil end
     local meta = type(entry.meta) == "table" and entry.meta or {}
-    local provider = canonical_provider(meta.provider)
+    local provider = canonical_provider(meta[provider_field])
     if not provider then return nil end
 
     local raw_icon = meta.icon
@@ -57,6 +57,7 @@ local function badge(entry: any): any?
     end
     local icon, declared_icon = safe_icon(raw_icon)
     return {
+        entry_id = tostring(entry.id or ""),
         provider = provider,
         title = safe_title(meta.title, provider),
         icon = icon,
@@ -65,24 +66,32 @@ local function badge(entry: any): any?
 end
 
 local function better(candidate: any, current: any): boolean
-    -- Providers can publish multiple bindings (connection, OAuth, reply, or
-    -- channel). Prefer a binding that has a real icon; otherwise retain the first
-    -- stable entry so registry ordering cannot change labels unpredictably.
-    return current == nil or (current.declared_icon ~= true and candidate.declared_icon == true)
+    if current == nil then return true end
+    if current.declared_icon ~= candidate.declared_icon then return candidate.declared_icon end
+    return candidate.entry_id < current.entry_id
 end
 
-local function catalogue(entries: any): { any }
+local function provider_badges(entries: any, kind: string, provider_field: string): { [string]: any }
     local by_provider: { [string]: any } = {}
     for _, entry in ipairs(type(entries) == "table" and entries or {}) do
-        local item = badge(entry)
+        local item = badge(entry, kind, provider_field)
         if item and better(item, by_provider[item.provider]) then
             by_provider[item.provider] = item
         end
     end
+    return by_provider
+end
 
+local function catalogue(bindings: any, oauth_providers: any): { any }
+    local by_provider = provider_badges(bindings, "contract.binding", "provider")
+    local canonical = provider_badges(oauth_providers, "registry.entry", "oauth_provider")
     local providers: { any } = {}
     for _, item in pairs(by_provider) do
-        providers[#providers + 1] = { provider = item.provider, title = item.title, icon = item.icon }
+        -- One OAuth provider may supply bindings for several products. Use the
+        -- provider's own brand for the shared provider ID.
+        local descriptor = canonical[item.provider]
+        local selected = descriptor and descriptor.declared_icon and descriptor or item
+        providers[#providers + 1] = { provider = selected.provider, title = selected.title, icon = selected.icon }
     end
     table.sort(providers, function(a: any, b: any): boolean
         return tostring(a.provider) < tostring(b.provider)
@@ -95,10 +104,15 @@ local function handler(registry_find: any, response: any, failure_log: any)
     if not res then return nil, "no http response" end
     res:set_content_type(http.CONTENT.JSON)
 
-    local entries, err = registry_find({
+    local bindings, binding_err = registry_find({
         [".kind"] = "contract.binding",
         ["*meta.provider"] = "",
     })
+    local oauth_providers, oauth_err = registry_find({
+        [".kind"] = "registry.entry",
+        ["*meta.oauth_provider"] = "",
+    })
+    local err = binding_err or oauth_err
     if err then
         failure_log:error("provider catalogue registry lookup failed", { error = tostring(err) })
         res:set_status(http.STATUS.INTERNAL_ERROR)
@@ -106,7 +120,7 @@ local function handler(registry_find: any, response: any, failure_log: any)
         return
     end
 
-    local providers = catalogue(entries)
+    local providers = catalogue(bindings, oauth_providers)
 
     res:set_status(http.STATUS.OK)
     res:write_json({ success = true, providers = providers })
