@@ -45,6 +45,7 @@ type Binding = {
     worker_runtime: string,
     target_id: string,
     checkpointed_apply: boolean?,
+    filtered_checkpoint: boolean?,
 }
 
 -- A pooled connection or open transaction the event prefetch reads through.
@@ -204,11 +205,14 @@ local function validate_declaration(binding: table, system_identity: boolean?, o
         return nil, (errors.new({ message = PROC_BLOCKED[target_id], kind = errors.INVALID }) :: error)
     end
 
+    if meta.filtered_checkpoint == true and (not private_checkpoint or meta.private ~= true) then
+        return nil, errors.new({kind = errors.INVALID, message = "filtered checkpoint requires a private checkpoint process"})
+    end
     if checkpointed and expected ~= types.WORKER_RUNTIME.PROC then
         return nil, errors.new({kind = errors.INVALID, message = "checkpointed apply requires a supervised process worker"})
     end
     return { worker_ref = scheme_for(expected) .. target_id, worker_runtime = expected, target_id = target_id,
-        checkpointed_apply = checkpointed or nil }, nil
+        checkpointed_apply = checkpointed or nil, filtered_checkpoint = meta.filtered_checkpoint == true or nil }, nil
 end
 
 local admitted_version: string? = nil
@@ -247,7 +251,8 @@ local function validate(binding: table, system_identity: boolean?, owner_revisio
         admitted_bindings[key] = admitted
     end
     return {worker_ref = admitted.worker_ref, worker_runtime = admitted.worker_runtime,
-        target_id = admitted.target_id, checkpointed_apply = admitted.checkpointed_apply}, nil
+        target_id = admitted.target_id, checkpointed_apply = admitted.checkpointed_apply,
+        filtered_checkpoint = admitted.filtered_checkpoint}, nil
 end
 
 function worker.validate(binding: table, system_identity: boolean?): (Binding?, error?)
@@ -586,6 +591,13 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
                 local job = assignment.job
                 context["kickside.core.projection_checkpoint"] = {owner = proof.owner, cursor_id = proof.cursor_id,
                     job_id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq}
+                if validated.filtered_checkpoint then
+                    local range = context["kickside.core.projection_checkpoint"]
+                    range.from_seq = assignment.cursor.last_seq
+                    range.to_seq = assignment.prefetched_last
+                    range.filter = assignment.cursor.body.events.input
+                    range.reset_generation = assignment.cursor.reset_generation
+                end
             end
             local builder = process.with_context(context)
             if actor then

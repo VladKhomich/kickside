@@ -172,7 +172,7 @@ end
 -- The installed destination worker can declare compatibility with one predecessor.
 -- Only the worker reference and its derived runtime differ in the predecessor
 -- declaration. Cursor keys, input, filters, config and debounce must all match.
-function writer.transition_predecessor(body: table): (table?, string?, error?)
+function writer.transition_predecessor(body: table): (table?, string?, error?, boolean?)
     local meta = body.meta
     if meta.worker_runtime ~= types.WORKER_RUNTIME.PROC
         or meta.worker_input_mode ~= types.WORKER_INPUT_MODE.PREFETCH_EVENTS then
@@ -183,17 +183,21 @@ function writer.transition_predecessor(body: table): (table?, string?, error?)
     local destination = entry and entry.meta
     if type(destination) ~= "table" or destination.transition_from == nil then return nil, nil, nil end
     local transition = destination.transition_from
+    local filtered = destination.filtered_checkpoint == true
+    local db_config = type(transition) == "table" and transition[filtered and "target_db_config" or "shared_db_config"]
     if entry.kind ~= "process.lua" or destination.type ~= "projection.worker"
         or destination.private ~= true or destination.checkpointed_apply ~= true
         or type(transition) ~= "table" or type(transition.worker_ref) ~= "string"
-        or trim(transition.shared_db_config) == "" or trim(transition.worker_ref) == meta.worker_ref then
+        or type(db_config) ~= "string" or trim(db_config) == ""
+        or (filtered and transition.shared_db_config ~= nil) or (not filtered and transition.target_db_config ~= nil)
+        or trim(transition.worker_ref) == meta.worker_ref then
         return nil, nil, errors.new({kind = errors.INVALID, retryable = false,
             message = "installed projection worker has an invalid transition_from declaration"})
     end
     local previous, previous_err = writer.declaration_body({worker_ref = transition.worker_ref,
         worker_input_mode = meta.worker_input_mode, worker_config = body.worker_config,
         events = body.events, drop_notify = body.drop_notify})
-    return previous, transition.shared_db_config, previous_err
+    return previous, db_config, previous_err, filtered
 end
 
 local function bounded(value: any, name: string, min_value: integer,
@@ -274,7 +278,7 @@ local function transition_owner(tx: sql.Transaction, lock: string, thread_id: st
 end
 
 local function transition_cursor(tx: sql.Transaction, lock: string, thread: table, owner: table?,
-    impl_id: string, db_config_id: string, projection: table, cursor_key: string,
+    impl_id: string, db_config_id: string, filtered: boolean?, projection: table, cursor_key: string,
     idle: number, maximum: number): (table?, error?)
     local declaration, decl_err = registry.get(impl_id)
     if decl_err then return nil, decl_err end
@@ -319,9 +323,27 @@ local function transition_cursor(tx: sql.Transaction, lock: string, thread: tabl
     local config, config_err = registry.get(db_config_id)
     if config_err then return nil, config_err end
     local db_id = core_db.id()
-    if not config or not config.meta or config.meta.db_id ~= db_id or jobs_config.db_id() ~= db_id then
+    local target_id = config and config.meta and config.meta.db_id
+    if filtered then
+        if type(target_id) ~= "string" or trim(target_id) == "" or jobs_config.db_id() ~= db_id then
+            return nil, transition_error("projection_transition_database",
+                "filtered projection transition requires a bound target and a shared Core and Jobs database")
+        end
+        local target, target_err = registry.get(target_id)
+        if target_err then return nil, target_err end
+        if not target or (target.kind ~= "db.sql.sqlite" and target.kind ~= "db.sql.postgres") then
+            return nil, transition_error("projection_transition_database", "filtered projection target must be a SQL database")
+        end
+    elseif target_id ~= db_id or jobs_config.db_id() ~= db_id then
         return nil, transition_error("projection_transition_database",
             "projection transition requires the same Core, Jobs, and target database resource")
+    end
+
+    -- A filtered publisher starts with no durable outcome for a legacy range.
+    -- A settled cursor at the thread head proves the predecessor drained it.
+    if filtered and last_seq ~= tonumber(thread.event_count) then
+        return nil, transition_error("projection_transition_backlog",
+            "drain the predecessor through the thread head before transitioning filtered publication")
     end
 
     -- A legacy process can publish target writes before Core applies its fold.
@@ -400,10 +422,10 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
         return nil, (errors.new({ message = message, kind = kind }) :: error)
     end
 
-    local previous, transition_db, owner
+    local previous, transition_db, filtered_transition, owner
     if mode == "convergence" and declaration_impl_id and params.ensure == true and not reset then
         local transition_err
-        previous, transition_db, transition_err = writer.transition_predecessor(body)
+        previous, transition_db, transition_err, filtered_transition = writer.transition_predecessor(body)
         if transition_err then return nil, transition_err end
         if previous then
             owner, transition_err = transition_owner(tx, lock, thread_id)
@@ -528,7 +550,7 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
                     end
                     local transition_err
                     transitioning, transition_err = transition_cursor(tx, lock, thread, owner, declaration_impl_id :: string,
-                        transition_db :: string, projection_rows[1], cursor_key, debounce_idle_ms :: number, debounce_max_ms :: number)
+                        transition_db :: string, filtered_transition, projection_rows[1], cursor_key, debounce_idle_ms :: number, debounce_max_ms :: number)
                     if transition_err then return nil, transition_err end
                 end
             end
@@ -552,7 +574,9 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             if reset then
                 -- reset rewinds the projection to start_seq and marks it pending so
                 -- catch-up rebuilds it from scratch.
-                projection_update = projection_update:set("state", core_types.PROJECTION_STATE.PENDING):set("last_event_seq", start_seq)
+                projection_update = projection_update:set("state", core_types.PROJECTION_STATE.PENDING)
+                    :set("last_event_seq", start_seq)
+                    :set("reset_generation", sql.builder.expr("reset_generation + 1"))
             elseif declaration_changed and not transitioning then
                 -- INVALID records a fault in the PREVIOUS declaration (an unresolvable
                 -- worker_ref, an unsupported runtime). A new declaration retires that

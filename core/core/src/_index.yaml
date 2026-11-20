@@ -48,6 +48,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.migrations:18_lifecycle_binding
         path: .meta.target_db
+      - entry: kickside.core.migrations:19_projection_reset_generation
+        path: .meta.target_db
       - entry: kickside.core:db_config
         path: .meta.db_id
 
