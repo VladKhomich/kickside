@@ -71,7 +71,7 @@ local function group(first: integer, last: integer)
                     stages[#stages + 1] = "dialect"
                     if dialect == sql.type.POSTGRES then stages[#stages + 1] = "prelock" end
                 elseif mode == "wake" then
-                    for _, stage in ipairs({"dialect", "position", "advance"}) do stages[#stages + 1] = stage end
+                    for _, stage in ipairs({"dialect", "position", "upper", "advance"}) do stages[#stages + 1] = stage end
                     if dialect == sql.type.POSTGRES then stages[#stages + 1] = "lock" end
                 elseif mode == "fences" and dialect == sql.type.POSTGRES then stages[#stages + 1] = "lock" end
                 for _, stage in ipairs(stages) do

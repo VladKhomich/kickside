@@ -36,8 +36,12 @@ function M.database(): any
         return true, nil
     end
     function db:query(statement, params)
-        if statement:find("SELECT last_key FROM kickside_job_wake_retention", 1, true) == 1 then
+        if statement:find("SELECT last_key,upper_key FROM kickside_job_wake_retention", 1, true) == 1 then
             if M.mode == "wake" then return M.result("position", {}) end
+            return {}, nil
+        end
+        if statement:find("SELECT key FROM kickside_wake_fanout ORDER BY key DESC LIMIT 1", 1, true) == 1 then
+            if M.mode == "wake" then return M.result("upper", {{key = "wake"}}) end
             return {}, nil
         end
         if statement:find("SELECT page.key,", 1, true) == 1 then

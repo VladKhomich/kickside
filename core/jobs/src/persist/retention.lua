@@ -261,14 +261,29 @@ function M.prune_wake_fanout(db: any, limit: integer?): (integer?, error?)
     local dbtype, type_err = db:type()
     if type_err then return nil, errors.wrap(type_err, "orphan wake dialect") end
 
-    local positions, position_err = db:query("SELECT last_key FROM kickside_job_wake_retention WHERE id=1")
+    local positions, position_err = db:query("SELECT last_key,upper_key FROM kickside_job_wake_retention WHERE id=1")
     positions, position_err = sql_boundary.bounded_rows(positions, position_err,
         "wake retention position failed", "wake.position", 0, 1, response_error)
     if position_err then return nil, position_err end
     local prior = ""
+    local prior_upper = ""
     if positions[1] then
-        if type(positions[1].last_key) ~= "string" then return nil, response_error("wake.position.key") end
         prior = positions[1].last_key
+        prior_upper = positions[1].upper_key
+        if type(prior) ~= "string" or type(prior_upper) ~= "string" then return nil, response_error("wake.position.key") end
+    end
+
+    -- Capture the end once per rotation. New keys beyond it must wait for
+    -- the next rotation so growth at the tail cannot starve the prefix.
+    local upper = prior_upper
+    if upper == "" then
+        local ends, upper_err = db:query("SELECT key FROM kickside_wake_fanout ORDER BY key DESC LIMIT 1")
+        ends, upper_err = sql_boundary.bounded_rows(ends, upper_err,
+            "wake retention upper key failed", "wake.upper", 0, 1, response_error)
+        if upper_err then return nil, upper_err end
+        if not ends[1] then return 0, nil end
+        upper = ends[1].key
+        if type(upper) ~= "string" or upper == "" then return nil, response_error("wake.upper.key") end
     end
 
     -- Limit index entries before probing subscribers. A scalar probe keeps
@@ -276,8 +291,8 @@ function M.prune_wake_fanout(db: any, limit: integer?): (integer?, error?)
     local rows, read_err = db:query([[SELECT page.key,
         (SELECT 1 FROM kickside_job j WHERE j.wake_key=page.key
           AND j.status IN ('pending','running') LIMIT 1) IS NULL AS orphan
-        FROM (SELECT key FROM kickside_wake_fanout WHERE key>$1 ORDER BY key LIMIT $2) AS page
-        ORDER BY page.key]], { prior, batch })
+        FROM (SELECT key FROM kickside_wake_fanout WHERE key>$1 AND key<=$2 ORDER BY key LIMIT $3) AS page
+        ORDER BY page.key]], { prior, upper, batch })
     rows, read_err = sql_boundary.bounded_rows(rows, read_err,
         "wake retention window failed", "wake.window", 0, batch, response_error)
     if read_err then return nil, read_err end
@@ -290,8 +305,10 @@ function M.prune_wake_fanout(db: any, limit: integer?): (integer?, error?)
             return nil, response_error("wake.window.orphan")
         end
     end
-    local next_key = #rows == batch and rows[#rows].key or ""
-    if next_key == prior and #orphans == 0 then return 0, nil end
+    local has_more = #rows == batch and rows[#rows].key ~= upper
+    local next_key = has_more and rows[#rows].key or ""
+    local next_upper = has_more and upper or ""
+    if next_key == prior and next_upper == prior_upper and #orphans == 0 then return 0, nil end
 
     local tx, begin_err = sql_boundary.begin(db, "wake retention begin failed", "wake.transaction", response_error)
     if begin_err then return nil, begin_err end
@@ -300,9 +317,10 @@ function M.prune_wake_fanout(db: any, limit: integer?): (integer?, error?)
     end
     -- Persist the inspected position even when every key is subscribed or
     -- locked. The compare-and-set also acquires the SQLite writer before rechecking.
-    local advanced, advance_err = tx:execute([[INSERT INTO kickside_job_wake_retention (id,last_key) VALUES (1,$1)
-        ON CONFLICT(id) DO UPDATE SET last_key=excluded.last_key
-        WHERE kickside_job_wake_retention.last_key=$2]], {next_key, prior})
+    local advanced, advance_err = tx:execute([[INSERT INTO kickside_job_wake_retention (id,last_key,upper_key) VALUES (1,$1,$2)
+        ON CONFLICT(id) DO UPDATE SET last_key=excluded.last_key,upper_key=excluded.upper_key
+        WHERE kickside_job_wake_retention.last_key=$3 AND kickside_job_wake_retention.upper_key=$4]],
+        {next_key, next_upper, prior, prior_upper})
     local count, count_err = sql_boundary.single_row_count(advanced, advance_err,
         "wake retention advance failed", "wake.advance", response_error)
     if count_err then return abort(count_err) end

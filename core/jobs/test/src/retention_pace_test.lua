@@ -84,35 +84,41 @@ end
 
 local function define_tests()
     test.describe("retention keeps pace with expired writes", function()
-        test.it("visits bounded wake windows across the idle interval and pool restart", function()
+        test.it("finishes a bounded wake rotation across pool restart and tail growth", function()
             local db = open_queue()
             local dbtype = tostring(db:type())
             local postgres = dbtype == sql.type.POSTGRES
             local policy = required(config.policy())
             local batch = policy.retention_batch
             local total = 2 * batch + 1
-            local numbers = postgres and "SELECT generate_series(1," .. tostring(total) .. ") AS n"
-                or "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<"
-                    .. tostring(total) .. ") SELECT n FROM seq"
             local suffix = postgres and "lpad(n::text,12,'0')" or "printf('%012d',n)"
             local id = postgres and "md5(n::text)::uuid" or "lower(hex(randomblob(16)))"
             local key = "'wake-' || " .. suffix
-            required(db:execute("INSERT INTO kickside_wake_fanout(key,demand_generation,ack_generation) SELECT "
-                .. key .. ",12,11 FROM (" .. numbers .. ") numbered"))
-            required(db:execute([[INSERT INTO kickside_job(id,owner_kind,owner_id,job_type,job_identity,wake_key,slot,wake_enabled)
-                SELECT ]] .. id .. ",'test','wake','test.retention'," .. key .. "," .. key
-                .. ",TRUE,FALSE FROM (" .. numbers .. ") numbered WHERE n<" .. tostring(total)))
+            local function seed_keys(first: integer, last: integer, last_subscribed: integer)
+                local numbers = postgres and "SELECT generate_series(" .. tostring(first) .. "," .. tostring(last) .. ") AS n"
+                    or "WITH RECURSIVE seq(n) AS (SELECT " .. tostring(first) .. " UNION ALL SELECT n+1 FROM seq WHERE n<"
+                        .. tostring(last) .. ") SELECT n FROM seq"
+                required(db:execute("INSERT INTO kickside_wake_fanout(key,demand_generation,ack_generation) SELECT "
+                    .. key .. ",12,11 FROM (" .. numbers .. ") numbered"))
+                required(db:execute([[INSERT INTO kickside_job(id,owner_kind,owner_id,job_type,job_identity,wake_key,slot,wake_enabled)
+                    SELECT ]] .. id .. ",'test','wake','test.retention'," .. key .. "," .. key
+                    .. ",TRUE,FALSE FROM (" .. numbers .. ") numbered WHERE n<=" .. tostring(last_subscribed)))
+            end
+            seed_keys(1, total, total - 1)
             required(db:execute("ANALYZE kickside_wake_fanout"))
             required(db:execute("ANALYZE kickside_job"))
 
-            local windows = 0
+            local windows, upper_reads = 0, 0
             local probe = {
                 type = function() return db:type() end,
                 begin = function() return db:begin() end,
                 execute = function(_, ...) return db:execute(...) end,
                 query = function(_, statement, params)
                     local rows = required(db:query(statement, params))
-                    if statement:find("SELECT page.key,", 1, true) == 1 then
+                    if statement == "SELECT key FROM kickside_wake_fanout ORDER BY key DESC LIMIT 1" then
+                        upper_reads = upper_reads + 1
+                        test.eq(#rows, 1)
+                    elseif statement:find("SELECT page.key,", 1, true) == 1 then
                         windows = windows + 1
                         test.is_true(#rows <= batch)
                         if windows == 2 then
@@ -124,18 +130,25 @@ local function define_tests()
                             end
                             local rendered = table.concat(details, "\n")
                             test.is_true(rendered:find("kickside_wake_fanout", 1, true) ~= nil, rendered)
-                            local index_condition = postgres and "Index Cond: (key >" or "(key>?)"
+                            local index_condition = postgres and "key >" or "key>?"
+                            local upper_condition = postgres and "key <=" or "key<?"
                             local subscriber_probe = postgres and "loops=" .. tostring(batch) or "CORRELATED SCALAR SUBQUERY"
                             test.is_true(rendered:find(index_condition, 1, true) ~= nil, rendered)
+                            test.is_true(rendered:find(upper_condition, 1, true) ~= nil, rendered)
                             test.is_true(rendered:find(subscriber_probe, 1, true) ~= nil, rendered)
                         end
                     end
                     return rows, nil
                 end,
             }
-            local function expect_position(n: integer?)
-                local rows = required(db:query("SELECT last_key FROM kickside_job_wake_retention"))
-                test.eq(rows[1].last_key, n and string.format("wake-%012d", n) or "")
+            local function wake_key(n: integer): string return string.format("wake-%012d", n) end
+            local function expect_position(n: integer?, upper: integer?)
+                local rows = required(db:query("SELECT last_key,upper_key FROM kickside_job_wake_retention"))
+                test.eq(rows[1].last_key, n and wake_key(n) or "")
+                test.eq(rows[1].upper_key, upper and wake_key(upper) or "")
+            end
+            local function retained_key(n: integer): boolean
+                return #required(db:query("SELECT key FROM kickside_wake_fanout WHERE key=$1", {wake_key(n)})) == 1
             end
 
             local instant = time.now()
@@ -152,12 +165,17 @@ local function define_tests()
             end
             local driver = new_driver()
             driver.run(now)
-            expect_position(batch)
+            expect_position(batch, total)
+            required(db:execute("UPDATE kickside_job SET status='done' WHERE wake_key=$1", {wake_key(1)}))
+            local tail = total + batch + 1
+            seed_keys(total + 1, tail, tail)
             driver.run(now)
             test.eq(windows, 1, "another lane can drain without scanning the next wake window")
             driver.run(now + idle_ns)
-            expect_position(2 * batch)
+            expect_position(2 * batch, total)
             test.eq(windows, 2)
+            local last = tail + batch + 1
+            seed_keys(tail + 1, last, last)
 
             db:release()
             db = required(sql.get("app:private_queue_retention_pace"))
@@ -165,12 +183,21 @@ local function define_tests()
             driver = new_driver()
             driver.run(now + idle_ns)
             test.eq(windows, 3)
-            expect_position(nil)
+            test.eq(upper_reads, 1, "restart reuses the captured upper key")
+            expect_position(nil, nil)
+            test.is_false(retained_key(total), "growing tail cannot delay the end of this rotation")
+            test.is_true(retained_key(1), "the earlier orphan is behind the current rotation")
+
+            tail = last + batch + 1
+            seed_keys(last + 1, tail, tail)
+            driver.run(now + 2 * idle_ns)
+            test.eq(windows, 4)
+            test.eq(upper_reads, 2)
+            expect_position(batch, tail)
+            test.is_false(retained_key(1), "next rotation reaches the original prefix despite the growing tail")
             local survivors = required(db:query([[SELECT COUNT(*) AS n FROM kickside_wake_fanout
                 WHERE demand_generation=12 AND ack_generation=11]]))
-            test.eq(tonumber(survivors[1].n), 2 * batch, "every disabled pending subscriber keeps its generations")
-            test.eq(#required(db:query("SELECT key FROM kickside_wake_fanout WHERE key=$1",
-                {string.format("wake-%012d", total)})), 0)
+            test.eq(tonumber(survivors[1].n), tail - 2, "every disabled pending subscriber keeps its generations")
             db:release()
         end)
 
@@ -206,7 +233,6 @@ local function define_tests()
             publisher:commit()
             test.eq(required(removed, err), 0)
             test.eq(required(retention.prune_wake_fanout(db, 1)), 1)
-            test.eq(required(retention.prune_wake_fanout(db, 1)), 0)
             test.eq(required(retention.prune_wake_fanout(db, 1)), 1)
             test.eq(#required(db:query("SELECT key FROM kickside_wake_fanout")), 0)
             db:release()

@@ -80,9 +80,11 @@ Each sweep bounds the rows and types it examines and resumes through the
 existing retention timer.
 
 Wake retention inspects at most `retention.batch` fanout keys per wake pass
-and saves the last inspected key in Jobs storage. The pool resumes from that
-position after a restart and wraps at the end of the keyspace. It waits for
-`retention.sweep_interval` before inspecting another wake page, unless the
+and saves the last inspected key and the rotation's upper key in Jobs storage.
+The pool resumes from those keys after a restart. Keys added above the upper
+key enter the next rotation, so new arrivals at the tail cannot postpone
+revisiting older keys. The pool waits for `retention.sweep_interval`
+before inspecting another wake page, unless the
 previous page deleted a full batch. A wake key with a pending or running
 subscriber retains its generation. PostgreSQL skips wake keys held by a
 publisher and checks them again on the next rotation.
