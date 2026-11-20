@@ -44,23 +44,36 @@ function M.lookup(automation_id: string, keys: { string }): (any?, any?)
         local key = row.dedup_key
         if candidates[key] == nil then candidates[key] = row else candidates[key] = false end
     end
-    local access: { [string]: boolean } = {}
-    local out: { [string]: any } = {}
+    local eligible: { [string]: any } = {}
+    local workflow_ids: { string } = {}
+    local seen: { [string]: boolean } = {}
     for key, row in pairs(candidates) do
         if row and row.admission_state == "admitted" and row.origin == "automation"
             and row.trigger_kind == "binding" and row.binding_id == automation_id
             and (tonumber(row.binding_revision) or 0) > 0 then
             local id = row.workflow_id
-            if access[id] == nil then
-                local _, access_err = component.validate_access(id, component.ACCESS.READ)
-                access[id] = access_err == nil
+            eligible[key] = row
+            if not seen[id] then
+                seen[id] = true
+                workflow_ids[#workflow_ids + 1] = id
             end
-            if access[id] then
-                out[key] = {
-                    workflow_id = id, run_id = row.run_id, status = row.status,
-                    error = types.RUN_TERMINAL[row.status] and failure_message(row.error) or nil,
-                }
-            end
+        end
+    end
+    if #workflow_ids == 0 then return {}, nil end
+    local permitted, access_err = component.query({
+        component_ids = workflow_ids, access_mask = component.ACCESS.READ,
+        include = { meta = false }, limit = #workflow_ids,
+    })
+    if access_err then return nil, access_err end
+    local access: { [string]: boolean } = {}
+    for _, row in ipairs(permitted or {}) do access[row.component_id] = true end
+    local out: { [string]: any } = {}
+    for key, row in pairs(eligible) do
+        if access[row.workflow_id] then
+            out[key] = {
+                workflow_id = row.workflow_id, run_id = row.run_id, status = row.status,
+                error = types.RUN_TERMINAL[row.status] and failure_message(row.error) or nil,
+            }
         end
     end
     return out, nil
