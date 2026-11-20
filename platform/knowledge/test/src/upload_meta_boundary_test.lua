@@ -16,6 +16,7 @@ local stored_upload_fixtures: { string } = {}
 
 local DB = "app:db"
 local CALLBACK = "kickside.knowledge.injection:on_upload_complete"
+local EMBED_TOOL = "kickside.knowledge.traits:kb_embed_tool"
 
 local function db()
     local d, err = sql.get(DB)
@@ -268,7 +269,74 @@ local function define_tests()
                     test.is_nil(result.cancelled)
                 end
             end)
+
+            test.it("keeps the EmbedToKB upload error for " .. case.label, function()
+                local owner = uuid.v4()
+                local kb_id, upload_id = seed_upload_delivery(owner, case.storage)
+                local actor = security.new_actor(owner, {})
+                local provider = assert(assert(contract.get("kickside.contract:content_provider"))
+                    :with_actor(actor):with_scope(scope()):with_context({ upload_id = upload_id })
+                    :open("kickside.uploads:content_provider"))
+                local _, provider_err = provider:get_content({})
+                test.is_true(errors.is(provider_err, case.kind), tostring(provider_err))
+
+                local result, tool_err = funcs.new():with_actor(actor):with_scope(scope())
+                    :with_context({ kb_ids = { kb_id } }):call(EMBED_TOOL, { upload_id = upload_id })
+                test.is_nil(result)
+                test.is_true(errors.is(tool_err, case.kind), tostring(tool_err))
+                test.eq(tool_err:retryable() == true, case.retryable)
+                test.eq(tool_err:message(), provider_err:message())
+                test.eq(tool_err:details().code, provider_err:details().code)
+            end)
         end
+
+        test.it("returns the same EmbedToKB error for foreign and unknown upload IDs", function()
+            local owner, foreign_owner = uuid.v4(), uuid.v4()
+            local kb_id = seed_upload_delivery(owner, "app:uploads")
+            local foreign_upload = uuid.v7()
+            upload_fixtures[#upload_fixtures + 1] = foreign_upload
+            seed_upload_without_primary(foreign_upload, foreign_owner, "text/plain")
+
+            local exec = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(scope())
+                :with_context({ kb_ids = { kb_id } })
+            local hidden, hidden_err = exec:call(EMBED_TOOL, { upload_id = foreign_upload })
+            local unknown, unknown_err = exec:call(EMBED_TOOL, { upload_id = uuid.v7() })
+            test.is_nil(hidden)
+            test.is_nil(unknown)
+            test.is_true(errors.is(hidden_err, errors.NOT_FOUND), tostring(hidden_err))
+            test.is_true(errors.is(unknown_err, errors.NOT_FOUND), tostring(unknown_err))
+            test.eq(hidden_err:message(), "upload not found")
+            test.eq(hidden_err:message(), unknown_err:message())
+            test.eq(hidden_err:retryable(), unknown_err:retryable())
+            test.is_nil(next(hidden_err:details() or {}))
+            test.is_nil(next(unknown_err:details() or {}))
+        end)
+
+        test.it("queues a member's processed upload through EmbedToKB", function()
+            local owner = uuid.v4()
+            local kb_id, upload_id = seed_upload_delivery(owner, "app:uploads")
+            local content = "Fictional member upload bytes"
+            assert(assert(fs.get("app:uploads")):writefile(upload_id, content))
+            stored_upload_fixtures[#stored_upload_fixtures + 1] = upload_id
+
+            local result, tool_err = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(scope())
+                :with_context({ kb_ids = { kb_id } }):call(EMBED_TOOL, { upload_id = upload_id })
+            test.is_nil(tool_err, tostring(tool_err))
+            test.is_true(result.success)
+            test.eq(result.status, "queued")
+            test.eq(result.kb_id, kb_id)
+            test.eq(result.upload_id, upload_id)
+
+            local d = db()
+            local events, read_err = d:query("SELECT body FROM kickside_event WHERE thread_id = $1 AND type = $2",
+                { kb_id, "kickside.knowledge.events:content.upserted" })
+            d:release()
+            test.is_nil(read_err, tostring(read_err))
+            test.eq(#events, 1)
+            local body = assert(json.decode(events[1].body))
+            test.eq(body.content, content)
+            test.eq(body.source_ref.upload_id, upload_id)
+        end)
 
         test.it("does not mutate KB public meta when an upload callback reports failure", function()
             local owner = uuid.v4()
