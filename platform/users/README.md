@@ -44,6 +44,13 @@ variables in the harness configuration for your test server.
 Edit frontend source under `ui/` and run `make -C ../../ build MOD=users` from this directory;
 commit regenerated tracked assets with the source.
 
+After installing the UI dependencies, run the Share layout tests in Chromium.
+
+```sh
+npm --prefix ui exec -- playwright-core install chromium --only-shell
+npm --prefix ui run test:browser
+```
+
 ## Use
 
 **System → Users** manages accounts and role assignments. KickSide’s default roles are Administrator and Member. Signed-in application access is applied during authentication; it is not stored as a separate User role. Users management is a separate policy from directory discovery and the signed-in user’s profile. Bots are ordinary User principals classified as bots; they cannot authenticate or own credentials. Configure their group access and grant an operator selection authority separately.
