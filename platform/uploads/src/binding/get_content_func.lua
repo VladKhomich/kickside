@@ -13,6 +13,17 @@ local log = require("logger"):named("kickside.uploads.binding.get_content")
 
 local MAX_EXTRACTED_BYTES = 24 * 1024
 
+local function public_storage_error(cause: error, message: string, code: string, upload_id: string,
+    artifact_id: string?): error
+    local diagnostic = binding_errors.artifact_diagnostic(cause, upload_id, artifact_id)
+    log:warn(message, diagnostic)
+    local source = (cause:details() or {}).artifact_read_source
+    return errors.new({kind = cause:kind(), message = message, retryable = cause:retryable(), details = {
+        code = diagnostic.code or code,
+        artifact_read_source = (source == "blob" or source == "locator") and source or nil,
+    }})
+end
+
 local function handle(args)
     args = args or {}
 
@@ -103,7 +114,9 @@ local function handle(args)
         }
     end
     if artifact_err and not artifact_parts_repo.is_primary_artifact_missing(artifact_err) then
-        return nil, binding_errors.from(artifact_err, errors.UNAVAILABLE, "artifact_read_failed")
+        local cause = binding_errors.from(artifact_err, errors.UNAVAILABLE, "artifact_read_failed")
+        return nil, public_storage_error(cause, "Failed to read primary upload artifact", "artifact_read_failed",
+            upload_id, failed_artifact_id)
     end
     if not artifact_content then
         local metadata = metadata_sanitizer.public(upload.metadata)
@@ -116,7 +129,8 @@ local function handle(args)
         end
         local storage, storage_err = uploads_resources.get_storage(upload.storage_id)
         if storage_err or not storage then
-            return nil, binding_errors.from(storage_err, errors.UNAVAILABLE, "upload_storage_failed", "Failed to get upload storage")
+            local cause = binding_errors.from(storage_err, errors.UNAVAILABLE, "storage_unavailable")
+            return nil, public_storage_error(cause, "Failed to get upload storage", "storage_unavailable", upload_id)
         end
         local content, read_err, total_size
         if limit then
@@ -127,7 +141,8 @@ local function handle(args)
         if type(content) ~= "string" then
             local source = read_err and binding_errors.from(read_err, errors.UNAVAILABLE, "upload_content_read_failed")
                 or binding_errors.new(errors.INTERNAL, "Failed to read original upload content", "upload_content_read_failed")
-            return { success = false, error = binding_errors.with_message(source, "Failed to read original upload content") }
+            return { success = false, error = public_storage_error(source, "Failed to read original upload content",
+                "upload_content_read_failed", upload_id) }
         end
         return {
             success = true,
