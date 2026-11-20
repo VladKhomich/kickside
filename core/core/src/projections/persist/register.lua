@@ -299,8 +299,9 @@ local function transition_cursor(tx: sql.Transaction, lock: string, thread: tabl
         return nil, transition_error("projection_transition_identity", "projection transition requires the stored component identity")
     end
 
+    local marker_columns = observe_only and "" or ",pending_transition,pending_transition_seq"
     local rows, err = tx:query([[SELECT id,thread_id,cursor_key,job_id,status,generation,last_seq,continuation,
-        debounce_idle_ms,debounce_max_ms,actor_id,execution_identity_json,pending_transition,pending_transition_seq
+        debounce_idle_ms,debounce_max_ms,actor_id,execution_identity_json]] .. marker_columns .. [[
         FROM kickside_projection_cursor WHERE projection_id=$1 LIMIT 2 ]] .. lock, {projection.id})
     rows, err = sql_boundary.bounded_rows(rows, err, "failed to lock projection cursor", "transition.cursor", 0, 2, response_error)
     if err then return nil, err end
@@ -321,6 +322,13 @@ local function transition_cursor(tx: sql.Transaction, lock: string, thread: tabl
         return nil, transition_error("projection_transition_requires_pause", "pause the projection cursor before transitioning workers")
     end
 
+    -- The ordinary member call leaves the existing declaration and slot
+    -- untouched. The target database and lease belong to lifecycle authority.
+    -- This path is also valid between registry publication and migration.
+    if observe_only then
+        cursor.deferred = true
+        return cursor, nil
+    end
     local config, config_err = registry.get(db_config_id)
     if config_err then return nil, config_err end
     local db_id = core_db.id()
@@ -367,7 +375,7 @@ local function transition_cursor(tx: sql.Transaction, lock: string, thread: tabl
         return nil, transition_error("projection_transition_slot_unsettled", "the predecessor Jobs slot is inactive")
     end
     local busy = job.status ~= "pending" or job.lease_token ~= nil
-    if observe_only or (filtered and (busy or backlog)) then
+    if filtered and (busy or backlog) then
         cursor.deferred = true
         cursor.running = job.status == "running"
         return cursor, nil

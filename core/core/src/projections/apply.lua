@@ -299,8 +299,9 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         return abort(job_types.lease_lost_error("projection source thread is deleting"))
     end
     local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local cursor_query = [[SELECT generation,last_seq,status,job_id,thread_id,projection_id,continuation,pending_transition_seq
-        FROM kickside_projection_cursor WHERE id=$1]]
+    -- Hot registry publication can precede migration 20. A pre-migration row
+    -- simply has no optional lifecycle handoff position.
+    local cursor_query = "SELECT * FROM kickside_projection_cursor WHERE id=$1"
     if checkpoint and checkpoint.manifest then
         cursor_query = [[SELECT c.generation,c.last_seq,c.status,c.job_id,c.thread_id,c.projection_id,c.continuation,
             p.reset_generation FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
