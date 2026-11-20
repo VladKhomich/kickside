@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Icon } from '@iconify/vue'
 import { api, host } from '@wippy-fe/proxy'
 import Dialog from 'primevue/dialog'
@@ -113,24 +113,13 @@ async function loadAccess() {
   }
 }
 
-// The component owns its full popup chrome (backdrop + panel), so every host
-// gets an identically sized share dialog by just mounting the tag. Closing is
-// driven from here: backdrop click, the header close button, or Escape all emit
-// `close` for the host to act on.
-// The modal shell is PrimeVue's Dialog; `dialogOpen` drives its visibility, and any
-// dismissal (mask click, X, or the Escape handler below) flips it false → emitClose.
 const dialogOpen = ref(true)
-function emitClose() { emit('close', undefined) }
-function onDialogVisible(v: boolean) { if (!v) emitClose() }
-function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  dialogOpen.value = false
-}
+const confirmingRevoke = ref(false)
+// Let the host unmount Share after any dismissal, including a local Escape.
+watch(dialogOpen, (visible) => { if (!visible) emit('close', undefined) })
+function onEscape() { dialogOpen.value = false }
 
-onMounted(() => { loadCaps(); window.addEventListener('keydown', onKey) })
-onUnmounted(() => {
-  window.removeEventListener('keydown', onKey)
-})
+onMounted(loadCaps)
 watch(() => cfg.value.access_url, () => loadAccess(), { immediate: true })
 
 const selected = ref<Principal | null>(null)
@@ -178,26 +167,50 @@ async function toggleRow(row: AccessRow, bit: number) {
     return
   }
   const next = toggleBit(row.access_mask, bit)
-  if (next === 0) { await apply(row.id, row.type, 0, true); return }
+  if (next === 0) { await revoke(row); return }
   await apply(row.id, row.type, next)
 }
 
 async function revoke(row: AccessRow) {
-  if (row.owner) return
-  await apply(row.id, row.type, 0, true)
+  const { share_url: shareUrl, resource_id: resourceId, title } = cfg.value
+  if (row.owner || !shareUrl) return
+  const name = title?.trim() || resourceId
+  const resource = name ? `“${name}”` : 'this resource'
+
+  confirmingRevoke.value = true
+  try {
+    await nextTick()
+    const accepted = await host.confirm({
+      header: 'Remove access',
+      message: `Remove ${row.label}’s access to ${resource}?`,
+      icon: 'tabler:user-minus',
+      acceptLabel: 'Remove access',
+      rejectLabel: 'Cancel',
+      acceptClass: 'p-button-danger',
+      defaultFocus: 'reject',
+    })
+    if (accepted && dialogOpen.value && cfg.value.share_url === shareUrl) {
+      await apply(row.id, row.type, 0, true)
+    }
+  } finally {
+    confirmingRevoke.value = false
+  }
 }
 </script>
 
 <template>
+  <!-- The shadow portal uses the browser's top layer. Yield it to host confirmation. -->
   <Dialog
     v-model:visible="dialogOpen"
     modal
     :dismissable-mask="true"
     :close-on-escape="false"
+    :append-to="confirmingRevoke ? 'self' : 'body'"
+    :auto-z-index="!confirmingRevoke"
     :style="{ width: '560px', maxWidth: 'calc(100vw - 48px)' }"
     aria-label="Share"
     class="kxs-dialog"
-    @update:visible="onDialogVisible"
+    @keydown.esc.stop="onEscape"
   >
     <template #header>
       <Icon icon="tabler:user-share" class="kxs-head-ico" aria-hidden="true" />
