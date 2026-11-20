@@ -312,7 +312,7 @@ return {run = test.run_cases(function()
         end
 
         for _, case in ipairs({
-            {name = "runs the installed descriptor under its persisted actor", allowed = true},
+            {name = "publishes checkpoint events as its admitted member without a dispatcher grant", member = true, allowed = true},
             {name = "refuses an extra cursor", alternate = true, refusal = "installed projection declaration"},
             {name = "refuses different stored configuration", config = true, refusal = "installed projection declaration"},
             {name = "refuses a different stored actor", identity = true, refusal = "component's execution identity"},
@@ -326,6 +326,7 @@ return {run = test.run_cases(function()
             test.it(case.name, function()
                 local f = fixture.new()
                 if case.revoked then f.owner = "transition-" .. f.owner end
+                if case.member then f.owner = "checkpoint-member-" .. f.owner end
                 local id = uuid.v7()
                 created_component = id
                 local impl = case.owner and "kickside.test.threads:thread_kind" or "app:declared_checkpoint_component"
