@@ -307,6 +307,7 @@ entries:
           remove_source: { type: boolean }
           source_port: { type: string }
           sink_port: { type: string }
+          echo_known_receipts: { type: boolean }
     contracts:
       - contract: kickside.contract:installable
         methods:

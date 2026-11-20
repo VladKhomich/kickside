@@ -133,7 +133,8 @@ local function record_receipts_tx(tx: any, round: Map, delivered: { Map }, pass_
                         or (type(r.declaration_hash) == "string" and r.declaration_hash ~= "" and r.declaration_hash or sql.NULL)
                     -- An echoed receipt already records an earlier write. Only a new
                     -- write gets the source kind of this round's locked drive.
-                    local receipt_source_kind = type(r.delivery_key) ~= "string" and source_kind or sql.NULL
+                    local receipt_source_kind = r.stored ~= true and type(r.delivery_key) ~= "string"
+                        and source_kind or sql.NULL
                     local dest_ref, enc_err = json.encode(r.dest_ref)
                     if enc_err then return internal("failed to encode a destination ref", enc_err) end
                     local stored_row, row_err = json.encode({ owner_id = round.automation_id,

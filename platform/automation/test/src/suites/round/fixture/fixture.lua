@@ -193,6 +193,14 @@ local function deliver_to_sink(r: Map, d: Map, config: Map): Map
     local page_receipts, page_err = round_write.receipts(tostring(d.automation_id), port, keys)
     if page_err then error("fixture receipts: " .. tostring(page_err)) end
     for record, slots in pairs(d.prepared_receipts or {}) do (page_receipts :: Map)[record] = slots end
+    if config.echo_known_receipts == true then
+        for _, item in ipairs((r.items or {}) :: { Map }) do
+            out.delivered_items[#out.delivered_items + 1] = {
+                key = item.delivery_key, receipts = (page_receipts :: Map)[tostring(item.item_key)] or {},
+            }
+        end
+        return out
+    end
     local preparations: { Map } = {}
     for _, item in ipairs((r.items or {}) :: { Map }) do
         if item.op ~= "delete" then

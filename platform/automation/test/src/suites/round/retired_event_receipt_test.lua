@@ -82,5 +82,24 @@ return test.run_cases(function()
                 test.eq(#sends, 1, "retention does not send a destination delete")
             end)
         end
+
+        test.it("keeps collection provenance when an event round echoes a receipt without a delivery key", function()
+            local env = h.setup("stored_receipt_replay")
+            local id = manage(env, { action = "install", type = EVENT_KIND,
+                input = { thread_id = env.thread_id, start = "new", sink_port = STORE, echo_known_receipts = true } }).id
+            env.append("reuse stored mapping")
+            local item = h.query("SELECT id FROM kickside_event WHERE thread_id=$1 AND type=$2", { env.thread_id, h.EVENT_TYPE })[1]
+            h.exec([[INSERT INTO kickside_automation_receipt
+                (owner_id,source_port,item_key,map_slot,identity_key,dest_ref_json,updated_at,source_kind)
+                VALUES ($1,'fixture:events',$2,'','previous','{"id":"mapped"}',$3,'collection')]],
+                { id, item.id, OLD })
+
+            local _, run_err = env.run(id, "main")
+            test.is_nil(run_err, tostring(run_err))
+            local rows = h.query("SELECT source_kind,delivery_key FROM kickside_automation_receipt WHERE owner_id=$1", { id })
+            test.eq(#rows, 1)
+            test.not_nil(rows[1].delivery_key, "the event round completed and recorded the replay")
+            test.eq(rows[1].source_kind, "collection")
+        end)
     end)
 end)
