@@ -93,6 +93,12 @@ local function lookup_subject(subject_id: string, authority_only: boolean?): (an
     if row.error ~= nil then
         local detail = row.error
         local kind = type(detail) == "table" and (detail :: any).kind or nil
+        -- The subject reader found an active account, but Security could not
+        -- resolve its policy groups. Retry execution without using stale authority.
+        if kind == errors.NOT_FOUND and (detail :: any).source == "scope" then
+            return nil, failure("subject lookup failed: " .. tostring((detail :: any).message),
+                errors.UNAVAILABLE, "infrastructure", true)
+        end
         local error_kind = row.error_kind == "infrastructure" and "infrastructure" or "subject"
         if error_kind == "infrastructure" then
             if kind ~= errors.INTERNAL and kind ~= errors.UNAVAILABLE and kind ~= errors.TIMEOUT then
