@@ -304,6 +304,10 @@ entries:
           thread_id: { type: string, x-reference: {kind: thread, access: READ} }
           start: { type: string }
           page_size: { type: integer }
+          remove_source: { type: boolean }
+          source_port: { type: string }
+          sink_port: { type: string }
+          echo_known_receipts: { type: boolean }
     contracts:
       - contract: kickside.contract:installable
         methods:

@@ -8,7 +8,8 @@ local function internal(message: string, cause: any): error
 end
 
 -- The same eligibility governs the page, its delete recheck and maintenance's
--- next deadline. A missing owner cannot prove a mapped receipt's source kind.
+-- next deadline. Only a legacy receipt without stored provenance needs a
+-- matching event drive to prove the kind of its source.
 local function eligibility(dialect: string): (string?, error?)
     if dialect ~= sql.type.POSTGRES and dialect ~= sql.type.SQLITE then
         return nil, internal("unsupported receipt retention dialect", dialect)
@@ -20,8 +21,9 @@ local function eligibility(dialect: string): (string?, error?)
         AND ((r.dest_ref_json IS NULL
                 AND NOT EXISTS (SELECT 1 FROM kickside_automation_drive d WHERE d.automation_id=r.owner_id))
             OR (r.dest_ref_json IS NOT NULL AND r.pass_id IS NULL
-                AND EXISTS (SELECT 1 FROM kickside_automation_drive d
-                    WHERE d.automation_id=r.owner_id AND d.source_kind='event' AND ]] .. port .. [[=r.source_port)
+                AND (r.source_kind='event' OR (r.source_kind IS NULL
+                    AND EXISTS (SELECT 1 FROM kickside_automation_drive d
+                        WHERE d.automation_id=r.owner_id AND d.source_kind='event' AND ]] .. port .. [[=r.source_port)))
                 AND NOT EXISTS (SELECT 1 FROM kickside_automation_drive d
                     WHERE d.automation_id=r.owner_id AND
                         (d.round_token IS NOT NULL OR (d.admission_json IS NOT NULL AND d.admission_json <> '{}')

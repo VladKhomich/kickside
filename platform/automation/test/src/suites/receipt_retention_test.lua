@@ -107,13 +107,17 @@ return test.run_cases(function()
 
         test.it("preserves event mappings with delivery, replay, or reconciliation obligations", function()
             for _, obligation in ipairs({ "retrying", "waiting", "uncertain", "parked", "dead", "resolved",
-                    "command", "prepared", "admission", "round", "reconcile", "collection", "port", "pass" }) do
+                    "command", "prepared", "admission", "round", "reconcile", "collection", "port", "pass", "proven_collection" }) do
                 local owner = uuid.v7()
                 exec([[INSERT INTO kickside_automation_drive (automation_id,drive_key,source_kind,action_json)
                     VALUES ($1,'main','event','{"source_ref":"events"}')]], { owner })
                 exec([[INSERT INTO kickside_automation_receipt
                     (owner_id,source_port,item_key,map_slot,identity_key,dest_ref_json,updated_at)
                     VALUES ($1,'events','item','slot','identity','{"id":"remote"}','2000-01-01T00:00:00Z')]], { owner })
+                if obligation ~= "port" then
+                    exec("UPDATE kickside_automation_receipt SET source_kind=$1 WHERE owner_id=$2",
+                        { obligation == "proven_collection" and "collection" or "event", owner })
+                end
                 if obligation == "command" then
                     exec([[INSERT INTO kickside_automation_command
                         (automation_id,generation,pending_request_id,pending_digest,pending_kind,pending_input_json,pending_drives_json,pending_step)
@@ -134,7 +138,7 @@ return test.run_cases(function()
                     exec([[UPDATE kickside_automation_drive SET action_json='{"source_ref":"other"}' WHERE automation_id=$1]], { owner })
                 elseif obligation == "pass" then
                     exec("UPDATE kickside_automation_receipt SET pass_id='pass' WHERE owner_id=$1", { owner })
-                else
+                elseif obligation ~= "proven_collection" then
                     exec([[INSERT INTO kickside_trigger_item_ledger
                         (owner_id,source_port,item_key,dedup_key,identity_key,envelope_json,state,first_failed_at,last_failed_at,created_at,updated_at)
                         VALUES ($1,'events','item','item','delivery','{}',$2,'2000-01-01T00:00:00Z','2000-01-01T00:00:00Z',

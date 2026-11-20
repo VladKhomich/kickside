@@ -110,6 +110,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.automation.migrations:19_receipt_delivery_identity
         path: .meta.target_db
+      - entry: kickside.automation.migrations:20_receipt_source_kind
+        path: .meta.target_db
       - entry: kickside.automation:db_config
         path: .meta.db_id
 

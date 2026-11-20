@@ -131,3 +131,13 @@ entries:
     method: migration
     imports:
       migration: wippy.migration:migration
+
+  - name: 20_receipt_source_kind
+    kind: function.lua
+    meta:
+      type: migration
+      depends_on: [ns:wippy.migration, kickside.automation.migrations:19_receipt_delivery_identity]
+    source: file://20_receipt_source_kind.lua
+    method: migration
+    imports:
+      migration: wippy.migration:migration
