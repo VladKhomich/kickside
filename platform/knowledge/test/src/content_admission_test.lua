@@ -67,7 +67,7 @@ local function target(user: string, engine: string, without_thread: boolean?): s
     if without_thread then return id end
     local def = assert(contract.get("kickside.core:threads"))
     local threads = assert(def:with_actor(security.new_actor(user, {})):with_scope(security.named_scope("wippy.security:process")):open())
-    local _, err = threads:ensure_thread({ component_id = id, impl_id = "app:test_engine_wiki", thread_class = "kickside.knowledge.injection" })
+    local _, err = threads:ensure_thread({ component_id = id, impl_id = "knowledge.fixture:test_engine_wiki", thread_class = "kickside.knowledge.injection" })
     test.is_nil(err, tostring(err))
     return id
 end

@@ -100,93 +100,10 @@ entries:
     options:
       token_store: kickside.users.security:tokens
 
-  - name: test_engine_wiki
-    kind: registry.entry
-    meta:
-      type: kickside.kb_engine
-      kb_type: wiki
-      title: Wiki
-      impl_id: test.kb:embeddable
-      query_binding: test.kb:queryable
-      maintenance_binding: test.kb:maintainable
-      config_maintenance:
-        schedule_resummarize: [outline_style]
-      store_contract: shared:kb_store
-      is_graph: true
-      # Declared source projection: provisioned on the KB primary thread when the
-      # KB is created (thread_id == component_id). The worker_ref mirrors the kb10
-      # engine; this harness only exercises the declaration + its execution identity,
-      # not the worker run, so no events are dispatched against it.
-      projections:
-        - kind: knowledge.injection.source
-          projection_key: source
-          cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
-          input_mode: prefetch_events
-          batch_size: 1
-          events:
-            input:
-              - type: "kickside.knowledge.events:content.upserted"
-              - type: "kickside.knowledge.events:content.deleted"
-      default_config:
-        chunk_size: 400
-        chunk_overlap: 0
-        summary_max_chars: 0
-
-  - name: test_engine_ledger
-    kind: registry.entry
-    meta:
-      type: kickside.kb_engine
-      kb_type: ledger_fixture
-      title: Ledger fixture
-      impl_id: test.kb:ledger
-      store_contract: shared:kb_store
-      thread: {class: kickside.knowledge.injection}
-      events:
-        output:
-          - type: kickside.knowledge.events:content.upserted
-      projections:
-        - kind: fixture.ledger
-          projection_key: ledger
-          cursor_key: ledger
-          worker_ref: "func://app:maintenance_stub"
-          input_mode: prefetch_events
-          events:
-            input:
-              - type: kickside.knowledge.events:content.upserted
-
-  - name: test_engine_files
-    kind: contract.binding
-    meta:
-      type: kickside.kb_engine
-      kb_type: files
-      title: File harness engine
-      store_contract: shared:kb_store
-      accepts_files: true
-      upload_publication_match: app:maintenance_stub
-      events:
-        output:
-          - type: kickside.knowledge.events:content.upserted
-          - type: kickside.knowledge.events:content.deleted
-          - type: kickside.knowledge.events:delivery.claimed
-      projections:
-        - kind: knowledge.injection.source
-          projection_key: source
-          cursor_key: source
-          worker_ref: "proc://kickside.kb10.injection:source_worker_proc"
-          input_mode: prefetch_events
-          batch_size: 1
-          events:
-            input:
-              - type: "kickside.knowledge.events:content.upserted"
-              - type: "kickside.knowledge.events:content.deleted"
-
-    contracts:
-      - contract: kickside.contract:embeddable
-        context_required: [component_id]
-        methods:
-          embed_content: test.kb:embed_content
-          embed_reference: test.kb:embed_reference
+  - name: dep.knowledge-engine-fixture
+    kind: ns.dependency
+    component: kickside/knowledge-engine-fixture
+    version: "*"
 
   - name: test_engine_no_maintenance
     kind: registry.entry
