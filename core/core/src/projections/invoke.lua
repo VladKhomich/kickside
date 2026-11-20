@@ -499,6 +499,10 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             return result, empty_err, current, checkpoint_owner
         end
         if #batch > 0 then
+            local target_id = binding.target_id
+            if type(target_id) ~= "string" then
+                return nil, release(db, response_error("worker.target_id"))
+            end
             committed_input = work_input
             -- Workers may read or write the shared core database. SQLite has a
             -- single pooled connection, so the snapshot handle must be returned
@@ -516,7 +520,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                     end
                     return nil
                 end
-                return check_revision(revision, current.component_impl_id, binding.target_id)
+                return check_revision(revision, current.component_impl_id, target_id)
             end
             if binding.worker_runtime == "proc" then
                 local host, host_err = apply.process_host()

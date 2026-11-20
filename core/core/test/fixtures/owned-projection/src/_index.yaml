@@ -22,6 +22,7 @@ entries:
     kind: function.lua
     source: file://worker.lua
     method: effect
+    modules: [funcs, security]
 
   - name: fold
     kind: function.lua
@@ -62,6 +63,7 @@ entries:
     meta: {type: projection.worker}
     source: file://worker.lua
     method: effect
+    modules: [funcs, security]
 
   - name: unmarked_kind
     kind: contract.binding
