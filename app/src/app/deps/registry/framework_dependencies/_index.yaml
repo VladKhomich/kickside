@@ -1,7 +1,7 @@
 version: "1.0"
 namespace: app.deps
 entries:
-  - version: ">=0.5.11"
+  - version: ">=0.5.22"
     name: llm
     kind: ns.dependency
     meta: {}
@@ -62,7 +62,7 @@ entries:
     component: wippy/security
 
   # app.deps:session
-  - version: ">=0.6.13"
+  - version: ">=0.7.1"
     name: session
     kind: ns.dependency
     meta: {}
