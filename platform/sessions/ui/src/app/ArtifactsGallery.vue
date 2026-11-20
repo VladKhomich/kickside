@@ -234,7 +234,7 @@ onBeforeUnmount(() => {
           <article v-for="artifact in filtered" :key="artifactId(artifact)" class="kx-artifact-card" role="listitem">
             <button type="button" class="kx-artifact-open" :disabled="opening === artifactId(artifact)" @click="openArtifact(artifact)">
               <span class="kx-artifact-preview" aria-hidden="true">
-                <w-artifact :id="artifactId(artifact)" />
+                <w-artifact :key="artifact.content_version" :id="artifactId(artifact)" />
               </span>
               <span class="kx-artifact-copy">
                 <strong :title="artifact.title || 'Untitled artifact'">{{ artifact.title || 'Untitled artifact' }}</strong>

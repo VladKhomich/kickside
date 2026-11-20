@@ -65,6 +65,7 @@ export interface ArtifactSummary {
   updated_at?: string
   display_type?: 'standalone' | 'inline'
   content_type?: string
+  content_version?: number
   description?: string
   preview?: string
   icon?: string

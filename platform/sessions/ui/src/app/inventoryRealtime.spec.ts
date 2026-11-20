@@ -203,25 +203,34 @@ describe('Artifacts live updates', () => {
     expect(titles.at(-1)).toBe('Older artifact')
   })
 
-  it('reads one edited artifact and preserves its preview element', async () => {
-    const first = artifact('first', 'Original title', '18')
+  it('keeps the edited card and reloads its preview when the content version changes', async () => {
+    const first = { ...artifact('first', 'Original title', '18'), content_version: 1 }
     api.artifacts.mockResolvedValue({ artifacts: [first], hasMore: false, nextCursor: '' })
-    api.artifact.mockResolvedValue({ ...first, title: 'Edited title', preview: 'Searchable edit' })
+    api.artifact
+      .mockResolvedValueOnce({ ...first, title: 'Renamed title' })
+      .mockResolvedValueOnce({ ...first, title: 'Edited title', content_version: 2, preview: 'Searchable edit' })
     const wrapper = mount(ArtifactsGallery, options)
     await flushPromises()
+    const card = wrapper.get('.kx-artifact-card').element
     const preview = wrapper.get('w-artifact[id="first"]').element
+
+    publish('artifact:first', { uuid: 'first', session_id: 'session-a', content_version: 1 })
+    await applyUpdates()
+    expect(wrapper.get('.kx-artifact-card strong').text()).toBe('Renamed title')
+    expect(wrapper.get('w-artifact[id="first"]').element).toBe(preview)
 
     publish('artifact:first', { uuid: 'first', session_id: 'session-a', content_version: 2 })
     await applyUpdates()
     expect(wrapper.get('.kx-artifact-card strong').text()).toBe('Edited title')
-    expect(wrapper.get('w-artifact[id="first"]').element).toBe(preview)
+    expect(wrapper.get('.kx-artifact-card').element).toBe(card)
+    expect(wrapper.get('w-artifact[id="first"]').element).not.toBe(preview)
     await wrapper.get('input[type="search"]').setValue('Searchable edit')
     expect(wrapper.findAll('.kx-artifact-card')).toHaveLength(1)
 
     publish('artifact:first', { uuid: 'first', session_id: 'session-a', deleted: true })
     await applyUpdates()
     expect(wrapper.find('.kx-artifact-card').exists()).toBe(false)
-    expect(api.artifact.mock.calls).toEqual([['first']])
+    expect(api.artifact.mock.calls).toEqual([['first'], ['first']])
     expect(api.artifacts).toHaveBeenCalledTimes(1)
   })
 })
