@@ -11,6 +11,7 @@ entries:
     imports:
       workflow_store: kickside.workflows.store:store
       component: kickside.component:component
+      flow_ref: kickside.workflows.execution:flow_ref
       types: kickside.workflows:types
 
   - name: automation_delete_admission

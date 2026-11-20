@@ -121,6 +121,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.workflows.migrations:10_automation_history_index
         path: .meta.target_db
+      - entry: kickside.workflows.migrations:11_current_automation_failure_index
+        path: .meta.target_db
       - entry: kickside.workflows:db_config
         path: .meta.db_id
 
