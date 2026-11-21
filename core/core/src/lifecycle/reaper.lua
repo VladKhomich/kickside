@@ -30,7 +30,7 @@ end
 
 -- Delete children before their owning parent. If a page or child cleanup
 -- fails, the parent still names the unfinished subtree on the next tick.
-local function reap_owner(owner: any, depth: integer, budget: { remaining: integer, deleted: integer }): error?
+local function reap_owner(owner: any, depth: integer, budget: { remaining: integer, deleted: integer }, principal_root: any?): error?
     if depth > MAX_DEPTH then return cleanup_error("component ownership depth exceeds " .. tostring(MAX_DEPTH)) end
     local rows, list_err = component.list_lifecycle_dependants(owner, math.max(1, budget.remaining))
     if list_err or type(rows) ~= "table" then return cleanup_error("component owner scan failed", list_err or "no rows result") end
@@ -45,7 +45,9 @@ local function reap_owner(owner: any, depth: integer, budget: { remaining: integ
         if type(incarnation) ~= "string" or incarnation == "" then
             return cleanup_error("component owner scan returned an invalid incarnation")
         end
-        local child_err = reap_owner({type = "component", id = cid, incarnation = incarnation}, depth + 1, budget)
+        local root = principal_root
+        if owner.type == "principal" then root = {id = cid, incarnation = incarnation, owner = owner} end
+        local child_err = reap_owner({type = "component", id = cid, incarnation = incarnation}, depth + 1, budget, root)
         if child_err then
             if not component_teardown.cleanup_pending(child_err) then return child_err end
             pending_error = pending_error or child_err
@@ -53,7 +55,8 @@ local function reap_owner(owner: any, depth: integer, budget: { remaining: integ
             if budget.remaining == 0 then
                 return cleanup_error("component owner cleanup has another bounded page", owner.id)
             end
-            local ok, delete_err = component.system_delete(cid :: string, "reparent_root", {owner = owner, incarnation = incarnation})
+            local ok, delete_err = component.system_delete(cid :: string, "reparent_root",
+                {owner = owner, incarnation = incarnation, principal_root = principal_root})
             if delete_err or ok ~= true then
                 if not component_teardown.cleanup_pending(delete_err) then
                     return cleanup_error("component owner delete failed for " .. cid, delete_err or "no deletion proof")

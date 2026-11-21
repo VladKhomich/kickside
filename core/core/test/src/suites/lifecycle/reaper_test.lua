@@ -266,6 +266,60 @@ local function define_tests()
             test.eq(instance(collision), current)
         end)
 
+        test.it("rechecks the reported principal at the descendant deletion fence after adoption", function()
+            local prior = "custody-prior-" .. suffix
+            local custodian = register("adoptable custodian", prior)
+            local incarnation = instance(custodian)
+            local producer = funcs.new():with_actor(security.new_actor(prior, {})):with_scope(scope())
+            local child = assert(producer:call("kickside.core.lifecycle:reaper_register_child",
+                {impl_id = TEST_IMPL, parent_id = custodian}))
+            test.is_true(child.success, tostring(child.error))
+            local child_id = child.component_id
+
+            -- The report's selection precedes the authorized adoption of the orphan.
+            local expected = {
+                owner = {type = "component", id = custodian, incarnation = incarnation},
+                incarnation = instance(child_id),
+                principal_root = {id = custodian, incarnation = incarnation,
+                    owner = {type = "principal", kind = "user", id = prior}},
+            }
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("DELETE FROM kickside_component_access WHERE component_id=$1", {custodian}))
+            assert(db:release())
+            local adopter = "custody-adopter-" .. suffix
+            local adopted = assert(as_owner(adopter):adopt({component_id = custodian}))
+            test.is_true(adopted.success, tostring(adopted.error))
+
+            local _, err = component.system_delete(child_id, "reparent_root", expected)
+            test.eq(job_count(child_id), 0, "adoption must invalidate the former principal's authority")
+            test.is_nil(err, tostring(err))
+            test.eq(job_count(custodian), 0)
+        end)
+
+        test.it("can process a typed principal report alongside unclassified upgrade data", function()
+            local principal = "custody-known-" .. suffix
+            local legacy = register("unclassified upgrade data", "custody-legacy-" .. suffix)
+            local known = register("new principal component", principal)
+            local db = assert(sql.get("app:db"))
+            assert(db:execute([[UPDATE kickside_components SET owner_type='unresolved',owner_kind=NULL,owner_id=NULL,
+                custody_legacy=1 WHERE component_id=$1]], {legacy}))
+            assert(db:release())
+
+            tick(principal)
+            local enrolled = job_count(known)
+            if enrolled == 1 then test.is_true(assert(deletion_worker.run(known)).deleted) end
+            local completed, report_err = tick(principal)
+            db = assert(sql.get("app:db"))
+            assert(db:execute([[UPDATE kickside_components SET owner_type='principal',owner_kind='user',owner_id=$1
+                WHERE component_id=$2]], {"custody-legacy-" .. suffix, legacy}))
+            assert(db:release())
+            test.eq(enrolled, 1, "unclassified rows must not stall typed retirement")
+            test.eq(job_count(legacy), 0)
+            test.is_nil(report_err, tostring(report_err))
+            test.not_nil(completed)
+            test.not_nil(instance(legacy))
+        end)
+
         for _, actor_id in ipairs({"system:knowledge.injection", "system:unlisted"}) do
             test.it("refuses a direct reaper call from " .. actor_id, function()
                 local result, err = run_as_system({thread_id = lifecycle_thread_id(), events = {},
@@ -858,6 +912,26 @@ local function define_tests()
             test.eq(grant_count(), 0)
             test.eq(owned_count(sharer), 51, "the shared components survive")
             db:release()
+        end)
+
+        test.it("blocks a legacy custodian while a live attachment has no installed manifest", function()
+            local owner = "removed-manifest-" .. suffix
+            local custodian = register("legacy custodian", owner)
+            local attachment = register_impl("kickside.test:lifecycle", "legacy attachment kind", owner)
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_components SET custody_legacy=1 WHERE component_id=$1", {custodian}))
+            assert(db:execute([[UPDATE kickside_components SET custody_legacy=1,owner_type='unresolved',owner_kind=NULL,owner_id=NULL
+                WHERE component_id=$1]], {attachment}))
+            assert(db:release())
+
+            local denied = assert(as_owner(owner):delete({component_id = custodian}))
+            db = assert(sql.get("app:db"))
+            assert(db:execute([[UPDATE kickside_components SET owner_type='principal',owner_kind='user',owner_id=$1
+                WHERE component_id=$2]], {owner, attachment}))
+            assert(db:release())
+            test.eq(job_count(custodian), 0)
+            test.eq(denied.kind, errors.CONFLICT)
+            test.eq(denied.details.code, "custody_unresolved")
         end)
 
         test.it("blocks possible legacy custodians until a paged root attachment is physically absent", function()
