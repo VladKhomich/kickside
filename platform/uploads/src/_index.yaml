@@ -132,6 +132,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.uploads.migrations:04_create_artifact_tables
         path: .meta.target_db
+      - entry: kickside.uploads.migrations:05_legacy_upload_schema
+        path: .meta.target_db
       - entry: kickside.uploads.migrations:05_scope_archive_deduplication
         path: .meta.target_db
       - entry: kickside.uploads.migrations:06_index_terminal_checkpoints
