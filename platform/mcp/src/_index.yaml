@@ -307,7 +307,7 @@ entries:
     kind: library.lua
     meta: { comment: "Stateless MCP JSON-RPC dispatcher — initialize/ping, tools.list/call (meta + real, two-layer authz), resources.*, prompts.*." }
     source: file://dispatcher.lua
-    modules: [json, registry, security]
+    modules: [json, registry, security, base64]
     imports:
       text_trim: kickside.contract:text_trim
       mcp_traits: kickside.mcp:mcp_traits

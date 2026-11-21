@@ -14,6 +14,9 @@ local time = require("time")
 local uuid = require("uuid")
 local security = require("security")
 local funcs = require("funcs")
+local system = require("system")
+local http_client = require("http_client")
+local base64 = require("base64")
 local repo = require("mcp_repo")
 local mcp_security = require("mcp_security")
 local dispatcher = require("mcp_dispatcher")
@@ -93,6 +96,17 @@ local function define_tests()
             local body = json.encode({ jsonrpc = "2.0", id = 1, method = method, params = params })
             local resp, status = dispatcher.handle(body, bearer and ("Bearer " .. bearer) or nil, nil)
             return resp, status
+        end
+
+        local function tool_http(params: any): any
+            local gateway = assert(system.supervisor.state("app:gateway"))
+            local port = assert(tostring(gateway.details):match(":(%d+)$"))
+            local body = assert(json.encode({ jsonrpc = "2.0", id = 1, method = "tools/call", params = params }))
+            local response = assert(http_client.post("http://127.0.0.1:" .. port .. "/public/mcp", {
+                body = body, headers = { Authorization = "Bearer " .. raw_token, ["Content-Type"] = "application/json" },
+            }))
+            test.eq(response.status_code, 200, tostring(response.body))
+            return assert(json.decode(response.body))
         end
 
         test.it("validates complete real-tool schemas before direct and meta invocation", function()
@@ -194,6 +208,87 @@ local function define_tests()
                     test.eq(canonical_json.encode(structured), (canonical_json.encode(from_text)))
                 end
             end
+        end)
+
+        test.it("lifts canonical images into ordered MCP blocks without duplicating data in metadata", function()
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { DUMMY_TOOL_ID } })
+            for _, request in ipairs({
+                { name = "dummy", arguments = { images = 2 } },
+                { name = "call_tool", arguments = { id = "dummy", arguments = { images = 2 } } },
+            }) do
+                local wire = tool_http(request)
+                test.is_false(wire.result.isError)
+                test.eq(#wire.result.content, 3)
+                test.eq(wire.result.content[1].type, "text")
+                test.eq(wire.result.content[2].type, "image")
+                test.eq(wire.result.content[2].mimeType, "image/png")
+                test.eq(wire.result.content[2].data,
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aU2sAAAAASUVORK5CYII=")
+                test.eq(wire.result.content[3].data, wire.result.content[2].data)
+                local text = assert(json.decode(wire.result.content[1].text))
+                test.eq(text.ok, true)
+                test.is_nil(text._images)
+                test.eq(wire.result.structuredContent.ok, true)
+                test.is_nil(wire.result.structuredContent._images)
+            end
+        end)
+
+        test.it("preserves metadata and explains attachments that exceed the MCP response limits", function()
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { DUMMY_TOOL_ID } })
+            local count = tool_http({ name = "dummy", arguments = { images = 11 } }).result
+            test.is_false(count.isError)
+            test.eq(count.structuredContent.ok, true)
+            test.eq(#count.content, 12)
+            test.eq(count.content[11].type, "image")
+            test.eq(count.content[12].type, "text")
+            test.contains(count.content[12].text, "image count limit")
+
+            local size = tool_http({ name = "dummy", arguments = { images = 2, large = true } }).result
+            test.is_false(size.isError)
+            test.eq(size.structuredContent.ok, true)
+            test.eq(#size.content, 3)
+            test.eq(size.content[2].type, "image")
+            test.eq(size.content[3].type, "text")
+            test.contains(size.content[3].text, "image byte limit")
+        end)
+
+        test.it("refuses invalid images and suppresses attachments on denied and failed tool calls", function()
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { DUMMY_TOOL_ID } })
+            local malformed = tool_http({ name = "dummy", arguments = { images = 1, invalid = true } }).result
+            test.is_true(malformed.isError)
+            test.eq(malformed.structuredContent.error.kind, errors.INVALID)
+            test.eq(#malformed.content, 1)
+            test.is_false(malformed.content[1].text:find("not_base64", 1, true) ~= nil)
+            local args = { images = 1, image_error = true }
+            for _, request in ipairs({ { name = "dummy", arguments = args },
+                { name = "call_tool", arguments = { id = "dummy", arguments = args } } }) do
+                local failure = tool_http(request).result
+                test.is_true(failure.isError)
+                test.eq(#failure.content, 1)
+                test.is_nil(assert(json.decode(failure.content[1].text))._images)
+                test.eq(failure.structuredContent.error, "image fixture failed")
+                test.is_nil(failure.structuredContent._images)
+            end
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { "app:schema_tool" } })
+            local denied = tool_http({ name = "dummy", arguments = { images = 1 } })
+            test.is_true(denied.result.isError)
+            test.eq(#denied.result.content, 1)
+        end)
+
+        test.it("delivers a 192 KiB base64 image over the native HTTP endpoint", function()
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { DUMMY_TOOL_ID } })
+            local wire = tool_http({ name = "dummy", arguments = { images = 1, bmp = true } })
+            test.is_false(wire.result.isError)
+            test.eq(#wire.result.content, 2)
+            local image = wire.result.content[2]
+            test.eq(image.type, "image")
+            test.eq(image.mimeType, "image/bmp")
+            test.eq(#image.data, 196680)
+            local bytes = assert(base64.decode(image.data))
+            test.eq(#bytes, 147510)
+            test.eq(bytes:sub(1, 2), "BM")
+            test.eq(bytes:sub(55, 57), "\096\128\160")
+            test.is_nil(wire.result.structuredContent._images)
         end)
 
         test.it("isolates transport identity without inventing a domain connection on direct and meta calls", function()

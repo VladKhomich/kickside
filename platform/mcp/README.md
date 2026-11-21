@@ -52,6 +52,14 @@ Tools that declare an `output_schema` must return a JSON object that conforms to
 that schema. MCP sends the object as `structuredContent` alongside its JSON text,
 including when the tool is reached through `call_tool`.
 
+Tools can attach images in the same `_images` list used by vision models. Each
+entry has `type = "image"` and a `source` with `type = "base64"`, `mime_type`, and
+`data`. MCP emits these as image content blocks after the JSON text. Declare the
+schema for the metadata that remains after MCP removes `_images`. Each result can
+carry up to ten images and eight MiB of base64 image data. MCP returns a text
+notice when it omits an attachment under these limits. The tool controls who
+can read the images and applies any required masking before returning them.
+
 ### Host requirements
 
 Bind these exact requirement IDs through the module’s dependency declaration
