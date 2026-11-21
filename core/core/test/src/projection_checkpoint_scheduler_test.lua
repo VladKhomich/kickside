@@ -27,7 +27,7 @@ local function wait_for(read, message)
 end
 
 local function effects(db, thread_id)
-    return assert(db:query("SELECT ordinal FROM checkpoint_scheduler_effect WHERE thread_id=$1 ORDER BY ordinal",
+    return assert(db:query("SELECT ordinal,attempt_no FROM checkpoint_scheduler_effect WHERE thread_id=$1 ORDER BY ordinal",
         {thread_id}))
 end
 
@@ -44,7 +44,7 @@ return {run = test.run_cases(function()
                 assert(db:execute([[CREATE TABLE IF NOT EXISTS checkpoint_scheduler_gate (
                     thread_id TEXT PRIMARY KEY, available INTEGER NOT NULL)]]))
                 assert(db:execute([[CREATE TABLE IF NOT EXISTS checkpoint_scheduler_effect (
-                    thread_id TEXT NOT NULL, ordinal INTEGER NOT NULL, PRIMARY KEY (thread_id,ordinal))]]))
+                    thread_id TEXT NOT NULL, ordinal INTEGER NOT NULL, attempt_no INTEGER NOT NULL, PRIMARY KEY (thread_id,ordinal))]]))
                 assert(db:execute("INSERT INTO checkpoint_scheduler_gate (thread_id,available) VALUES ($1,0)", {thread_id}))
                 -- This system worker exercises the checkpoint scheduler on an unbound fixture thread.
                 assert(db:execute([[INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test','')]],
@@ -90,8 +90,10 @@ return {run = test.run_cases(function()
                         test.eq(#backfill, 1)
                         local written = effects(db, thread_id)
                         test.eq(#written, 5)
+                        local expected_attempts = {1, 2, 2, 1, 1}
                         for index, expected in ipairs({1, 2, 31, 32, 33}) do
                             test.eq(tonumber(written[index].ordinal), expected)
+                            test.eq(tonumber(written[index].attempt_no), expected_attempts[index])
                         end
                         test.eq(state.continuation, "")
                         test.is_nil(state.last_error)

@@ -305,7 +305,7 @@ local function run_checkpointed(binding: table, input: table, host: string, db_i
     -- The plain input already carries the registered projection body.
     if registered then assigned_cursor.body, assigned_cursor.raw_body = nil, nil end
     input.checkpoint = {
-        job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq},
+        job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq, attempt_no = job.attempt_no},
         cursor = assigned_cursor,
         prefetched_last = prefetched_last,
         registered = registered,
