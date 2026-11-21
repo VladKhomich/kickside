@@ -201,11 +201,11 @@ local function define_tests()
 
         test.it("flags an allowlisted caller with an undeclared extra call", function()
             local fixture = scan_from_allowlist(allowlist.ALLOW)
-            local reaper: any = fixture["core/core/src/lifecycle/reaper.lua"]
+            local reaper: any = fixture["core/component/src/owned_reaper.lua"]
             reaper.list_system = (reaper.list_system :: number) + 1
             local violations = check(fixture, allowlist.ALLOW)
             test.is_true(
-                has_substr(violations, "count drift: core/core/src/lifecycle/reaper.lua .list_system()"),
+                has_substr(violations, "count drift: core/component/src/owned_reaper.lua .list_system()"),
                 "expected a count-drift violation"
             )
         end)

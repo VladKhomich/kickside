@@ -235,15 +235,21 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
     if read_err or type(admission_rows) ~= "table" then
         return refuse("delete", internal("component admission read failed", read_err or "missing rows"))
     end
+    local delete_owned_components = false
     if admission_rows[1] and admission_rows[1].deleting_at == nil then
         if gate_user_id ~= nil then
             local allowed, access_err = ops.check_user_access(db, gate_user_id, component_id, ops.ACCESS.DELETE)
             if access_err or not allowed then return refuse("access", access_err) end
         end
-        local _, validation_err = ops.validate_delete_tx(db, {component_id=component_id, child_policy=child_policy})
+        local declaration, policy_err = delete_admission.declaration(admission_rows[1].impl_id)
+        if policy_err then return refuse("delete", policy_err) end
+        local metadata = declaration :: {delete_owned_components: boolean?}
+        delete_owned_components = metadata.delete_owned_components == true
+        local _, validation_err = ops.validate_delete_tx(db, {component_id=component_id, child_policy=child_policy,
+            delete_owned_components=delete_owned_components})
         if validation_err then return refuse("delete", validation_err) end
         local admission_err = delete_admission.validate({component_id=component_id,
-            impl_id=admission_rows[1].impl_id, child_policy=child_policy, options=delete_options})
+            impl_id=admission_rows[1].impl_id, child_policy=child_policy, options=delete_options}, metadata)
         if admission_err then return refuse("delete", admission_err) end
     end
     local tx, tx_err = db:begin()
@@ -281,6 +287,7 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
         local _, validation_err = ops.validate_delete_tx(tx, {
             component_id = component_id,
             child_policy = child_policy,
+            delete_owned_components = delete_owned_components,
         })
         if validation_err then
             return false, "delete", abort_transaction(db, tx, validation_err)
@@ -302,8 +309,9 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
         if intent_err then return false, "delete", abort_transaction(db, tx, intent_err) end
     else
         -- Only legacy marks lack the first authorized request's policy.
-        intent = {child_policy = newly_marked and child_policy or "reparent_root", options = delete_options}
-        if newly_marked then intent.child_policy = child_policy end
+        intent = {child_policy = child_policy, options = delete_options}
+        if not newly_marked then intent.child_policy = "reparent_root" end
+        if newly_marked and delete_owned_components then intent.delete_owned_components = true end
     end
     local job_id = intent.job_id
     local enqueue = gate_user_id ~= nil or rows[1].delete_intent == nil

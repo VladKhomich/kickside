@@ -262,16 +262,16 @@ M.ALLOW = {
             entry = "kickside.component.binding:list_access_func",
         },
     },
-    ["core/core/src/lifecycle/reaper.lua"] = {
+    ["core/component/src/owned_reaper.lua"] = {
         list_system = {
             count = 2,
             why = "the lifecycle reaper is the trusted teardown engine and enumerates owned components to delete",
-            entry = "kickside.core.lifecycle:reaper",
+            entry = "kickside.component:owned_reaper",
         },
         system_delete = {
             count = 1,
             why = "the lifecycle reaper performs the trusted cascade delete of each reaped component",
-            entry = "kickside.core.lifecycle:reaper",
+            entry = "kickside.component:owned_reaper",
         },
     },
 } :: Allowlist

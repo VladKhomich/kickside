@@ -37,6 +37,8 @@ function M.transaction(): any
                 return M.result("path_write", {rows_affected = 1})
             elseif statement:find("SET parent_id=NULL", 1, true) then
                 return M.result("detach", {rows_affected = 1})
+            elseif statement:find("key='owner'", 1, true) then
+                return M.result("custody", {rows_affected = 1})
             end
             return M.result("delete", {rows_affected = 1})
         end,

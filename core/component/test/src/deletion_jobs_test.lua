@@ -93,9 +93,22 @@ local function pool_until(id: string, crash: boolean?)
     end
     if not ok then error(failure) end
 end
-local function seed(mode: string, owner: string, parent: string?): string
-    local result, err = service(owner):register({impl_id = "app:deletion_jobs_binding", parent_id = parent,
-        private_context = {mode = mode}})
+local function seed(mode: string, owner: string, parent: string?, kind: string?, custody: string?): string
+    local request: any = {impl_id = kind or "app:deletion_jobs_binding", parent_id = parent, private_context = {mode = mode}}
+    local result, err
+    if custody then
+        if custody == "root" then
+            request.component_id = uuid.v7()
+            request.plugin = "app:deletion_attachment_plugin"
+            request.custodian = parent
+            request.parent_id = nil
+        end
+        result, err = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(
+            assert(security.named_scope("wippy.security:process")))
+            :call("app.component_suites.binding:register_test_child", request)
+    else
+        result, err = service(owner):register(request)
+    end
     test.is_nil(err, tostring(err))
     test.is_true(result.success, tostring(result.error))
     local db = assert(sql.get("app:db"))
@@ -108,6 +121,68 @@ local function seed(mode: string, owner: string, parent: string?): string
 end
 M.run = test.run_cases(function()
     test.describe("Jobs component deletion", function()
+        test.it("resumes an owned cascade under the original fence and preserves independent placement", function()
+            local owner = "delete-job-" .. uuid.v4()
+            local parent = seed("retention", owner, nil, "app:owned_deletion_jobs_binding")
+            local first = seed("retention", owner, parent, nil, "placed")
+            local second = seed("retention", owner, parent, nil, "root")
+            local independent = seed("retention", owner, parent)
+            local db = assert(sql.get("app:db"))
+            local tx = assert(db:begin())
+            for n = 1, 101 do
+                assert(tx:execute("INSERT INTO kickside_component_meta (meta_id,component_id,key,value,created_at,updated_at)"
+                    .. " VALUES ($1,$2,$3,'test',0,0)", {uuid.v7(), second, "attachment-field-" .. n}))
+            end
+            assert(tx:commit())
+            assert(db:release())
+            local svc = service(owner)
+            local refused = assert(svc:delete({component_id = parent}))
+            test.eq(refused.kind, errors.CONFLICT)
+            test.eq(#jobs(parent), 0)
+            local accepted = assert(svc:delete({component_id = parent, child_policy = "reparent_root"}))
+            test.is_true(accepted.in_progress, tostring(accepted.error))
+            local page, page_err = deletion_worker.run(parent)
+            test.is_nil(page_err, tostring(page_err))
+            test.is_false(page.deleted)
+            test.is_true(assert(deletion_worker.run(first)).deleted)
+
+            -- Stop driving Jobs after exactly one child completes. Fresh
+            -- executions below must find the same parent intent in storage.
+            local marked = query("SELECT delete_intent FROM kickside_components WHERE component_id=$1", {parent})[1]
+            test.not_nil(marked.delete_intent)
+            test.eq(#query("SELECT component_id FROM kickside_components WHERE component_id=$1", {first}), 0)
+            test.eq(#query("SELECT component_id FROM kickside_components WHERE component_id=$1", {second}), 1)
+            test.eq(#query("SELECT component_id FROM deletion_job_cleanup WHERE component_id=$1", {parent}), 0)
+            test.eq(#assert(svc:query({component_ids = {parent}, live_only = true})).components, 0)
+            test.eq(assert(svc:count({component_ids = {parent}, live_only = true})).count, 0)
+            test.eq(jobs(parent)[1].id, accepted.job_id)
+
+            test.is_false(assert(deletion_worker.run(second)).deleted)
+            test.eq(#query("SELECT meta_id FROM kickside_component_meta WHERE component_id=$1 AND key='owner' AND value=$2",
+                {second, parent}), 1)
+            test.is_false(assert(deletion_worker.run(parent)).deleted)
+            test.eq(#query("SELECT component_id FROM deletion_job_cleanup WHERE component_id=$1", {parent}), 0)
+            pool_until(parent)
+            for _, id in ipairs({parent, first, second}) do
+                test.eq(#query("SELECT component_id FROM kickside_components WHERE component_id=$1", {id}), 0)
+                test.eq(#query("SELECT component_id FROM deletion_job_owned WHERE component_id=$1", {id}), 0)
+            end
+            test.eq(#jobs(parent), 1)
+            test.eq(jobs(parent)[1].id, accepted.job_id)
+            local preserved = query("SELECT parent_id FROM kickside_components WHERE component_id=$1", {independent})
+            test.eq(#preserved, 1)
+            test.is_nil(preserved[1].parent_id)
+            test.eq(#jobs(independent), 0)
+        end)
+        test.it("accepts a plain delete when every live placement is owned", function()
+            local owner = "delete-job-" .. uuid.v4()
+            local parent = seed("retention", owner, nil, "app:owned_deletion_jobs_binding")
+            local child = seed("retention", owner, parent, nil, "placed")
+            local result = assert(service(owner):delete({component_id = parent}))
+            test.is_true(result.in_progress, tostring(result.error))
+            pool_until(parent)
+            test.eq(#query("SELECT component_id FROM kickside_components WHERE component_id IN ($1,$2)", {parent, child}), 0)
+        end)
         test.it("accepts DELETE grants without caller policy reader authority", function()
             local owner = "delete-job-" .. uuid.v4()
             local member = "delete-member-" .. uuid.v4()

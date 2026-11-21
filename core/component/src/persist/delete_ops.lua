@@ -98,9 +98,13 @@ local function validate_delete_tx(tx: Executor | ChildReader, payload: any): ({ 
     if policy ~= nil and policy ~= "" and policy ~= "reparent_root" then
         return nil, errors.new({message = "unsupported child_policy: " .. tostring(policy), kind = errors.INVALID})
     end
-    local children, err = tx:query("SELECT component_id,path FROM " .. component_types.TABLES.COMPONENTS
+    local owned_filter = policy ~= "reparent_root" and payload.delete_owned_components == true
+        and (" AND NOT EXISTS (SELECT 1 FROM " .. component_types.TABLES.META
+            .. " m WHERE m.component_id=child.component_id AND m.key='owner' AND m.value=$2)") or ""
+    local children, err = tx:query("SELECT component_id,path FROM " .. component_types.TABLES.COMPONENTS .. " child"
         .. " WHERE parent_id=$1" .. (policy == "reparent_root" and "" or " AND deleting_at IS NULL")
-        .. " ORDER BY component_id ASC LIMIT 1", {payload.component_id})
+        .. owned_filter .. " ORDER BY component_id ASC LIMIT 1",
+        owned_filter == "" and {payload.component_id} or {payload.component_id, payload.component_id})
     local read_err = rows_error(children, err, "failed to read children", "children.rows")
     if read_err then return nil, read_err end
     if policy ~= "reparent_root" and children[1] then
@@ -128,14 +132,14 @@ local function drain_owner_rows(tx: Executor, component_id: string): (boolean?, 
     local specs = {
         { "kickside_component_declaration_fence", "automation_id" },
         { component_types.TABLES.ACCESS, "access_id" },
-        { component_types.TABLES.META, "meta_id" },
+        { component_types.TABLES.META, "meta_id", " AND key<>'owner'" },
         { "kickside_execution_identity_audit", "identity_generation" },
     }
     local remaining = 100
     for _, spec in ipairs(specs) do
         if remaining == 0 then break end
         local result, delete_err = tx:execute("WITH doomed AS (SELECT " .. spec[2] .. " FROM " .. spec[1]
-            .. " WHERE component_id=$1 ORDER BY " .. spec[2] .. " LIMIT $2) DELETE FROM " .. spec[1]
+            .. " WHERE component_id=$1" .. (spec[3] or "") .. " ORDER BY " .. spec[2] .. " LIMIT $2) DELETE FROM " .. spec[1]
             .. " WHERE component_id=$1 AND " .. spec[2] .. " IN (SELECT " .. spec[2] .. " FROM doomed)",
             { component_id, remaining })
         local count, page_err = affected_count(result, delete_err, "component owner page failed for " .. spec[1],
@@ -145,7 +149,7 @@ local function drain_owner_rows(tx: Executor, component_id: string): (boolean?, 
     end
     for _, spec in ipairs(specs) do
         local rows, read_err = tx:query("SELECT " .. spec[2] .. " FROM " .. spec[1]
-            .. " WHERE component_id=$1 LIMIT 1", { component_id })
+            .. " WHERE component_id=$1" .. (spec[3] or "") .. " LIMIT 1", { component_id })
         local continuation_err = rows_error(rows, read_err, "component owner continuation read failed for " .. spec[1], "owner.rows")
         if continuation_err then return nil, continuation_err end
         if rows[1] then return true, nil end
@@ -213,6 +217,14 @@ local function delete_component(tx: Executor, db: Executor, command: component_t
         return { component_id = payload.component_id, changes_made = false,
             rows_affected = 0, deleted = false, pending = true }, nil
     end
+
+    -- An owner waits for physical absence, including a root attachment whose
+    -- cleanup spans multiple transactions. Retain its custody row until now.
+    local custody_result, custody_err = tx:execute("DELETE FROM " .. component_types.TABLES.META
+        .. " WHERE component_id=$1 AND key='owner'", {payload.component_id})
+    local _, custody_proof_err = affected_count(custody_result, custody_err,
+        "failed to remove component custody", "owner.custody", 1, nil)
+    if custody_proof_err then return nil, custody_proof_err end
 
     local result, err = sql.builder.delete(component_types.TABLES.COMPONENTS)
         :where("component_id = ?", payload.component_id)

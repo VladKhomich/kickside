@@ -10,12 +10,20 @@ local function invalid(impl_id: string, message: string): error
         details={code="component_delete_admission_invalid", impl_id=impl_id}})
 end
 
-function M.validate(payload: table): error?
-    local impl_id = (payload :: any).impl_id
+function M.declaration(impl_id: string): (table?, error?)
     local entry, lookup_err = autoinit.kind_for_impl(impl_id)
-    if lookup_err and not errors.is(lookup_err, errors.NOT_FOUND) then return lookup_err end
-    if not entry then return nil end
-    local alias = type(entry.meta) == "table" and entry.meta.delete_admission or nil
+    if lookup_err and not errors.is(lookup_err, errors.NOT_FOUND) then return nil, lookup_err end
+    local meta = entry and type(entry.meta) == "table" and entry.meta or {}
+    local value = meta.delete_owned_components
+    if value ~= nil and type(value) ~= "boolean" then
+        return nil, invalid(impl_id, "delete_owned_components must be a boolean")
+    end
+    return meta, nil
+end
+
+function M.validate(payload: table, declaration: any): error?
+    local impl_id = (payload :: any).impl_id
+    local alias = declaration.delete_admission
     if alias == nil then return nil end
     if type(alias) ~= "string" or alias == "" then return invalid(impl_id, "library alias is required") end
     local loaded, validator = pcall(require, alias)

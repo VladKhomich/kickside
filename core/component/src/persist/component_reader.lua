@@ -63,6 +63,7 @@ type Reader = ReaderState & {
     with_meta: (Reader, { [string]: string }?) -> Reader,
     with_text: (Reader, string) -> Reader,
     with_access_mask: (Reader, integer) -> Reader,
+    live_only: (Reader) -> Reader,
     with_parent: (Reader, string?) -> Reader,
     with_path_prefix: (Reader, string) -> Reader,
     include_options: (Reader, IncludeOptions) -> Reader,
@@ -79,6 +80,12 @@ type Reader = ReaderState & {
 local component_reader = {}
 local methods = {}
 local reader_mt = { __index = methods }
+
+function methods.live_only(self: Reader): Reader
+    local new_instance = self:_copy()
+    new_instance._live_only = true
+    return setmetatable(new_instance, reader_mt) :: Reader
+end
 
 -- Immutable copy of a reader for the next builder step.
 function methods._copy(self: Reader): Reader

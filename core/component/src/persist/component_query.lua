@@ -11,6 +11,7 @@ local M = {}
 
 -- Include flags + filters that make up a reader's immutable state.
 type ReaderState = {
+    _live_only: boolean?,
     _user_id: string?,
     _component_ids: string[]?,
     _after_component_id: string?,
@@ -176,6 +177,7 @@ end
 -- Apply id / impl / meta / text filters shared by main and count queries.
 local function apply_filters(state: ReaderState, query_builder: any, joined_meta_key: string?): any
     local self = state
+    if self._live_only then query_builder = query_builder:where("c.deleting_at IS NULL") end
     if self._after_component_id then
         query_builder = query_builder:where("c.component_id > ?", self._after_component_id)
     end

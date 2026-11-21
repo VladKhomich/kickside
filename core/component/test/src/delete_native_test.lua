@@ -4,7 +4,7 @@ local fixture = require("fixture")
 local sql = require("sql")
 local routes = {"tree", "children", "lock", "owner_delete_1", "owner_delete_2", "owner_delete_3", "owner_delete_4",
     "owner_read_1", "owner_read_2", "owner_read_3", "owner_read_4", "parent", "dialect", "paths", "path_write",
-    "relink", "detach", "more_children", "unlink", "delete"}
+    "relink", "detach", "more_children", "unlink", "custody", "delete"}
 local function call(): (any, error?)
     local tx = fixture.transaction()
     return ops.delete_component(tx, tx, {type = "DELETE_COMPONENT", payload = {component_id = "parent", child_policy = "reparent_root"}})
@@ -41,7 +41,7 @@ local function proofs()
         owner_delete_2 = "owner.delete", owner_delete_3 = "owner.delete", owner_delete_4 = "owner.delete",
         owner_read_1 = "owner.rows", owner_read_2 = "owner.rows", owner_read_3 = "owner.rows", owner_read_4 = "owner.rows",
         parent = "parent", dialect = "database.type", paths = "child.paths", path_write = "child.path_update",
-        detach = "child.detach", more_children = "children.remaining", delete = "component.delete"}
+        detach = "child.detach", more_children = "children.remaining", custody = "owner.custody", delete = "component.delete"}
     for _, dialect in ipairs({sql.type.SQLITE, sql.type.POSTGRES}) do
         for _, stage in ipairs(routes) do
             if fields[stage] then
@@ -120,6 +120,6 @@ return {
     run_dependencies_2 = group("native component deletion dependencies 2", function() dependencies(5, 8) end),
     run_dependencies_3 = group("native component deletion dependencies 3", function() dependencies(9, 12) end),
     run_dependencies_4 = group("native component deletion dependencies 4", function() dependencies(13, 16) end),
-    run_dependencies_5 = group("native component deletion dependencies 5", function() dependencies(17, 20) end),
+    run_dependencies_5 = group("native component deletion dependencies 5", function() dependencies(17, 21) end),
     run_proofs = group("native component deletion proofs", proofs),
 }

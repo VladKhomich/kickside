@@ -76,6 +76,7 @@ function M.build(filter: component_types.QueryFilter?): (any, error?)
     end
 
     local reader = component_reader.new()
+    if f.live_only == true then reader = reader:live_only() end
 
     if want_scope_all then
         -- Unscoped/admin read: no with_user, so no access join is applied.

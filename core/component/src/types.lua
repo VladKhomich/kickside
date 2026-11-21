@@ -226,6 +226,7 @@ type QueryOrder = {
 }
 
 type QueryFilter = {
+    live_only: boolean?,
     component_ids: string[]?,
     after_component_id: string?,
     impl_ids: string[]?,

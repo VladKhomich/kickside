@@ -551,6 +551,13 @@ entries:
     imports:
       access_policy: kickside.component:access_policy
 
+  - name: owned_reaper
+    kind: library.lua
+    source: file://owned_reaper.lua
+    imports:
+      component_teardown: kickside.component.persist:teardown
+      component_types: kickside.component:types
+
   - name: delete_worker
     kind: function.lua
     source: file://delete_worker.lua
@@ -560,11 +567,15 @@ entries:
       policies:
         - kickside.component:kind_declaration_call
         - kickside.component:retention_db_access
+        - kickside.component:deletion_jobs_policy
+        - kickside.component:deletion_worker_lookup
         - kickside.component:notification_contracts
         - kickside.component:notification_implementations
         - kickside.component:notification_methods
     modules: [sql, security, time]
     imports:
+      component: kickside.component:component
+      owned_reaper: kickside.component:owned_reaper
       jobs_policy: kickside.core.jobs.policy:runtime
       component_types: kickside.component:types
       persisted_json: kickside.contract:persisted_json

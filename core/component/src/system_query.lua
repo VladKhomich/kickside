@@ -6,6 +6,7 @@ local document = require("secrets_document")
 local function query(filter: component_types.QueryFilter?, secrets: boolean): (component_types.ComponentRow[]?, error?)
     local f: component_types.QueryFilter = filter or {}
     local reader = component_reader.new()
+    if f.live_only == true then reader = reader:live_only() end
 
     if type(f.after_component_id) == "string" and f.after_component_id ~= "" then
         reader = reader:after_component(f.after_component_id)

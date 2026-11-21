@@ -163,6 +163,18 @@ cleanup. The response reports `in_progress` and the `job_id`. Component reads
 with READ access include `deleting_at`, `deletion_job_id`, and the visible job
 status and error while cleanup is pending.
 
+Kinds can declare `meta.delete_owned_components: true` on their component binding.
+The authorized delete fences the owner and records this policy before retiring
+its owned components. The reaper follows the stored `owner` metadata, including
+owned-child registrations and root attachments. Each child runs its own
+`kickside.contract:deletable` cleanup. The parent job stays pending until the
+owned rows are gone and continues under the original intent after a restart.
+Independent placements keep the usual refusal or `reparent_root` policy.
+
+Use `live_only = true` on Component queries and counts for directories and
+point reads that show only available components. Use the authorized management
+reads for deletion progress.
+
 Repeated authorized requests share a pending or running deletion job. If the
 job reaches `dead`, resolve its recorded failure and submit the same component's
 delete request again with DELETE access. Component schedules a new job with the
@@ -171,6 +183,9 @@ in place. Follow the new job and verify the component
 has been removed when cleanup completes.
 
 ## Deleting placement dependents
+
+`delete_children` is a placement operation for callers deleting descendants
+independently of the parent lifecycle.
 
 `component.delete_children(parent_id)` requires DELETE access to the parent and
 preflights DELETE access to every placement descendant before changing any

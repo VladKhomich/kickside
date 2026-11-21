@@ -7,6 +7,8 @@ local persisted_json = require("persisted_json")
 local teardown = require("teardown")
 local error_envelope = require("error_envelope")
 local jobs_policy = require("jobs_policy")
+local component = require("component")
+local owned_reaper = require("owned_reaper")
 
 local M = {}
 
@@ -46,6 +48,15 @@ function M.run(input: any): (any?, error?)
     end
     local intent, intent_err = persisted_json.decode_table(row.delete_intent, "component.delete_intent")
     if intent_err then return nil, intent_err end
+    if intent.delete_owned_components == true then
+        local owned_err = owned_reaper.reap(component, id, {remaining = 50, deleted = 0})
+        if owned_err then
+            local continued = continue_page(id, owned_err)
+            if continued then return continued end
+            if teardown.cleanup_pending(owned_err) then return wait_for_children(id) end
+            return nil, owned_err
+        end
+    end
     local ready, readiness_err = teardown.deletion_ready(id, intent.child_policy)
     if readiness_err then return nil, readiness_err end
     if not ready then return wait_for_children(id) end

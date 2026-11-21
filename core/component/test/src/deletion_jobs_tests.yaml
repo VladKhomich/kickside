@@ -27,6 +27,22 @@ entries:
     source: file://deletion_jobs_cleanup.lua
     method: handle
     modules: [sql, ctx, security, funcs, process, time, channel]
+  - name: owned_deletion_jobs_binding
+    kind: contract.binding
+    meta:
+      delete_owned_components: true
+      owned_child_producers:
+        app:deletion_jobs_binding: [app.component_suites.binding:register_test_child]
+      root_attachment_producers:
+        app.test.deletion_attachment: [app.component_suites.binding:register_test_child]
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: 'app:autoinit_test_status'}
+      - contract: kickside.contract:deletable
+        methods: {delete: 'app:deletion_jobs_cleanup'}
+  - name: deletion_attachment_plugin
+    kind: registry.entry
+    meta: {type: app.test.deletion_attachment, attachment: 'app:deletion_jobs_binding'}
   - name: deletion_test_worker
     kind: library.lua
     source: file://deletion_test_worker.lua
@@ -45,6 +61,8 @@ entries:
     source: file://delete_worker_native_source.lua
     modules: [security, time]
     imports:
+      component: kickside.component:component
+      owned_reaper: kickside.component:owned_reaper
       jobs_policy: kickside.core.jobs.policy:runtime
       sql: app:system_delete_worker_sql
       component_types: kickside.component:types
@@ -61,6 +79,8 @@ entries:
     source: file://delete_worker_native_source.lua
     modules: [security, time]
     imports:
+      component: kickside.component:component
+      owned_reaper: kickside.component:owned_reaper
       jobs_policy: kickside.core.jobs.policy:runtime
       sql: app:gated_delete_worker_sql
       component_types: kickside.component:types

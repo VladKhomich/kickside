@@ -2,8 +2,8 @@ version: "1.0"
 namespace: kickside.core
 entries:
   - name: dep.kickside.component
-    # Startup provisioning requires the no-op direct grant upsert.
-    version: '>=0.3.26'
+    # The lifecycle projection uses Component's shared ownership reaper.
+    version: '>=0.3.30'
     kind: ns.dependency
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.
