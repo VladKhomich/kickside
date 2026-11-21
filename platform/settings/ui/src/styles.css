@@ -1,6 +1,7 @@
 @import "@wippy-fe/theme/theme-config.css";
 @import "@kickside/ui-kit/spin.css";
 @import "@kickside/ui-kit/kx-tag.css";
+@import "@kickside/ui-kit/kx-settings-rail.css";
 @import "@widgets/app/wc-mount.css";
 
 /* Tailwind base. The theme's PrimeVue CSS is @apply-based and assumes
@@ -50,31 +51,6 @@ wippy-loading ~ wippy-loading { display: none; }
    content pane on the right. Each scrolls independently; the shell itself does
    not, so the nav stays put while a long form scrolls. */
 .ks-shell { flex: 1; min-height: 0; display: flex; align-items: stretch; }
-
-.ks-nav {
-  flex: 0 0 232px; min-width: 0; overflow-y: auto; overflow-x: hidden;
-  padding: 16px 12px; display: flex; flex-direction: column; gap: 14px;
-  border-right: 1px solid var(--p-content-border-color);
-}
-.ks-nav-section { display: flex; flex-direction: column; gap: 2px; }
-.ks-nav-group {
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
-  color: var(--p-text-muted-color); margin: 2px 0 4px 10px;
-}
-.ks-nav-item {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  padding: 8px 10px; border: none; border-radius: 8px; cursor: pointer;
-  font: inherit; font-size: 13px; font-weight: 500;
-  color: var(--p-text-color); background: transparent;
-  transition: background .15s, color .15s;
-}
-.ks-nav-item:hover { background: color-mix(in srgb, var(--p-text-color) 7%, transparent); }
-.ks-nav-item-active {
-  background: color-mix(in srgb, var(--p-primary-color) 14%, transparent);
-  color: var(--p-primary-color);
-}
-.ks-nav-ico { flex: 0 0 auto; width: 18px; height: 18px; }
-.ks-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ks-pane {
   flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden;
@@ -201,12 +177,6 @@ wippy-loading ~ wippy-loading { display: none; }
   .ks { --system-surface-gutter: 16px; }
   /* Stack the nav above the pane so neither is pinned to a sliver of width. */
   .ks-shell { flex-direction: column; }
-  .ks-nav {
-    flex: 0 0 auto; max-height: 40%; flex-direction: row; flex-wrap: wrap; gap: 6px;
-    border-right: none; border-bottom: 1px solid var(--p-content-border-color);
-  }
-  .ks-nav-section { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .ks-nav-group { margin: 0 6px 0 2px; }
   .ks-pane { padding-top: 14px; }
   .ks-form { gap: 20px; }
   .ks-row { padding: 14px; }
