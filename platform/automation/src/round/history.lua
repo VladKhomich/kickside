@@ -10,14 +10,16 @@ local TABLE = "kickside_automation_delivery_history"
 local KEY = "automation_id,drive_key,round_token,source_port,item_key,identity_key"
 local BATCH = 50
 
--- A delivery history row may carry only the durable, engine-neutral identity
--- that a Knowledge upload sink returned. Do not copy arbitrary sink output or
--- a mutable receipt into retained activity history.
-local function publication_ref(receipts: {Map}?, delivery_key: any): Map?
-    local found: Map? = nil
+-- Pre-index the one durable, engine-neutral identity that a Knowledge upload
+-- sink returned for each delivery. `record_tx` may write many outcomes from a
+-- round, so it must not rescan the complete receipt list per history row. Do
+-- not retain arbitrary sink output or mutable receipts. A delivery with two
+-- distinct publication references is intentionally marked ambiguous.
+local function publication_refs(receipts: {Map}?): Map
+    local indexed: Map = {}
     for _, entry in ipairs(receipts or {}) do
-        if type(entry) == "table" and type(entry.item) == "table"
-            and entry.item.delivery_key == delivery_key then
+        local delivery_key = type(entry) == "table" and type(entry.item) == "table" and entry.item.delivery_key or nil
+        if type(delivery_key) == "string" and delivery_key ~= "" then
             for _, receipt in ipairs(entry.receipts or {}) do
                 local ref = type(receipt) == "table" and receipt.dest_ref or nil
                 if type(ref) == "table" and type(ref.kb_id) == "string" and ref.kb_id ~= ""
@@ -25,18 +27,20 @@ local function publication_ref(receipts: {Map}?, delivery_key: any): Map?
                     and type(ref.publication_id) == "string" and ref.publication_id ~= ""
                     and #ref.kb_id <= 128 and #ref.external_id <= 1024 and #ref.publication_id <= 128 then
                     local candidate = {kb_id = ref.kb_id, external_id = ref.external_id, publication_id = ref.publication_id}
-                    if found and (found.kb_id ~= candidate.kb_id or found.external_id ~= candidate.external_id
+                    local found = indexed[delivery_key]
+                    if found and found ~= false and (found.kb_id ~= candidate.kb_id or found.external_id ~= candidate.external_id
                         or found.publication_id ~= candidate.publication_id) then
                         -- A multi-destination delivery has no unambiguous
                         -- single Activity status. It remains Delivered.
-                        return nil
+                        indexed[delivery_key] = false
+                    elseif found == nil then
+                        indexed[delivery_key] = candidate
                     end
-                    found = candidate
                 end
             end
         end
     end
-    return found
+    return indexed
 end
 
 local function internal(message: string, cause: any): error
@@ -60,6 +64,7 @@ end
 function M.record_tx(tx: any, round: Map, outcomes: {Map}, deliveries: {Map}?, prior: Map?, receipts: {Map}?): error?
     local delivered: Map={}
     for _,entry in ipairs(deliveries or {}) do delivered[entry.key]=true end
+    local publications=publication_refs(receipts)
     local states=prior or {}
     local rows: {Map} = {}
     for _,outcome in ipairs(outcomes) do
@@ -81,7 +86,7 @@ function M.record_tx(tx: any, round: Map, outcomes: {Map}, deliveries: {Map}?, p
                 item_key=outcome.item.item_key,identity_key=outcome.item.delivery_key,state=outcome.state,
                 execution_identity_json=outcome.execution_identity_json,error_json=error_json,
                 round_at=round.now,expires_at=round.history_expires_at or round.resolved_expires_at}
-            local publication = delivered[outcome.item.delivery_key] and publication_ref(receipts,outcome.item.delivery_key) or nil
+            local publication = delivered[outcome.item.delivery_key] and publications[outcome.item.delivery_key] or nil
             if publication then
                 local encoded_publication, publication_err=json.encode(publication)
                 if publication_err then return internal("delivery history publication encoding fails",publication_err) end

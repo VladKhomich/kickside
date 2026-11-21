@@ -214,6 +214,7 @@ entries:
     meta:
       comment: "Automation engine part: paginated status and caller-scoped health over drive and command state."
     source: file://observe.lua
+    modules: [registry, funcs]
     imports:
       types: kickside.automation:types
       engine_support: kickside.automation.engine:support
@@ -228,23 +229,9 @@ entries:
       - entry: kickside.automation.engine:observe
         path: .imports.workflow_history
 
-  - name: publication_outcomes_reader
-    kind: ns.requirement
-    meta:
-      value_kind: library.lua
-      comment: Optional Knowledge-owned reader for current publication materialization outcomes.
-    default: kickside.automation.engine:no_publication_outcomes
-    targets:
-      - entry: kickside.automation.engine:observe
-        path: .imports.publication_outcomes
-
   - name: no_workflow_history
     kind: library.lua
     source: file://no_workflow_history.lua
-
-  - name: no_publication_outcomes
-    kind: library.lua
-    source: file://no_publication_outcomes.lua
 
   - name: history_reader
     kind: library.lua
