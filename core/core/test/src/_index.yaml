@@ -3159,7 +3159,7 @@ entries:
       owned_worker: app:projection_invoke_native_owned_worker_adapter
       registry: app:projection_invoke_native_registry_adapter
       event_access: kickside.core.threads:event_access
-      component_query: kickside.component.persist:component_query
+      component_query: app:projection_invoke_native_component_query_adapter
       canonical_json: kickside.contract:canonical_json
       lifecycle_consts: kickside.core.lifecycle:consts
       time: app:projection_invoke_native_time_adapter
@@ -3217,6 +3217,12 @@ entries:
       fixture: app:projection_invoke_native_fixture
 
   - name: projection_invoke_native_registry_adapter
+    kind: library.lua
+    source: file://projection_invoke_native_dependency_adapter.lua
+    imports:
+      fixture: app:projection_invoke_native_fixture
+
+  - name: projection_invoke_native_component_query_adapter
     kind: library.lua
     source: file://projection_invoke_native_dependency_adapter.lua
     imports:

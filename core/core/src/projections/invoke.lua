@@ -337,7 +337,8 @@ local function run_checkpointed(binding: table, input: table, host: string, db_i
     return settled, settle_err
 end
 
-local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?, table?, table?, boolean?)
+local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number,
+        readmitting_owned: boolean?): (table?, error?, table?, table?, boolean?)
     local db: sql.DB? = connection
     local cursor_id = tostring(current.id)
     local head = tonumber(current.event_count)
@@ -378,7 +379,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         local binding, binding_err = worker.validate(parsed, system_identity)
         local needs_owned_declaration = (type(binding) == "table" and binding.component_owned)
             or (binding_err and worker.requires_owned_declaration(binding_err))
-        if needs_owned and not needs_owned_declaration then
+        if (needs_owned or readmitting_owned) and not needs_owned_declaration then
             return nil, release(db, event_access.denied())
         end
         local needs_declaration = binding_err and worker.requires_checkpoint_declaration(binding_err)
@@ -633,7 +634,7 @@ function M.run(input: any): (table?, error?)
             if type(fresh_db) ~= "table" and type(fresh_db) ~= "userdata" then
                 return nil, response_error("database")
             end
-            result, attempt_err, failed_at, failed_owner = attempt(fresh_db, db_id, job, row :: table, page_size)
+            result, attempt_err, failed_at, failed_owner = attempt(fresh_db, db_id, job, row :: table, page_size, true)
         end
         if failed_at then
             row = failed_at
