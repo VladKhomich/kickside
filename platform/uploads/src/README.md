@@ -34,11 +34,13 @@ another component or start jobs.
 ## Component-owned originals
 
 Modules with asset lifecycle management call
-`kickside.uploads:adopt_component_upload({upload_id, component_id, version_id})`
+`kickside.uploads:adopt_component_upload({upload_id, component_id, version_id, lease_until})`
 with the authenticated uploader and destination component WRITE. Uploads copies
 the completed original, up to 25 MiB, into a new immutable version and returns
 its `upload_id`. Personal upload retention stays independent. The caller reserves
-the version ID before the call and keeps it until collection finishes.
+the version ID and a UTC lease of at most 15 minutes before the call and keeps
+the reservation until collection finishes. Uploads verifies the source checksum
+when available and keeps the exact staging address through its active lease.
 
 Consumers open `kickside.uploads:content_provider` with the version ID as
 `upload_id`. The raw descriptor includes the destination `source_ref.component_id`,

@@ -1,6 +1,7 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local security = require("security")
 local uuid = require("uuid")
+local time = require("time")
 local component = require("component")
 local access_policy = require("access_policy")
 local records = require("upload_query_repo")
@@ -24,6 +25,15 @@ function M.adopt(request: any)
     if type(request) ~= "table" or not valid_id(request.upload_id)
         or not valid_id(request.component_id) or not valid_id(request.version_id) then
         return nil, fail(errors.INVALID, "upload, component and version IDs are required", "invalid_asset_request")
+    end
+    local lease = type(request.lease_until) == "string" and time.parse(time.RFC3339, request.lease_until) or nil
+    if not lease then
+        return nil, fail(errors.INVALID, "asset adoption lease is required", "invalid_asset_request")
+    end
+    local lease_ms = lease:unix_nano() // 1000000
+    local remaining_ms = lease_ms - time.now():unix_nano() // 1000000
+    if remaining_ms <= 0 or remaining_ms > 15 * 60 * 1000 then
+        return nil, fail(errors.CONFLICT, "asset adoption lease is outside its window", "asset_lease_expired")
     end
     local actor = security.actor()
     if not actor or not security.can("uploads.asset.adopt", types.CLASS) then
@@ -55,7 +65,7 @@ function M.adopt(request: any)
     end
     local filename = original.metadata.filename or original.metadata.original_filename or "file"
     local asset, err = uploads.store_component_file(request.component_id, request.version_id,
-        bytes, filename, original.mime_type, owner.impl_id)
+        bytes, filename, original.mime_type, owner.impl_id, lease_ms, original.content_sha256)
     if err then return nil, err end
     return {upload_id = asset.uuid}, nil
 end
@@ -70,6 +80,10 @@ function M.reap(request: any)
     end
     local deleted, err = uploads.reap_component_file(request.component_id, request.version_id, request.owner_impl)
     if err and not errors.is(err, errors.NOT_FOUND) then return nil, err end
+    if errors.is(err, errors.NOT_FOUND) then
+        local remaining, read_err = records.get(request.version_id)
+        if remaining or not errors.is(read_err, errors.NOT_FOUND) then return nil, read_err or err end
+    end
     return {deleted = deleted ~= nil}, nil
 end
 

@@ -8,7 +8,7 @@ entries:
       comment: Clone a completed personal upload into an immutable original owned by a writable component.
     source: file://component_assets.lua
     method: adopt
-    modules: [security, uuid]
+    modules: [security, uuid, time]
     imports:
       component: kickside.component:component
       access_policy: kickside.component:access_policy
@@ -24,7 +24,7 @@ entries:
       comment: Collect one exact component-owned original under its owner's retention authority.
     source: file://component_assets.lua
     method: reap
-    modules: [security, uuid]
+    modules: [security, uuid, time]
     imports:
       component: kickside.component:component
       access_policy: kickside.component:access_policy

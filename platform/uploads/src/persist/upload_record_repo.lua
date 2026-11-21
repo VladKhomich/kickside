@@ -317,12 +317,13 @@ function upload_record_repo.mark_storage_completed(uuid)
     return mark_storage_state(uuid, "completed")
 end
 
-function upload_record_repo.complete_component_upload(uuid: string): (boolean?, error?)
+function upload_record_repo.complete_component_upload(uuid: string, owner: string, path: string): (boolean?, error?)
     local db, open_err = resources.get_db()
     if open_err then return nil, open_err end
     local result, err = sql.builder.update("kickside_uploads")
         :set("storage_state", "completed"):set("updated_at", now_rfc3339())
-        :where("uuid = ? AND storage_state = ?", uuid, upload_types.ASSET_STAGING):run_with(db):exec()
+        :where("uuid = ? AND actor_id = ? AND storage_path = ? AND storage_state = ?",
+            uuid, owner, path, upload_types.ASSET_STAGING):run_with(db):exec()
     db:release()
     if err then return nil, err end
     return tonumber(result.rows_affected) == 1, nil
@@ -630,7 +631,7 @@ function upload_record_repo.update_type_id(uuid, type_id)
 end
 
 -- Delete an upload
-function upload_record_repo.delete(uuid)
+function upload_record_repo.delete(uuid, owner: string?, path: string?)
     if not uuid or uuid == "" then
         return nil, "Upload ID is required"
     end
@@ -643,6 +644,7 @@ function upload_record_repo.delete(uuid)
     -- Build the DELETE query
     local query = sql.builder.delete("kickside_uploads")
         :where("uuid = ?", uuid)
+    if owner then query = query:where("actor_id = ? AND storage_path = ?", owner, path) end
 
     -- Execute the query
     local executor = query:run_with(db)
@@ -654,6 +656,9 @@ function upload_record_repo.delete(uuid)
         return nil, "Failed to delete upload: " .. err
     end
 
+    if owner and tonumber(result.rows_affected) ~= 1 then
+        return nil, typed(errors.NOT_FOUND, "Upload reservation not found")
+    end
     return { deleted = true }
 end
 

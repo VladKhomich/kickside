@@ -414,10 +414,14 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
 end
 
 function upload_lib.store_component_file(component_id: string, version_id: string, data: string,
-    filename: string, mime_type: string, owner_impl: string)
+    filename: string, mime_type: string, owner_impl: string, lease_ms: integer, expected_checksum: string?)
     local digest, hash_err = hash.sha256(data)
     if hash_err or type(digest) ~= "string" or #digest ~= 64 then
         return nil, failure("failed to hash component-owned bytes", errors.INTERNAL, "infrastructure", true)
+    end
+    if expected_checksum and expected_checksum ~= "" and digest ~= expected_checksum then
+        return nil, errors.new({kind = errors.CONFLICT, message = "upload bytes do not match their checksum",
+            details = {code = "upload_checksum_mismatch"}})
     end
     local storage, storage_err = resources.get_storage()
     if storage_err then return nil, storage_err end
@@ -425,20 +429,32 @@ function upload_lib.store_component_file(component_id: string, version_id: strin
     if type_err then return nil, type_err end
     -- Reserve the exact storage address before opening it for write. A repeated
     -- UUID can only use the existing completed record, never overwrite its bytes.
-    local path = uuid.v4()
-    local asset, record_err = upload_record_repo.create(version_id, upload_types.component_owner_key(component_id),
+    local expired = errors.new({kind = errors.CONFLICT, message = "asset adoption lease expired",
+        details = {code = "asset_lease_expired"}})
+    if time.now():unix_nano() // 1000000 >= lease_ms then return nil, expired end
+    local path, owner_key = uuid.v4(), upload_types.component_owner_key(component_id)
+    local asset, record_err = upload_record_repo.create(version_id, owner_key,
         #data, mime_type, resources.get_storage_id(), path, type_id,
-        {filename = filename, _component_owner_impl = owner_impl}, upload_types.ASSET_STAGING, digest)
+        {filename = filename, _component_owner_impl = owner_impl, _component_write_until_ms = lease_ms},
+        upload_types.ASSET_STAGING, digest)
     if record_err then return nil, record_err end
     if asset.deduped then
         if asset.storage_state == "completed" then return asset, nil end
         return nil, failure("asset version is already being stored", errors.CONFLICT, "subject", true)
     end
+    if time.now():unix_nano() // 1000000 >= lease_ms then
+        local _, forget_err = upload_record_repo.delete(version_id, owner_key, path)
+        return nil, forget_err or expired
+    end
     local written, write_err = storage:writefile(path, data)
     if write_err or not written then
         return nil, typed(write_err, errors.UNAVAILABLE, "infrastructure", "failed to store component-owned bytes: ")
     end
-    local published, publish_err = upload_record_repo.complete_component_upload(version_id)
+    if time.now():unix_nano() // 1000000 >= lease_ms then
+        local remove_err = remove_storage_path(storage, path, version_id)
+        return nil, remove_err or expired
+    end
+    local published, publish_err = upload_record_repo.complete_component_upload(version_id, owner_key, path)
     if publish_err then return nil, publish_err end
     if not published then
         local remove_err = remove_storage_path(storage, path, version_id)
@@ -544,6 +560,10 @@ local function delete_upload(uuid, teardown_owner: string?, owner_impl: string?)
     if component_owner and not teardown_owner then
         return nil, failure("component-owned versions are reaped by their owner", errors.PERMISSION_DENIED, "subject")
     end
+    if component_owner and upload.storage_state == upload_types.ASSET_STAGING
+        and time.now():unix_nano() // 1000000 < (tonumber(upload.metadata._component_write_until_ms) or 0) then
+        return nil, failure("asset version is still being stored", errors.CONFLICT, "subject", true)
+    end
     if not component_owner then
         cancel_processing_job(upload)
         local stage_err = invoke_on_delete(upload, teardown_owner ~= nil)
@@ -568,6 +588,9 @@ local function delete_upload(uuid, teardown_owner: string?, owner_impl: string?)
         end
     end
 
+    if component_owner then
+        return upload_record_repo.delete(uuid, upload.actor_id, upload.storage_path)
+    end
     return upload_record_repo.delete(uuid)
 end
 
