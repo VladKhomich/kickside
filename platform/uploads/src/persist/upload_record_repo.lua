@@ -317,6 +317,49 @@ function upload_record_repo.mark_storage_completed(uuid)
     return mark_storage_state(uuid, "completed")
 end
 
+-- The short transaction serializes opening the name with the reap fence.
+-- Bytes are written after commit through the open filesystem handle.
+function upload_record_repo.open_component_upload(uuid: string, owner: string, path: string, storage: any): (any?, error?)
+    local db, open_err = resources.get_db()
+    if open_err then return nil, open_err end
+    local tx, begin_err = db:begin()
+    if begin_err then db:release(); return nil, begin_err end
+    local held, fence_err = sql.builder.update("kickside_uploads")
+        :set("storage_state", upload_types.ASSET_STAGING)
+        :where("uuid = ? AND actor_id = ? AND storage_path = ? AND storage_state = ?",
+            uuid, owner, path, upload_types.ASSET_STAGING):run_with(tx):exec()
+    if fence_err or not held or tonumber(held.rows_affected) ~= 1 then
+        tx:rollback()
+        db:release()
+        return nil, fence_err or typed(errors.CONFLICT, "component upload reservation is no longer writable")
+    end
+    local file, file_err = storage:open(path, "wx")
+    if file_err or not file then
+        tx:rollback()
+        db:release()
+        return nil, file_err or typed(errors.UNAVAILABLE, "component storage returned no write handle")
+    end
+    local _, commit_err = tx:commit()
+    db:release()
+    if commit_err then
+        file:close()
+        return nil, commit_err
+    end
+    return file, nil
+end
+
+function upload_record_repo.fence_component_reap(uuid: string, owner: string, path: string): error?
+    local db, open_err = resources.get_db()
+    if open_err then return open_err end
+    local held, err = sql.builder.update("kickside_uploads")
+        :set("storage_state", upload_types.ASSET_COLLECTING)
+        :where("uuid = ? AND actor_id = ? AND storage_path = ?", uuid, owner, path):run_with(db):exec()
+    db:release()
+    if err then return err end
+    if not held or tonumber(held.rows_affected) ~= 1 then return typed(errors.NOT_FOUND, "Upload reservation not found") end
+    return nil
+end
+
 function upload_record_repo.complete_component_upload(uuid: string, owner: string, path: string): (boolean?, error?)
     local db, open_err = resources.get_db()
     if open_err then return nil, open_err end

@@ -446,20 +446,17 @@ function upload_lib.store_component_file(component_id: string, version_id: strin
         local _, forget_err = upload_record_repo.delete(version_id, owner_key, path)
         return nil, forget_err or expired
     end
-    local written, write_err = storage:writefile(path, data)
-    if write_err or not written then
-        return nil, typed(write_err, errors.UNAVAILABLE, "infrastructure", "failed to store component-owned bytes: ")
+    local file, file_err = upload_record_repo.open_component_upload(version_id, owner_key, path, storage)
+    if file_err then return nil, file_err end
+    local written, write_err = file:write(data)
+    local _, close_err = file:close()
+    if write_err or close_err or not written then
+        return nil, typed(write_err or close_err, errors.UNAVAILABLE, "infrastructure", "failed to store component-owned bytes: ")
     end
-    if time.now():unix_nano() // 1000000 >= lease_ms then
-        local remove_err = remove_storage_path(storage, path, version_id)
-        return nil, remove_err or expired
-    end
+    if time.now():unix_nano() // 1000000 >= lease_ms then return nil, expired end
     local published, publish_err = upload_record_repo.complete_component_upload(version_id, owner_key, path)
     if publish_err then return nil, publish_err end
-    if not published then
-        local remove_err = remove_storage_path(storage, path, version_id)
-        return nil, remove_err or failure("component-owned upload was reaped", errors.CONFLICT, "subject")
-    end
+    if not published then return nil, failure("component-owned upload was reaped", errors.CONFLICT, "subject") end
     return asset, nil
 end
 
@@ -564,7 +561,10 @@ local function delete_upload(uuid, teardown_owner: string?, owner_impl: string?)
         and time.now():unix_nano() // 1000000 < (tonumber(upload.metadata._component_write_until_ms) or 0) then
         return nil, failure("asset version is still being stored", errors.CONFLICT, "subject", true)
     end
-    if not component_owner then
+    if component_owner then
+        local fence_err = upload_record_repo.fence_component_reap(uuid, upload.actor_id, upload.storage_path)
+        if fence_err then return nil, fence_err end
+    else
         cancel_processing_job(upload)
         local stage_err = invoke_on_delete(upload, teardown_owner ~= nil)
         if stage_err then return nil, stage_err end

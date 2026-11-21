@@ -23,7 +23,7 @@ function M.authorize(upload: types.UploadReadRef): (boolean?, error?)
         return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "Authentication required",
             retryable = false, details = {code = "authentication_required"}})
     end
-    if upload.storage_state == types.ASSET_STAGING then
+    if upload.storage_state == types.ASSET_STAGING or upload.storage_state == types.ASSET_COLLECTING then
         return nil, errors.new({kind = errors.NOT_FOUND, message = "Upload not found",
             details = {code = "upload_not_found"}})
     end

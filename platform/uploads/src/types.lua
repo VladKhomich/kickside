@@ -56,6 +56,7 @@ M.EVENT = {
 -- cannot be the key of a user, group, service or runtime maintenance actor.
 local COMPONENT_OWNER_PREFIX = "upload-component:"
 M.ASSET_STAGING = "component_staging"
+M.ASSET_COLLECTING = "component_collecting"
 
 function M.component_owner_key(component_id: string): string
     return COMPONENT_OWNER_PREFIX .. component_id
