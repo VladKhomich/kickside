@@ -2,7 +2,7 @@ version: "1.0"
 namespace: kickside.models
 entries:
   - name: dep.wippy.llm
-    version: '>=0.5.14'
+    version: '>=0.5.23'
     kind: ns.dependency
     meta:
       comment: Language model calls and the provider timeout parser.
