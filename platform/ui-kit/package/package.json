@@ -28,7 +28,12 @@
     "./latestRequest": "./latestRequest.ts",
     "./errMsg": "./errMsg.ts",
     "./SystemTabs.vue": "./SystemTabs.vue",
-    "./EmptyState.vue": "./EmptyState.vue"
+    "./EmptyState.vue": "./EmptyState.vue",
+    "./SettingsRail.vue": "./SettingsRail.vue",
+    "./kx-settings-rail.css": "./kx-settings-rail.css",
+    "./ListRail.vue": "./ListRail.vue",
+    "./Disclosure.vue": "./Disclosure.vue",
+    "./kx-disclosure.css": "./kx-disclosure.css"
   },
   "files": [
     "focus.css",
@@ -50,7 +55,12 @@
     "latestRequest.ts",
     "errMsg.ts",
     "SystemTabs.vue",
-    "EmptyState.vue"
+    "EmptyState.vue",
+    "SettingsRail.vue",
+    "kx-settings-rail.css",
+    "ListRail.vue",
+    "Disclosure.vue",
+    "kx-disclosure.css"
   ],
   "peerDependencies": {
     "@wippy-fe/proxy": "*",
