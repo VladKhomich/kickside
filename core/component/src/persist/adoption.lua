@@ -106,9 +106,12 @@ function M.adopt_tx(tx: any, db: any, component_id: string, adopter: Principal):
         return nil, failure("component is owned by its declaration owner " .. tostring(fence_owner),
             errors.CONFLICT, "access")
     end
-    local recorded, custody_err = tx:query("SELECT owner_type FROM " .. component_types.TABLES.COMPONENTS
+    local recorded, custody_err = tx:query("SELECT owner_type, deleting_at FROM " .. component_types.TABLES.COMPONENTS
         .. " WHERE component_id=$1", {component_id})
     if custody_err then return nil, error_envelope.wrap(custody_err, "failed to read custody", {error_kind = "infrastructure"}) end
+    if recorded[1] and recorded[1].deleting_at ~= nil then
+        return nil, failure("component is being deleted", errors.CONFLICT, "access")
+    end
     if not recorded[1] or recorded[1].owner_type ~= "principal" then
         return nil, failure("adoption requires a principal owner", errors.CONFLICT, "access")
     end
