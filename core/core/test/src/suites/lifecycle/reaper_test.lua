@@ -151,8 +151,8 @@ local function define_tests()
         local function tick(subject_id: string?)
             return run_as_system({
                 thread_id = lifecycle_thread_id(),
-                events = { { type = "kickside.lifecycle.events:principal.deleted", role = "system",
-                    body = { subject_id = subject_id or owner_id } } },
+                events = { { type = "kickside.lifecycle.events:principal.deleted", role = "system", id = uuid.v7(), seq = 1,
+                    body = { subject_id = subject_id or owner_id, principal_kind = "user" } } },
                 range = { to_seq = 1 },
                 projection = { body = {} },
             })
@@ -946,6 +946,8 @@ local function define_tests()
             assert(db:execute([[UPDATE kickside_components SET custody_legacy=1,owner_type='unresolved',owner_kind=NULL,owner_id=NULL
                 WHERE component_id=$1]], {attachment}))
             assert(db:execute("DELETE FROM kickside_component_meta WHERE component_id=$1", {attachment}))
+            assert(db:execute([[UPDATE kickside_component_access SET access_mask=1
+                WHERE component_id=$1 AND subject_type='user' AND subject_id=$2]], {attachment, owner}))
             assert(db:release())
 
             local denied = assert(svc:delete({component_id = custodian, child_policy = "reparent_root"}))

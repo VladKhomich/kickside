@@ -276,3 +276,16 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+
+  - name: 21_lifecycle_custody_disposition
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-21T00:00:21Z"
+    source: file://21_lifecycle_custody_disposition.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

@@ -225,6 +225,16 @@ entries:
     source: file://child_lifecycle_projection.lua
     method: run
 
+  - name: custody_disposition
+    kind: library.lua
+    meta: {private: true}
+    source: file://custody_disposition.lua
+    modules: [sql, time, uuid]
+    imports:
+      core_db: kickside.core:db
+      lifecycle_consts: kickside.core.lifecycle:consts
+      error_envelope: kickside.contract:error_envelope
+
   # ─── Reaper projection worker ────────────────────────────────────────
   - name: reaper
     kind: function.lua
@@ -238,6 +248,8 @@ entries:
     modules: [registry, funcs, security, uuid]
     imports:
       component_teardown: kickside.component.persist:teardown
+      custody: kickside.component.persist:custody
+      custody_disposition: kickside.core.lifecycle:custody_disposition
       persisted_json: kickside.contract:persisted_json
       component_envelope: kickside.component:envelope
       component: kickside.component:component
