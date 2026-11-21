@@ -2,8 +2,11 @@
 -- Implementation of the kickside.models.cards:cards contract.
 local card_service = require("card_service")
 local policy = require("policy")
+local keyset = require("keyset")
 
 local M = {}
+
+type Map = { [string]: any }
 
 local function train_error(metadata: any): string?
     if type(metadata) ~= "table" then return nil end
@@ -27,10 +30,22 @@ local function redact_urls(value: any): any
     return value
 end
 
+local function public_reply(card: any): any
+    local public = policy.split_config(card)
+    return redact_urls(public)
+end
+
 local function respond(card: any?, err: any?): any
     if not card then return { success = false, error = tostring(err) } end
-    local public = policy.split_config(card)
-    return { success = true, model = redact_urls(public) }
+    return { success = true, model = public_reply(card) }
+end
+
+local function matches(card: Map, query: string): boolean
+    if query == "" then return true end
+    for _, value in ipairs({ card.name, card.title, card.provider_model }) do
+        if type(value) == "string" and string.lower(value):find(query, 1, true) then return true end
+    end
+    return false
 end
 
 -- upsert_card(card) -> { success, model?, error? }. Idempotent by card name.
@@ -57,10 +72,29 @@ function M.list_cards(_args: any): any
     if not cards then return { success = false, error = tostring(err) } end
     local models: { any } = {}
     for _, card in ipairs(cards :: { any }) do
-        local public = policy.split_config(card)
-        models[#models + 1] = redact_urls(public)
+        models[#models + 1] = public_reply(card)
     end
     return { success = true, models = models }
+end
+
+-- Page compact summaries within the catalog owner, applying the filter to public fields.
+function M.list_card_summaries(args: any): any
+    if type(args) ~= "table" then return { success = false, error = "request must be an object" } end
+    local limit, cursor, page_err = keyset.args(args)
+    if page_err then return { success = false, error = page_err:message() } end
+    if args.q ~= nil and type(args.q) ~= "string" then
+        return { success = false, error = "q must be a string" }
+    end
+    local summaries, err = card_service.list_summaries()
+    if not summaries then return { success = false, error = tostring(err) } end
+    local query = string.lower(args.q or "")
+    local rows: { any } = {}
+    for _, summary in ipairs(summaries :: { any }) do
+        local public = public_reply(summary)
+        if matches(public, query) then rows[#rows + 1] = public end
+    end
+    local page, next_cursor = keyset.page(rows, keyset.field("name"), limit :: integer, cursor)
+    return { success = true, cards = page, next_cursor = next_cursor }
 end
 
 -- get_card({ name }) -> { success, model?, error? }. Disabled cards included.

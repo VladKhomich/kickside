@@ -35,15 +35,14 @@ function M.list(): ({ any }?, any?)
     return model_catalog.get_all_public()
 end
 
+function M.list_summaries(): ({ any }?, any?)
+    return model_catalog.get_public_card_summaries()
+end
+
 -- The catalog card named name in its public projection, disabled included.
 function M.get(name: any): (any?, any?)
     if type(name) ~= "string" or name == "" then return nil, "Model name is required" end
-    local cards, err = model_catalog.get_all_public()
-    if err then return nil, err end
-    for _, card in ipairs(cards :: { any }) do
-        if card.name == name then return card end
-    end
-    return nil, "No model card named: " .. name
+    return model_catalog.get_public_by_name(name)
 end
 
 return M

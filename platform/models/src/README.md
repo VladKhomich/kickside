@@ -114,7 +114,9 @@ the provider reports none, and rewrites the other discovered fields.
 `kickside.models.cards:cards` lets a module read, register and retire model
 cards without the admin HTTP surface. `list_cards({})` returns every catalog
 card and `get_card({name})` one card, disabled cards included, in the public
-projection the admin surface lists. `upsert_card(card)` creates or updates the
+projection the admin surface lists. `list_card_summaries({q, limit, cursor})`
+returns compact cards in name order, with an optional substring filter and
+`next_cursor` when more matches remain. `upsert_card(card)` creates or updates the
 card by name through the same write path as `PUT /models/cards`;
 `disable_card({name})` disables a stored card and keeps its row;
 `delete_card({name})` deletes a stored card once it is disabled and refuses an
