@@ -1,6 +1,6 @@
 import { W as s, m as o } from "./wc-runtime-enaNScz7.js";
 import { l as i } from "./lazy-DX8B4FNv.js";
-import { s as r } from "./styles-urvsV3uf.js";
+import { s as r } from "./styles-HhfABgzS.js";
 import { define as n } from "@wippy-fe/proxy";
 const a = { props: { type: "object", properties: { mode: { type: "string", default: "manager", description: "manager (default) or sidebar" }, "active-session-id": { type: "string", description: "Session currently rendered by the app-owned chat panel.", default: "" }, "artifacts-active": { type: "boolean", default: !1, description: "Whether the cross-session artifact gallery owns the adjacent workspace." } } } }, p = {
   wippy: a
