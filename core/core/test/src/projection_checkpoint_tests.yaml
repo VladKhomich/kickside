@@ -159,3 +159,26 @@ entries:
       projections: kickside.core.projections.persist:writer
       test: wippy.test:test
       threads: kickside.core.threads.persist:writer
+
+  - name: registered_checkpoint_component
+    kind: contract.binding
+    meta:
+      events:
+        input: [{type: "kickside.test.threads:trigger"}]
+        output: [{type: "kickside.test.threads:changed"}]
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: "kickside.core.threads:thread_status"}
+
+  - name: registered_checkpoint_test
+    kind: function.lua
+    meta: {type: test, suite: core_registered_checkpoint, timeout: 100s}
+    source: file://registered_checkpoint_test.lua
+    method: run
+    modules: [contract, json, process, registry, security, sql, time, uuid]
+    imports:
+      fixture: kickside.core.threads:contract_fixture
+      jobs: kickside.core.jobs:jobs
+      projections: kickside.core.projections.persist:writer
+      test: wippy.test:test
+      threads: kickside.core.threads.persist:writer

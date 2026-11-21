@@ -24,6 +24,8 @@ local projection_policy = require("projection_policy")
 local error_envelope = require("error_envelope")
 local job_types = require("job_types")
 local checkpoint_declaration = require("checkpoint_declaration")
+local registered_checkpoint = require("registered_checkpoint")
+local core_db = require("core_db")
 
 local worker = {}
 
@@ -47,6 +49,7 @@ type Binding = {
     target_id: string,
     checkpointed_apply: boolean?,
     filtered_checkpoint: boolean?,
+    registered_checkpoint: table?,
     component_owned: boolean?,
 }
 
@@ -146,7 +149,7 @@ end
 -- service-only policies; member scopes and actor overrides remain inadmissible.
 -- Admission is immutable within a registry revision.
 local function validate_declaration(binding: table, system_identity: boolean?, owner_checkpoint: boolean,
-        owned_declaration: boolean): (Binding?, error?)
+        owned_declaration: boolean, registered_writer: boolean): (Binding?, error?)
     local target_id = tostring(binding.target_id)
     local declared_runtime = tostring(binding.worker_runtime)
     local entry, entry_err = registry.get(target_id)
@@ -200,6 +203,20 @@ local function validate_declaration(binding: table, system_identity: boolean?, o
     local checkpointed = meta.checkpointed_apply == true
     local private_checkpoint = checkpointed and expected == types.WORKER_RUNTIME.PROC
     local component_owned = meta.component_owned == true
+    if registered_writer or meta.registered_checkpoint_writer == true then
+        if not registered_writer or meta.registered_checkpoint_writer ~= true or meta.private ~= true
+            or not private_checkpoint or meta.filtered_checkpoint ~= true or component_owned
+            or meta.post_commit_ref ~= nil or meta.registered_checkpoint ~= nil
+            or (configured_security ~= nil and (type(configured_security) ~= "table"
+                or next(configured_security) ~= nil)) then
+            return nil, event_access.denied()
+        end
+    end
+    local registered = meta.registered_checkpoint
+    if registered ~= nil and (type(registered) ~= "table" or expected ~= types.WORKER_RUNTIME.PROC
+        or meta.private == true or checkpointed or meta.post_commit_ref ~= nil) then
+        return nil, errors.new({kind = errors.INVALID, message = "registered checkpoint requires an ordinary public process"})
+    end
     if component_owned and (scoped or meta.private ~= true or expected ~= types.WORKER_RUNTIME.FUNC
         or checkpointed or meta.post_commit_ref ~= nil) then
         return nil, errors.new({kind = errors.INVALID,
@@ -228,6 +245,7 @@ local function validate_declaration(binding: table, system_identity: boolean?, o
     end
     return { worker_ref = scheme_for(expected) .. target_id, worker_runtime = expected, target_id = target_id,
         checkpointed_apply = checkpointed or nil, filtered_checkpoint = meta.filtered_checkpoint == true or nil,
+        registered_checkpoint = registered,
         component_owned = meta.component_owned == true or nil }, nil
 end
 
@@ -248,7 +266,7 @@ local function registry_revision(): (string?, error?)
 end
 
 local function validate(binding: table, system_identity: boolean?, owner_revision: string?,
-        component_owned: boolean?): (Binding?, error?, boolean?)
+        component_owned: boolean?, registered_writer: boolean?): (Binding?, error?, boolean?)
     local revision, err = registry_revision()
     if not revision then return nil, err end
     if owner_revision and owner_revision ~= revision then
@@ -259,18 +277,20 @@ local function validate(binding: table, system_identity: boolean?, owner_revisio
         admitted_version, admitted_bindings = revision, {}
     end
     local key = tostring(binding.worker_runtime) .. "://" .. tostring(binding.target_id)
-        .. (component_owned and "/component-owned" or (system_identity == true and "/system"
-            or (owner_revision and "/declared-checkpoint" or "/member")))
+        .. (registered_writer and "/registered-writer" or (component_owned and "/component-owned" or (system_identity == true and "/system"
+            or (owner_revision and "/declared-checkpoint" or "/member"))))
     local admitted = admitted_bindings[key]
     if not admitted then
-        local value, validation_err = validate_declaration(binding, system_identity, owner_revision ~= nil and component_owned ~= true, component_owned == true)
+        local value, validation_err = validate_declaration(binding, system_identity,
+            owner_revision ~= nil and component_owned ~= true, component_owned == true, registered_writer == true)
         if validation_err or not value then return nil, validation_err end
         admitted = value
         admitted_bindings[key] = admitted
     end
     return {worker_ref = admitted.worker_ref, worker_runtime = admitted.worker_runtime,
         target_id = admitted.target_id, checkpointed_apply = admitted.checkpointed_apply,
-        filtered_checkpoint = admitted.filtered_checkpoint, component_owned = admitted.component_owned}, nil
+        filtered_checkpoint = admitted.filtered_checkpoint, registered_checkpoint = admitted.registered_checkpoint,
+        component_owned = admitted.component_owned}, nil
 end
 
 function worker.validate(binding: table, system_identity: boolean?): (Binding?, error?)
@@ -327,6 +347,77 @@ function worker.admit_declared_checkpoint(binding: table, cursor: table): (Bindi
     declared_checkpoints[actor_binding] = {revision = revision, worker_ref = admitted.worker_ref,
         actor_id = actor_binding.actor_id, actor_context = actor_binding.actor_context, cursor_id = cursor.id, owner = owner}
     return admitted, nil, owner
+end
+
+-- The public worker remains the stored declaration. Only an installed package
+-- can name the private writer used for the opted-in range.
+function worker.admit_registered_checkpoint(binding: table, cursor: table, db_id: string,
+        revision: any, filter: {string}?): (Binding?, error?, table?)
+    if not binding.registered_checkpoint or not filter or not cursor.actor_id
+        or type(cursor.component_incarnation) ~= "string"
+        or not revision or cursor.body.meta.worker_input_mode ~= "prefetch_events" then
+        return nil, nil
+    end
+    if not registered_checkpoint.is_registered_identity(cursor.execution_identity_json) then return nil, nil end
+    local version = tostring(revision:version():id())
+    local public, err = validate(binding, false, version)
+    if not public then return nil, err end
+    if not public.registered_checkpoint then return nil, nil end
+    local ids, destinations_err = registered_checkpoint.destinations(public.registered_checkpoint, cursor.body.worker_config)
+    if not ids then return nil, destinations_err end
+    local chosen, select_err = registered_checkpoint.select(public.registered_checkpoint, ids, db_id, revision)
+    if not chosen then return nil, select_err end
+    if cursor.deleting_at ~= nil then return nil, job_types.lease_lost_error("projection source thread is deleting") end
+    local private, parse_err = worker.parse(chosen.writer_ref, true)
+    if not private then return nil, parse_err end
+    local package_err = registered_checkpoint.same_package(revision, public.target_id, private.target_id, chosen.config_id)
+    if package_err then return nil, package_err end
+    local admitted, admit_err = validate(private, false, version, nil, true)
+    if not admitted then return nil, admit_err end
+    local generation = tonumber(cursor.component_identity_generation)
+    if generation == nil then return nil, event_access.denied() end
+    local owner = {component_id = cursor.component_id, incarnation = cursor.component_incarnation,
+        generation = generation}
+    local binding_row = admitted :: table
+    binding_row.actor_id = cursor.actor_id
+    binding_row.actor_context = cursor.execution_identity_json
+    chosen.revision = version
+    chosen.public_target_id = public.target_id
+    chosen.projection_id = cursor.projection_id
+    chosen.thread_id = cursor.thread_id
+    chosen.thread_incarnation = cursor.thread_incarnation
+    chosen.component_impl_id = cursor.component_impl_id
+    chosen.generation = cursor.generation
+    chosen.actor_id = cursor.actor_id
+    chosen.actor_context = cursor.execution_identity_json
+    local declaration_hash, declaration_err = registered_checkpoint.declaration_hash(cursor.body)
+    if not declaration_hash then return nil, declaration_err end
+    chosen.declaration_hash = declaration_hash
+    chosen.owner = owner
+    chosen.filter = {}
+    for _, event_type in ipairs(filter) do chosen.filter[#chosen.filter + 1] = {type = event_type} end
+    declared_checkpoints[binding_row] = {revision = version, worker_ref = admitted.worker_ref,
+        actor_id = cursor.actor_id, actor_context = cursor.execution_identity_json,
+        cursor_id = cursor.id, owner = owner, registered = chosen}
+    return admitted, nil, owner
+end
+
+function worker.registers_checkpoint_principal(binding: table, config: any, input_mode: any, events: any): (boolean?, error?)
+    if not binding.registered_checkpoint or trim(input_mode) ~= "prefetch_events" then return false, nil end
+    local ids, destination_err = registered_checkpoint.destinations(binding.registered_checkpoint, config)
+    if not ids then return false, destination_err end
+    if not registered_checkpoint.filter(events) then return false, nil end
+    local revision, revision_err = registry.snapshot()
+    if revision_err then return nil, revision_err end
+    if not revision then return nil, event_access.denied() end
+    local chosen, err = registered_checkpoint.select(binding.registered_checkpoint, ids, core_db.id(), revision)
+    return chosen ~= nil, err
+end
+
+function worker.capture_registered_checkpoint(binding: table, current: table, frame: table, empty: boolean?): (table?, error?)
+    local proof = declared_checkpoints[binding]
+    if not proof or not proof.registered then return nil, event_access.denied() end
+    return registered_checkpoint.capture(proof.registered.db_id, proof.registered, current, frame.actor, frame.read_mask, empty)
 end
 
 -- Optional notification worker is declared on the fold worker, never supplied
@@ -598,7 +689,8 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
         return nil, errors.new({kind = errors.PERMISSION_DENIED, retryable = false,
             message = "private checkpoint binding changed after admission"})
     end
-    local validated, validate_err = validate(binding, binding.system_identity == true, proof and proof.revision)
+    local validated, validate_err = validate(binding, binding.system_identity == true, proof and proof.revision,
+        nil, proof and proof.registered ~= nil)
     if validate_err or not validated then return nil, validate_err end
     local target_id = tostring(binding.target_id)
     local host = trim(options.proc_host)
@@ -631,8 +723,15 @@ function worker.run_proc_supervised(binding: table, worker_input: table, opts: S
                     local range = context["kickside.core.projection_checkpoint"]
                     range.from_seq = assignment.cursor.last_seq
                     range.to_seq = assignment.prefetched_last
-                    range.filter = assignment.cursor.body.events.input
+                    range.filter = proof.registered and proof.registered.filter or assignment.cursor.body.events.input
                     range.reset_generation = assignment.cursor.reset_generation
+                    if proof.registered then
+                        range.registered = proof.registered
+                        range.inputs = {}
+                        for _, event in ipairs(worker_input.events) do
+                            range.inputs[#range.inputs + 1] = {id = event.id, seq = event.seq}
+                        end
+                    end
                 end
             end
             local builder = process.with_context(context)

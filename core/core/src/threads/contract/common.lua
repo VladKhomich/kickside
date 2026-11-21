@@ -102,6 +102,14 @@ function M.declared_identity(component_id: string): ({ [string]: any }?, error?)
     return { row = row }, nil
 end
 
+function M.captured_identity(): ({[string]: any}?, error?)
+    local identity, err = execution_identity.capture()
+    if err or not identity then return nil, err end
+    local row, row_err = execution_identity.to_row(identity)
+    if row_err or not row then return nil, row_err end
+    return {row = row}, nil
+end
+
 -- open_db opens the slice's pooled connection.
 function M.open_db(): (sql.DB?, error?)
     local db, db_err = sql.get(env.db_id() :: string)
