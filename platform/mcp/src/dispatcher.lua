@@ -8,6 +8,7 @@
 
 local trim = require("text_trim").trim
 local json = require("json")
+local base64 = require("base64")
 local registry = require("registry")
 local security = require("security")
 local consts = require("mcp_consts")
@@ -22,7 +23,7 @@ local tool_arguments = require("tool_arguments")
 local M = {}
 
 local JSONRPC = "2.0"
-local MAX_IMAGES = 8
+local MAX_IMAGES = 10
 local MAX_IMAGE_DATA_BYTES = 8 * 1024 * 1024
 
 local function rpc_result(id: any, result: any): any
@@ -41,13 +42,11 @@ local function image_content(images: any): (any?, error?)
     local blocks: { any } = {}
     local total = 0
     local size = #images
-    if size > MAX_IMAGES then
-        return nil, errors.new({ kind = errors.INVALID, message = "Tool returned more than 8 images. Request fewer images." })
+    if size == 0 and next(images) ~= nil then
+        return nil, errors.new({ kind = errors.INVALID, message = "Tool images must be a list" })
     end
-    for index, image in pairs(images) do
-        if type(index) ~= "number" or index % 1 ~= 0 or index < 1 or index > size then
-            return nil, errors.new({ kind = errors.INVALID, message = "Tool images must be a list" })
-        end
+    for index = 1, math.min(size, MAX_IMAGES) do
+        local image = images[index]
         local source = type(image) == "table" and image.type == "image" and image.source or nil
         local data = type(source) == "table" and source.type == "base64" and source.data or nil
         local mime = type(source) == "table" and source.mime_type or nil
@@ -55,19 +54,21 @@ local function image_content(images: any): (any?, error?)
             or #mime > 100 or not mime:match("^image/[a-z0-9][a-z0-9.+-]*$") then
             return nil, errors.new({ kind = errors.INVALID, message = "Tool returned an invalid image attachment" })
         end
-        total = total + #data
-        if total > MAX_IMAGE_DATA_BYTES then
-            return nil, errors.new({ kind = errors.INVALID, message = "Tool image data exceeds 8 MiB. Request fewer or smaller images." })
+        if total + #data > MAX_IMAGE_DATA_BYTES then
+            blocks[index] = { type = "text", text = "Image " .. index
+                .. " exceeded the MCP image byte limit. Request fewer or smaller images." }
+        else
+            local _, decode_err = base64.decode(data)
+            if decode_err then
+                return nil, errors.new({ kind = errors.INVALID, message = "Tool returned an invalid image attachment" })
+            end
+            total = total + #data
+            blocks[index] = { type = "image", mimeType = mime, data = data }
         end
-        if not data:match("^[A-Za-z0-9+/]+=?=?$") then
-            return nil, errors.new({ kind = errors.INVALID, message = "Tool returned an invalid image attachment" })
-        end
-        blocks[index] = { type = "image", mimeType = mime, data = data }
     end
-    for index = 1, size do
-        if blocks[index] == nil then
-            return nil, errors.new({ kind = errors.INVALID, message = "Tool images must be a list" })
-        end
+    if size > MAX_IMAGES then
+        blocks[#blocks + 1] = { type = "text", text = "Image attachments after " .. MAX_IMAGES
+            .. " exceeded the MCP image count limit. Request fewer images." }
     end
     return blocks, nil
 end
@@ -218,7 +219,8 @@ local function handle_tools_call(id: any, principal: any, authorized: any, param
     if meta_tools.is_meta(name) then
         local result, merr, _, has_output_schema = meta_tools.handle(name, arguments, principal, invoke)
         if merr then return rpc_result(id, content_error("error: ", merr)) end
-        local shaped, encode_err = content(result, false, has_output_schema)
+        local domain_error = name == "call_tool" and type(result) == "table" and result.success == false
+        local shaped, encode_err = content(result, domain_error, has_output_schema)
         if encode_err then return rpc_result(id, content_error("error: ", encode_err)) end
         return rpc_result(id, shaped)
     end

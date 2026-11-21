@@ -56,8 +56,9 @@ Tools can attach images in the same `_images` list used by vision models. Each
 entry has `type = "image"` and a `source` with `type = "base64"`, `mime_type`, and
 `data`. MCP emits these as image content blocks after the JSON text. Declare the
 schema for the metadata that remains after MCP removes `_images`. Each result can
-carry at most eight images and eight MiB of base64 data. The tool controls who can
-read the images and applies any required masking before returning them.
+carry up to ten images and eight MiB of base64 image data. MCP returns a text
+notice when it omits an attachment under these limits. The tool controls who
+can read the images and applies any required masking before returning them.
 
 ### Host requirements
 

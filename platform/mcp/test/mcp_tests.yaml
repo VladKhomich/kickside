@@ -136,6 +136,7 @@ entries:
   - funcs
   - system
   - http_client
+  - base64
   imports:
     canonical_json: kickside.contract:canonical_json
     mcp_repo: kickside.mcp.persist:repo
