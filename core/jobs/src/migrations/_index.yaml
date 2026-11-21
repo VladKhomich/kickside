@@ -21,6 +21,38 @@ entries:
       migration: wippy.migration:migration
     method: migrate
 
+  - name: retained_sql
+    kind: library.lua
+    source: file://retained_sql.lua
+
+  - name: retained_sqlite
+    kind: library.lua
+    source: file://retained_sqlite.lua
+    imports:
+      retained_sql: kickside.core.jobs.migrations:retained_sql
+
+  - name: retained_postgres
+    kind: library.lua
+    source: file://retained_postgres.lua
+    imports:
+      retained_sql: kickside.core.jobs.migrations:retained_sql
+
+  - name: 06_retained_queue
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Adopt historical Jobs queue, run history and durable cleanup state.
+      depends_on: [ns:wippy.migration, "kickside.core.jobs.migrations:04_jobs"]
+      timestamp: "2026-01-01T00:00:06Z"
+    source: file://06_retained_queue.lua
+    imports:
+      migration: wippy.migration:migration
+      retained_sql: kickside.core.jobs.migrations:retained_sql
+      retained_sqlite: kickside.core.jobs.migrations:retained_sqlite
+      retained_postgres: kickside.core.jobs.migrations:retained_postgres
+    method: migrate
+
   - name: 07_job_slots
     kind: function.lua
     meta:
