@@ -18,6 +18,7 @@ local UPSERT = "kickside.models.cards:upsert_card"
 local DISABLE = "kickside.models.cards:disable_card"
 local DELETE = "kickside.models.cards:delete_card"
 local LIST = "kickside.models.cards:list_cards"
+local SUMMARIES = "kickside.models.cards:list_card_summaries"
 local GET = "kickside.models.cards:get_card"
 local CONTRACT = "kickside.models.cards:cards"
 local BINDING = "kickside.models.cards:cards_binding"
@@ -368,6 +369,28 @@ local function define_tests()
             cleanup()
         end)
 
+        test.it("reads cards whose provider profile reports an error", function()
+            with_existing_provider(function(profile)
+                local db = assert(sql.get("app:db"))
+                assert(db:execute("UPDATE kickside_model_provider_profiles SET secret_json = $1 WHERE id = $2",
+                    { "not-a-valid-encrypted-secret", profile.id }))
+                db:release()
+                models_cache.clear()
+
+                local cards = registrar()
+                local full = assert(cards:get_card({ name = "cc-existing-card" }))
+                test.eq(full.success, true, tostring(full.error))
+                test.eq(full.model.enabled, false)
+                test.not_nil(full.model.error)
+
+                local result = assert(cards:list_card_summaries({ q = "cc-existing-card" }))
+                test.eq(result.success, true, tostring(result.error))
+                test.eq(#result.cards, 1)
+                test.eq(result.cards[1].enabled, false)
+                test.eq(result.cards[1].error, full.model.error)
+            end)
+        end)
+
         test.it("redacts legacy credential URLs in read replies", function()
             call(UPSERT, card_body())
             local db = assert(sql.get("app:db"))
@@ -380,6 +403,30 @@ local function define_tests()
             test.eq(one.model.metadata.count, 7)
             local all = assert(registrar():list_cards({}))
             test.eq(listed(all, NAME).metadata.reference, "[redacted]")
+            cleanup()
+        end)
+
+        test.it("filters compact summaries using redacted fields even with a cold cache", function()
+            call(UPSERT, card_body())
+            call(DISABLE, { name = NAME })
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_model_cards SET provider_model = $1 WHERE name = $2",
+                { "https://example.invalid/private?access_token=cc-synthetic-url-value", NAME }))
+            db:release()
+            models_cache.clear()
+
+            local cards = registrar()
+            local hidden = assert(cards:list_card_summaries({ q = "cc-synthetic-url-value" }))
+            test.eq(hidden.success, true, tostring(hidden.error))
+            test.eq(#hidden.cards, 0)
+            local redacted = assert(cards:list_card_summaries({ q = "[REDACTED]" }))
+            test.eq(redacted.success, true, tostring(redacted.error))
+            test.eq(#redacted.cards, 1)
+            test.eq(redacted.cards[1].name, NAME)
+            test.eq(redacted.cards[1].provider_model, "[redacted]")
+            test.eq(redacted.cards[1].enabled, false)
+            test.is_nil(redacted.cards[1].metadata)
+            test.is_nil(redacted.next_cursor)
             cleanup()
         end)
     end)
@@ -499,7 +546,7 @@ local function define_tests()
                 test.not_nil(registry.get(id), id)
                 test.eq(policy:evaluate(actor, "contract.open", id), "allow", id)
             end
-            for _, id in ipairs({ UPSERT, DISABLE, DELETE, LIST, GET }) do
+            for _, id in ipairs({ UPSERT, DISABLE, DELETE, LIST, SUMMARIES, GET }) do
                 test.not_nil(registry.get(id), id)
                 test.eq(policy:evaluate(actor, "funcs.call", id), "allow", id)
             end
@@ -507,6 +554,7 @@ local function define_tests()
             test.eq(policy:evaluate(actor, "contract.call", "disable_card"), "allow")
             test.eq(policy:evaluate(actor, "contract.call", "delete_card"), "allow")
             test.eq(policy:evaluate(actor, "contract.call", "list_cards"), "allow")
+            test.eq(policy:evaluate(actor, "contract.call", "list_card_summaries"), "allow")
             test.eq(policy:evaluate(actor, "contract.call", "get_card"), "allow")
             test.eq(policy:evaluate(actor, "funcs.call", "kickside.models.persist:repo"), "undefined")
             test.eq(policy:evaluate(actor, "access", "kickside.models.api.admin:upsert_card.endpoint"), "undefined")
@@ -541,7 +589,7 @@ local function define_tests()
         test.it("keeps the contract out of the member module grant", function()
             local runtime = assert(security.policy("kickside.models.security:module_runtime"))
             local actor = security.new_actor("module-member", {})
-            for _, id in ipairs({ UPSERT, DISABLE, DELETE, LIST, GET }) do
+            for _, id in ipairs({ UPSERT, DISABLE, DELETE, LIST, SUMMARIES, GET }) do
                 test.eq(runtime:evaluate(actor, "funcs.call", id), "undefined", id)
             end
             for _, id in ipairs({ CONTRACT, BINDING }) do

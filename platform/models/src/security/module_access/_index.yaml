@@ -121,11 +121,13 @@ entries:
     - kickside.models.cards:cards
     - kickside.models.cards:cards_binding
     - kickside.models.cards:list_cards
+    - kickside.models.cards:list_card_summaries
     - kickside.models.cards:get_card
     - kickside.models.cards:upsert_card
     - kickside.models.cards:disable_card
     - kickside.models.cards:delete_card
     - list_cards
+    - list_card_summaries
     - get_card
     - upsert_card
     - disable_card

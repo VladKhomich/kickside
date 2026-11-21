@@ -160,29 +160,35 @@ local function build_card(row: any, profile: any?): (any?, any?)
     }
 end
 
-local function public_card(card: any): any
+local function public_card_summary(card: any): any
     local provider = card.providers and card.providers[1] or {}
     return {
         name = card.name,
         title = card.title or card.name,
-        description = card.description or "",
         capabilities = card.capabilities or {},
-        capability_ownership = card.capability_ownership,
         class = card.class or {},
         priority = card.priority or 0,
-        max_tokens = card.max_tokens,
-        output_tokens = card.output_tokens,
-        pricing = card.pricing or {},
-        dimensions = card.dimensions,
         source = card.source,
         provider_id = provider.id,
         provider_model = provider.provider_model,
         provider_profile_id = card.provider_profile_id or provider.provider_profile_id,
-        options = policy.scrub_sensitive(provider.options or {}),
         enabled = card.enabled ~= false,
         error = card.error,
-        metadata = policy.scrub_sensitive(card.metadata or {}),
     }
+end
+
+local function public_card(card: any): any
+    local provider = card.providers and card.providers[1] or {}
+    local out = public_card_summary(card)
+    out.description = card.description or ""
+    out.capability_ownership = card.capability_ownership
+    out.max_tokens = card.max_tokens
+    out.output_tokens = card.output_tokens
+    out.pricing = card.pricing or {}
+    out.dimensions = card.dimensions
+    out.options = policy.scrub_sensitive(provider.options or {})
+    out.metadata = policy.scrub_sensitive(card.metadata or {})
+    return out
 end
 
 -- Carry the saved limits. The receiving catalog derives absent values from
@@ -269,6 +275,7 @@ end
 
 M.build_card = build_card
 M.public_card = public_card
+M.public_card_summary = public_card_summary
 M.export_card = export_card
 M.clean_card_input = clean_card_input
 
