@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.31](https://github.com/kicksideai/kickside/compare/security-v0.2.30...security-v0.2.31) (2026-11-21)
+
+
+### Bug Fixes
+
+* **security:** distinguish assignable role permissions from technical policies ([#864](https://github.com/kicksideai/kickside/issues/864)) ([8eb5b90](https://github.com/kicksideai/kickside/commit/8eb5b90aa6a1dd4acfda93fd144537c353fcdfab))
+* **security:** exclude restricted scopes from account assignments ([#863](https://github.com/kicksideai/kickside/issues/863)) ([5f0ea40](https://github.com/kicksideai/kickside/commit/5f0ea408a3d399327a23864df7e5c64289e97394))
+
 ## [0.2.30](https://github.com/kicksideai/kickside/compare/security-v0.2.29...security-v0.2.30) (2026-11-19)
 
 
