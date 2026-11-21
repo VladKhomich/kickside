@@ -1,15 +1,30 @@
 import { J as fe } from "./jszip.min-BtGi7ivk.js";
-/*
- * @license
- * docx-preview <https://github.com/VolodymyrBaydalka/docxjs>
- * Released under Apache License 2.0  <https://github.com/VolodymyrBaydalka/docxjs/blob/master/LICENSE>
- * Copyright Volodymyr Baydalka
- */
-var m;
+const ge = {
+  symbol: { "": "•" },
+  wingdings: {
+    "": "●",
+    "": "■",
+    "": "❑",
+    "": "◆",
+    "": "❖",
+    "": "▪",
+    "": "➢",
+    "": "➔",
+    "": "✗",
+    "": "✓"
+  }
+};
+function be(a, e) {
+  const t = (e?.["font-family"] ?? "").split(",")[0].replace(/['"]/g, "").trim().toLowerCase(), r = ge[t];
+  if (!e || !r || ![...a].some((o) => r[o])) return { text: a, style: e };
+  const { "font-family": s, ...n } = e;
+  return { text: [...a].map((o) => r[o] ?? o).join(""), style: n };
+}
+var f;
 (function(a) {
   a.OfficeDocument = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", a.FontTable = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable", a.Image = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", a.Numbering = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering", a.Styles = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", a.StylesWithEffects = "http://schemas.microsoft.com/office/2007/relationships/stylesWithEffects", a.Theme = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme", a.Settings = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings", a.WebSettings = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/webSettings", a.Hyperlink = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", a.Footnotes = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes", a.Endnotes = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes", a.Footer = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer", a.Header = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header", a.ExtendedProperties = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties", a.CoreProperties = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties", a.CustomProperties = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/custom-properties", a.Comments = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments", a.CommentsExtended = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended", a.AltChunk = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/aFChunk";
-})(m || (m = {}));
-function ge(a, e) {
+})(f || (f = {}));
+function ke(a, e) {
   return e.elements(a).map((t) => ({
     id: e.attr(t, "Id"),
     type: e.attr(t, "Type"),
@@ -17,7 +32,7 @@ function ge(a, e) {
     targetMode: e.attr(t, "TargetMode")
   }));
 }
-function be(a) {
+function ve(a) {
   return a?.replace(/[ .]+/g, "-").replace(/[&]+/g, "and").toLowerCase();
 }
 function _(a) {
@@ -38,7 +53,7 @@ function O(a, e) {
 function w(a, e) {
   return a.reduce((t, r) => (t[e(r)] = r, t), {});
 }
-function ke(a) {
+function ye(a) {
   return new Promise((e, t) => {
     const r = new FileReader();
     r.onloadend = () => e(r.result), r.onerror = () => t(), r.readAsDataURL(a);
@@ -47,7 +62,7 @@ function ke(a) {
 function H(a) {
   return a && typeof a == "object" && !Array.isArray(a);
 }
-function ve(a) {
+function Se(a) {
   return typeof a == "string" || a instanceof String;
 }
 function L(a, ...e) {
@@ -66,7 +81,7 @@ function L(a, ...e) {
 function E(a) {
   return Array.isArray(a) ? a : [a];
 }
-function ye(a, e, t) {
+function Pe(a, e, t) {
   return e > a ? e : t < a ? t : a;
 }
 const ee = {
@@ -83,9 +98,9 @@ function te(a, e = k.Dxa) {
   if (a == null || /.+(p[xt]|[%])$/.test(a))
     return a;
   var t = parseInt(a) * e.mul;
-  return e.min && e.max && (t = ye(t, e.min, e.max)), `${t.toFixed(2)}${e.unit}`;
+  return e.min && e.max && (t = Pe(t, e.min, e.max)), `${t.toFixed(2)}${e.unit}`;
 }
-function Se(a, e = !1) {
+function we(a, e = !1) {
   switch (a) {
     case "1":
       return !0;
@@ -118,20 +133,20 @@ function re(a, e, t) {
   }
   return !0;
 }
-function Pe(a, e = !1) {
-  e && (a = a.replace(/<[?].*[?]>/, "")), a = Ce(a);
-  const t = new DOMParser().parseFromString(a, "application/xml"), r = we(t);
+function Ce(a, e = !1) {
+  e && (a = a.replace(/<[?].*[?]>/, "")), a = Me(a);
+  const t = new DOMParser().parseFromString(a, "application/xml"), r = Ne(t);
   if (r)
     throw new Error(r);
   return t;
 }
-function we(a) {
+function Ne(a) {
   return a.getElementsByTagName("parsererror")[0]?.textContent;
 }
-function Ce(a) {
+function Me(a) {
   return a.charCodeAt(0) === 65279 ? a.substring(1) : a;
 }
-function Ne(a) {
+function Ee(a) {
   return new XMLSerializer().serializeToString(a);
 }
 class ae {
@@ -179,7 +194,7 @@ class ae {
     return s ? parseFloat(s) : r;
   }
   boolAttr(e, t, r = null) {
-    return Se(this.attr(e, t), r);
+    return we(this.attr(e, t), r);
   }
   lengthAttr(e, t, r = k.Dxa) {
     return te(this.attr(e, t), r);
@@ -196,21 +211,21 @@ class v {
     this._package.options.keepOrigin && (this._xmlDocument = t), this.parseXml(t.firstElementChild);
   }
   save() {
-    this._package.update(this.path, Ne(this._xmlDocument));
+    this._package.update(this.path, Ee(this._xmlDocument));
   }
   parseXml(e) {
   }
 }
-const Me = {
+const Ae = {
   embedRegular: "regular",
   embedBold: "bold",
   embedItalic: "italic",
   embedBoldItalic: "boldItalic"
 };
-function Ee(a, e) {
-  return e.elements(a).map((t) => Ae(t, e));
+function xe(a, e) {
+  return e.elements(a).map((t) => Re(t, e));
 }
-function Ae(a, e) {
+function Re(a, e) {
   let t = {
     name: e.attr(a, "name"),
     embedFontRefs: []
@@ -227,21 +242,21 @@ function Ae(a, e) {
       case "embedBold":
       case "embedItalic":
       case "embedBoldItalic":
-        t.embedFontRefs.push(xe(r, e));
+        t.embedFontRefs.push(Be(r, e));
         break;
     }
   return t;
 }
-function xe(a, e) {
+function Be(a, e) {
   return {
     id: e.attr(a, "id"),
     key: e.attr(a, "fontKey"),
-    type: Me[a.localName]
+    type: Ae[a.localName]
   };
 }
-class Re extends v {
+class Fe extends v {
   parseXml(e) {
-    this.fonts = Ee(e, this._package.xmlParser);
+    this.fonts = xe(e, this._package.xmlParser);
   }
 }
 class z {
@@ -249,7 +264,7 @@ class z {
     this._zip = e, this.options = t, this.xmlParser = new ae();
   }
   get(e) {
-    const t = Be(e);
+    const t = Te(e);
     return this._zip.files[t] ?? this._zip.files[t.replace(/\//g, "\\")];
   }
   update(e, t) {
@@ -272,16 +287,16 @@ class z {
       t = `${s}_rels/${n}.rels`;
     }
     const r = await this.load(t);
-    return r ? ge(this.parseXmlDocument(r).firstElementChild, this.xmlParser) : null;
+    return r ? ke(this.parseXmlDocument(r).firstElementChild, this.xmlParser) : null;
   }
   parseXmlDocument(e) {
-    return Pe(e, this.options.trimXmlDeclaration);
+    return Ce(e, this.options.trimXmlDeclaration);
   }
 }
-function Be(a) {
+function Te(a) {
   return a.startsWith("/") ? a.substr(1) : a;
 }
-class Fe extends v {
+class $e extends v {
   constructor(e, t, r) {
     super(e, t), this._documentParser = r;
   }
@@ -299,7 +314,7 @@ function F(a, e) {
     shadow: e.boolAttr(a, "shadow")
   };
 }
-function Te(a, e) {
+function Le(a, e) {
   var t = {};
   for (let r of e.elements(a))
     switch (r.localName) {
@@ -348,7 +363,7 @@ function se(a, e = i) {
         };
         break;
       case "cols":
-        t.columns = $e(r, e);
+        t.columns = De(r, e);
         break;
       case "headerReference":
         (t.headerRefs ?? (t.headerRefs = [])).push(G(r, e));
@@ -360,15 +375,15 @@ function se(a, e = i) {
         t.titlePage = e.boolAttr(r, "val", !0);
         break;
       case "pgBorders":
-        t.pageBorders = Te(r, e);
+        t.pageBorders = Le(r, e);
         break;
       case "pgNumType":
-        t.pageNumber = Le(r, e);
+        t.pageNumber = Oe(r, e);
         break;
     }
   return t;
 }
-function $e(a, e) {
+function De(a, e) {
   return {
     numberOfColumns: e.intAttr(a, "num"),
     space: e.lengthAttr(a, "space"),
@@ -380,7 +395,7 @@ function $e(a, e) {
     }))
   };
 }
-function Le(a, e) {
+function Oe(a, e) {
   return {
     chapSep: e.attr(a, "chapSep"),
     chapStyle: e.attr(a, "chapStyle"),
@@ -394,7 +409,7 @@ function G(a, e) {
     type: e.attr(a, "type")
   };
 }
-function De(a, e) {
+function He(a, e) {
   return {
     before: e.lengthAttr(a, "before"),
     after: e.lengthAttr(a, "after"),
@@ -405,10 +420,10 @@ function De(a, e) {
 function V(a, e) {
   let t = {};
   for (let r of e.elements(a))
-    Oe(r, t, e);
+    Ie(r, t, e);
   return t;
 }
-function Oe(a, e, t) {
+function Ie(a, e, t) {
   return !!re(a, e, t);
 }
 function ne(a, e) {
@@ -424,16 +439,16 @@ function ie(a, e, t) {
     return !0;
   switch (a.localName) {
     case "tabs":
-      e.tabs = He(a, t);
+      e.tabs = _e(a, t);
       break;
     case "sectPr":
       e.sectionProps = se(a, t);
       break;
     case "numPr":
-      e.numbering = Ie(a, t);
+      e.numbering = ze(a, t);
       break;
     case "spacing":
-      return e.lineSpacing = De(a, t), !1;
+      return e.lineSpacing = He(a, t), !1;
     case "textAlignment":
       return e.textAlignment = t.attr(a, "val"), !1;
     case "keepLines":
@@ -459,14 +474,14 @@ function ie(a, e, t) {
   }
   return !0;
 }
-function He(a, e) {
+function _e(a, e) {
   return e.elements(a, "tab").map((t) => ({
     position: e.lengthAttr(t, "pos"),
     leader: e.attr(t, "leader"),
     style: e.attr(t, "val")
   }));
 }
-function Ie(a, e) {
+function ze(a, e) {
   var t = {};
   for (let r of e.elements(a))
     switch (r.localName) {
@@ -479,7 +494,7 @@ function Ie(a, e) {
     }
   return t;
 }
-function _e(a, e) {
+function Ve(a, e) {
   let t = {
     numberings: [],
     abstractNumberings: [],
@@ -488,18 +503,18 @@ function _e(a, e) {
   for (let r of e.elements(a))
     switch (r.localName) {
       case "num":
-        t.numberings.push(ze(r, e));
+        t.numberings.push(je(r, e));
         break;
       case "abstractNum":
-        t.abstractNumberings.push(Ve(r, e));
+        t.abstractNumberings.push(We(r, e));
         break;
       case "numPicBullet":
-        t.bulletPictures.push(We(r, e));
+        t.bulletPictures.push(Ge(r, e));
         break;
     }
   return t;
 }
-function ze(a, e) {
+function je(a, e) {
   let t = {
     id: e.attr(a, "numId"),
     overrides: []
@@ -510,12 +525,12 @@ function ze(a, e) {
         t.abstractId = e.attr(r, "val");
         break;
       case "lvlOverride":
-        t.overrides.push(je(r, e));
+        t.overrides.push(Xe(r, e));
         break;
     }
   return t;
 }
-function Ve(a, e) {
+function We(a, e) {
   let t = {
     id: e.attr(a, "abstractNumId"),
     levels: []
@@ -576,7 +591,7 @@ function le(a, e) {
     }
   return t;
 }
-function je(a, e) {
+function Xe(a, e) {
   let t = {
     level: e.intAttr(a, "ilvl")
   };
@@ -591,7 +606,7 @@ function je(a, e) {
     }
   return t;
 }
-function We(a, e) {
+function Ge(a, e) {
   var t = e.element(a, "pict"), r = t && e.element(t, "shape"), s = r && e.element(r, "imagedata");
   return s ? {
     id: e.attr(a, "numPicBulletId"),
@@ -599,15 +614,15 @@ function We(a, e) {
     style: e.attr(r, "style")
   } : null;
 }
-class Xe extends v {
+class Ue extends v {
   constructor(e, t, r) {
     super(e, t), this._documentParser = r;
   }
   parseXml(e) {
-    Object.assign(this, _e(e, this._package.xmlParser)), this.domNumberings = this._documentParser.parseNumberingFile(e);
+    Object.assign(this, Ve(e, this._package.xmlParser)), this.domNumberings = this._documentParser.parseNumberingFile(e);
   }
 }
-class Ge extends v {
+class qe extends v {
   constructor(e, t, r) {
     super(e, t), this._documentParser = r;
   }
@@ -624,12 +639,12 @@ class C {
     this.children = [], this.cssStyle = {};
   }
 }
-class Ue extends C {
+class Je extends C {
   constructor() {
     super(...arguments), this.type = l.Header;
   }
 }
-class qe extends C {
+class Ze extends C {
   constructor() {
     super(...arguments), this.type = l.Footer;
   }
@@ -642,17 +657,17 @@ class oe extends v {
     this.rootElement = this.createRootElement(), this.rootElement.children = this._documentParser.parseBodyElements(e);
   }
 }
-class Je extends oe {
+class Ye extends oe {
   createRootElement() {
-    return new Ue();
+    return new Je();
   }
 }
-class Ze extends oe {
+class Ke extends oe {
   createRootElement() {
-    return new qe();
+    return new Ze();
   }
 }
-function Ye(a, e) {
+function Qe(a, e) {
   const t = {};
   for (let r of e.elements(a))
     switch (r.localName) {
@@ -690,12 +705,12 @@ function A(a) {
   if (!(typeof a > "u"))
     return parseInt(a);
 }
-class Ke extends v {
+class et extends v {
   parseXml(e) {
-    this.props = Ye(e, this._package.xmlParser);
+    this.props = Qe(e, this._package.xmlParser);
   }
 }
-function Qe(a, e) {
+function tt(a, e) {
   const t = {};
   for (let r of e.elements(a))
     switch (r.localName) {
@@ -726,27 +741,27 @@ function Qe(a, e) {
     }
   return t;
 }
-class et extends v {
+class rt extends v {
   parseXml(e) {
-    this.props = Qe(e, this._package.xmlParser);
+    this.props = tt(e, this._package.xmlParser);
   }
 }
-class tt {
+class at {
 }
-function rt(a, e) {
-  var t = new tt(), r = e.element(a, "themeElements");
+function st(a, e) {
+  var t = new at(), r = e.element(a, "themeElements");
   for (let s of e.elements(r))
     switch (s.localName) {
       case "clrScheme":
-        t.colorScheme = at(s, e);
+        t.colorScheme = nt(s, e);
         break;
       case "fontScheme":
-        t.fontScheme = st(s, e);
+        t.fontScheme = it(s, e);
         break;
     }
   return t;
 }
-function at(a, e) {
+function nt(a, e) {
   var t = {
     name: e.attr(a, "name"),
     colors: {}
@@ -757,7 +772,7 @@ function at(a, e) {
   }
   return t;
 }
-function st(a, e) {
+function it(a, e) {
   var t = {
     name: e.attr(a, "name")
   };
@@ -779,22 +794,22 @@ function U(a, e) {
     csTypeface: e.elementAttr(a, "cs", "typeface")
   };
 }
-class nt extends v {
+class lt extends v {
   constructor(e, t) {
     super(e, t);
   }
   parseXml(e) {
-    this.theme = rt(e, this._package.xmlParser);
+    this.theme = st(e, this._package.xmlParser);
   }
 }
 class ce {
 }
-class it extends ce {
+class ot extends ce {
   constructor() {
     super(...arguments), this.type = l.Footnote;
   }
 }
-class lt extends ce {
+class ct extends ce {
   constructor() {
     super(...arguments), this.type = l.Endnote;
   }
@@ -804,23 +819,23 @@ class he extends v {
     super(e, t), this._documentParser = r;
   }
 }
-class ot extends he {
+class ht extends he {
   constructor(e, t, r) {
     super(e, t, r);
   }
   parseXml(e) {
-    this.notes = this._documentParser.parseNotes(e, "footnote", it);
+    this.notes = this._documentParser.parseNotes(e, "footnote", ot);
   }
 }
-class ct extends he {
+class ut extends he {
   constructor(e, t, r) {
     super(e, t, r);
   }
   parseXml(e) {
-    this.notes = this._documentParser.parseNotes(e, "endnote", lt);
+    this.notes = this._documentParser.parseNotes(e, "endnote", ct);
   }
 }
-function ht(a, e) {
+function dt(a, e) {
   var t = {};
   for (let r of e.elements(a))
     switch (r.localName) {
@@ -855,15 +870,15 @@ function q(a, e) {
     }
   return t;
 }
-class ut extends v {
+class pt extends v {
   constructor(e, t) {
     super(e, t);
   }
   parseXml(e) {
-    this.settings = ht(e, this._package.xmlParser);
+    this.settings = dt(e, this._package.xmlParser);
   }
 }
-function dt(a, e) {
+function mt(a, e) {
   return e.elements(a, "property").map((t) => {
     const r = t.firstChild;
     return {
@@ -874,12 +889,12 @@ function dt(a, e) {
     };
   });
 }
-class pt extends v {
+class ft extends v {
   parseXml(e) {
-    this.props = dt(e, this._package.xmlParser);
+    this.props = mt(e, this._package.xmlParser);
   }
 }
-class mt extends v {
+class gt extends v {
   constructor(e, t, r) {
     super(e, t), this._documentParser = r;
   }
@@ -887,7 +902,7 @@ class mt extends v {
     this.comments = this._documentParser.parseComments(e), this.commentMap = w(this.comments, (t) => t.id);
   }
 }
-class ft extends v {
+class bt extends v {
   constructor(e, t) {
     super(e, t), this.comments = [];
   }
@@ -902,11 +917,11 @@ class ft extends v {
     this.commentMap = w(this.comments, (r) => r.paraId);
   }
 }
-const gt = [
-  { type: m.OfficeDocument, target: "word/document.xml" },
-  { type: m.ExtendedProperties, target: "docProps/app.xml" },
-  { type: m.CoreProperties, target: "docProps/core.xml" },
-  { type: m.CustomProperties, target: "docProps/custom.xml" }
+const kt = [
+  { type: f.OfficeDocument, target: "word/document.xml" },
+  { type: f.ExtendedProperties, target: "docProps/app.xml" },
+  { type: f.CoreProperties, target: "docProps/core.xml" },
+  { type: f.CustomProperties, target: "docProps/custom.xml" }
 ];
 class j {
   constructor() {
@@ -914,7 +929,7 @@ class j {
   }
   static async load(e, t, r) {
     var s = new j();
-    return s._options = r, s._parser = t, s._package = await z.load(e, r), s.rels = await s._package.loadRelationships(), await Promise.all(gt.map((n) => {
+    return s._options = r, s._parser = t, s._package = await z.load(e, r), s.rels = await s._package.loadRelationships(), await Promise.all(kt.map((n) => {
       const o = s.rels.find((h) => h.type === n.type) ?? n;
       return s.loadRelationshipPart(o.target, o.type);
     })), s;
@@ -929,50 +944,50 @@ class j {
       return null;
     let r = null;
     switch (t) {
-      case m.OfficeDocument:
-        this.documentPart = r = new Fe(this._package, e, this._parser);
+      case f.OfficeDocument:
+        this.documentPart = r = new $e(this._package, e, this._parser);
         break;
-      case m.FontTable:
-        this.fontTablePart = r = new Re(this._package, e);
+      case f.FontTable:
+        this.fontTablePart = r = new Fe(this._package, e);
         break;
-      case m.Numbering:
-        this.numberingPart = r = new Xe(this._package, e, this._parser);
+      case f.Numbering:
+        this.numberingPart = r = new Ue(this._package, e, this._parser);
         break;
-      case m.Styles:
-        this.stylesPart = r = new Ge(this._package, e, this._parser);
+      case f.Styles:
+        this.stylesPart = r = new qe(this._package, e, this._parser);
         break;
-      case m.Theme:
-        this.themePart = r = new nt(this._package, e);
+      case f.Theme:
+        this.themePart = r = new lt(this._package, e);
         break;
-      case m.Footnotes:
-        this.footnotesPart = r = new ot(this._package, e, this._parser);
+      case f.Footnotes:
+        this.footnotesPart = r = new ht(this._package, e, this._parser);
         break;
-      case m.Endnotes:
-        this.endnotesPart = r = new ct(this._package, e, this._parser);
+      case f.Endnotes:
+        this.endnotesPart = r = new ut(this._package, e, this._parser);
         break;
-      case m.Footer:
-        r = new Ze(this._package, e, this._parser);
+      case f.Footer:
+        r = new Ke(this._package, e, this._parser);
         break;
-      case m.Header:
-        r = new Je(this._package, e, this._parser);
+      case f.Header:
+        r = new Ye(this._package, e, this._parser);
         break;
-      case m.CoreProperties:
-        this.corePropsPart = r = new et(this._package, e);
+      case f.CoreProperties:
+        this.corePropsPart = r = new rt(this._package, e);
         break;
-      case m.ExtendedProperties:
-        this.extendedPropsPart = r = new Ke(this._package, e);
+      case f.ExtendedProperties:
+        this.extendedPropsPart = r = new et(this._package, e);
         break;
-      case m.CustomProperties:
-        r = new pt(this._package, e);
+      case f.CustomProperties:
+        r = new ft(this._package, e);
         break;
-      case m.Settings:
-        this.settingsPart = r = new ut(this._package, e);
+      case f.Settings:
+        this.settingsPart = r = new pt(this._package, e);
         break;
-      case m.Comments:
-        this.commentsPart = r = new mt(this._package, e, this._parser);
+      case f.Comments:
+        this.commentsPart = r = new gt(this._package, e, this._parser);
         break;
-      case m.CommentsExtended:
-        this.commentsExtendedPart = r = new ft(this._package, e);
+      case f.CommentsExtended:
+        this.commentsExtendedPart = r = new bt(this._package, e);
         break;
     }
     if (r == null)
@@ -993,13 +1008,13 @@ class j {
   }
   async loadFont(e, t) {
     const r = await this.loadResource(this.fontTablePart, e, "uint8array");
-    return r && this.blobToURL(new Blob([bt(r, t)]));
+    return r && this.blobToURL(new Blob([vt(r, t)]));
   }
   async loadAltChunk(e, t) {
     return await this.loadResource(t ?? this.documentPart, e, "string");
   }
   blobToURL(e) {
-    return e ? this._options.useBase64URL ? ke(e) : URL.createObjectURL(e) : null;
+    return e ? this._options.useBase64URL ? ye(e) : URL.createObjectURL(e) : null;
   }
   findPartByRelId(e, t = null) {
     var r = (t.rels ?? this.rels).find((n) => n.id == e);
@@ -1015,7 +1030,7 @@ class j {
     return s ? this._package.load(s, r) : Promise.resolve(null);
   }
 }
-function bt(a, e) {
+function vt(a, e) {
   const r = e.replace(/{|}|-/g, ""), s = new Array(16);
   for (let n = 0; n < 16; n++)
     s[16 - n - 1] = parseInt(r.substring(n * 2, n * 2 + 2), 16);
@@ -1023,7 +1038,7 @@ function bt(a, e) {
     a[n] = a[n] ^ s[n % 16];
   return a;
 }
-function kt(a, e) {
+function yt(a, e) {
   return {
     type: l.BookmarkStart,
     id: e.attr(a, "id"),
@@ -1032,19 +1047,19 @@ function kt(a, e) {
     colLast: e.intAttr(a, "colLast")
   };
 }
-function vt(a, e) {
+function St(a, e) {
   return {
     type: l.BookmarkEnd,
     id: e.attr(a, "id")
   };
 }
-class yt extends C {
+class Pt extends C {
   constructor() {
     super(...arguments), this.type = l.VmlElement, this.attrs = {};
   }
 }
 function ue(a, e) {
-  var t = new yt();
+  var t = new Pt();
   switch (a.localName) {
     case "rect":
       t.tagName = "rect", Object.assign(t.attrs, { width: "100%", height: "100%" });
@@ -1084,10 +1099,10 @@ function ue(a, e) {
   for (const r of i.elements(a))
     switch (r.localName) {
       case "stroke":
-        Object.assign(t.attrs, St(r));
+        Object.assign(t.attrs, wt(r));
         break;
       case "fill":
-        Object.assign(t.attrs, Pt());
+        Object.assign(t.attrs, Ct());
         break;
       case "imagedata":
         t.tagName = "image", Object.assign(t.attrs, { width: "100%", height: "100%" }), t.imageHref = {
@@ -1105,34 +1120,34 @@ function ue(a, e) {
     }
   return t;
 }
-function St(a) {
+function wt(a) {
   return {
     stroke: i.attr(a, "color"),
     "stroke-width": i.lengthAttr(a, "weight", k.Emu) ?? "1px"
   };
 }
-function Pt(a) {
+function Ct(a) {
   return {};
 }
 function J(a) {
   return a.split(",");
 }
-class wt extends C {
+class Nt extends C {
   constructor() {
     super(...arguments), this.type = l.Comment;
   }
 }
-class Ct extends C {
+class Mt extends C {
   constructor(e) {
     super(), this.id = e, this.type = l.CommentReference;
   }
 }
-class Nt extends C {
+class Et extends C {
   constructor(e) {
     super(), this.id = e, this.type = l.CommentRangeStart;
   }
 }
-class Mt extends C {
+class At extends C {
   constructor(e) {
     super(), this.id = e, this.type = l.CommentRangeEnd;
   }
@@ -1143,7 +1158,7 @@ var $ = {
   borderColor: "black",
   highlight: "transparent"
 };
-const Et = [], Z = {
+const xt = [], Z = {
   oMath: l.MmlMath,
   oMathPara: l.MmlMathParagraph,
   f: l.MmlFraction,
@@ -1170,7 +1185,7 @@ const Et = [], Z = {
   bar: l.MmlBar,
   groupChr: l.MmlGroupChar
 };
-class At {
+class Rt {
   constructor(e) {
     this.options = {
       ignoreWidth: !1,
@@ -1189,7 +1204,7 @@ class At {
   parseComments(e) {
     var t = [];
     for (let r of i.elements(e, "comment")) {
-      const s = new wt();
+      const s = new Nt();
       s.id = i.attr(r, "id"), s.author = i.attr(r, "author"), s.initials = i.attr(r, "initials"), s.date = i.attr(r, "date"), s.children = this.parseBodyElements(r), t.push(s);
     }
     return t;
@@ -1508,16 +1523,16 @@ class At {
           t.children.push(this.parseSmartTag(r, t));
           break;
         case "bookmarkStart":
-          t.children.push(kt(r, i));
+          t.children.push(yt(r, i));
           break;
         case "bookmarkEnd":
-          t.children.push(vt(r, i));
+          t.children.push(St(r, i));
           break;
         case "commentRangeStart":
-          t.children.push(new Nt(i.attr(r, "id")));
+          t.children.push(new Et(i.attr(r, "id")));
           break;
         case "commentRangeEnd":
-          t.children.push(new Mt(i.attr(r, "id")));
+          t.children.push(new At(i.attr(r, "id")));
           break;
         case "oMath":
         case "oMathPara":
@@ -1600,7 +1615,7 @@ class At {
           });
           break;
         case "commentReference":
-          r.children.push(new Ct(i.attr(s, "id")));
+          r.children.push(new Mt(i.attr(s, "id")));
           break;
         case "fldSimple":
           r.children.push({
@@ -1739,7 +1754,7 @@ class At {
     var t = i.element(e, "Choice");
     if (t) {
       var r = i.attr(t, "Requires"), s = e.lookupNamespaceURI(r);
-      if (Et.includes(s))
+      if (xt.includes(s))
         return t.firstElementChild;
     }
     return i.element(e, "Fallback")?.firstElementChild;
@@ -1769,8 +1784,8 @@ class At {
         case "positionV":
           if (!n) {
             let b = c.localName == "positionH" ? o : h;
-            var f = i.element(c, "align"), g = i.element(c, "posOffset");
-            b.relative = i.attr(c, "relativeFrom") ?? b.relative, f && (b.align = f.textContent), g && (b.offset = te(g.textContent, k.Emu));
+            var g = i.element(c, "align"), m = i.element(c, "posOffset");
+            b.relative = i.attr(c, "relativeFrom") ?? b.relative, g && (b.align = g.textContent), m && (b.offset = te(m.textContent, k.Emu));
           }
           break;
         case "wrapTopAndBottom":
@@ -2218,12 +2233,12 @@ class At {
       }
   }
 }
-const xt = ["black", "blue", "cyan", "darkBlue", "darkCyan", "darkGray", "darkGreen", "darkMagenta", "darkRed", "darkYellow", "green", "lightGray", "magenta", "none", "red", "white", "yellow"];
+const Bt = ["black", "blue", "cyan", "darkBlue", "darkCyan", "darkGray", "darkGreen", "darkMagenta", "darkRed", "darkYellow", "green", "lightGray", "magenta", "none", "red", "white", "yellow"];
 class N {
   static colorAttr(e, t, r = null, s = "black") {
     var n = i.attr(e, t);
     if (n)
-      return n == "auto" ? s : xt.includes(n) ? n : `#${n}`;
+      return n == "auto" ? s : Bt.includes(n) ? n : `#${n}`;
     var o = i.attr(e, "themeColor");
     return o ? `var(--docx-${o}-color)` : r;
   }
@@ -2386,22 +2401,22 @@ class p {
     return (i.boolAttr(e, "firstRow") || t & 32) && (r += " first-row"), (i.boolAttr(e, "lastRow") || t & 64) && (r += " last-row"), (i.boolAttr(e, "firstColumn") || t & 128) && (r += " first-col"), (i.boolAttr(e, "lastColumn") || t & 256) && (r += " last-col"), (i.boolAttr(e, "noHBand") || t & 512) && (r += " no-hband"), (i.boolAttr(e, "noVBand") || t & 1024) && (r += " no-vband"), r.trim();
   }
 }
-const Y = { pos: 0, leader: "none", style: "left" }, Rt = 50;
-function Bt(a = document.body) {
+const Y = { pos: 0, leader: "none", style: "left" }, Ft = 50;
+function Tt(a = document.body) {
   const e = document.createElement("div");
   e.style.width = "100pt", a.appendChild(e);
   const t = 100 / e.offsetWidth;
   return a.removeChild(e), t;
 }
-function Ft(a, e, t, r = 72 / 96) {
+function $t(a, e, t, r = 72 / 96) {
   const s = a.closest("p"), n = a.getBoundingClientRect(), o = s.getBoundingClientRect(), h = getComputedStyle(s), c = e?.length > 0 ? e.map((y) => ({
     pos: K(y.position),
     leader: y.leader,
     style: y.style
-  })).sort((y, R) => y.pos - R.pos) : [Y], f = c[c.length - 1], g = o.width * r, d = K(t);
-  let b = f.pos + d;
-  if (b < g)
-    for (; b < g && c.length < Rt; b += d)
+  })).sort((y, R) => y.pos - R.pos) : [Y], g = c[c.length - 1], m = o.width * r, d = K(t);
+  let b = g.pos + d;
+  if (b < m)
+    for (; b < m && c.length < Ft; b += d)
       c.push({ ...Y, pos: b });
   const S = parseFloat(h.marginLeft), x = o.left + S, M = (n.left - x) * r, P = c.find((y) => y.style != "clear" && y.pos > M);
   if (P == null)
@@ -2433,7 +2448,7 @@ const u = {
   svg: "http://www.w3.org/2000/svg",
   mathML: "http://www.w3.org/1998/Math/MathML"
 };
-class Tt {
+class Lt {
   constructor(e) {
     this.htmlDocument = e, this.className = "docx", this.styleMap = {}, this.currentPart = null, this.tableVerticalMerges = [], this.currentVerticalMerge = null, this.tableCellPositions = [], this.currentCellPosition = null, this.footnoteMap = {}, this.endnoteMap = {}, this.currentEndnoteIds = [], this.usedHederFooterParts = [], this.currentTabs = [], this.commentMap = {}, this.tasks = [], this.postRenderTasks = [];
   }
@@ -2466,7 +2481,7 @@ class Tt {
         }));
   }
   processStyleName(e) {
-    return e ? `${this.className}_${be(e)}` : this.className;
+    return e ? `${this.className}_${ve(e)}` : this.className;
   }
   processStyles(e) {
     const t = w(e.filter((s) => s.id != null), (s) => s.id);
@@ -2532,14 +2547,14 @@ class Tt {
     let n = null;
     for (let h = 0, c = s.length; h < c; h++) {
       this.currentFootnoteIds = [];
-      let g = s[h][0].sectProps;
-      const d = this.createPageElement(this.className, g);
-      this.renderStyleValues(e.cssStyle, d), this.options.renderHeaders && this.renderHeaderFooter(g.headerRefs, g, t.length, n != g, d);
+      let m = s[h][0].sectProps;
+      const d = this.createPageElement(this.className, m);
+      this.renderStyleValues(e.cssStyle, d), this.options.renderHeaders && this.renderHeaderFooter(m.headerRefs, m, t.length, n != m, d);
       for (const b of s[h]) {
         var o = this.createSectionContent(b.sectProps);
-        this.renderElements(b.elements, o), d.appendChild(o), g = b.sectProps;
+        this.renderElements(b.elements, o), d.appendChild(o), m = b.sectProps;
       }
-      this.options.renderFootnotes && this.renderNotes(this.currentFootnoteIds, this.footnoteMap, d), this.options.renderEndnotes && h == c - 1 && this.renderNotes(this.currentEndnoteIds, this.endnoteMap, d), this.options.renderFooters && this.renderHeaderFooter(g.footerRefs, g, t.length, n != g, d), t.push(d), n = g;
+      this.options.renderFootnotes && this.renderNotes(this.currentFootnoteIds, this.footnoteMap, d), this.options.renderEndnotes && h == c - 1 && this.renderNotes(this.currentEndnoteIds, this.endnoteMap, d), this.options.renderFooters && this.renderHeaderFooter(m.footerRefs, m, t.length, n != m, d), t.push(d), n = m;
     }
     return t;
   }
@@ -2568,17 +2583,17 @@ class Tt {
         if (this.options.breakPages && b.children && (o = b.children.findIndex((S) => (h = S.children?.findIndex(this.isPageBreakElement.bind(this)) ?? -1, h != -1))), (n || o != -1) && (r.sectProps = n, r.pageBreak = o != -1, r = { sectProps: null, elements: [], pageBreak: !1 }, s.push(r)), o != -1) {
           let S = b.children[o], x = h < S.children.length - 1;
           if (o < b.children.length - 1 || x) {
-            var c = d.children, f = { ...d, children: c.slice(o) };
-            if (d.children = c.slice(0, o), r.elements.push(f), x) {
+            var c = d.children, g = { ...d, children: c.slice(o) };
+            if (d.children = c.slice(0, o), r.elements.push(g), x) {
               let M = S.children, P = { ...S, children: M.slice(0, h) };
               d.children.push(P), S.children = M.slice(h);
             }
           }
         }
       }
-    let g = null;
+    let m = null;
     for (let d = s.length - 1; d >= 0; d--)
-      s[d].sectProps == null ? s[d].sectProps = g ?? t : g = s[d].sectProps;
+      s[d].sectProps == null ? s[d].sectProps = m ?? t : m = s[d].sectProps;
     return s;
   }
   groupByPageBreaks(e) {
@@ -2625,19 +2640,21 @@ section.${e}>footer { z-index: 1; }
           content: "' '",
           display: "inline-block",
           background: `var(${c})`
-        }, n.bullet.style), this.tasks.push(this.document.loadNumberingImage(n.bullet.src).then((f) => {
-          var g = `${this.rootSelector} { ${c}: url(${f}) }`;
-          t.appendChild(this.createStyleElement(g));
+        }, n.bullet.style), this.tasks.push(this.document.loadNumberingImage(n.bullet.src).then((g) => {
+          var m = `${this.rootSelector} { ${c}: url(${g}) }`;
+          t.appendChild(this.createStyleElement(m));
         }));
       } else if (n.levelText) {
         let c = this.numberingCounter(n.id, n.level);
-        const f = c + " " + (n.start - 1);
+        const g = c + " " + (n.start - 1);
         n.level > 0 && (r += this.styleToString(`p.${this.numberingClass(n.id, n.level - 1)}`, {
-          "counter-set": f
-        })), s.push(f), r += this.styleToString(`${o}:before`, {
-          content: this.levelTextToContent(n.levelText, n.suff, n.id, this.numFormatToCssValue(n.format)),
+          "counter-set": g
+        })), s.push(g);
+        const { text: m, style: d } = n.format === "bullet" ? be(n.levelText, n.rStyle) : { text: n.levelText, style: n.rStyle };
+        r += this.styleToString(`${o}:before`, {
+          content: this.levelTextToContent(m, n.suff, n.id, this.numFormatToCssValue(n.format)),
           "counter-increment": c,
-          ...n.rStyle
+          ...d
         });
       } else
         h = this.numFormatToCssValue(n.format);
@@ -2661,9 +2678,9 @@ section.${e}>footer { z-index: 1; }
         var o = c.linked && r[c.linked];
         o ? n = n.concat(o.styles) : this.options.debug && console.warn(`Can't find linked style ${c.linked}`);
       }
-      for (const f of n) {
+      for (const g of n) {
         var h = `${c.target ?? ""}.${c.cssName}`;
-        c.target != f.target && (h += ` ${f.target}`), s[c.target] == c && (h = `.${this.className} ${c.target}, ` + h), t += this.styleToString(h, f.values);
+        c.target != g.target && (h += ` ${g.target}`), s[c.target] == c && (h = `.${this.className} ${c.target}, ` + h), t += this.styleToString(h, g.values);
       }
     }
     return this.createStyleElement(t);
@@ -2902,7 +2919,7 @@ section.${e}>footer { z-index: 1; }
     var t = this.createElement("span");
     if (t.innerHTML = "&emsp;", this.options.experimental) {
       t.className = this.tabStopClass();
-      var r = $t(e, l.Paragraph)?.tabs;
+      var r = Dt(e, l.Paragraph)?.tabs;
       this.currentTabs.push({ stops: r, span: t });
     }
     return t;
@@ -2977,11 +2994,11 @@ section.${e}>footer { z-index: 1; }
     return t.push(this.createElementNS(u.mathML, "mo", null, [e.props.beginChar ?? "("])), t.push(...this.renderElements(e.children)), t.push(this.createElementNS(u.mathML, "mo", null, [e.props.endChar ?? ")"])), this.createElementNS(u.mathML, "mrow", null, t);
   }
   renderMmlNary(e) {
-    const t = [], r = w(e.children, (f) => f.type), s = r[l.MmlSuperArgument], n = r[l.MmlSubArgument], o = s ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(s))) : null, h = n ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(n))) : null, c = this.createElementNS(u.mathML, "mo", null, [e.props?.char ?? "∫"]);
+    const t = [], r = w(e.children, (g) => g.type), s = r[l.MmlSuperArgument], n = r[l.MmlSubArgument], o = s ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(s))) : null, h = n ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(n))) : null, c = this.createElementNS(u.mathML, "mo", null, [e.props?.char ?? "∫"]);
     return o || h ? t.push(this.createElementNS(u.mathML, "munderover", null, [c, h, o])) : o ? t.push(this.createElementNS(u.mathML, "mover", null, [c, o])) : h ? t.push(this.createElementNS(u.mathML, "munder", null, [c, h])) : t.push(c), t.push(...this.renderElements(r[l.MmlBase].children)), this.createElementNS(u.mathML, "mrow", null, t);
   }
   renderMmlPreSubSuper(e) {
-    const t = [], r = w(e.children, (f) => f.type), s = r[l.MmlSuperArgument], n = r[l.MmlSubArgument], o = s ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(s))) : null, h = n ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(n))) : null, c = this.createElementNS(u.mathML, "mo", null);
+    const t = [], r = w(e.children, (g) => g.type), s = r[l.MmlSuperArgument], n = r[l.MmlSubArgument], o = s ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(s))) : null, h = n ? this.createElementNS(u.mathML, "mo", null, E(this.renderElement(n))) : null, c = this.createElementNS(u.mathML, "mo", null);
     return t.push(this.createElementNS(u.mathML, "msubsup", null, [c, h, o])), t.push(...this.renderElements(r[l.MmlBase].children)), this.createElementNS(u.mathML, "mrow", null, t);
   }
   renderMmlGroupChar(e) {
@@ -3093,9 +3110,9 @@ section.${e}>footer { z-index: 1; }
   }
   refreshTabStops() {
     this.options.experimental && setTimeout(() => {
-      const e = Bt();
+      const e = Tt();
       for (let t of this.currentTabs)
-        Ft(t.span, t.stops, this.defaultTabSize, e);
+        $t(t.span, t.stops, this.defaultTabSize, e);
     }, 500);
   }
   createElementNS(e, t, r, s) {
@@ -3122,9 +3139,9 @@ function Q(a) {
   a.innerHTML = "";
 }
 function I(a, e) {
-  e.forEach((t) => a.appendChild(ve(t) ? document.createTextNode(t) : t));
+  e.forEach((t) => a.appendChild(Se(t) ? document.createTextNode(t) : t));
 }
-function $t(a, e) {
+function Dt(a, e) {
   for (var t = a.parent; t != null && t.type != e; )
     t = t.parent;
   return t;
@@ -3150,22 +3167,22 @@ const de = {
   renderComments: !1,
   renderAltChunks: !0
 };
-function Lt(a, e) {
+function Ot(a, e) {
   const t = { ...de, ...e };
-  return j.load(a, new At(t), t);
-}
-async function Dt(a, e, t, r) {
-  const s = { ...de, ...r };
-  return await new Tt(window.document).render(a, e, t, s);
+  return j.load(a, new Rt(t), t);
 }
 async function Ht(a, e, t, r) {
-  const s = await Lt(a, r);
-  return await Dt(s, e, t, r), s;
+  const s = { ...de, ...r };
+  return await new Lt(window.document).render(a, e, t, s);
+}
+async function _t(a, e, t, r) {
+  const s = await Ot(a, r);
+  return await Ht(s, e, t, r), s;
 }
 export {
   de as defaultOptions,
-  Lt as parseAsync,
-  Ht as renderAsync,
-  Dt as renderDocument
+  Ot as parseAsync,
+  _t as renderAsync,
+  Ht as renderDocument
 };
-//# sourceMappingURL=docx-preview-CtPnTDgT.js.map
+//# sourceMappingURL=docx-preview-vYhj6t6f.js.map

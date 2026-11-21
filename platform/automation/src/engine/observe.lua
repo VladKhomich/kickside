@@ -7,8 +7,12 @@ local automation_types = require("types")
 local support = require("engine_support")
 local errors = require("errors")
 local history = require("history_reader")
+local workflow_history = require("workflow_history")
+local registry = require("registry")
+local funcs = require("funcs")
 
 type Map = { [string]: any }
+type CurrentFailureReader = (string, any) -> (Map?, any?)
 
 local part = {}
 
@@ -17,6 +21,48 @@ local MAX_PAGE_SIZE = 1000
 -- Readable automations are listed and aggregated in bounded chunks.
 local LIST_CHUNK = 500
 local AGGREGATE_CHUNK = 200
+
+local INDEXING = {pending=true,indexed=true,failed=true,superseded=true}
+local PUBLICATION_OUTCOMES = "kickside.kb10.injection:publication_outcomes"
+local PUBLICATION_OUTCOMES_TYPE = "automation.publication_outcomes_reader"
+
+-- The Knowledge reader receives only receipt-backed publication identities and
+-- is responsible for enforcing KB READ under the current actor. Accept a
+-- same-order bounded result so a reader cannot associate an outcome with a
+-- different history row.
+local function attach_publication_outcomes(page: Map, logger: any): ()
+    -- Knowledge is optional. Discover the explicitly tagged function at read
+    -- time so Automation has no install-time dependency or requirement edge.
+    local entry,discovery_err=registry.get(PUBLICATION_OUTCOMES)
+    local meta=type(entry) == "table" and entry.meta or nil
+    if discovery_err or type(entry) ~= "table" or entry.kind ~= "function.lua"
+        or type(meta) ~= "table" or meta.type ~= PUBLICATION_OUTCOMES_TYPE then return end
+    local refs: {Map}={}
+    local entries: {Map}={}
+    for _,entry in ipairs(page.entries or {}) do
+        local ref=entry.publication_ref
+        if entry.state == "resolved" and type(ref) == "table" then
+            refs[#refs+1]=ref;entries[#entries+1]=entry
+        end
+    end
+    if #refs == 0 then return end
+    local outcomes,read_err=funcs.call(PUBLICATION_OUTCOMES,{refs=refs})
+    if read_err or type(outcomes) ~= "table" or #outcomes ~= #refs then
+        logger:named("automation.history"):warn("could not read Knowledge publication outcomes")
+        return
+    end
+    for index,outcome in ipairs(outcomes) do
+        if type(outcome) == "table" and INDEXING[outcome.status] then
+            local projected: Map={status=outcome.status}
+            if type(outcome.reason) == "string" and outcome.reason ~= "" then projected.reason=outcome.reason end
+            entries[index].indexing=projected
+        end
+    end
+end
+
+local function clear_publication_refs(page: Map): ()
+    for _,entry in ipairs(page.entries or {}) do entry.publication_ref=nil end
+end
 
 -- The public projection of a drive: position, phase, fences and counters.
 -- The applied declaration, round token and occurrence payload stay private.
@@ -157,9 +203,40 @@ function part.attach(M: any, dependencies: any, P: any): ()
         local component = dependencies.component :: any
         local _, access_err = component.validate_access(component_id, component.ACCESS.ADMIN)
         if access_err then return nil, access_err end
-        return read_executor(function(db: any): (any?, any)
+        local page, history_err = read_executor(function(db: any): (any?, any)
             return history.list(db, component_id, opts, (dependencies.execution_identity :: any).validate)
         end)
+        if history_err or not page or page.kind ~= "deliveries" or not workflow_history.lookup then
+            if not history_err and page and page.kind == "deliveries" then
+                attach_publication_outcomes(page,dependencies.logger)
+                clear_publication_refs(page)
+            end
+            return page, history_err
+        end
+        local keys: { string } = {}
+        local seen: { [string]: boolean } = {}
+        for _, entry in ipairs(page.entries) do
+            if entry.state == "resolved" and not seen[entry.identity_key] then
+                seen[entry.identity_key] = true
+                keys[#keys + 1] = entry.identity_key
+            end
+        end
+        if #keys == 0 then
+            attach_publication_outcomes(page,dependencies.logger)
+            clear_publication_refs(page)
+            return page, nil
+        end
+        local outcomes, workflow_err = workflow_history.lookup(component_id, keys)
+        if workflow_err then
+            (dependencies.logger :: any):named("automation.history"):warn("could not read Workflow outcomes")
+        elseif outcomes then
+            for _, entry in ipairs(page.entries) do
+                if entry.state == "resolved" then entry.workflow_run = outcomes[entry.identity_key] end
+            end
+        end
+        attach_publication_outcomes(page,dependencies.logger)
+        clear_publication_refs(page)
+        return page, nil
     end
 
     -- Read the canonical drive, command and ledger status.
@@ -182,11 +259,22 @@ function part.attach(M: any, dependencies: any, P: any): ()
         local drive = dependencies.drive :: any
         local command = dependencies.command :: any
         local json_mod = dependencies.json :: any
-        return read_executor(function(db: any): (any?, any)
+        local read_current_failure = (workflow_history :: { current_failure: CurrentFailureReader? }).current_failure
+        local flow_ref: any = nil
+        local status, status_err = read_executor(function(db: any): (any?, any)
             local rows, next_key, list_err = drive.list(db, component_id, { after_key = o.page_token, limit = page_size })
             if list_err then return nil, list_err end
             local drives: { Map } = {}
-            for _, row in ipairs(rows or {}) do drives[#drives + 1] = public_drive(row, json_mod) end
+            for _, row in ipairs(rows or {}) do
+                drives[#drives + 1] = public_drive(row, json_mod)
+                if read_current_failure and row.drive_key == "main" then
+                    local declaration = row.applied and row.applied.declaration
+                    if type(declaration) == "table" and declaration.sink_port == "kickside.workflows:run_sink"
+                        and type(declaration.sink_config) == "table" then
+                        flow_ref = declaration.sink_config.flow_ref
+                    end
+                end
+            end
             local state, state_err = command.state(db, component_id)
             if state_err or not state then return nil, state_err end
             local counts, count_err = db:query("SELECT COALESCE(SUM(unresolved_count), 0) AS unresolved,"
@@ -220,6 +308,14 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 next_page_token = next_key,
             }, nil
         end)
+        if status_err or not status or not flow_ref or not read_current_failure then return status, status_err end
+        local failure, failure_err = read_current_failure(component_id, flow_ref)
+        if failure_err then
+            (dependencies.logger :: any):named("automation.status"):warn("could not read current Workflow failure")
+        else
+            status.current_workflow_failure = failure
+        end
+        return status, nil
     end
 
     -- drive_statuses(ids) -> { [automation_id] = { drives } }: the

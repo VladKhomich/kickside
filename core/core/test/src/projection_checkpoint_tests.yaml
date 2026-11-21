@@ -52,6 +52,33 @@ entries:
           events:
             input: [{type: "kickside.test.threads:trigger"}]
 
+        - kind: test.declared.checkpoint
+          projection_key: ranged
+          cursor_key: ranged
+          worker_ref: proc://app:range_checkpoint_worker
+          input_mode: prefetch_events
+          events:
+            input: [{type: "kickside.test.threads:trigger"}]
+
+  - name: range_checkpoint_worker
+    kind: process.lua
+    meta:
+      type: projection.worker
+      private: true
+      checkpointed_apply: true
+      filtered_checkpoint: true
+      transition_from:
+        worker_ref: func://app:test_count_worker
+        target_db_config: app:range_checkpoint_database
+    source: file://range_checkpoint_worker.lua
+    method: run
+    imports:
+      apply: kickside.core.projections:apply
+
+  - name: range_checkpoint_database
+    kind: registry.entry
+    meta: {db_id: "app:sql_transient_first"}
+
   - name: declared_checkpoint_worker
     kind: process.lua
     meta:
@@ -63,7 +90,7 @@ entries:
         shared_db_config: app:projection_transition_database
     source: file://projection_declared_checkpoint_worker.lua
     method: run
-    modules: [security]
+    modules: [security, sql]
     imports:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types
@@ -84,6 +111,7 @@ entries:
       clock: kickside.core.jobs:clock
       fixture: kickside.core.threads:contract_fixture
       invoke: kickside.core.projections:invoke
+      threads: kickside.core.threads.persist:writer
       provision: kickside.core.threads:provision
       projections: kickside.core.projections.persist:writer
       test: wippy.test:test

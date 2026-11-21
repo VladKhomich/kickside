@@ -5,6 +5,7 @@ local sql = require("sql")
 local json = require("json")
 local clock = require("clock")
 local registry = require("registry")
+local ctx = require("ctx")
 local threads_writer = require("threads_writer")
 local jobs = require("jobs")
 local jobs_wake = require("jobs_wake")
@@ -17,12 +18,14 @@ local committed_error = require("committed_error")
 local core_db = require("core_db")
 local jobs_config = require("jobs_config")
 local lease_status = require("lease_status")
+local registration = require("registration")
 local job_types = require("job_types")
 
 local M = {}
 
 type CheckpointWriter = (sql.Transaction, string) -> (boolean?, error?)
-type Checkpoint = { write: CheckpointWriter?, first_seq: number? }
+type RangeInput = {id: string, seq: number}
+type Checkpoint = {write: CheckpointWriter?, first_seq: number?, owner: table?, manifest: {RangeInput}?, filter: table?}
 
 local function invalid(message: string): error
     return (errors.new({ message = message, kind = errors.INVALID, retryable = false }) :: error)
@@ -223,8 +226,52 @@ local function notify_progress(snapshot: table, last: number, progressed: boolea
     return err
 end
 
+-- Component adoption locks its row before updating the private identity.
+-- Check that row before the thread and cursor acquire their write locks.
+local function check_checkpoint_owner(tx: sql.Transaction, dbtype: string, owner: table): error?
+    local lock = dbtype == sql.type.POSTGRES and " FOR SHARE" or ""
+    local rows, err = tx:query([[SELECT identity_generation,CAST(created_at AS TEXT) AS incarnation,deleting_at
+        FROM kickside_components WHERE component_id=$1]] .. lock, {owner.component_id})
+    if err then return errors.wrap(err, "projection checkpoint owner fence read failed") end
+    if type(rows) ~= "table" then return response_error("checkpoint.owner") end
+    local row = rows[1]
+    if not row or row.deleting_at ~= nil or row.incarnation ~= owner.incarnation
+        or tonumber(row.identity_generation) ~= owner.generation then
+        return errors.new({kind = errors.CONFLICT, retryable = true,
+            message = "projection owner authority changed during execution",
+            details = {code = "projection_checkpoint_owner_changed"}})
+    end
+    return nil
+end
+
+-- Scan only identity columns over the assigned physical interval. A caller may
+-- close a prefix before the next eligible event, including across excluded rows.
+local function check_range(tx: sql.Transaction, thread_id: string, prior: number, last: number,
+        filter: table, manifest: {RangeInput}): error?
+    local marks, types = {}, {}
+    for index, declaration in ipairs(filter) do
+        marks[index], types[index] = "?", declaration.type
+    end
+    local rows, err = sql.builder.select("id", "seq"):from("kickside_event")
+        :where("thread_id = ? AND seq > ? AND seq <= ?", thread_id, prior, last)
+        :where("type IN (" .. table.concat(marks, ",") .. ")", table.unpack(types))
+        :order_by("seq"):limit(#manifest + 1):run_with(tx):query()
+    if err then return errors.wrap(err, "projection checkpoint range read failed") end
+    if type(rows) ~= "table" then return response_error("checkpoint.range") end
+    if #rows == #manifest then
+        for index, row in ipairs(rows) do
+            local expected = manifest[index]
+            if type(expected) ~= "table" or expected.id ~= row.id or expected.seq ~= tonumber(row.seq) then
+                return errors.new({kind = errors.CONFLICT, retryable = true, message = "projection checkpoint input changed"})
+            end
+        end
+        return nil
+    end
+    return errors.new({kind = errors.CONFLICT, retryable = true, message = "projection checkpoint input changed"})
+end
+
 local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_last: number, output: table,
-        writes: table[], checkpoint: Checkpoint?): (table?, error?)
+        writes: table[], checkpoint: Checkpoint?, empty_scan: boolean?, owned: table?): (table?, error?)
     local raw_type, type_err = db:type()
     if type_err then return nil, errors.wrap(type_err, "projection dialect unavailable") end
     if type(raw_type) ~= "string" or raw_type == "" then return nil, response_error("database.type") end
@@ -238,6 +285,11 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local function abort(err: error): (nil, error)
         return nil, rollback(tx, err)
     end
+    local owner = owned or (checkpoint and checkpoint.owner)
+    if owner then
+        local owner_err = check_checkpoint_owner(tx, dbtype, owner)
+        if owner_err then return abort(owner_err) end
+    end
     local locked_threads, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, ids)
     if lock_err then return abort(lock_err) end
     if type(locked_threads) ~= "table" then return abort(response_error("locked_threads")) end
@@ -248,8 +300,15 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         return abort(job_types.lease_lost_error("projection source thread is deleting"))
     end
     local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
-    local rows, cursor_err = tx:query([[SELECT generation,last_seq,status,job_id,thread_id,projection_id,continuation FROM kickside_projection_cursor
-        WHERE id=$1]] .. suffix, { snapshot.id })
+    -- Hot registry publication can precede migration 20. A pre-migration row
+    -- simply has no optional lifecycle handoff position.
+    local cursor_query = "SELECT * FROM kickside_projection_cursor WHERE id=$1"
+    if checkpoint and checkpoint.manifest then
+        cursor_query = [[SELECT c.generation,c.last_seq,c.status,c.job_id,c.thread_id,c.projection_id,c.continuation,
+            p.reset_generation FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
+            WHERE c.id=$1]]
+    end
+    local rows, cursor_err = tx:query(cursor_query .. suffix, {snapshot.id})
     if cursor_err then return abort(errors.wrap(cursor_err, "projection fence read failed")) end
     if type(rows) ~= "table" then return abort(response_error("cursor.rows")) end
     local cursor = rows[1]
@@ -260,7 +319,8 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     end
     if cursor.status ~= "active" or tonumber(cursor.generation) ~= tonumber(snapshot.generation)
         or tonumber(cursor.last_seq) ~= tonumber(snapshot.last_seq)
-        or (checkpoint and (cursor.continuation or "") ~= (snapshot.continuation or "")) then
+        or (checkpoint and (cursor.continuation or "") ~= (snapshot.continuation or ""))
+        or (checkpoint and checkpoint.manifest and cursor.reset_generation ~= snapshot.reset_generation) then
         if checkpoint then
             return abort(errors.new({kind = errors.CONFLICT, retryable = false,
                 message = "projection checkpoint lost its position",
@@ -299,31 +359,42 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         local lease_err = check_lease(tx, job, dbtype, #writes == 0)
         if lease_err then return abort(lease_err) end
     end
+    if (effect or (checkpoint and checkpoint.manifest)) and (tonumber(source_thread.max_pruned_seq) or 0) > prior then
+        return abort(errors.new({kind = errors.NOT_FOUND, retryable = false, message = "projection checkpoint input was pruned"}))
+    end
+    if checkpoint and checkpoint.manifest then
+        if last > current_head then return abort(invalid("filtered checkpoint exceeds the current thread head")) end
+        if partial or (cursor.continuation or "") ~= "" then
+            return abort(invalid("a filtered checkpoint cannot continue inside an event"))
+        end
+        if not checkpoint.filter then return abort(invalid("filtered checkpoint requires an input filter")) end
+        local range_err = check_range(tx, snapshot.thread_id, prior, last, checkpoint.filter, checkpoint.manifest)
+        if range_err then return abort(range_err) end
+    end
     if effect then
         if output.last_seq == nil or (partial and last ~= prior) or (not partial and last <= prior) then
             return abort(invalid("projection checkpoint must consume the next complete event"))
         end
-        if (tonumber(source_thread.max_pruned_seq) or 0) > prior then
-            return abort(errors.new({kind = errors.NOT_FOUND, retryable = false, message = "projection checkpoint input was pruned"}))
-        end
-        local pinned, pin_err = M.continuation(snapshot)
-        if pin_err then return abort(pin_err) end
-        local event, event_err = checkpoint_event(tx, snapshot.thread_id, prior, pinned)
-        if event_err then return abort(event_err) end
-        if not event then return abort(response_error("checkpoint.event")) end
-        local event_seq = tonumber(event.seq)
-        if event_seq <= prior or event_seq > current_head or event_seq > prefetched_last
-            or (not partial and last ~= event_seq) then
-            return abort(errors.new({kind = errors.CONFLICT, retryable = true, message = "projection checkpoint input changed"}))
-        end
-        if partial then
-            if output.body ~= nil or output.patch ~= nil or #writes ~= 0 then
-                return abort(invalid("projection continuation cannot publish completed event outputs"))
+        if not checkpoint.manifest then
+            local pinned, pin_err = M.continuation(snapshot)
+            if pin_err then return abort(pin_err) end
+            local event, event_err = checkpoint_event(tx, snapshot.thread_id, prior, pinned)
+            if event_err then return abort(event_err) end
+            if not event then return abort(response_error("checkpoint.event")) end
+            local event_seq = tonumber(event.seq)
+            if event_seq <= prior or event_seq > current_head or event_seq > prefetched_last
+                or (not partial and last ~= event_seq) then
+                return abort(errors.new({kind = errors.CONFLICT, retryable = true, message = "projection checkpoint input changed"}))
             end
-            local next_value, position_err = next_continuation(event, pinned, output.continuation)
-            if position_err then return abort(position_err) end
-            if not next_value then return abort(response_error("cursor.continuation")) end
-            continuation = next_value
+            if partial then
+                if output.body ~= nil or output.patch ~= nil or #writes ~= 0 then
+                    return abort(invalid("projection continuation cannot publish completed event outputs"))
+                end
+                local next_value, position_err = next_continuation(event, pinned, output.continuation)
+                if position_err then return abort(position_err) end
+                if not next_value then return abort(response_error("cursor.continuation")) end
+                continuation = next_value
+            end
         end
         local ok, written, effect_err = pcall(effect, tx, dbtype)
         if not ok then
@@ -334,11 +405,14 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         if written ~= true then return abort(response_error("checkpoint.writer")) end
     end
     local now = clock.now(dbtype)
-    if not checkpoint or (effect and not partial) then
+    if not checkpoint or empty_scan or (effect and not partial) then
         local updated, update_err
-        if not checkpoint or output.body ~= nil or output.patch ~= nil then
+        if (not checkpoint and not empty_scan) or output.body ~= nil or output.patch ~= nil then
             local folded, fold_err = next_body(body, output)
             if fold_err then return abort(fold_err) end
+            if owned and not registration.declaration_matches(body, folded) then
+                return abort(invalid("component-owned projection cannot change its declaration"))
+            end
             local encoded, encode_err = json.encode(folded)
             if encode_err then return abort(errors.wrap(encode_err, "projection worker body is not JSON")) end
             if type(encoded) ~= "string" then return abort(response_error("body_json")) end
@@ -352,7 +426,7 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         if fold_write_err then return abort(fold_write_err) end
         if checkpoint and updated.rows_affected ~= 1 then return abort(response_error("checkpoint.position")) end
     end
-    if not checkpoint or effect then
+    if not checkpoint or empty_scan or effect then
         local statement = [[UPDATE kickside_projection_cursor SET last_seq=$1,
             last_error=$2,updated_at=$3 WHERE id=$4 AND generation=$5 AND last_seq=$6 AND status='active']]
         local values: {any} = {last, output.last_error, now, snapshot.id, snapshot.generation, snapshot.last_seq}
@@ -407,6 +481,8 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "projection apply commit failed") end
     local result = { self_completed = not effect, completion = done, last_seq = last,
+        pending_transition = not checkpoint and cursor.pending_transition_seq ~= nil
+            and last >= (tonumber(cursor.pending_transition_seq) or math.huge) or nil,
         continuation = effect and continuation or nil }
     if not checkpoint then
         local notify_err = notify_progress(snapshot, last, last > prior or #writes > 0)
@@ -424,7 +500,7 @@ end
 -- slot. Infrastructure publication also requires the current running lease.
 -- Returns the self-completion of a deterministic failure, else nil.
 function M.fail(db_id: string, job: table, snapshot: table, failure: error, deterministic: boolean,
-        checkpointed: boolean?): (table?, error?)
+        checkpointed: boolean?, owner: table?): (table?, error?)
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection failure DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
@@ -442,6 +518,10 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
     if type(tx) ~= "table" and type(tx) ~= "userdata" then return nil, release(db, response_error("transaction")) end
     local function abort(err: error): (nil, error)
         return nil, release(db, rollback(tx, err)) :: error
+    end
+    if deterministic and owner then
+        local owner_err = check_checkpoint_owner(tx, dbtype, owner)
+        if owner_err then return abort(owner_err) end
     end
     local locked, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, { tostring(snapshot.thread_id) })
     if lock_err then return abort(lock_err) end
@@ -513,17 +593,31 @@ end
 -- Resolve returned writes live before taking an apply connection. Actor-bound
 -- authorization re-enters Component and Threads, including SQLite's single pool.
 local function advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table,
-        checkpoint: Checkpoint?): (table?, error?)
+        checkpoint: Checkpoint?, empty_scan: boolean?, owned: table?): (table?, error?)
     local writes, write_err = append_writes(output, tostring(snapshot.thread_id), snapshot.body)
     if write_err then return nil, write_err end
-    if #writes > 0 and (snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
-        local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
-        if identity_err then return nil, identity_err end
-        if type(identity) ~= "table" then return nil, response_error("execution_identity") end
-        local admitted, admission_err = execution_identity.run_as(identity,
-            "kickside.core.threads:authorize_projection_writes", { writes = writes }, {
-                deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
-            })
+    if owned and #writes > 0 then return nil, invalid("component-owned projection cannot return append_events") end
+    local in_owner_process = checkpoint and checkpoint.owner and checkpoint.write
+    if #writes > 0 and (in_owner_process or snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
+        local admitted, admission_err
+        if in_owner_process then
+            -- A supervised checkpoint process already runs in the projection's
+            -- admitted actor and scope. Authorize its effects in that frame.
+            local actor, actor_err = require("security").actor()
+            if actor_err then return nil, actor_err end
+            if not actor or not snapshot.actor_id or actor:id() ~= snapshot.actor_id then
+                return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "checkpoint actor differs from its admitted cursor"})
+            end
+            admitted, admission_err = require("funcs").call("kickside.core.threads:authorize_projection_writes", {writes = writes})
+        else
+            local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
+            if identity_err then return nil, identity_err end
+            if type(identity) ~= "table" then return nil, response_error("execution_identity") end
+            admitted, admission_err = execution_identity.run_as(identity,
+                "kickside.core.threads:authorize_projection_writes", { writes = writes }, {
+                    deferred_owner = "kickside.core.projections:tick", execution_root = identity.component_id,
+                })
+        end
         if admission_err then return nil, admission_err end
         if type(admitted) ~= "table" or type(admitted.writes) ~= "table" then
             return nil, response_error("admitted.writes")
@@ -533,7 +627,7 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
     local db, db_err = sql.get(db_id)
     if db_err then return nil, errors.wrap(db_err, "projection apply DB unavailable") end
     if type(db) ~= "table" and type(db) ~= "userdata" then return nil, response_error("database") end
-    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checkpoint)
+    local result, apply_err = advance_tx(db, job, snapshot, prefetched_last, output, writes, checkpoint, empty_scan, owned)
     local finish_err = release(db, apply_err)
     if checkpoint and result then
         local progressed = result.last_seq > tonumber(snapshot.last_seq)
@@ -550,8 +644,15 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
     return result, nil
 end
 
-function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table): (table?, error?)
-    return advance(db_id, job, snapshot, prefetched_last, output)
+function M.advance(db_id: string, job: table, snapshot: table, prefetched_last: number, output: table,
+        empty_scan: boolean?, owned: table?): (table?, error?)
+    return advance(db_id, job, snapshot, prefetched_last, output, nil, empty_scan, owned)
+end
+
+-- The scheduler can settle a filtered physical page without spawning its worker.
+-- Revalidate the empty selection under the same thread and owner locks as publication.
+function M.advance_filtered_empty(db_id: string, job: table, snapshot: table, last: number, owner: table): (table?, error?)
+    return advance(db_id, job, snapshot, last, {}, {owner = owner, manifest = {}, filter = snapshot.body.events.input}, true)
 end
 
 local function shared_db(target_db: string): (string?, error?)
@@ -569,14 +670,36 @@ end
 -- The deployed writer invokes this library in its own frame. Worker output
 -- carries data only. The transaction and callback are not process arguments.
 function M.checkpoint(target_db: string, job: table, snapshot: table, prefetched_last: number, output: table,
-        write: CheckpointWriter): (table?, error?)
+        write: CheckpointWriter, manifest: {RangeInput}?): (table?, error?)
     local db_id, db_err = shared_db(target_db)
     if not db_id then return nil, db_err end
     if type(write) ~= "function" then return nil, invalid("projection checkpoint requires an owning writer") end
-    return advance(db_id, job, snapshot, prefetched_last, output, {write = write})
+    local proof, proof_err = ctx.get("kickside.core.projection_checkpoint")
+    if proof_err and not errors.is(proof_err, errors.NOT_FOUND) then return nil, proof_err end
+    if proof ~= nil and (type(proof) ~= "table" or type(proof.owner) ~= "table"
+        or type(proof.owner.incarnation) ~= "string" or type(proof.owner.generation) ~= "number"
+        or proof.cursor_id ~= snapshot.id or proof.owner.component_id ~= snapshot.thread_id
+        or proof.job_id ~= job.id or proof.lease_token ~= job.lease_token
+        or tonumber(proof.execution_seq) ~= tonumber(job.execution_seq)) then
+        return nil, invalid("projection checkpoint does not match its admitted owner and lease")
+    end
+    local filter: table? = nil
+    if proof ~= nil then filter = proof.filter end
+    if filter or manifest ~= nil then
+        if type(filter) ~= "table" or type(manifest) ~= "table" or #manifest == 0
+            or proof.from_seq ~= snapshot.last_seq or proof.to_seq ~= prefetched_last
+            or proof.reset_generation ~= snapshot.reset_generation or type(output.last_seq) ~= "number"
+            or output.last_seq ~= math.floor(output.last_seq) or output.last_seq <= proof.from_seq
+            or output.last_seq > proof.to_seq or #manifest > output.last_seq - proof.from_seq then
+            return nil, invalid("filtered checkpoint is outside its assigned range")
+        end
+    end
+    return advance(db_id, job, snapshot, prefetched_last, output, {write = write, owner = proof and proof.owner,
+        manifest = manifest, filter = filter})
 end
 
-function M.finish_checkpointed(target_db: string, job: table, snapshot: table, first_seq: number): (table?, error?)
+function M.finish_checkpointed(target_db: string, job: table, snapshot: table, first_seq: number,
+        owner: table?): (table?, error?)
     local db_id, db_err = shared_db(target_db)
     if not db_id then return nil, db_err end
     local position = tonumber(snapshot.last_seq)
@@ -584,7 +707,7 @@ function M.finish_checkpointed(target_db: string, job: table, snapshot: table, f
         or first_seq ~= math.floor(first_seq) then
         return nil, invalid("projection checkpoint settlement requires the execution's first position")
     end
-    return advance(db_id, job, snapshot, position, {last_seq = position}, {first_seq = first_seq})
+    return advance(db_id, job, snapshot, position, {last_seq = position}, {first_seq = first_seq, owner = owner})
 end
 
 return M

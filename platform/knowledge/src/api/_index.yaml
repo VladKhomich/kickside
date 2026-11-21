@@ -328,6 +328,25 @@ entries:
     func: ingest_existing_upload
     path: /knowledge/{id}/ingest-upload
 
+  - name: retry_source
+    kind: function.lua
+    source: file://retry_source.lua
+    modules: [http, json, security]
+    imports:
+      http_errors: kickside.contract:http_errors
+      reingest: kickside.knowledge.injection:thread_ingest_reingest
+    method: handler
+    security:
+      policies:
+        - kickside.knowledge.security:content_upserted_publish
+
+  - name: retry_source.endpoint
+    kind: http.endpoint
+    meta: {}
+    method: POST
+    func: retry_source
+    path: /knowledge/{id}/retry-source
+
   # Search
 
   - name: search

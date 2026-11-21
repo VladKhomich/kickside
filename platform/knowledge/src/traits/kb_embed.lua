@@ -139,6 +139,7 @@ local function handle(args: any, context: any)
             size = rec.size,
             metadata = rec.metadata,
         })
+        if type(ingest_err) == "userdata" then return nil, ingest_err end
         if ingest_err or not result then
             return nil, errors.new({ message = tostring("ingest enqueue failed: " .. tostring(ingest_err)), kind = errors.INTERNAL })
         end

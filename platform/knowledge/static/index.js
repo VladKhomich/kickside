@@ -14,7 +14,7 @@ class e extends o {
   }
   static get vueConfig() {
     return {
-      ...n(() => import("./lazy-mount-DDtzJ6RP.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Knowledge. Reload the page to try again.", timeout: 3e4 })
+      ...n(() => import("./lazy-mount-DZ7wwJ5Y.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Knowledge. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }

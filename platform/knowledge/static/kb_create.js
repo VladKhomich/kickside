@@ -16,7 +16,7 @@ class e extends o {
     };
   }
   static get vueConfig() {
-    return n(() => import("./KbCreate-oGDN1Obd.js").then((t) => ({ rootComponent: t.default, plugins: [i] })), { surface: "compact", loading: "Loading the new knowledge base dialog…", failed: "Could not load the new knowledge base dialog. Reload the page to try again.", delay: 200, timeout: 3e4 });
+    return n(() => import("./KbCreate-BNMkotRw.js").then((t) => ({ rootComponent: t.default, plugins: [i] })), { surface: "compact", loading: "Loading the new knowledge base dialog…", failed: "Could not load the new knowledge base dialog. Reload the page to try again.", delay: 200, timeout: 3e4 });
   }
 }
 async function d() {

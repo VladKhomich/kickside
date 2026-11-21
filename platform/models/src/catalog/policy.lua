@@ -569,6 +569,7 @@ M.provider_context = provider_context
 M.public_profile = public_profile
 M.export_profile = export_profile
 M.same_value = same_value
+M.url_has_credentials = url_has_credentials
 M.config_credential_error = config_credential_error
 M.clean_profile_input = clean_profile_input
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.98](https://github.com/kicksideai/kickside/compare/jobs-v0.1.97...jobs-v0.1.98) (2026-11-20)
+
+
+### Bug Fixes
+
+* **jobs:** bound wake fanout retention scans ([#792](https://github.com/kicksideai/kickside/issues/792)) ([96d28c9](https://github.com/kicksideai/kickside/commit/96d28c96a1b162c86eb8790d74e6480cda367943))
+
+## [0.1.97](https://github.com/kicksideai/kickside/compare/jobs-v0.1.96...jobs-v0.1.97) (2026-11-20)
+
+
+### Bug Fixes
+
+* **jobs:** remove legacy thread foreign key cascades ([#789](https://github.com/kicksideai/kickside/issues/789)) ([b839854](https://github.com/kicksideai/kickside/commit/b839854dc37a4eb77937cd8c8246f94a0f9250a6))
+
 ## [0.1.96](https://github.com/kicksideai/kickside/compare/jobs-v0.1.95...jobs-v0.1.96) (2026-11-19)
 
 

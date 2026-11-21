@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.1.106](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.105...knowledge-v0.1.106) (2026-11-21)
+
+
+### Features
+
+* show Knowledge indexing outcomes in Drive activity ([2556f47](https://github.com/kicksideai/kickside/commit/2556f477d90b1b9b2f085de01e279640440e4f25))
+
+## [0.1.105](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.104...knowledge-v0.1.105) (2026-11-20)
+
+
+### Features
+
+* **knowledge:** retry a failed upload publication ([#795](https://github.com/kicksideai/kickside/issues/795)) ([764dde0](https://github.com/kicksideai/kickside/commit/764dde0c2c9b2db8aa923af2fbd313d99e57c789))
+
+## [0.1.104](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.103...knowledge-v0.1.104) (2026-11-20)
+
+
+### Bug Fixes
+
+* **knowledge:** preserve EmbedToKB upload errors ([6eeb255](https://github.com/kicksideai/kickside/commit/6eeb255e8935fd9deaa4b3ab8de58ca443329483))
+* **knowledge:** require Uploads with safe content errors ([92c64e4](https://github.com/kicksideai/kickside/commit/92c64e44b718de32b2bbfe7b53e62c5bc6703ef3))
+
+## [0.1.103](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.102...knowledge-v0.1.103) (2026-11-20)
+
+
+### Bug Fixes
+
+* **knowledge:** preserve upload content errors ([#757](https://github.com/kicksideai/kickside/issues/757)) ([a64ef8b](https://github.com/kicksideai/kickside/commit/a64ef8bfab44d23cae9f60bb46280a42d59753f8))
+
 ## [0.1.102](https://github.com/kicksideai/kickside/compare/knowledge-v0.1.101...knowledge-v0.1.102) (2026-11-20)
 
 

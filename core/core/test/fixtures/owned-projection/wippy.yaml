@@ -1,0 +1,5 @@
+organization: kickside
+module: core-owned-projection-fixture
+description: Installed ownership fixture for Core projection tests.
+directories:
+  src: ./src

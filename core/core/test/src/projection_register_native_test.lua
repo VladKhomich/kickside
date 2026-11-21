@@ -72,6 +72,26 @@ return {run = test.run_cases(function()
             end)
         end
         for _, existing in ipairs({false, true}) do
+            local state = existing and "an orphaned projection with declaration drift" or "a new projection"
+            test.it("refuses an invalid system worker before writing " .. state, function()
+                local db = assert(sql.get("app:db"))
+                local dbtype = assert(db:type())
+                assert(db:release())
+                fixture.reset(dbtype, "", nil, existing)
+                fixture.cursor_missing = true
+                local admission_err = errors.new({kind = errors.INVALID, retryable = false,
+                    message = "system worker is not admitted", details = {code = "thread_declaration_owned_worker_required"}})
+                local result, err = writer.register_projection(fixture.database(), "thread", {
+                    kind = "model", worker_ref = "func://app:test_count_worker", system_identity = true,
+                    ensure = true, events = {input = {{type = "app:changed"}}},
+                }, "ensure_declared", nil, nil, admission_err)
+                test.is_nil(result)
+                test.eq(err and err:details().code, "thread_declaration_owned_worker_required")
+                test.eq(fixture.writes, 0)
+                test.eq(fixture.commits, 0)
+                test.eq(fixture.rollbacks, 1)
+            end)
+
             test.it("valid registration/" .. tostring(existing), function()
                 local db, err = sql.get("app:db")
                 if err then error(err) end

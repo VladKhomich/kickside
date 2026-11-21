@@ -525,6 +525,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads create — register component + write thread.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/resource.lua
     method: create
     modules: [crypto, security]
@@ -546,6 +548,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads ensure_thread — attach a thread to an existing component-first component (idempotent), auto-applying its declared projections/retention.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/resource.lua
     method: ensure_thread
     modules: [crypto, security]
@@ -567,6 +571,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads converge_thread — make a component's thread state match its kind's declaration (create if absent, apply missing projections/cursors if present). Boot/install convergence primitive, never a hot path.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/resource.lua
     method: converge_thread
     modules: [crypto, security]
@@ -588,6 +594,8 @@ entries:
     kind: function.lua
     meta:
       comment: kickside.core:threads emit — append an event to a component's primary thread (thread_id == component_id), creating the thread with its declared projections on first touch.
+    security:
+      policies: [kickside.core.threads:event_policy_read]
     source: file://contract/resource.lua
     method: emit
     modules: [crypto, security]

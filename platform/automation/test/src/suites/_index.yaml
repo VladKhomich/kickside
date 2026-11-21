@@ -304,6 +304,16 @@ entries:
     jobs: kickside.core.jobs:jobs
     jobs_config: kickside.core.jobs:config
     migration_runner: wippy.migration:runner
+- name: sync_source_reconfigure_test
+  kind: function.lua
+  meta:
+    type: test
+    suite: automation_reconfigure
+  source: file://round/sync_source_reconfigure_test.lua
+  method: run
+  imports:
+    test: wippy.test:test
+    round_harness: kickside.automation:round_harness
 - name: rollback_maintenance_live_test
   kind: function.lua
   meta:
@@ -753,3 +763,14 @@ entries:
   imports:
     test: wippy.test:test
     ledger: kickside.automation:round_ledger
+
+- name: retired_event_receipt_test
+  kind: function.lua
+  meta: { type: test, suite: retired_event_receipt }
+  source: file://round/retired_event_receipt_test.lua
+  method: run
+  modules: [json]
+  imports:
+    test: wippy.test:test
+    round_harness: kickside.automation:round_harness
+    retention: kickside.automation:receipt_retention

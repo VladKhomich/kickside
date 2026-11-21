@@ -68,10 +68,10 @@ local function define_tests()
             end
         end
 
-        local function grant(d, component_id, subject_type, subject_id)
+        local function grant(d, component_id, subject_type, subject_id, mask)
             execute(sql.builder.insert("kickside_component_access"):set_map({
                 access_id = uuid.v7(), component_id = component_id, source_component_id = component_id,
-                subject_type = subject_type, subject_id = subject_id, access_mask = 1,
+                subject_type = subject_type, subject_id = subject_id, access_mask = mask or 1,
                 created_at = time.now():format(time.RFC3339),
             }):run_with(d))
         end
@@ -210,6 +210,34 @@ local function define_tests()
                 test.is_true((paged_rows or {})[1].component_id == root or (paged_rows or {})[1].component_id == child)
                 assert_same_as_legacy(component_reader.new():with_user(owner):with_access_mask(1)
                     :order_by("component_id", "ASC"):limit(1, 1))
+            end)
+        end)
+
+        test.it("filters metadata before paging and keeps the union of reaching access grants", function()
+            local d = db()
+            grant(d, child, "group", group, 2)
+            grant(d, hidden, "user", owner, 2)
+            add_meta(d, hidden, "target")
+            release(d)
+
+            with_actor(owner, { group }, nil, function()
+                local reader = component_reader.new():with_user(owner):with_access_mask(1)
+                    :with_meta({["candidate-class"] = "target"}):include_options({access_level = true})
+                    :order_by("component_id", "ASC")
+                local expected = { child, grouped }
+                table.sort(expected)
+                local masks = { [child] = 3, [grouped] = 1 }
+                for offset = 0, 1 do
+                    local page, err = reader:limit(1, offset):all()
+                    test.is_nil(err, tostring(err))
+                    test.eq(#page, 1)
+                    test.eq(page[1].component_id, expected[offset + 1])
+                    test.eq(page[1].access_level, masks[page[1].component_id])
+                    test.eq(page[1].meta["candidate-class"], "target")
+                end
+                test.eq(reader:count(), 2)
+                test.eq(#reader:limit(1, 2):all(), 0)
+                test.eq(reader:with_meta({["candidate-class"] = "missing"}):count(), 0)
             end)
         end)
     end)

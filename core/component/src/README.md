@@ -68,6 +68,26 @@ creator's captured execution identity. The result has the normal registration
 envelope. An existing component ID produces the ordinary creation conflict.
 The regular registration contract continues to record the creator as owner.
 
+For a root-placed plugin attachment, the same library exposes
+`register_root_attachment(request, custodian_id, plugin_id)`. The provisioning
+service supplies an explicit child ID after reserving that activation. The
+custodian kind names the installed plugin manifest type and exact producer:
+
+```yaml
+root_attachment_producers:
+  example.plugin: [example.jobs:activate]
+```
+
+Component checks the live custodian, actor WRITE and native producer, then
+reads the installed plugin's `meta.type` and `meta.attachment`. The declared
+attachment must equal the requested implementation. Creation records the
+custodian as owner while leaving placement at the root. The provisioning
+service verifies its own durable association and handles existing instances.
+Attach `kickside.component:attachment_seal_access` to the producer function
+when plugin kinds can declare secret fields. This policy allows the
+Component seal operation for initial values. The installation key and the
+open operation keep their existing service policies.
+
 ## Kind mutation admission (SPEC)
 
 A component kind binding declares `meta.mutation: open` or `closed`. An absent

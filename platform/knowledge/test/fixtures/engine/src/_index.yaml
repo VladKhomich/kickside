@@ -1,0 +1,104 @@
+version: "1.0"
+namespace: knowledge.fixture
+entries:
+  - name: test_projection_worker
+    kind: function.lua
+    meta: {type: projection.worker, private: true, component_owned: true}
+    source: file://test_projection_worker.lua
+    method: run
+
+  - name: test_engine_wiki
+    kind: contract.binding
+    contracts:
+      - contract: kickside.contract:embeddable
+        context_required: [component_id]
+        methods:
+          embed_content: test.kb:embed_content
+          embed_reference: test.kb:embed_reference
+    meta:
+      type: kickside.kb_engine
+      kb_type: wiki
+      title: Wiki
+      impl_id: test.kb:embeddable
+      query_binding: test.kb:queryable
+      maintenance_binding: test.kb:maintainable
+      config_maintenance:
+        schedule_resummarize: [outline_style]
+      store_contract: shared:kb_store
+      is_graph: true
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: "func://knowledge.fixture:test_projection_worker"
+          input_mode: prefetch_events
+          batch_size: 1
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+      default_config:
+        chunk_size: 400
+        chunk_overlap: 0
+        summary_max_chars: 0
+
+  - name: test_engine_ledger
+    kind: contract.binding
+    contracts:
+      - contract: kickside.contract:embeddable
+        context_required: [component_id]
+        methods:
+          embed_content: test.kb:embed_content
+          embed_reference: test.kb:embed_reference
+    meta:
+      type: kickside.kb_engine
+      kb_type: ledger_fixture
+      title: Ledger fixture
+      impl_id: test.kb:ledger
+      store_contract: shared:kb_store
+      thread: {class: kickside.knowledge.injection}
+      events:
+        output:
+          - type: kickside.knowledge.events:content.upserted
+      projections:
+        - kind: fixture.ledger
+          projection_key: ledger
+          cursor_key: ledger
+          worker_ref: "func://knowledge.fixture:test_projection_worker"
+          input_mode: prefetch_events
+          events:
+            input:
+              - type: kickside.knowledge.events:content.upserted
+
+  - name: test_engine_files
+    kind: contract.binding
+    meta:
+      type: kickside.kb_engine
+      kb_type: files
+      title: File harness engine
+      store_contract: shared:kb_store
+      accepts_files: true
+      upload_publication_match: app:maintenance_stub
+      events:
+        output:
+          - type: kickside.knowledge.events:content.upserted
+          - type: kickside.knowledge.events:content.deleted
+          - type: kickside.knowledge.events:delivery.claimed
+      projections:
+        - kind: knowledge.injection.source
+          projection_key: source
+          cursor_key: source
+          worker_ref: "func://knowledge.fixture:test_projection_worker"
+          input_mode: prefetch_events
+          batch_size: 1
+          events:
+            input:
+              - type: "kickside.knowledge.events:content.upserted"
+              - type: "kickside.knowledge.events:content.deleted"
+
+    contracts:
+      - contract: kickside.contract:embeddable
+        context_required: [component_id]
+        methods:
+          embed_content: test.kb:embed_content
+          embed_reference: test.kb:embed_reference

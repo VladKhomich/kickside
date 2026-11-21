@@ -36,6 +36,15 @@ entries:
       actor: { id: "knowledge-tests" }
     modules: *admission_modules
     imports: *admission_imports
+  - name: source_retry_http_test
+    kind: function.lua
+    meta: { type: test, suite: knowledge_admission }
+    source: file://content_admission_test.lua
+    method: run_retry
+    security:
+      actor: { id: "knowledge-tests" }
+    modules: *admission_modules
+    imports: *admission_imports
   - name: admission_get_content
     kind: function.lua
     source: file://admission_provider.lua

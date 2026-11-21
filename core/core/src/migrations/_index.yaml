@@ -252,3 +252,27 @@ entries:
       persisted_json: kickside.contract:persisted_json
       clock: kickside.core.jobs:clock
     method: migrate
+
+  - name: 19_projection_reset_generation
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-20T00:00:19Z"
+    source: file://19_projection_reset_generation.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
+  - name: 20_pending_projection_transition
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-11-20T00:00:20Z"
+    source: file://20_pending_projection_transition.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

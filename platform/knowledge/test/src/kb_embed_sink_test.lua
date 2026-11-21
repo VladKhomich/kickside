@@ -33,7 +33,7 @@ local EMBED_BINDING = "test.kb:embeddable"
 -- The engine binding whose meta.projections declares the source projection. The KB
 -- create path provisions the primary thread under it; this harness seeds a KB row
 -- directly, so it provisions the same way before delivering.
-local ENGINE_IMPL = "app:test_engine_wiki"
+local ENGINE_IMPL = "knowledge.fixture:test_engine_wiki"
 local CONTENT_UPSERTED = "kickside.knowledge.events:content.upserted"
 local CONTENT_DELETED = "kickside.knowledge.events:content.deleted"
 local DELIVERY_CLAIMED = "kickside.knowledge.events:delivery.claimed"

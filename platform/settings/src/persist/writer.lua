@@ -49,7 +49,7 @@ end
 -- func that reports invalid rejects with its message. Returns (true) when
 -- the value is accepted, else (false, message).
 local function run_validate(def: settings_types.Definition, value: settings_types.SettingValue, old_value: settings_types.SettingValue): (boolean, string?)
-    if type(def.schema) == "table" and type(def.schema.enum) == "table" then
+    if not defs.structured_schema(def) and type(def.schema) == "table" and type(def.schema.enum) == "table" then
         local matched = false
         for _, allowed in ipairs(def.schema.enum) do
             if equal_value(value, allowed) then matched = true; break end
@@ -127,9 +127,10 @@ local function load_overrides(): (settings_types.OverrideMap?, number?, any?)
         end
         local value: any = nil
         if not load_err then
-            local decoded, derr = json.decode(stored)
-            value = decoded
-            load_err = derr
+            -- A nested null can determine whether an override matches its
+            -- current declaration, including after a schema change.
+            local decode = r.value_type == "json" and json.decode_with_nulls or json.decode
+            value, load_err = decode(stored)
         end
         local row_value_type: string? = (type(r.value_type) == "string") and (r.value_type :: string) or nil
         local row_updated_by: string? = (type(r.updated_by) == "string") and (r.updated_by :: string) or nil

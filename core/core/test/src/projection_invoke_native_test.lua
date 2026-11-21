@@ -69,6 +69,22 @@ local function releases(first: integer, last: integer)
 end
 
 local function outcomes()
+    test.it("distinguishes an empty input scan from a worker returning an empty result", function()
+        fixture.reset("events", nil)
+        fixture.missing, fixture.proof = true, {}
+        local skipped, skip_err = invoke.run(input)
+        test.is_nil(skip_err)
+        test.eq(skipped.last_seq, 1)
+        test.eq(fixture.calls, 0)
+        test.eq(fixture.empty_scan, true)
+
+        fixture.reset("normal", nil)
+        local folded, fold_err = invoke.run(input)
+        test.is_nil(fold_err)
+        test.eq(folded.last_seq, 1)
+        test.eq(fixture.calls, 1)
+        test.eq(fixture.empty_scan, false)
+    end)
     test.it("passes the previous cursor error to the current worker", function()
         fixture.reset("normal", nil)
         fixture.previous_error = "provider temporarily unavailable"

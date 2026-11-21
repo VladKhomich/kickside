@@ -19,7 +19,7 @@ const T = { class: "docxv" }, V = {
       if (e && (e.innerHTML = ""), !(!s || !e)) {
         n.value = !0;
         try {
-          const { renderAsync: o } = await import("./docx-preview-CtPnTDgT.js"), { data: h } = await E.get(s, { responseType: "blob" });
+          const { renderAsync: o } = await import("./docx-preview-vYhj6t6f.js"), { data: h } = await E.get(s, { responseType: "blob" });
           await o(h, e, void 0, {
             className: "docx",
             inWrapper: !0,

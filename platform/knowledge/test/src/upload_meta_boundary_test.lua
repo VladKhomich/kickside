@@ -11,9 +11,12 @@ local json = require("json")
 local execution_identity = require("execution_identity")
 local fixture_cleanup = require("fixture_cleanup")
 local fixtures: { string } = {}
+local upload_fixtures: { string } = {}
+local stored_upload_fixtures: { string } = {}
 
 local DB = "app:db"
 local CALLBACK = "kickside.knowledge.injection:on_upload_complete"
+local EMBED_TOOL = "kickside.knowledge.traits:kb_embed_tool"
 
 local function db()
     local d, err = sql.get(DB)
@@ -162,11 +165,198 @@ local function seed_upload_with_empty_primary(upload_id: string, owner: string):
     if err or not artifact then error("artifact insert failed: " .. tostring(err)) end
 end
 
+local function seed_upload_delivery(owner: string, storage_id: string, path: string?, original_only: boolean?): (string, string)
+    local kb_id, upload_id = uuid.v7(), uuid.v7()
+    fixtures[#fixtures + 1] = kb_id
+    upload_fixtures[#upload_fixtures + 1] = upload_id
+    seed_kb(kb_id, owner, "knowledge.fixture:test_engine_files")
+    local actor = security.new_actor(owner, {})
+    local def = assert(contract.get("kickside.core:threads"))
+    local threads = assert(def:with_actor(actor):with_scope(scope()):open())
+    local _, ensure_err = threads:ensure_thread({ component_id = kb_id,
+        impl_id = "knowledge.fixture:test_engine_files", thread_class = "kickside.knowledge.injection" })
+    test.is_nil(ensure_err, tostring(ensure_err))
+    seed_upload_without_primary(upload_id, owner, "text/plain", path or upload_id)
+    local d = db()
+    local _, update_err = d:execute("UPDATE kickside_uploads SET storage_state=$1, storage_id=$2 WHERE uuid=$3",
+        {"completed", storage_id, upload_id})
+    d:release()
+    test.is_nil(update_err, tostring(update_err))
+    if original_only then return kb_id, upload_id end
+    local _, artifact_err = artifact_content_repo.create_artifact({
+        upload_id = upload_id, kind = "text", role = "primary", mime_type = "text/plain",
+        locator = { type = "upload.original" }, metadata = { filename = "fixture.txt" },
+    })
+    test.is_nil(artifact_err, tostring(artifact_err))
+    return kb_id, upload_id
+end
+
 local function define_tests()
     test.describe("Knowledge upload/meta boundary", function()
         test.after_each(function()
+            for _, id in ipairs(stored_upload_fixtures) do assert(assert(fs.get("app:uploads")):remove(id)) end
+            stored_upload_fixtures = {}
+            for _, id in ipairs(upload_fixtures) do cleanup_upload(id) end
+            upload_fixtures = {}
             for _, id in ipairs(fixtures) do fixture_cleanup.cleanup(id) end
             fixtures = {}
+        end)
+
+        for _, case in ipairs({
+            { label = "temporary storage outage", storage = "app:temporarily_unavailable_upload_storage",
+                kind = errors.UNAVAILABLE, sink_code = "provider_unavailable", retryable = true },
+            { label = "missing stored bytes", storage = "app:uploads",
+                kind = errors.NOT_FOUND, sink_code = "not_found", retryable = false },
+        }) do
+            test.it("keeps the upload sink outcome for " .. case.label, function()
+                local owner = uuid.v4()
+                local kb_id, upload_id = seed_upload_delivery(owner, case.storage)
+                local actor = security.new_actor(owner, {})
+                local provider = assert(assert(contract.get("kickside.contract:content_provider"))
+                    :with_actor(actor):with_scope(scope()):with_context({ upload_id = upload_id })
+                    :open("kickside.uploads:content_provider"))
+                local _, provider_err = provider:get_content({})
+                test.is_true(errors.is(provider_err, case.kind), tostring(provider_err))
+                test.eq(provider_err:retryable() == true, case.retryable)
+
+                local sink = assert(assert(contract.get("kickside.data:writable")):with_actor(actor):with_scope(scope())
+                    :open("kickside.knowledge.sink:kb_upload_sink"))
+                local request = { origin = "fixture", config = { kb_id = kb_id },
+                    sink_op = "upsert", identity_key = "fixture-document", idempotency_key = "fixture-delivery",
+                    resume_effect = false, input = { upload_id = upload_id } }
+                local result, call_err = sink:write(request)
+                test.is_nil(call_err, tostring(call_err))
+                test.eq(result.success, false)
+                test.eq(result.error.code, case.sink_code, result.error.message)
+                test.eq(result.error.retriable, case.retryable)
+
+                if case.retryable then
+                    local storage = assert(fs.get("app:uploads"))
+                    assert(storage:writefile(upload_id, "Fictional upload bytes"))
+                    stored_upload_fixtures[#stored_upload_fixtures + 1] = upload_id
+                    local d = db()
+                    local _, restore_err = d:execute("UPDATE kickside_uploads SET storage_id=$1 WHERE uuid=$2",
+                        {"app:uploads", upload_id})
+                    d:release()
+                    test.is_nil(restore_err, tostring(restore_err))
+
+                    local recovered, recovery_err = sink:write(request)
+                    test.is_nil(recovery_err, tostring(recovery_err))
+                    test.eq(recovered.success, true, tostring(recovered.error and recovered.error.message))
+                    test.eq(recovered.result, "created")
+                    local replay, replay_err = sink:write(request)
+                    test.is_nil(replay_err, tostring(replay_err))
+                    test.eq(replay.result, "noop")
+                    test.eq(replay.dest_ref.publication_id, recovered.dest_ref.publication_id)
+                end
+            end)
+
+            test.it("keeps the upload callback outcome for " .. case.label, function()
+                local owner = uuid.v4()
+                local kb_id, upload_id = seed_upload_delivery(owner, case.storage)
+                local actor = security.new_actor(owner, {})
+                local result, call_err = funcs.new():with_actor(actor):with_scope(scope()):call(CALLBACK, {
+                    upload_id = upload_id, status = "completed", params = { kb_id = kb_id },
+                })
+                if case.retryable then
+                    test.is_nil(result)
+                    test.is_true(errors.is(call_err, errors.UNAVAILABLE), tostring(call_err))
+                    test.is_true(call_err:retryable())
+                    test.eq(call_err:details().code, "storage_unavailable")
+                else
+                    test.is_nil(call_err, tostring(call_err))
+                    test.eq(result.success, true)
+                    test.eq(result.skipped, true)
+                    test.is_nil(result.cancelled)
+                end
+            end)
+
+            test.it("keeps the EmbedToKB upload error for " .. case.label, function()
+                local owner = uuid.v4()
+                local kb_id, upload_id = seed_upload_delivery(owner, case.storage)
+                local actor = security.new_actor(owner, {})
+                local provider = assert(assert(contract.get("kickside.contract:content_provider"))
+                    :with_actor(actor):with_scope(scope()):with_context({ upload_id = upload_id })
+                    :open("kickside.uploads:content_provider"))
+                local _, provider_err = provider:get_content({})
+                test.is_true(errors.is(provider_err, case.kind), tostring(provider_err))
+
+                local result, tool_err = funcs.new():with_actor(actor):with_scope(scope())
+                    :with_context({ kb_ids = { kb_id } }):call(EMBED_TOOL, { upload_id = upload_id })
+                test.is_nil(result)
+                test.is_true(errors.is(tool_err, case.kind), tostring(tool_err))
+                test.eq(tool_err:retryable() == true, case.retryable)
+                test.eq(tool_err:message(), provider_err:message())
+                test.eq(tool_err:details().code, provider_err:details().code)
+            end)
+        end
+
+        test.it("returns the same EmbedToKB error for foreign and unknown upload IDs", function()
+            local owner, foreign_owner = uuid.v4(), uuid.v4()
+            local kb_id = seed_upload_delivery(owner, "app:uploads")
+            local foreign_upload = uuid.v7()
+            upload_fixtures[#upload_fixtures + 1] = foreign_upload
+            seed_upload_without_primary(foreign_upload, foreign_owner, "text/plain")
+
+            local exec = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(scope())
+                :with_context({ kb_ids = { kb_id } })
+            local hidden, hidden_err = exec:call(EMBED_TOOL, { upload_id = foreign_upload })
+            local unknown, unknown_err = exec:call(EMBED_TOOL, { upload_id = uuid.v7() })
+            test.is_nil(hidden)
+            test.is_nil(unknown)
+            test.is_true(errors.is(hidden_err, errors.NOT_FOUND), tostring(hidden_err))
+            test.is_true(errors.is(unknown_err, errors.NOT_FOUND), tostring(unknown_err))
+            test.eq(hidden_err:message(), "upload not found")
+            test.eq(hidden_err:message(), unknown_err:message())
+            test.eq(hidden_err:retryable(), unknown_err:retryable())
+            test.is_nil(next(hidden_err:details() or {}))
+            test.is_nil(next(unknown_err:details() or {}))
+        end)
+
+        for _, mode in ipairs({"original", "primary"}) do
+            test.it("keeps private storage locators out of " .. mode .. " EmbedToKB errors", function()
+                local owner = uuid.v4()
+                local marker = "private-locator-fixture-" .. uuid.v4()
+                local kb_id, upload_id = seed_upload_delivery(owner, "app:uploads", marker .. "/file.txt", mode == "original")
+                local exec = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(scope())
+                    :with_context({ kb_ids = { kb_id } })
+                local result, err = exec:call(EMBED_TOOL, { upload_id = upload_id })
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.NOT_FOUND), tostring(err))
+                test.is_false(err:retryable() == true)
+                local serialized = assert(json.encode({
+                    message = err:message(), kind = err:kind(), retryable = err:retryable(), details = err:details(),
+                }))
+                test.is_true(serialized:find(marker, 1, true) == nil, mode .. " read exposes a private storage locator")
+                test.is_nil(err:details().cause)
+                test.eq(err:details().code, mode == "original" and "upload_content_read_failed" or "artifact_read_failed")
+            end)
+        end
+
+        test.it("queues a member's processed upload through EmbedToKB", function()
+            local owner = uuid.v4()
+            local kb_id, upload_id = seed_upload_delivery(owner, "app:uploads")
+            local content = "Fictional member upload bytes"
+            assert(assert(fs.get("app:uploads")):writefile(upload_id, content))
+            stored_upload_fixtures[#stored_upload_fixtures + 1] = upload_id
+
+            local result, tool_err = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(scope())
+                :with_context({ kb_ids = { kb_id } }):call(EMBED_TOOL, { upload_id = upload_id })
+            test.is_nil(tool_err, tostring(tool_err))
+            test.is_true(result.success)
+            test.eq(result.status, "queued")
+            test.eq(result.kb_id, kb_id)
+            test.eq(result.upload_id, upload_id)
+
+            local d = db()
+            local events, read_err = d:query("SELECT body FROM kickside_event WHERE thread_id = $1 AND type = $2",
+                { kb_id, "kickside.knowledge.events:content.upserted" })
+            d:release()
+            test.is_nil(read_err, tostring(read_err))
+            test.eq(#events, 1)
+            local body = assert(json.decode(events[1].body))
+            test.eq(body.content, content)
+            test.eq(body.source_ref.upload_id, upload_id)
         end)
 
         test.it("does not mutate KB public meta when an upload callback reports failure", function()
@@ -340,7 +530,7 @@ local function define_tests()
         test.it("requires both an opted-in engine and an upload reference for textless appends", function()
             for _, entry in ipairs({
                 { impl_id = "test.kb:embeddable", source_ref = { kind = "upload", upload_id = "file" } },
-                { impl_id = "app:test_engine_files", source_ref = {} },
+                { impl_id = "knowledge.fixture:test_engine_files", source_ref = {} },
             }) do
                 local owner, component_id = uuid.v4(), uuid.v7()
                 fixtures[#fixtures + 1] = component_id
@@ -365,7 +555,7 @@ local function define_tests()
                 local owner = uuid.v4()
                 local component_id, upload_id = uuid.v7(), uuid.v7()
                 fixtures[#fixtures + 1] = component_id
-                seed_kb(component_id, owner, "app:test_engine_files")
+                seed_kb(component_id, owner, "knowledge.fixture:test_engine_files")
                 local original_mime = case.original and case.mime or "application/octet-stream"
                 seed_upload_without_primary(upload_id, owner, original_mime, upload_id)
                 local artifact = nil
@@ -391,7 +581,7 @@ local function define_tests()
                 local threads, open_err = def:with_actor(actor):with_scope(actor_scope):open()
                 test.is_nil(open_err)
                 local _, ensure_err = threads:ensure_thread({ component_id = component_id,
-                    impl_id = "app:test_engine_files", thread_class = "kickside.knowledge.injection" })
+                    impl_id = "knowledge.fixture:test_engine_files", thread_class = "kickside.knowledge.injection" })
                 test.is_nil(ensure_err)
 
                 local admission, admission_err = funcs.new():with_actor(actor):with_scope(actor_scope):call("app:ingest_upload_probe", {
@@ -466,6 +656,44 @@ local function define_tests()
             test.is_true(result.success == true)
             test.is_true(result.cancelled == true)
             test.eq(deleted_kb, result.kb_id)
+        end)
+
+        test.it("returns a component database read failure without cancelling the callback", function()
+            local owner = uuid.v4()
+            local kb_id, upload_id = seed_upload_delivery(owner, "app:uploads")
+            local restricted = security.new_scope({assert(security.policy("app:user")),
+                assert(security.policy("app:deny_upload_callback_database"))})
+            local result, call_err = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(restricted)
+                :call(CALLBACK, { upload_id = upload_id, status = "completed", params = { kb_id = kb_id } })
+            test.is_nil(result)
+            test.is_true(errors.is(call_err, errors.PERMISSION_DENIED), tostring(call_err))
+        end)
+
+        test.it("keeps the callback's READ requirement for a WRITE-only actor", function()
+            local owner = uuid.v4()
+            local kb_id, upload_id = seed_upload_delivery(owner, "app:uploads")
+            local d = db()
+            local _, update_err = d:execute([[UPDATE kickside_component_access SET access_mask=$1
+                WHERE subject_id=$2 AND component_id=$3]], {2, owner, kb_id})
+            d:release()
+            test.is_nil(update_err, tostring(update_err))
+
+            local actor = security.new_actor(owner, {})
+            local service = assert(assert(contract.get("kickside.component:component_service"))
+                :with_actor(actor):with_scope(scope()):open())
+            local writable, write_err = service:get_access_context({ component_id = kb_id, access_mask = 2 })
+            test.is_nil(write_err, tostring(write_err))
+            test.eq(writable.success, true)
+            local readable, read_err = service:get({ component_id = kb_id })
+            test.is_nil(read_err, tostring(read_err))
+            test.eq(readable.success, false)
+            test.eq(readable.kind, errors.PERMISSION_DENIED)
+
+            local result, call_err = funcs.new():with_actor(actor):with_scope(scope()):call(CALLBACK, {
+                upload_id = upload_id, status = "completed", params = { kb_id = kb_id },
+            })
+            test.is_nil(call_err, tostring(call_err))
+            test.eq(result.cancelled, true)
         end)
     end)
 end

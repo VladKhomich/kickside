@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.13](https://github.com/kicksideai/kickside/compare/settings-v0.3.12...settings-v0.3.13) (2026-11-20)
+
+
+### Bug Fixes
+
+* **settings:** enforce declared JSON containers on save and read ([#779](https://github.com/kicksideai/kickside/issues/779)) ([71a5b24](https://github.com/kicksideai/kickside/commit/71a5b2474be1ba9c6c816bf52272e696f5db2fe7))
+
 ## [0.3.12](https://github.com/kicksideai/kickside/compare/settings-v0.3.11...settings-v0.3.12) (2026-11-19)
 
 

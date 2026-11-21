@@ -27,7 +27,7 @@ entries:
     source: file://binding_errors_test.lua
     method: run
     meta: {type: test, suite: uploads_binding_errors}
-    modules: [contract, security, sql, uuid, fs]
+    modules: [contract, security, sql, uuid, fs, json]
     imports:
       test: wippy.test:test
       records: kickside.uploads.persist:upload_record_repo

@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.3.44](https://github.com/kicksideai/kickside/compare/core-v0.3.43...core-v0.3.44) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** preserve declaration drift for retained cursors ([#791](https://github.com/kicksideai/kickside/issues/791)) ([764ba43](https://github.com/kicksideai/kickside/commit/764ba431afe6f3be3241f02dbd9007ad30ea8d29))
+
+## [0.3.43](https://github.com/kicksideai/kickside/compare/core-v0.3.42...core-v0.3.43) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** type the projection revision check target ([#786](https://github.com/kicksideai/kickside/issues/786)) ([bff9f28](https://github.com/kicksideai/kickside/commit/bff9f287fd0306696efbb3a29b3fd33b2718c1e9))
+
+## [0.3.42](https://github.com/kicksideai/kickside/compare/core-v0.3.41...core-v0.3.42) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** run declared component projections with scoped worker permissions ([#784](https://github.com/kicksideai/kickside/issues/784)) ([63e15e3](https://github.com/kicksideai/kickside/commit/63e15e388de55743ae778e6d82b048bec9fd76d9))
+
+## [0.3.41](https://github.com/kicksideai/kickside/compare/core-v0.3.40...core-v0.3.41) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** preserve active filtered projections across Keeper updates ([#780](https://github.com/kicksideai/kickside/issues/780)) ([dc3775c](https://github.com/kicksideai/kickside/commit/dc3775c677512e733fb154e7ab42917253520509))
+
+## [0.3.40](https://github.com/kicksideai/kickside/compare/core-v0.3.39...core-v0.3.40) (2026-11-20)
+
+
+### Features
+
+* **core:** checkpoint filtered projection ranges across cursor resets ([#768](https://github.com/kicksideai/kickside/issues/768)) ([d2ae1d8](https://github.com/kicksideai/kickside/commit/d2ae1d89668d4d2de7c493f3313fad512267da2d))
+
+## [0.3.39](https://github.com/kicksideai/kickside/compare/core-v0.3.38...core-v0.3.39) (2026-11-20)
+
+
+### Performance Improvements
+
+* **core:** preserve projection body when a scan returns no events ([#755](https://github.com/kicksideai/kickside/issues/755)) ([9a2bc65](https://github.com/kicksideai/kickside/commit/9a2bc65fb8281bf958f6093ce0e263032f7f1996))
+
+## [0.3.38](https://github.com/kicksideai/kickside/compare/core-v0.3.37...core-v0.3.38) (2026-11-20)
+
+
+### Bug Fixes
+
+* **core:** fence private checkpoints against owner identity changes ([#748](https://github.com/kicksideai/kickside/issues/748)) ([c959762](https://github.com/kicksideai/kickside/commit/c959762a7125982201d3acec01fe856f84a3e447))
+
 ## [0.3.37](https://github.com/kicksideai/kickside/compare/core-v0.3.36...core-v0.3.37) (2026-11-19)
 
 

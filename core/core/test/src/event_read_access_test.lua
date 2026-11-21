@@ -720,6 +720,62 @@ return {run = test.run_cases(function()
             test.eq(tonumber(saved.cursor.last_seq), 0)
             test.contains(saved.cursor.last_error, "thread_event_read_denied")
         end)
+        local maintenance = "system:core.owned.fixture"
+
+        local function owned_fixture(kind: string): (string, any)
+            local service = threads(maintenance)
+            local created = assert(service:create({id = uuid.v4(), impl_id = kind}))
+            local id = created.thread_id
+            assert(service:append_event({thread_id = id,
+                event = {type = "kickside.threads:message.created", body = {text = "owned input"}}}))
+            local cursor = assert(service:get_projection_cursor({thread_id = id, kind = "owned.fixture"})).cursor
+            return id, {cursor_id = cursor.id, job_id = cursor.job_id}
+        end
+
+        test.it("dispatches an installed component fold without the Jobs actor or authority", function()
+            local id, registration = owned_fixture("core.owned.fixture:kind")
+            local value, err = funcs.call("kickside.core.projections:advance", claim_projection(registration))
+            test.is_nil(err, tostring(err))
+            test.eq(value and tonumber(value.last_seq), 1)
+            local slot = assert(threads(maintenance):get_projection_cursor({thread_id = id, kind = "owned.fixture"}))
+            local body = assert(json.decode(slot.projection.body))
+            test.eq(tonumber(slot.cursor.last_seq), 1)
+            test.eq(body.count, 1)
+            test.eq(body.effect, "fixture effect ran")
+            test.eq(body.ambient_permission, false)
+            test.eq(body.actor, "kickside.core:component_projection")
+        end)
+
+        test.it("rejects returned event writes in the component fold", function()
+            local id, registration = owned_fixture("core.owned.fixture:returning_kind")
+            local result, err = funcs.call("kickside.core.projections:advance", claim_projection(registration))
+            test.is_nil(err, tostring(err))
+            test.is_true(result and result.invalid)
+            local slot = assert(threads(maintenance):get_projection_cursor({thread_id = id, kind = "owned.fixture"}))
+            test.eq(tonumber(slot.cursor.last_seq), 0)
+            test.contains(slot.cursor.last_error, "component-owned projection cannot return append_events")
+        end)
+
+        for _, kind in ipairs({"unmarked_kind", "wrong_mode_kind"}) do
+            test.it("refuses invalid component fold provisioning/" .. kind, function()
+                local id = uuid.v4()
+                local created, err = threads(maintenance):create({id = id, impl_id = "core.owned.fixture:" .. kind})
+                test.is_nil(created)
+                test.is_true(errors.is(err, errors.INVALID), tostring(err))
+                test.eq(err:details().code, "thread_declaration_owned_worker_required")
+                local db = assert(sql.get("app:db"))
+                local rows = assert(db:query("SELECT id FROM kickside_projection_cursor WHERE thread_id=$1", {id}))
+                assert(db:release())
+                test.eq(#rows, 0)
+            end)
+        end
+
+        test.it("refuses a member-selected private fold on another primary thread", function()
+            local id = fixture("event.read.test:public_kind")
+            denied(threads(OWNER):register_projection({thread_id = id, kind = "not_the_installed_fold",
+                worker_ref = "func://core.owned.fixture:fold", worker_input_mode = "prefetch_events"}))
+        end)
+
         for _, scenario in ipairs({
             {name = "revoked run-as access", delivered = false},
             {name = "an unrelated registry edit", edit = "event.read.test:invalid_kind", delivered = true},

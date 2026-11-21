@@ -721,34 +721,6 @@ entries:
         methods:
           get_status: kickside.core.threads:thread_status
 
-  - name: provision_system_test_decl
-    kind: contract.binding
-    meta:
-      title: Test System Lifecycle
-      class:
-        - test_sys
-      provision:
-        scope: system
-        grants:
-          - subject_id: app.security:admin
-            subject_type: group
-            access_mask: 1
-          - subject_id: app.security:user
-            subject_type: group
-            access_mask: 2
-      projections:
-        - kind: test.reap
-          worker_ref: "func://app:test_count_worker"
-      retention:
-        event_days: 7
-      events:
-        input:
-          - type: app:threads_sys_reap
-    contracts:
-      - contract: kickside.contract:component
-        methods:
-          get_status: kickside.core.threads:thread_status
-
   - name: system_component_startup_test
     kind: function.lua
     meta:
@@ -3182,8 +3154,9 @@ entries:
   - name: projection_invoke_native_source
     kind: library.lua
     source: file://projection_invoke_native_source.lua
-    modules: [registry, security]
+    modules: [registry, security, funcs, logger]
     imports:
+      owned_worker: kickside.core.projections.persist:owned_worker
       event_access: kickside.core.threads:event_access
       component_query: kickside.component.persist:component_query
       canonical_json: kickside.contract:canonical_json
@@ -3499,7 +3472,9 @@ entries:
   - name: projection_apply_native_source
     kind: library.lua
     source: file://projection_apply_native_source.lua
+    modules: [ctx, security, funcs]
     imports:
+      registration: kickside.core.projections.persist:register
       error_envelope: kickside.contract:error_envelope
       sql: app:projection_apply_native_sql_adapter
       json: app:projection_apply_native_json_adapter
@@ -4551,3 +4526,8 @@ entries:
       register: kickside.core.projections.persist:register
       prune: kickside.core.retention:prune
       writer: kickside.core.projections.persist:writer
+
+  - name: dep.core-owned-projection-fixture
+    kind: ns.dependency
+    component: kickside/core-owned-projection-fixture
+    version: "*"

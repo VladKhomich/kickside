@@ -102,8 +102,8 @@ end
 local RECEIPT_CHUNK = 200
 
 -- receipts(owner_id, source_port, item_keys) -> { [item_key] = [{ map_slot,
--- identity_key, dest_ref, dest_version }] } the receipts previous deliveries
--- recorded for a page's items, each item's slots in order, read in one
+-- identity_key, dest_ref, dest_version, stored }] } the receipts previous
+-- deliveries recorded for a page's items, each item's slots in order, read in one
 -- statement per RECEIPT_CHUNK keys. An item without receipts is absent.
 function M.receipts(owner_id: string, source_port: string, item_keys: { string }): ({ [string]: { Map } }?, error?)
     local out: { [string]: { Map } } = {}
@@ -131,7 +131,7 @@ function M.receipts(owner_id: string, source_port: string, item_keys: { string }
             local slots = out[key] or {}
             slots[#slots + 1] = { map_slot = tostring(row.map_slot or ""), identity_key = row.identity_key,
                 dest_ref = dest_ref, dest_version = row.dest_version, delivery_key = row.delivery_key,
-                declaration_hash = row.declaration_hash, pass_id = row.pass_id }
+                declaration_hash = row.declaration_hash, pass_id = row.pass_id, stored = true }
             out[key] = slots
         end
     end

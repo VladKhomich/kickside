@@ -1,0 +1,123 @@
+version: "1.0"
+namespace: core.owned.fixture
+entries:
+  - name: definition
+    kind: ns.definition
+
+  - name: actor
+    kind: registry.entry
+    meta:
+      type: kickside.execution.maintenance_actor
+      actor_id: system:core.owned.fixture
+
+  - name: effects
+    kind: security.policy
+    meta: {private: true, service_only: true}
+    policy:
+      resources: [core.owned.fixture:effect]
+      actions: [funcs.call]
+      effect: allow
+
+  - name: effect
+    kind: function.lua
+    source: file://worker.lua
+    method: effect
+    modules: [funcs, security]
+
+  - name: fold
+    kind: function.lua
+    meta: {type: projection.worker, private: true, component_owned: true}
+    source: file://worker.lua
+    method: fold
+    modules: [funcs, security]
+    security:
+      policies: [core.owned.fixture:effects]
+
+  - name: kind
+    kind: contract.binding
+    meta:
+      thread: {class: core.owned.fixture}
+      events:
+        input: [{type: "kickside.threads:message.created"}]
+      projections:
+        - kind: owned.fixture
+          worker_ref: func://core.owned.fixture:fold
+          input_mode: prefetch_events
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: kickside.core.threads:thread_status}
+
+  - name: returning_kind
+    kind: contract.binding
+    meta:
+      thread: {class: core.owned.fixture.returning}
+      events:
+        input: [{type: "kickside.threads:message.created"}]
+      projections:
+        - kind: owned.fixture
+          worker_ref: func://core.owned.fixture:fold
+          input_mode: prefetch_events
+          worker_config: {return_events: true}
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: kickside.core.threads:thread_status}
+
+  - name: ordinary
+    kind: function.lua
+    meta: {type: projection.worker}
+    source: file://worker.lua
+    method: effect
+    modules: [funcs, security]
+
+  - name: unmarked_kind
+    kind: contract.binding
+    meta:
+      thread: {class: core.owned.fixture.unmarked}
+      projections:
+        - kind: owned.fixture
+          worker_ref: func://core.owned.fixture:ordinary
+          input_mode: prefetch_events
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: kickside.core.threads:thread_status}
+
+  - name: wrong_mode_kind
+    kind: contract.binding
+    meta:
+      thread: {class: core.owned.fixture.wrong_mode}
+      projections:
+        - kind: owned.fixture
+          worker_ref: func://core.owned.fixture:fold
+          input_mode: cursor_only
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: kickside.core.threads:thread_status}
+
+  - name: provision_system_test_decl
+    kind: contract.binding
+    meta:
+      title: Test System Lifecycle
+      class:
+        - test_sys
+      provision:
+        scope: system
+        grants:
+          - subject_id: app.security:admin
+            subject_type: group
+            access_mask: 1
+          - subject_id: app.security:user
+            subject_type: group
+            access_mask: 2
+      projections:
+        - kind: test.reap
+          worker_ref: func://core.owned.fixture:fold
+          input_mode: prefetch_events
+      retention:
+        event_days: 7
+      events:
+        input:
+          - type: app:threads_sys_reap
+    contracts:
+      - contract: kickside.contract:component
+        methods:
+          get_status: kickside.core.threads:thread_status

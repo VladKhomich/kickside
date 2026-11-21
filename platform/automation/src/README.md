@@ -64,6 +64,11 @@ command fences affected drives with a new generation so an older round cannot
 commit over it. The dispatcher recovers pending steps, wakes drive slots, and
 repairs missing slots. Callers read operational state through `status` and
 `health` and can use `pause`, `resume`, `run_now`, `resync`, `replay`, and `discard`.
+For a Data Sync configured to Run Workflow, the status page containing its
+main drive may include `current_workflow_failure`. It describes the latest
+retained failed run that this Automation started for the current Workflow
+destination, provided the caller can read the Workflow. Activity history
+shows correlated runs for individual deliveries, including earlier destinations.
 The type catalog publishes engine `controls` alongside kind-declared `actions`;
 see the [control model](../README.md).
 `resync` restarts source position and reconciliation; `replay` retries eligible

@@ -33,9 +33,10 @@ function M.decode(_raw: any): (any, error?) return M.outcome("decode", {meta = {
 function M.from_row(_actor: any, _raw: any): (any, error?) return M.outcome("identity", {}) end
 function M.parse(_ref: any, _system: any): (any, error?) return M.outcome("parse", {}) end
 function M.validate(_parsed: any, _system: any): (any, error?)
-    return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func"})
+    return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func", target_id = "app:worker"})
 end
 function M.requires_checkpoint_declaration(_err: any): boolean return false end
+function M.requires_owned_declaration(_err: any): boolean return false end
 function M.post_commit_binding(_binding: any): (any, error?)
     return M.outcome("post_binding", (M.stage == "post_run" or M.stage == "stale_callback" or M.stage == "next_claim") and {} or nil)
 end
@@ -62,6 +63,7 @@ function M.fail(_db: any, _job: any, _snapshot: any, _failure: any, deterministi
     return M.outcome("failure", nil)
 end
 function M.advance(...: any): (any, error?)
+    M.empty_scan = select(6, ...)
     M.advances = M.advances + 1
     return M.outcome("advance", {last_seq = 1})
 end

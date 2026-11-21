@@ -12,6 +12,7 @@ local time = require("time")
 local clock = require("clock")
 local core_db = require("core_db")
 local worker = require("worker")
+local owned_worker = require("owned_worker")
 local projection_policy = require("projection_policy")
 local apply = require("apply")
 local trace_context = require("trace_context")
@@ -61,12 +62,30 @@ local function event_types(body: table): { string }?
     return #out > 0 and out or nil
 end
 
+local function unowned_context(dialect: string): string
+    if dialect == sql.type.POSTGRES then
+        return [[(c.private_context IS NULL OR c.private_context='[]'::jsonb OR
+            (jsonb_typeof(c.private_context)='object' AND NOT jsonb_exists(c.private_context,'_execution_identity')))]]
+    end
+    return [[(c.private_context IS NULL OR CASE WHEN json_valid(c.private_context)
+        THEN (json_type(c.private_context)='object' AND json_type(c.private_context,'$._execution_identity') IS NULL)
+            OR (json_type(c.private_context)='array' AND json_array_length(c.private_context)=0)
+        ELSE FALSE END)]]
+end
+
 local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?, error?)
-    local key, key_err = event_access.component_key(db)
+    local dialect, dialect_err = db:type()
+    if dialect_err then return nil, dialect_err end
+    if not dialect then return nil, response_error("database.type") end
+    local key, key_err = event_access.component_key(db, dialect)
     if key_err then return nil, key_err end
     local rows, err = db:query([[SELECT k.id,k.projection_id,k.thread_id,k.cursor_key,k.last_seq,
         k.generation,k.status,k.job_id,k.last_error,k.debounce_idle_ms,k.debounce_max_ms,k.continuation,
-        k.actor_id,k.execution_identity_json,p.kind,p.projection_key,p.body,t.thread_class,t.event_count,t.deleting_at, ]] .. table.concat(event_access.binding_columns, ",") .. [[
+        k.actor_id,k.execution_identity_json,p.kind,p.projection_key,p.reset_generation,p.body,t.thread_class,t.event_count,t.deleting_at,
+        c.identity_generation AS component_identity_generation,
+        CASE WHEN c.deleting_at IS NULL AND t.deleting_at IS NULL AND c.identity_hash IS NULL
+            AND p.actor_id IS NULL AND p.actor_context IS NULL AND ]] .. unowned_context(dialect) .. [[
+            THEN 1 ELSE 0 END AS component_owned_candidate, ]] .. table.concat(event_access.binding_columns, ",") .. [[
         FROM kickside_projection_cursor k
         JOIN kickside_projection p ON p.id=k.projection_id AND p.thread_id=k.thread_id
         JOIN kickside_thread t ON t.id=k.thread_id
@@ -94,17 +113,14 @@ local function snapshot(db: sql.DB, cursor_id: string, job_id: string): (table?,
 end
 M.snapshot = snapshot
 
-local function core_system_projection(row: table, target_id: string): boolean
-    return row.kind == "lifecycle.reap" and target_id == "kickside.core.lifecycle:reaper"
-        and row.component_impl_id == "kickside.core.lifecycle:system_lifecycle"
-        and row.thread_id == row.component_id and row.thread_id == lifecycle_consts.thread_id()
-end
-
 -- Resolve the same actor used for dispatch outside the SQLite connection.
-local function batch_access(row: table, binding: table): (any?, any?, table?, error?)
+local function batch_access(row: table, binding: table, snapshot: any?): (any?, any?, table?, error?)
     if not row.component_incarnation then return nil, nil, nil, event_access.denied() end
-    local snapshot, snapshot_err = registry.snapshot()
-    if snapshot_err then return nil, nil, nil, snapshot_err end
+    if not snapshot then
+        local snapshot_err: error?
+        snapshot, snapshot_err = registry.snapshot()
+        if snapshot_err then return nil, nil, nil, snapshot_err end
+    end
     local restricted, policy_err = event_access.restricted(row.component_impl_id, snapshot)
     if policy_err then return nil, nil, nil, policy_err end
     local actor, scope, identity_err
@@ -172,7 +188,7 @@ local function callback_fenced(err: error): boolean
     return errors.is(err, errors.CONFLICT) or errors.is(err, errors.NOT_FOUND) or errors.is(err, errors.PERMISSION_DENIED)
 end
 
-local function input_fence(db: sql.DB, row: table, job: table, acl: any?): (any?, error?)
+local function input_fence(db: sql.DB, row: table, job: table, acl: any?, owned: table?): (any?, error?)
     local key, err = event_access.component_key(db)
     if err then return nil, err end
     local query = sql.builder.select():from("kickside_projection_cursor k")
@@ -190,6 +206,13 @@ local function input_fence(db: sql.DB, row: table, job: table, acl: any?): (any?
         query = event_access.component_matches(query, row):where("t.component_id = ?", row.component_id)
             :left_join("(" .. statement .. ") acl ON acl.component_id = c.component_id", table.unpack(args))
             :columns("CASE WHEN acl.component_id IS NULL THEN 0 ELSE 1 END AS payload_allowed")
+    elseif owned then
+        query = event_access.component_matches(query, row):where("t.component_id = ? AND c.identity_generation = ?",
+            owned.component_id, owned.generation)
+            :where([[c.deleting_at IS NULL AND t.deleting_at IS NULL AND c.identity_hash IS NULL
+                AND p.actor_id IS NULL AND p.actor_context IS NULL
+                AND k.actor_id IS NULL AND k.execution_identity_json IS NULL]])
+            :columns("1 AS payload_allowed")
     else
         query = query:where("COALESCE(t.component_id, '') = ''"):columns("1 AS payload_allowed")
     end
@@ -269,12 +292,15 @@ local function defer(db: sql.DB, job: table, due: string): (table?, error?)
 end
 
 local function run_checkpointed(binding: table, input: table, host: string, db_id: string, job: table,
-        current: table, prefetched_last: number, before_dispatch: () -> error?, execution_frame: table?): (table?, error?, table?)
+        current: table, prefetched_last: number, before_dispatch: () -> error?, execution_frame: table?,
+        owner: table?): (table?, error?, table?, table?)
     local first = tonumber(current.last_seq)
     if first == nil then return nil, response_error("cursor.position"), current end
     local first_continuation = current.continuation
     local assigned_cursor = {}
     for key, value in pairs(current) do assigned_cursor[key] = value end
+    assigned_cursor.component_identity_generation = nil
+    assigned_cursor.component_owned_candidate = nil
     input.checkpoint = {
         job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq},
         cursor = assigned_cursor,
@@ -293,23 +319,25 @@ local function run_checkpointed(binding: table, input: table, host: string, db_i
     if not db then return nil, response_error("checkpoint.database") end
     local latest, row_err = snapshot(db, tostring(current.id), tostring(job.id))
     local read_err = release(db, row_err)
-    if read_err then return nil, read_err end
+    if read_err then return nil, read_err, owner and current or nil, owner end
     if not latest then return nil, response_error("checkpoint.snapshot") end
     if latest.status ~= "active" or latest.generation ~= current.generation then
         return apply.advance(db_id, job, current, first, {last_seq = first})
     end
-    if run_err then return nil, run_err, latest end
+    if run_err then return nil, run_err, latest, owner end
     if type(result) ~= "table" or result.checkpointed ~= true then
-        return nil, response_error("checkpoint.worker_receipt"), latest
+        return nil, response_error("checkpoint.worker_receipt"), latest, owner
     end
     if tonumber(latest.last_seq) == first and latest.continuation == first_continuation then
         return nil, errors.new({kind = errors.INVALID, retryable = false,
-            message = "checkpoint worker returned without advancing the position"}), latest
+            message = "checkpoint worker returned without advancing the position"}), latest, owner
     end
-    return apply.finish_checkpointed(db_id, job, latest, first)
+    local settled, settle_err = apply.finish_checkpointed(db_id, job, latest, first, owner)
+    if owner and not settled and settle_err then return nil, settle_err, latest, owner end
+    return settled, settle_err
 end
 
-local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?, table?)
+local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?, table?, table?)
     local db: sql.DB? = connection
     local cursor_id = tostring(current.id)
     local head = tonumber(current.event_count)
@@ -335,6 +363,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
     local seen_last = last
     local revision: any = nil
     local fold_target: string? = nil
+    local owned: table? = nil
     if current.status == "active" and head > last then
         local body = current.body :: table
         local meta = type(body.meta) == "table" and body.meta or {}
@@ -344,15 +373,22 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         if type(parsed) ~= "table" then return nil, release(db, response_error("worker.reference")) end
         local component_backed = current.component_id ~= nil and current.component_id ~= ""
         local system_identity = current.actor_id == nil and current.execution_identity_json == nil
-        if component_backed and system_identity and not core_system_projection(current, parsed.target_id) then
+        local needs_owned = component_backed and system_identity and not (current.thread_id == current.component_id
+            and owned_worker.core_lifecycle(current.component_impl_id, current.thread_id, current.kind, parsed.target_id))
+        local binding, binding_err = worker.validate(parsed, system_identity)
+        local needs_owned_declaration = (type(binding) == "table" and binding.component_owned)
+            or (binding_err and worker.requires_owned_declaration(binding_err))
+        if needs_owned and not needs_owned_declaration then
             return nil, release(db, event_access.denied())
         end
-        local binding, binding_err = worker.validate(parsed, system_identity)
         local needs_declaration = binding_err and worker.requires_checkpoint_declaration(binding_err)
-        if binding_err and not needs_declaration then return nil, release(db, binding_err) end
-        if needs_declaration then
+        if needs_owned_declaration then
+            binding = parsed
+        elseif needs_declaration then
             binding = parsed
             binding.checkpointed_apply = true
+        elseif binding_err then
+            return nil, release(db, binding_err)
         end
         if type(binding) ~= "table" then return nil, release(db, response_error("worker.binding")) end
         binding.actor_id = current.actor_id
@@ -375,23 +411,44 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             target = head
         else
             local post_err: error? = nil
-            post_commit, post_err = worker.post_commit_binding(binding)
-            if post_err then return nil, release(db, post_err) end
+            if not needs_owned_declaration then
+                post_commit, post_err = worker.post_commit_binding(binding)
+                if post_err then return nil, release(db, post_err) end
+            end
             types = event_types(body)
         end
         local acl: any = nil
         local execution_frame: table? = nil
-        if component_backed or needs_declaration then
+        local checkpoint_owner: table? = nil
+        if component_backed or needs_declaration or needs_owned_declaration then
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
-            if needs_declaration then
-                local admitted, declaration_err = worker.admit_declared_checkpoint(binding, current)
-                if not admitted then return nil, declaration_err or response_error("worker.declaration") end
+            if needs_owned_declaration then
+                local admission_err: error?
+                revision, admission_err = registry.snapshot()
+                if admission_err then return nil, admission_err end
+                if not revision then return nil, response_error("owned.registry") end
+                local _, proof_err = owned_worker.check(revision, current, binding.target_id)
+                if proof_err then return nil, proof_err end
+                local admitted
+                admitted, admission_err = worker.admit_owned(binding, system_identity, tostring(revision:version():id()))
+                if not admitted then return nil, admission_err or response_error("owned.worker") end
                 binding = admitted
+                binding.actor_id = current.actor_id
+                binding.actor_context = current.execution_identity_json
+                binding.system_identity = system_identity
+                if needs_owned then
+                    execution_frame, owned, admission_err = owned_worker.frame(current)
+                    if admission_err then return nil, admission_err end
+                end
+            elseif needs_declaration then
+                local admitted, declaration_err, owner = worker.admit_declared_checkpoint(binding, current)
+                if not admitted then return nil, declaration_err or response_error("worker.declaration") end
+                binding, checkpoint_owner = admitted, owner
             end
-            if component_backed then
+            if component_backed and not owned then
                 local access_err: error?
-                acl, revision, execution_frame, access_err = batch_access(current, binding)
+                acl, revision, execution_frame, access_err = batch_access(current, binding, revision)
                 if access_err then return nil, access_err end
             end
             local open_err: error?
@@ -399,13 +456,20 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             if open_err then return nil, open_err end
             if not db then return nil, response_error("database") end
         end
-        local fence, fence_err = input_fence(db, current, job, acl)
+        if binding.filtered_checkpoint then
+            types = event_types(body)
+            if not checkpoint_owner or not types or pinned then
+                return nil, release(db, response_error("filtered checkpoint declaration"))
+            end
+            target = math.min(head, last + page_size)
+        end
+        local fence, fence_err = input_fence(db, current, job, acl, owned)
         if fence_err then return nil, release(db, fence_err) end
         local events, events_err = worker.query_event_rows(db, tostring(current.thread_id), from, target, page_size, types, fence)
         if events_err then return nil, release(db, events_err) end
         if type(events) ~= "table" then return nil, release(db, response_error("events")) end
         local batch = events :: table[]
-        if binding.checkpointed_apply and (#batch == 0 or (pinned and batch[1].id ~= pinned.event_id)) then
+        if binding.checkpointed_apply and not binding.filtered_checkpoint and (#batch == 0 or (pinned and batch[1].id ~= pinned.event_id)) then
             return nil, release(db, errors.new({kind = errors.NOT_FOUND, retryable = false,
                 message = "projection checkpoint input is missing"})), current
         end
@@ -428,7 +492,17 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             range = { from_seq = from, to_seq = seen_last, target_seq = target, processed_count = #batch },
             events = mode == "prefetch_events" and batch or nil,
         }
+        if binding.filtered_checkpoint and #batch == 0 then
+            local release_err = release(db, nil)
+            if release_err then return nil, release_err end
+            local result, empty_err = apply.advance_filtered_empty(db_id, job, current, seen_last, checkpoint_owner :: table)
+            return result, empty_err, current, checkpoint_owner
+        end
         if #batch > 0 then
+            local target_id = binding.target_id
+            if type(target_id) ~= "string" then
+                return nil, release(db, response_error("worker.target_id"))
+            end
             committed_input = work_input
             -- Workers may read or write the shared core database. SQLite has a
             -- single pooled connection, so the snapshot handle must be returned
@@ -436,14 +510,25 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
             local function before_dispatch(): error?
-                return check_revision(revision, current.component_impl_id, binding.target_id)
+                if needs_owned_declaration then
+                    local live, err = registry.current_version()
+                    if err then return err end
+                    if not live then return response_error("registry.version") end
+                    if tostring(live:id()) ~= tostring(revision:version():id()) then
+                        return errors.new({kind = errors.CONFLICT, retryable = true,
+                            message = "component-owned projection declaration changed before dispatch"})
+                    end
+                    return nil
+                end
+                return check_revision(revision, current.component_impl_id, target_id)
             end
             if binding.worker_runtime == "proc" then
                 local host, host_err = apply.process_host()
                 if host_err then return nil, host_err end
                 if type(host) ~= "string" or host == "" then return nil, response_error("process_host") end
                 if binding.checkpointed_apply then
-                    return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last, before_dispatch, execution_frame)
+                    return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last, before_dispatch,
+                        execution_frame, checkpoint_owner)
                 end
                 output, row_err = worker.run_proc_supervised(binding, work_input, {
                     proc_host = host,
@@ -462,7 +547,9 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         if release_err then return nil, release_err end
     end
     if type(output) ~= "table" then return nil, response_error("worker.output") end
-    local result, apply_err = apply.advance(db_id, job, current, seen_last, output)
+    -- The authorized range advanced without invoking a worker or changing its fold.
+    local empty_scan = committed_input == nil and seen_last > last
+    local result, apply_err = apply.advance(db_id, job, current, seen_last, output, empty_scan, owned)
     if apply_err then return nil, apply_err end
     if type(result) ~= "table" then return nil, response_error("advance") end
     -- Match apply's cursor/retention notifications: successful durable commit
@@ -521,24 +608,33 @@ function M.run(input: any): (table?, error?)
     local result: table? = nil
     local attempt_err: error? = nil
     local checkpoint_failed = false
+    local failed_owner: table? = nil
     if row_err then
         attempt_err = release(db, row_err)
         if not row then return nil, attempt_err end
     else
         local failed_at
-        result, attempt_err, failed_at = attempt(db, db_id, job, row :: table, page_size)
+        result, attempt_err, failed_at, failed_owner = attempt(db, db_id, job, row :: table, page_size)
         if failed_at then
             row = failed_at
             checkpoint_failed = true
         end
     end
     local current = row :: table
-    if not attempt_err then return result, nil end
+    if result and result.pending_transition then
+        result.pending_transition = nil
+        local _, transition_err = require("funcs").call("kickside.core.lifecycle:resume_projection_transition", cursor_id)
+        if transition_err then
+            require("logger"):named("kickside.projections"):warn("deferred projection transition failed",
+                {cursor_id = cursor_id, error = tostring(transition_err)})
+        end
+    end
+    if not attempt_err or result then return result, attempt_err end
     if job_types.is_lease_lost_error(attempt_err) then return nil, attempt_err end
     -- Access, identity, worker and apply failures share the existing cursor
     -- failure transition. Its fence protects a resumed or committed cursor.
     local deterministic = job_types.is_deterministic_kind(attempt_err:kind())
-    local failed, fail_err = apply.fail(db_id, job, current, attempt_err, deterministic, checkpoint_failed or nil)
+    local failed, fail_err = apply.fail(db_id, job, current, attempt_err, deterministic, checkpoint_failed or nil, failed_owner)
     if fail_err then return nil, fail_err end
     if failed then return failed, nil end
     return nil, attempt_err

@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.42](https://github.com/kicksideai/kickside/compare/automation-v0.2.41...automation-v0.2.42) (2026-11-21)
+
+
+### Features
+
+* show Knowledge indexing outcomes in Drive activity ([2556f47](https://github.com/kicksideai/kickside/commit/2556f477d90b1b9b2f085de01e279640440e4f25))
+
+## [0.2.41](https://github.com/kicksideai/kickside/compare/automation-v0.2.40...automation-v0.2.41) (2026-11-20)
+
+
+### Bug Fixes
+
+* **automation:** finalize source changes before pin release ([#775](https://github.com/kicksideai/kickside/issues/775)) ([cef40db](https://github.com/kicksideai/kickside/commit/cef40db171ee1bd889f6a00e2da9872cab1c752b))
+* **automation:** retain event receipt expiry after source changes ([#774](https://github.com/kicksideai/kickside/issues/774)) ([14a3244](https://github.com/kicksideai/kickside/commit/14a3244dac31448dcb0ae8bec0a5747091402bc4))
+* **automation:** type the optional Workflow status reader ([#776](https://github.com/kicksideai/kickside/issues/776)) ([2816dd7](https://github.com/kicksideai/kickside/commit/2816dd78f4bfd206e3ec256bfdbd3679be3b0cf8))
+
+## [0.2.40](https://github.com/kicksideai/kickside/compare/automation-v0.2.39...automation-v0.2.40) (2026-11-20)
+
+
+### Features
+
+* show the current Workflow failure in Automation status ([#772](https://github.com/kicksideai/kickside/issues/772)) ([61d1ed9](https://github.com/kicksideai/kickside/commit/61d1ed965ba413b47853d81566633134b67b7a50))
+
+## [0.2.39](https://github.com/kicksideai/kickside/compare/automation-v0.2.38...automation-v0.2.39) (2026-11-20)
+
+
+### Features
+
+* **automation:** show Workflow outcomes alongside delivery history ([#766](https://github.com/kicksideai/kickside/issues/766)) ([6ff9c68](https://github.com/kicksideai/kickside/commit/6ff9c6847503bc2b32fd3b435b9cdd2164cf7290))
+
+## [0.2.38](https://github.com/kicksideai/kickside/compare/automation-v0.2.37...automation-v0.2.38) (2026-11-20)
+
+
+### Bug Fixes
+
+* **automation:** return not found for missing public state ([#749](https://github.com/kicksideai/kickside/issues/749)) ([7419152](https://github.com/kicksideai/kickside/commit/741915284bb2f8e5cf0e5b9ee1d1c0bcae2b6cea))
+
 ## [0.2.37](https://github.com/kicksideai/kickside/compare/automation-v0.2.36...automation-v0.2.37) (2026-11-19)
 
 

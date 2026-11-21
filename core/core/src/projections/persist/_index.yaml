@@ -45,6 +45,19 @@ entries:
       register: kickside.core.projections.persist:register
       text_trim: kickside.contract:text_trim
 
+  - name: owned_worker
+    kind: library.lua
+    meta:
+      comment: Admit a component's exact installed materializer with an isolated effect scope.
+    source: file://owned_worker.lua
+    modules: [security]
+    imports:
+      autoinit: kickside.component:autoinit
+      event_access: kickside.core.threads:event_access
+      lifecycle: kickside.core.lifecycle:consts
+      register: kickside.core.projections.persist:register
+      text_trim: kickside.contract:text_trim
+
   - name: reader
     kind: library.lua
     meta:

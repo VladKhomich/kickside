@@ -76,6 +76,12 @@ checks their event heads, and shares the configured event deletion cap across
 the page. It then runs receipt cleanup and owner hooks. An append wake on a
 sparse installation still reads only one candidate page.
 
+Component deletion leaves its lifecycle audit thread open. Its events inherit
+the event retention window (30 days by default), subject to the same pins and
+projection cursors as other threads. After the events expire, Core keeps the
+thread ID and sequence boundary. Recreating the same component ID reuses this
+thread. The sweeper includes its header in subsequent rotations.
+
 Boot recovery starts a rotation immediately. The service keeps the last
 visited ID and the rotation's highest ID in memory. It schedules the next
 page immediately until it reaches the endpoint. For a stable set of threads,
@@ -179,6 +185,37 @@ Thread deletion removes its own projection cursors and their blocked-input pins;
 those local pins do not require a surviving consumer's deletion fence. The fence
 pages raw pins before checking local cursor ownership by primary key, so pages
 advance through local pins with bounded work.
+
+## Filtered projection checkpoints
+
+An installed primary-thread process worker can declare `private: true`,
+`checkpointed_apply: true` and `filtered_checkpoint: true` with the
+`prefetch_events` input mode and an explicit input filter. Core delivers the
+matching events from one bounded physical page. To publish a complete prefix,
+the worker passes its ordered `{id, seq}` inputs as the final argument to
+`apply.checkpoint`. Core verifies the live cursor, lease, component owner and
+eligible rows before running the writer. An empty filtered page advances and
+settles without dispatching a worker or rewriting the projection body.
+
+The pair `projection_id` and `reset_generation` identifies the current fold
+incarnation. Existing projections begin at generation 1. An explicit rebuild
+increments it, even at the same sequence. Pause, resume and a compatible
+declaration transition preserve it. Removing and recreating the projection
+allocates a new ID. Workers that retain an outcome for later acknowledgment
+also bind it to their cursor, input identities and authorized component owner.
+
+A filtered destination may declare a `transition_from` with the exact
+predecessor `worker_ref` and its `target_db_config` registry entry. Core
+switches a caught-up predecessor while its existing Jobs slot is pending and
+unleased. If the slot is busy or backlogged, lifecycle records the current
+thread head as the handoff position. The predecessor continues processing
+through that position, including any in-flight fold. Subsequent appends keep
+their existing Jobs demand. Ordinary completion retries the transition after
+the predecessor's post-commit callback. A paused cursor keeps its pause and
+can process a pending backlog when its operator resumes it. Convergence
+preserves the fold, cursor position, IDs and reset generation.
+A successful transition authorizes the change in worker declaration. The
+destination owns durable publication and recovery in a separate target store.
 
 ## Declared projection convergence
 

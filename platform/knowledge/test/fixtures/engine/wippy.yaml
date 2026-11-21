@@ -1,0 +1,5 @@
+organization: kickside
+module: knowledge-engine-fixture
+description: Installed engine for standalone Knowledge projection and admission tests.
+directories:
+  src: ./src

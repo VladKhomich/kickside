@@ -301,9 +301,9 @@ function jobs.complete(id: string, lease: table, options: table): (table?, error
 end
 
 -- Jobs-owned, bounded retention entry point consumed by the maintenance slot.
-function jobs.retention_sweep(cursor: table?, completed_fence_cursor: table | boolean | nil): (table?, error?)
+function jobs.retention_sweep(cursor: table?, completed_fence_cursor: table | boolean | nil, scan_wake: boolean?): (table?, error?)
     return with_db(function(db: sql.DB, dbtype: string): (table?, error?)
-        return retention.sweep(db, dbtype, cursor, completed_fence_cursor)
+        return retention.sweep(db, dbtype, cursor, completed_fence_cursor, scan_wake)
     end, true)
 end
 

@@ -5,6 +5,7 @@ local security = require("security")
 local sql = require("sql")
 local uuid = require("uuid")
 local fs = require("fs")
+local json = require("json")
 local records = require("records")
 local provision = require("provision")
 local types = require("types")
@@ -17,6 +18,8 @@ local owner_component, delete_component, corrupt_component, cleanup_component
 local uploads = {}
 local seeded = {}
 local volume
+
+local PRIVATE_MISSING_PATH = "private-fixture/original-upload-bytes.txt"
 
 local function actor(id)
     return assert(security.new_actor(id, {security_groups = {"app:uploads_test"}}))
@@ -43,6 +46,14 @@ local function check(err, kind, code)
     test.not_nil(err)
     test.is_true(errors.is(err, kind), tostring(err))
     if code then test.eq((err:details() or {}).code, code) end
+end
+
+local function check_public_storage_error(err, private_value)
+    local serialized = assert(json.encode({
+        kind = err:kind(), message = err:message(), retryable = err:retryable(), details = err:details(),
+    }))
+    test.is_true(serialized:find(private_value, 1, true) == nil, "public content error contains a private storage locator")
+    test.is_nil(err:details().cause)
 end
 
 local function invoke(method, context, options, args)
@@ -100,7 +111,9 @@ return {run = test.run_cases(function()
             seed("missing_path")
             update(uploads.missing_path, "storage_path", "")
             seed("missing_file")
+            update(uploads.missing_file, "storage_path", PRIVATE_MISSING_PATH)
             seed("unavailable_storage", "app.upload_errors:unavailable_storage")
+            seed("unregistered_storage", "app:private_original_volume")
             seed("unreadable_storage", "app.upload_errors:unreadable_storage")
             seed("delete_failure", "app.upload_errors:unavailable_storage", delete_owner)
             update(uploads.delete_failure, "type_id", "")
@@ -203,38 +216,46 @@ return {run = test.run_cases(function()
             check(value.error, errors.INTERNAL, "upload_storage_path_missing")
             test.eq(value.error:message(), "Original upload storage path is missing")
         end)
-        test.it("content reports missing original bytes", function()
-            local value, err = invoke("get_content", {upload_id = uploads.missing_file})
-            test.is_nil(err, tostring(err))
-            test.is_false(value.success)
-            check(value.error, errors.NOT_FOUND, "upload_content_read_failed")
-            test.eq(value.error:message(), "Failed to read original upload content")
-            test.eq(value.error:details().cause.kind, errors.NOT_FOUND)
-        end)
+        for _, read in ipairs({{name = "default"}, {name = "raw", args = {format = "raw", max_size = 3}}}) do
+            test.it(read.name .. " content reports missing original bytes without returning the stored path", function()
+                local value, err = invoke("get_content", {upload_id = uploads.missing_file}, nil, read.args)
+                test.is_nil(err, tostring(err))
+                test.is_false(value.success)
+                check(value.error, errors.NOT_FOUND, "upload_content_read_failed")
+                test.eq(value.error:message(), "Failed to read original upload content")
+                test.is_false(value.error:retryable() == true)
+                check_public_storage_error(value.error, PRIVATE_MISSING_PATH)
+            end)
+        end
         for _, row in ipairs({{"unavailable_storage", "acquire"}, {"unreadable_storage", "read"}}) do
             test.it("content preserves storage " .. row[2] .. " failures", function()
                 local value, err = invoke("get_content", {upload_id = uploads[row[1]]})
                 local failure = err or (value and value.error)
-                check(failure, errors.UNAVAILABLE, "upload_test_storage_unavailable")
+                check(failure, errors.UNAVAILABLE, row[2] == "acquire" and "storage_unavailable" or "upload_content_read_failed")
                 test.is_true(failure:retryable())
-                test.eq(failure:details().operation, row[2])
-                test.eq(failure:details().cause.kind, errors.UNAVAILABLE)
-                test.eq(failure:details().cause.details.code, "upload_test_storage_unavailable")
+                check_public_storage_error(failure, uploads[row[1]])
                 if row[2] == "acquire" then
                     test.is_nil(value)
-                    test.eq(failure:message(), "Failed to get upload storage: upload test storage unavailable")
+                    test.eq(failure:message(), "Failed to get upload storage")
                 else
                     test.is_false(value.success)
                     test.eq(failure:message(), "Failed to read original upload content")
                 end
             end)
         end
+        test.it("content reports unregistered storage without disclosing the storage ID", function()
+            local value, err = invoke("get_content", {upload_id = uploads.unregistered_storage})
+            test.is_nil(value)
+            check(err, errors.UNAVAILABLE, "storage_unavailable")
+            check_public_storage_error(err, "app:private_original_volume")
+        end)
         test.it("content classifies legacy storage dependency errors", function()
             local value, err = invoke("get_content", {upload_id = uploads.legacy_storage})
             test.is_nil(value)
             check(err, errors.UNAVAILABLE, "storage_unavailable")
             test.is_true(err:retryable())
-            test.eq(err:message(), "Failed to get upload storage: upload test legacy storage failure")
+            test.eq(err:message(), "Failed to get upload storage")
+            check_public_storage_error(err, "upload test legacy storage failure")
         end)
         test.it("list preserves corrupt persisted metadata errors", function()
             local provider = assert(open("kickside.contract:resource_registry", {}, {
@@ -396,6 +417,17 @@ return {run = test.run_cases(function()
                     check(foreign, errors.NOT_FOUND, "artifact_reference_not_found")
                     check(absent, errors.NOT_FOUND, "artifact_reference_not_found")
                     test.is_true((err:details() or {}).code ~= "artifact_reference_not_found")
+                end)
+
+                test.it("reports a private backing path failure without disclosing the path", function()
+                    local private_path = "private-fixture/primary-" .. backing .. ".txt"
+                    set_location("app:uploads", private_path)
+                    local value, err = invoke("get_content", {upload_id = id})
+                    test.is_nil(value)
+                    check(err, errors.NOT_FOUND, "artifact_read_failed")
+                    test.is_false(err:retryable() == true)
+                    test.eq(err:details().artifact_read_source, backing)
+                    check_public_storage_error(err, private_path)
                 end)
 
                 test.it("distinguishes an unregistered volume from missing backing bytes", function()

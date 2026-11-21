@@ -55,7 +55,7 @@ local function owner(): string
     return id
 end
 
-local function target(user: string, engine: string): string
+local function target(user: string, engine: string, without_thread: boolean?): string
     local id = uuid.v7()
     targets[#targets + 1] = id
     local impl_id = engine == "receipt" and "app:admission_accepting_engine" or "test.kb:embeddable"
@@ -64,9 +64,10 @@ local function target(user: string, engine: string): string
     for k, v in pairs({ class = "knowledge_base", kb_type = "wiki", status = "ready", title = "Admission test" }) do
         execute("INSERT INTO kickside_component_meta (meta_id, component_id, key, value, created_at, updated_at) VALUES ($1, $2, $3, $4, 0, 0)", { uuid.v7(), id, k, v })
     end
+    if without_thread then return id end
     local def = assert(contract.get("kickside.core:threads"))
     local threads = assert(def:with_actor(security.new_actor(user, {})):with_scope(security.named_scope("wippy.security:process")):open())
-    local _, err = threads:ensure_thread({ component_id = id, impl_id = "app:test_engine_wiki", thread_class = "kickside.knowledge.injection" })
+    local _, err = threads:ensure_thread({ component_id = id, impl_id = "knowledge.fixture:test_engine_wiki", thread_class = "kickside.knowledge.injection" })
     test.is_nil(err, tostring(err))
     return id
 end
@@ -294,4 +295,27 @@ local function define_published_tests()
     end)
 end
 
-return { run = test.run_cases(define_tests), run_published = test.run_cases(define_published_tests) }
+local function define_retry_tests()
+    test.describe("Knowledge source retry", function()
+        test.after_each(cleanup_fixtures)
+        test.it("routes Retry through the member endpoint and KB write gate", function()
+            local user = owner()
+            local id = target(user, "document", true)
+            local path = "/api/knowledge/" .. id .. "/retry-source"
+            local invalid = content_request(user, "POST", path, "{}")
+            test.eq(invalid.status_code, 400, invalid.body)
+            local request = assert(json.encode({node_id = uuid.v7(), failed_event_id = uuid.v7()}))
+            local outsider = content_request(owner(), "POST", path, request)
+            test.eq(outsider.status_code, 403, outsider.body)
+            local unsupported = content_request(user, "POST", path, request)
+            test.eq(unsupported.status_code, 400, unsupported.body)
+            test.contains(unsupported.body, "does not support retrying failed sources")
+        end)
+    end)
+end
+
+return {
+    run = test.run_cases(define_tests),
+    run_published = test.run_cases(define_published_tests),
+    run_retry = test.run_cases(define_retry_tests),
+}

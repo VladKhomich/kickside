@@ -1036,6 +1036,18 @@ entries:
       component_reader: kickside.component.persist:component_reader
       implementation_access: kickside.component.persist:implementation_access
 
+  - name: component_metadata_plan_test
+    kind: function.lua
+    meta: {type: test, suite: component_metadata_plan}
+    source: file://component_metadata_plan_test.lua
+    method: run
+    modules: [json, sql, uuid]
+    imports:
+      test: wippy.test:test
+      access_subjects: kickside.component.persist:access_subjects
+      component_query: kickside.component.persist:component_query
+      component_reader: kickside.component.persist:component_reader
+
   - name: identity_native_fixture
     kind: library.lua
     source: file://identity_native_fixture.lua
