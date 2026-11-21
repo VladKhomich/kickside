@@ -12,6 +12,7 @@ function M.reset(stage: string, source: any)
     M.previous_error, M.forwarded_error = nil, nil
     M.dialect_reads = 0
     M.owned = stage:sub(1, 6) == "owned_"
+    M.actor_qualified = stage == "owned_downgraded" or stage == "owned_validation_unavailable"
     M.admissions, M.owned_checks = 0, 0
     M.debounce = stage == "first" or stage == "latest" or stage == "type" or stage == "begin"
         or stage == "complete" or stage == "commit" or stage == "time"
@@ -35,6 +36,7 @@ function M.decode(_raw: any): (any, error?) return M.outcome("decode", {meta = {
 function M.from_row(_actor: any, _raw: any): (any, error?) return M.outcome("identity", {}) end
 function M.parse(_ref: any, _system: any): (any, error?) return M.outcome("parse", {}) end
 function M.validate(_parsed: any, _system: any): (any, error?)
+    if M.stage == "owned_validation_unavailable" and M.admissions > 0 then return nil, M.source end
     local downgraded = M.stage == "owned_downgraded" and M.admissions > 0
     return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func", target_id = "app:worker",
         component_owned = M.owned and not downgraded})
@@ -73,7 +75,7 @@ end
 function M.admit_owned(_binding: any, _system: any, _revision: any): (any, error?, boolean?)
     M.admissions = M.admissions + 1
     if M.stage == "owned_churn" or (M.admissions == 1 and (M.stage == "owned_admission"
-        or M.stage == "owned_replaced" or M.stage == "owned_downgraded")) then
+        or M.stage == "owned_replaced" or M.actor_qualified)) then
         return nil, rollover(), true
     end
     return {worker_runtime = "func", target_id = "app:worker", component_owned = true}, nil
@@ -127,7 +129,7 @@ function M.database(): any
                 slot_execution_seq = M.stage == "next_claim" and M.advances > 0 and 2 or 1,
                 debounce_idle_ms = M.debounce and 1000 or 0, debounce_max_ms = 10000}
             if statement:find("k.last_error", 1, true) then row.last_error = M.previous_error end
-            if M.stage == "identity" or M.stage == "owned_downgraded" then
+            if M.stage == "identity" or M.actor_qualified then
                 row.actor_id, row.execution_identity_json = "actor", "identity"
             end
             if M.owned then

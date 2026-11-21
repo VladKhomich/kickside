@@ -379,8 +379,11 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         local binding, binding_err = worker.validate(parsed, system_identity)
         local needs_owned_declaration = (type(binding) == "table" and binding.component_owned)
             or (binding_err and worker.requires_owned_declaration(binding_err))
-        if (needs_owned or readmitting_owned) and not needs_owned_declaration then
+        if needs_owned and not needs_owned_declaration then
             return nil, release(db, event_access.denied())
+        end
+        if readmitting_owned and not needs_owned_declaration then
+            return nil, release(db, binding_err or event_access.denied())
         end
         local needs_declaration = binding_err and worker.requires_checkpoint_declaration(binding_err)
         if needs_owned_declaration then
