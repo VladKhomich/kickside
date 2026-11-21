@@ -163,7 +163,8 @@ entries:
         - kickside.component.migrations:18_custody_backfill
     source: file://22_recurring_task_custody.lua
     method: migrate
+    modules: [json]
     imports:
       migration: wippy.migration:migration
-      recurring_custody: kickside.component.migrations:recurring_custody
+      declared_custody_backfill: kickside.component.migrations:declared_custody_backfill
       types: kickside.automation:types
