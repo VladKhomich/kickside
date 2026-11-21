@@ -14,10 +14,11 @@ entries:
       comment: "GET /models/list[?capability=generate|embed|<cap>] — models by capability (default generate) with title/provider/class/capabilities/dimensions."
     source: file://list_models.lua
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call]
+      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call, kickside.models.api:provider_presentation_read]
     modules: [http]
     imports:
       models: kickside.models.catalog:model_catalog
+      provider_read_model: kickside.models.providers:provider_read_model
     method: handler
 
   - name: list_models.endpoint
@@ -33,10 +34,11 @@ entries:
       comment: GET /models/classes — model classes (fast/balanced/…) with their members.
     source: file://list_model_classes.lua
     security:
-      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call]
+      policies: [kickside.models.catalog:catalog_read, kickside.models:reload_profiles_call, kickside.models.api:provider_presentation_read]
     modules: [http]
     imports:
       models: kickside.models.catalog:model_catalog
+      provider_read_model: kickside.models.providers:provider_read_model
       classes_read_model: kickside.models.classes:read_model
     method: handler
 
@@ -65,3 +67,13 @@ entries:
     method: GET
     func: models_by_name
     path: /models/by-name
+
+  - name: provider_presentation_read
+    kind: security.policy
+    meta:
+      private: true
+      comment: Model list handlers read registry-declared provider presentation, including installed extensions.
+    policy:
+      resources: '*'
+      actions: [registry.find]
+      effect: allow

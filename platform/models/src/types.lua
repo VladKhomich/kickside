@@ -44,6 +44,12 @@ function M.slug(value: any): string
     return s
 end
 
+function M.icon_name(value: any): string?
+    if type(value) ~= "string" or #value > 96 then return nil end
+    if not value:match("^[a-z0-9][a-z0-9_-]*:[a-z0-9][a-z0-9_-]*$") then return nil end
+    return value
+end
+
 function M.positive_limit(value: any): number?
     local limit = tonumber(value)
     if limit and limit > 0 then return limit end

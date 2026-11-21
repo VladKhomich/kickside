@@ -278,7 +278,6 @@ useHostVisibilityRefresh(async () => {
           <ProviderList
             :profiles="profiles"
             :adapters="adapters"
-            :presets="presets"
             :selected-id="poolProfileId"
             :discovering="discovering"
             :busy="saving"
@@ -297,7 +296,6 @@ useHostVisibilityRefresh(async () => {
         :models="models"
         :profiles="profiles"
         :adapters="adapters"
-        :presets="presets"
         :probing-model="probing"
         :probe-state="probeState"
         :probe-details-model="probeDetailsModel"

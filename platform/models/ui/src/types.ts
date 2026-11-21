@@ -6,6 +6,7 @@ export interface Adapter {
   id: string
   name?: string
   title: string
+  icon?: string
   description?: string
   tags?: string[]
   discoverable?: boolean
@@ -56,6 +57,7 @@ export interface Profile {
   id: string
   name: string
   provider_id: string
+  icon?: string
   config?: ProviderConfig
   enabled: boolean
   status?: string

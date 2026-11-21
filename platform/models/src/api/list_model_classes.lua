@@ -1,5 +1,6 @@
 local http = require("http")
 local models = require("models")
+local provider_read_model = require("provider_read_model")
 local classes_read_model = require("classes_read_model")
 
 -- GET /models/classes — the model-class catalog. Declarative model_class registry
@@ -27,7 +28,9 @@ local function handler()
     -- Union in classes actually used by models, collecting members.
     local all_models, err = models.get_all()
     if err then return nil, err end
+    local badges = provider_read_model.badges()
     for _, model in ipairs(all_models) do
+        local provider_title, provider_icon = provider_read_model.badge_for_model(model, badges)
         local classes = model.class or {}
         if type(classes) ~= "table" then classes = { classes } end
         for _, cls in ipairs(classes) do
@@ -36,6 +39,8 @@ local function handler()
                 name = model.name,
                 title = model.title or model.name,
                 priority = tonumber(model.priority) or 0,
+                provider_title = provider_title,
+                provider_icon = provider_icon,
             })
         end
     end

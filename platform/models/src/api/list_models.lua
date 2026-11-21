@@ -1,5 +1,6 @@
 local http = require("http")
 local models = require("models")
+local provider_read_model = require("provider_read_model")
 
 -- GET /models/list[?capability=generate|embed|<cap>] — model discovery for UI
 -- pickers. Default (absent or "generate") returns generate-capable chat/tool-use
@@ -46,6 +47,7 @@ local function handler()
     local all_models, err = models.get_all()
     if err then return nil, err end
 
+    local badges = provider_read_model.badges()
     local formatted = {}
     for _, model in ipairs(all_models) do
         local is_embedding = (model.type == "llm.embedding") or has_capability(model, "embed")
@@ -66,11 +68,14 @@ local function handler()
             -- The class array (e.g. {"fast","nano"}) lets the UI offer model
             -- classes as selectable targets; capabilities gate features like
             -- extended thinking; dimensions are present on embedding models.
+            local provider_title, provider_icon = provider_read_model.badge_for_model(model, badges)
             table.insert(formatted, {
                 name = model.name,
                 title = model.title or model.name,
                 description = model.description or "",
                 provider = provider_of(model),
+                provider_title = provider_title,
+                provider_icon = provider_icon,
                 class = model.class or {},
                 capabilities = model.capabilities or {},
                 dimensions = model.dimensions,

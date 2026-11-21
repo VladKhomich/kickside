@@ -90,3 +90,16 @@ entries:
       migration: wippy.migration:migration
       models_types: kickside.models:models_types
       llm_transport: wippy.llm.util:transport
+
+  - name: 07_provider_profile_icon
+    kind: function.lua
+    meta:
+      type: migration
+      depends_on:
+        - ns:wippy.migration
+        - kickside.models.migrations:06_unset_zero_profile_timeouts
+      timestamp: "2026-11-21T00:00:01Z"
+    source: file://07_provider_profile_icon.lua
+    method: migrate
+    imports:
+      migration: wippy.migration:migration
