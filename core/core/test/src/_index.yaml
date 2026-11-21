@@ -3154,9 +3154,10 @@ entries:
   - name: projection_invoke_native_source
     kind: library.lua
     source: file://projection_invoke_native_source.lua
-    modules: [registry, security, funcs, logger]
+    modules: [security, funcs, logger]
     imports:
-      owned_worker: kickside.core.projections.persist:owned_worker
+      owned_worker: app:projection_invoke_native_owned_worker_adapter
+      registry: app:projection_invoke_native_registry_adapter
       event_access: kickside.core.threads:event_access
       component_query: kickside.component.persist:component_query
       canonical_json: kickside.contract:canonical_json
@@ -3204,6 +3205,18 @@ entries:
       fixture: app:projection_invoke_native_fixture
 
   - name: projection_invoke_native_worker_adapter
+    kind: library.lua
+    source: file://projection_invoke_native_dependency_adapter.lua
+    imports:
+      fixture: app:projection_invoke_native_fixture
+
+  - name: projection_invoke_native_owned_worker_adapter
+    kind: library.lua
+    source: file://projection_invoke_native_dependency_adapter.lua
+    imports:
+      fixture: app:projection_invoke_native_fixture
+
+  - name: projection_invoke_native_registry_adapter
     kind: library.lua
     source: file://projection_invoke_native_dependency_adapter.lua
     imports:
