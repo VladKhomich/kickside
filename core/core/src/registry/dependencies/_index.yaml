@@ -3,7 +3,7 @@ namespace: kickside.core
 entries:
   - name: dep.kickside.component
     # The lifecycle reaper uses the typed custody reader and retirement fence.
-    version: '>=0.3.30'
+    version: '>=0.3.31'
     kind: ns.dependency
     meta:
       comment: Records and instances register as component shells and resolve access through the component service.

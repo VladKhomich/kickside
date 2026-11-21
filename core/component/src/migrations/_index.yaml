@@ -172,10 +172,22 @@ entries:
     meta:
       type: migration
       target_db: ''
-      depends_on: [ns:wippy.migration]
+      depends_on: [ns:wippy.migration, kickside.component.migrations:17_custody_schema]
       timestamp: '2026-11-21T08:00:01Z'
     source: file://18_custody_backfill.lua
     modules: [json, uuid]
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
+  - name: 19_custody_indexes
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ''
+      depends_on: [ns:wippy.migration, kickside.component.migrations:18_custody_backfill]
+      timestamp: '2026-11-21T08:00:03Z'
+    source: file://19_custody_indexes.lua
     imports:
       migration: wippy.migration:migration
     method: migrate

@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.uploads
+entries:
+  - name: adopt_component_upload
+    kind: function.lua
+    meta:
+      comment: Clone a completed personal upload into an immutable original owned by a writable component.
+    source: file://component_assets.lua
+    method: adopt
+    modules: [security, uuid, time]
+    imports:
+      component: kickside.component:component
+      access_policy: kickside.component:access_policy
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      uploads_resources: kickside.uploads.binding:uploads_resources
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_lib: kickside.uploads:uploads
+      types: kickside.uploads:types
+
+  - name: reap_component_upload
+    kind: function.lua
+    meta:
+      comment: Collect one exact component-owned original under its owner's retention authority.
+    source: file://component_assets.lua
+    method: reap
+    modules: [security, uuid, time]
+    imports:
+      component: kickside.component:component
+      access_policy: kickside.component:access_policy
+      upload_query_repo: kickside.uploads.persist:upload_query_repo
+      uploads_resources: kickside.uploads.binding:uploads_resources
+      artifact_content_repo: kickside.uploads.persist:artifact_content_repo
+      upload_lib: kickside.uploads:uploads
+      types: kickside.uploads:types

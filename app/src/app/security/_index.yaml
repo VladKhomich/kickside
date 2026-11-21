@@ -105,7 +105,7 @@ entries:
       type: app.security.policy_binding
       surface: app.root
       intent: root_admin
-      comment: Root administrator access. Keeper and app-management surfaces are reachable only through this scope. Thread output publication is a module service capability and stays outside human administration.
+      comment: Root administrator access. Keeper and app-management surfaces are reachable only through this scope. Thread output publication and command-owned Work transitions require module service capabilities.
     groups:
       - app.security:admin
     policy:
@@ -115,7 +115,7 @@ entries:
       conditions:
         - field: action
           operator: nin
-          value: [threads.output.publish]
+          value: [threads.output.publish, work.transition.command]
 
   - name: ingress.endpoint_access
     kind: security.policy

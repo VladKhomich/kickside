@@ -32,9 +32,9 @@ end
 
 local function define_tests()
     test.describe("provider profile timeout", function()
-        test.it("requires the LLM transport version that parses discovery timeout requirements", function()
+        test.it("requires the LLM transport with provider timeout parsing and malformed-response fallback", function()
             local dependency = assert(registry.get("kickside.models:dep.wippy.llm"))
-            test.eq(dependency.data.version, ">=0.5.14")
+            test.eq(dependency.data.version, ">=0.5.23")
         end)
 
         test.it("rejects invalid timeouts on create and update", function()

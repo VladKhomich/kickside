@@ -1,7 +1,7 @@
 version: "1.0"
 namespace: app.deps
 entries:
-  - version: ">=0.5.22"
+  - version: ">=0.5.23"
     name: llm
     kind: ns.dependency
     meta: {}

@@ -7,6 +7,7 @@ local uuid = require("uuid")
 local DB = "app:metadata_migration_db"
 local SCHEMA = "17_custody_schema"
 local BACKFILL = "18_custody_backfill"
+local INDEXES = "19_custody_indexes"
 
 local function migrate(name: string): any
     return assert(funcs.call("kickside.component.migrations:" .. name, {database_id = DB, id = name, direction = "up"}))
@@ -81,6 +82,17 @@ return {run = test.run_cases(function()
             test.eq(migrate(BACKFILL).failed, 0)
             test.eq(migrate(SCHEMA).failed, 0)
             test.eq(migrate(BACKFILL).failed, 0)
+            test.eq(migrate(INDEXES).failed, 0)
+            test.eq(migrate(INDEXES).failed, 0)
+            local index_query = postgres
+                and [[SELECT indexname AS name FROM pg_indexes WHERE schemaname=current_schema()
+                      AND tablename='kickside_components' AND indexname LIKE 'idx_kickside_components_custody_%' ORDER BY name]]
+                or [[SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='kickside_components'
+                      AND name LIKE 'idx_kickside_components_custody_%' ORDER BY name]]
+            local indexes = assert(db:query(index_query))
+            test.eq(#indexes, 2)
+            test.eq(indexes[1].name, "idx_kickside_components_custody_component")
+            test.eq(indexes[2].name, "idx_kickside_components_custody_principal")
             test.eq(read(db, ambiguous).secrets_incarnation, first.secrets_incarnation)
             local last = read(db, marked)
             test.not_nil(last.secrets_incarnation)

@@ -72,7 +72,16 @@ local function get_handler()
         res:write_json({ success = false, error = tostring(access_err) })
         return
     end
-    local upload, err = upload_read_model.get_for_actor(stored.actor_id, uuid)
+    local upload, err = stored, nil
+    if upload_types.owned_component(stored.actor_id) then
+        if stored.storage_state ~= "completed" then
+            res:set_status(http.STATUS.NOT_FOUND)
+            res:write_json({success = false, error = "Upload not found"})
+            return
+        end
+    else
+        upload, err = upload_read_model.get_for_actor(stored.actor_id, uuid)
+    end
     if err then
         res:set_status(http.STATUS.NOT_FOUND)
         res:write_json({
@@ -87,7 +96,10 @@ local function get_handler()
     -- can still use the authorized file API and its delivery URLs.
     local base = upload_response.view_base()
     local public = upload_response.format_get_upload(upload, base)
-    local delivery_err, message = upload_response.attach_delivery(upload, public)
+    local delivery_err, message
+    if not upload_types.owned_component(stored.actor_id) then
+        delivery_err, message = upload_response.attach_delivery(upload, public)
+    end
     if delivery_err then
         res:set_status(http_errors.classify(delivery_err))
         res:write_json({success = false, error = message})
