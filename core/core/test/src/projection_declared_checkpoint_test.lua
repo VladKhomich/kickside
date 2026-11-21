@@ -30,7 +30,8 @@ end
 
 local function registration(db, component_id, projection_key, cursor_key)
     local rows = assert(db:query([[SELECT c.id,c.job_id,c.actor_id,c.execution_identity_json,c.generation,c.last_seq,
-        c.status,c.last_error,c.pending_transition,c.continuation,c.projection_id,p.body,p.last_event_seq,p.reset_generation,p.actor_context FROM kickside_projection_cursor c
+        c.status,c.last_error,c.pending_transition,c.pending_transition_seq,c.continuation,c.projection_id,
+        p.body,p.last_event_seq,p.reset_generation,p.actor_context FROM kickside_projection_cursor c
         JOIN kickside_projection p ON p.id=c.projection_id
         WHERE c.thread_id=$1 AND p.kind=$2 AND p.projection_key=$3 AND c.cursor_key=$4]],
         {component_id, KIND, projection_key, cursor_key}))
@@ -255,6 +256,102 @@ return {run = test.run_cases(function()
             test.is_true(successor.id ~= reset.id)
             test.is_true(successor.projection_id ~= reset.projection_id)
             test.eq(successor.reset_generation, 1)
+        end)
+
+        test.it("keeps one handoff cutoff across equivalent descriptors and continued appends", function()
+            local f = fixture.new()
+            local id = uuid.v7()
+            created_component = id
+            assert(f.register_bare_component(f.owner, id, "app:checkpoint_alias_component", {}))
+            assert(f.run_as(f.owner, "ensure_thread", {component_id = id, impl_id = "app:checkpoint_alias_first"}))
+            local opener = assert(security.new_actor("system:lifecycle", {system = true, groups = {"system", "lifecycle"}}))
+            local function converge()
+                local continuation
+                repeat
+                    local summary = assert(provision.converge(opener, f.test_scope(), continuation))
+                    for _, skip in ipairs(summary.skipped) do
+                        if skip.component_id == id then
+                            test.eq(skip.impl_id, "app:checkpoint_alias_third")
+                            test.eq(skip.error.details.code, "projection_declaration_requires_registration")
+                        end
+                    end
+                    continuation = summary.continuation
+                until not continuation
+            end
+            local function position(key)
+                return in_db(function(db) return registration(db, id, key, key) end)
+            end
+            local function change_locator(cursor, impl_id)
+                local marker = assert(json.encode({impl_id, "proc://app:range_checkpoint_worker"}))
+                in_db(function(db)
+                    assert(db:execute("UPDATE kickside_projection_cursor SET pending_transition=$1 WHERE id=$2", {marker, cursor.id}))
+                end)
+            end
+            local function predecessor(key)
+                local row = position(key)
+                local body = type(row.body) == "table" and row.body or assert(json.decode(row.body))
+                in_db(function(db)
+                    assert(projections.register_projection(db, id, {kind = KIND, projection_key = key, cursor_key = key,
+                        worker_ref = "func://app:test_count_worker", worker_input_mode = "prefetch_events", events = body.events,
+                        execution_identity_row = {actor_id = row.actor_id, actor_context = row.execution_identity_json}}))
+                end)
+            end
+            local head = 0
+            local function append(n)
+                local events = {}
+                for i = 1, n do events[i] = {type = TRIGGER, role = "system", body_json = "{}"} end
+                in_db(function(db) assert(threads_writer.append_system(db, id, events)) end)
+                head = head + n
+            end
+            converge()
+            predecessor("ranged")
+            append(2)
+            converge()
+            local first = position("ranged")
+            test.eq(tonumber(first.pending_transition_seq), 2)
+            -- The second address begins a different handoff while the aliased
+            -- address is still draining the original prefix.
+            predecessor("independent")
+            append(3)
+            converge()
+            local second = position("independent")
+            test.eq(tonumber(second.pending_transition_seq), 5)
+            for _ = 1, 3 do
+                append(32)
+                converge()
+                local ranged = position("ranged")
+                test.eq(tonumber(ranged.pending_transition_seq), 2)
+                test.eq(ranged.pending_transition, first.pending_transition)
+                test.eq(tonumber(position("independent").pending_transition_seq), 5)
+            end
+            -- A once-valid locator can disappear in the next registry update.
+            -- An equivalent installed locator adopts the same prefix.
+            change_locator(first, "app:retired_checkpoint_alias")
+            append(1)
+            converge()
+            test.eq(position("ranged").pending_transition, first.pending_transition)
+            test.eq(tonumber(position("ranged").pending_transition_seq), 2)
+            execute(position("ranged"))
+            local switched = position("ranged")
+            test.is_nil(switched.pending_transition)
+            test.eq(switched.id, first.id)
+            test.eq(switched.job_id, first.job_id)
+            test.is_true(tonumber(switched.last_seq) < head, "later inputs remain queued")
+            local body = type(switched.body) == "table" and switched.body or assert(json.decode(switched.body))
+            test.eq(body.meta.worker_ref, "proc://app:range_checkpoint_worker")
+            test.eq(position("independent").pending_transition, second.pending_transition)
+
+            -- An installed locator with a different filter cannot share the
+            -- cutoff even when it still names the same worker and address.
+            change_locator(second, "app:checkpoint_alias_third")
+            append(1)
+            converge()
+            local restarted = position("independent")
+            test.eq(restarted.pending_transition, second.pending_transition)
+            test.eq(tonumber(restarted.pending_transition_seq), head)
+            append(1)
+            converge()
+            test.eq(position("independent").pending_transition_seq, restarted.pending_transition_seq)
         end)
 
         for _, later in ipairs({0, 32}) do

@@ -212,7 +212,9 @@ A filtered destination may declare a `transition_from` with the exact
 predecessor `worker_ref` and its `target_db_config` registry entry. Core
 switches a caught-up predecessor while its existing Jobs slot is pending and
 unleased. If the slot is busy or backlogged, lifecycle records the current
-thread head as the handoff position. The predecessor continues processing
+thread head as the handoff position. Equivalent descriptors for the same
+cursor and destination share that position, including when another installed
+descriptor takes over from a retired locator. The predecessor continues processing
 through that position, including any in-flight fold. Subsequent appends keep
 their existing Jobs demand. Ordinary completion retries the transition after
 the predecessor's post-commit callback. A paused cursor keeps its pause and
