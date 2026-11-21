@@ -6,32 +6,27 @@ namespace: kickside.inbox.security
 # user_security_scope requirement (the app wires app.security:user), keeping the
 # slice app-agnostic. Per-user ownership is enforced behind the endpoints.
 entries:
+  # Accounts can retain this scope in their stored memberships. The empty
+  # groups declaration keeps it resolvable without granting any policies.
   - name: assigner
     kind: security.scope
     meta:
-      title: Inbox assigners
-      comment: Assign Inbox reviews to another user.
+      internal: true
+      private: true
+    groups: []
     policies: []
 
+  # Parked Flow execution frames can refer to this policy by ID.
   - name: assignment_access
     kind: security.policy
     meta:
-      comment: Assigned administrators may deliver review cards without recipient execution authority.
+      private: true
+      service_only: true
     groups: []
     policy:
-      resources: 'user:*'
-      actions: inbox.assign
-      effect: allow
-
-  - name: assignment_security_scope
-    kind: ns.requirement
-    default: kickside.inbox.security:assigner
-    meta:
-      value_kind: security.scope
-      comment: Application group that may assign Inbox reviews to another user.
-    targets:
-      - entry: kickside.inbox.security:assignment_access
-        path: ".groups +="
+      resources: kickside.inbox.security:assignment_access
+      actions: kickside.inbox.retired_assignment
+      effect: deny
 
   - name: review_resume
     kind: security.policy
@@ -47,8 +42,8 @@ entries:
       actions: [security.actor.create, security.policy_group.get, security.policy.get, security.scope.create]
       effect: allow
 
-  # The review arm validates one explicit assignee before it publishes the
-  # decision item. These are intentionally arm-owned contract capabilities:
+  # The review arm validates the Flow runner before it publishes the decision.
+  # These are intentionally arm-owned contract capabilities:
   # a caller may use the Inbox Block without receiving general Users-directory
   # access. Keep each contract authorization pair separate: definition/get,
   # canonical binding/open, and exists/call.
@@ -79,7 +74,7 @@ entries:
     meta:
       private: true
       service_only: true
-      comment: Review-arm-only directory exists call for its explicit assignee.
+      comment: Review-arm-only directory exists call for the Flow runner.
     policy:
       resources: exists
       actions: contract.call

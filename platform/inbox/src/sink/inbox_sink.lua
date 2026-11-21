@@ -1,7 +1,6 @@
 -- kickside.data:writable sink that posts content to the ambient actor's inbox.
 -- The inbox owner is the current security actor, matching SubmitToInbox and the
--- per-user autoinit inbox model. Cross-user assignment should be an explicit
--- domain feature, not hidden in this generic sink.
+-- per-user autoinit inbox model. Producers must use an authorized owner identity.
 
 local writer = require("inbox_writer")
 local inbox_types = require("inbox_types")

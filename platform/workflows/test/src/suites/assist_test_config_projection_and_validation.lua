@@ -83,7 +83,7 @@ local function define_tests()
         test.it("server-resolves the selected node and canonical declaration", function()
             local target, target_err = assist.resolve_config_target("wf-1", "review-1", {
                 workflow = { state = function(): (any, any?) return { nodes = {
-                    { id = "review-1", kind = "review_step", title = "  Finance review  ", config = { prompt = "Old?", priority = "high", component_id = "hidden" } },
+                    { id = "review-1", kind = "review_step", title = "  Finance review  ", config = { prompt = "Old?", priority = "high", component_id = "hidden", assignee = "saved-reviewer" } },
                 } }, nil end },
                 blocks = { catalog = function(): (any, any?) return { review_step = {
                     label = "Review",
@@ -94,6 +94,7 @@ local function define_tests()
                             prompt = { type = "string" },
                             priority = { type = "string" },
                             component_id = { type = "string", picker = "wc-component-picker" },
+                            assignee = { type = "string", readOnly = true },
                         },
                     },
                 } }, nil end },
@@ -104,6 +105,8 @@ local function define_tests()
             test.eq(((target :: Map).current_config :: Map).priority, "high")
             test.is_nil(((target :: Map).current_config :: Map).component_id)
             test.is_nil((((target :: Map).config_schema :: Map).properties :: Map).component_id)
+            test.is_nil(((target :: Map).current_config :: Map).assignee)
+            test.is_nil((((target :: Map).config_schema :: Map).properties :: Map).assignee)
         end)
 
         test.it("resolves the compiler-owned Condition predicate through the existing config assist seam", function()

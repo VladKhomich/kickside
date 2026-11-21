@@ -5,7 +5,6 @@ local security = require("security")
 local contract = require("contract")
 local inbox_writer = require("inbox_writer")
 local inbox_reader = require("inbox_reader")
-local component = require("component")
 
 local M = {}
 
@@ -62,12 +61,13 @@ local function resolved_form(form: any, input: any): (any?, string?)
     return resolved, nil
 end
 
-local function decision_params(args: Map): (Map?, string?)
+local function decision_params(args: Map, owner: string): (Map?, string?)
     local config = type(args.config) == "table" and (args.config :: Map) or {}
     local emit = config
     local dataflow_id, signal_id = str(args.dataflow_id), str(args.signal_id)
     if dataflow_id == "" then return nil, "dataflow_id is required" end
     if signal_id == "" then return nil, "signal_id is required" end
+    if owner == "" then return nil, "an authenticated workflow actor or explicit assignee is required" end
 
     local run_context = type(args.run_context) == "table" and (args.run_context :: Map) or {}
     -- A Workflow writes its identity into run_context.flow_ref, the versioned
@@ -80,10 +80,6 @@ local function decision_params(args: Map): (Map?, string?)
         or (str(config.workflow_id) ~= "" and str(config.workflow_id) or context_workflow_id)
     local run_id = str(args.run_id) ~= "" and str(args.run_id)
         or (str(config.run_id) ~= "" and str(config.run_id) or str(run_context.run_id))
-    local assignee = str(emit.assignee)
-    if assignee == "" then assignee = actor_id() end
-    if assignee == "" then return nil, "an authenticated workflow actor or explicit assignee is required" end
-
     local metadata = copy_map(emit.metadata)
     metadata.workflow_id = workflow_id
     metadata.run_id = run_id
@@ -95,7 +91,7 @@ local function decision_params(args: Map): (Map?, string?)
     metadata.form = form
     metadata.approve_label = emit.approve_label
     metadata.reject_label = emit.reject_label
-    metadata.assignee = assignee
+    metadata.assignee = owner
     metadata.input = args.input
     metadata.context = args.context
 
@@ -136,7 +132,7 @@ end
 
 local function directory_instance(): (any?, string?)
     local actor, scope = security.actor(), security.scope()
-    if not actor or not scope then return nil, "assignment requires an authenticated actor and scope" end
+    if not actor or not scope then return nil, "Inbox review requires an authenticated Flow runner and scope" end
     local definition, get_err = contract.get(DIRECTORY)
     if get_err or not definition then return nil, "principal directory unavailable: " .. tostring(get_err) end
     local instance, open_err = definition:with_actor(actor):with_scope(scope):open()
@@ -144,19 +140,22 @@ local function directory_instance(): (any?, string?)
     return instance, nil
 end
 
-local function require_assignee(assignee: string): string?
+local function require_runner(owner: string): string?
     local directory, directory_err = directory_instance()
     if not directory then return directory_err end
-    local result, exists_err = directory:exists({ type = "user", id = assignee })
-    if exists_err then return "could not validate assignee: " .. tostring(exists_err) end
+    local result, exists_err = directory:exists({ type = "user", id = owner })
+    if exists_err then return "could not validate the Flow runner: " .. tostring(exists_err) end
     if type(result) ~= "table" or (result :: Map).exists ~= true then
-        return "assignee does not exist: " .. assignee
+        return "Inbox review requires a Flow runner with an account"
     end
     return nil
 end
 
 function M.preview_decision(args: any): (Map?, string?)
-    return decision_params(type(args) == "table" and (args :: Map) or {})
+    local input = type(args) == "table" and (args :: Map) or {}
+    local config = type(input.config) == "table" and (input.config :: Map) or {}
+    local assignee = str(config.assignee)
+    return decision_params(input, assignee ~= "" and assignee or actor_id())
 end
 
 function M.create_decision(args: any): (any?, string?)
@@ -176,44 +175,18 @@ end
 
 function M.arm_decision(args: any): (any?, string?)
     local a = type(args) == "table" and (args :: Map) or {}
-    local params, params_err = decision_params(a)
-    if not params then return nil, params_err end
-    local assignee = str(((params :: Map).metadata :: Map).assignee)
-
-    -- Assignment authority is the boundary for a cross-user target. Check it
-    -- before the directory lookup so an untrusted producer cannot use the
-    -- public Block arm as a user-existence oracle.
-    local is_self = assignee == actor_id()
-    if not is_self and security.can("inbox.assign", "user:" .. assignee) ~= true then
-        return nil, "Inbox assignment access denied"
+    local owner = actor_id()
+    if owner == "" then return nil, "Inbox review requires an authenticated Flow runner" end
+    local config = type(a.config) == "table" and (a.config :: Map) or {}
+    local saved_assignee = config.assignee
+    if saved_assignee ~= nil and saved_assignee ~= "" and saved_assignee ~= owner then
+        return nil, "Inbox reviews go to the Flow runner. Open the review step and choose Use Flow runner to remove the saved assignee."
     end
-    local assignee_err = require_assignee(assignee)
-    if assignee_err then return nil, assignee_err end
-
-    if is_self then return M.create_decision({ params = params }) end
-    local component_id = component.singleton_component_id(assignee, "kickside.inbox")
-    local definition, get_err = contract.get("kickside.core:threads")
-    if get_err or not definition then return nil, "Inbox threads unavailable: " .. tostring(get_err) end
-    local threads, open_err = definition:with_actor(security.actor()):with_scope(security.scope()):open()
-    if open_err or not threads then return nil, "Inbox threads unavailable: " .. tostring(open_err) end
-    local metadata = copy_map(params.metadata)
-    metadata.assigned_by = actor_id()
-    local _, emit_err = threads:emit({
-        component_id = component_id,
-        type = "kickside.inbox.events:item.created",
-        body = {
-            id = params.id, item_type = params.item_type, title = params.title,
-            content = params.content, files = params.files, metadata = metadata, source_id = params.source_id,
-            priority = params.priority, actor_id = assignee, created_at = os.time(),
-        },
-        trace_context = params.trace_context,
-        external = {
-            external_source = "kickside.inbox", external_id = "item:" .. params.id,
-            external_version = "1",
-        },
-    })
-    if emit_err then return nil, tostring(emit_err) end
-    return { id = params.id, item_type = params.item_type, title = params.title }, nil
+    local params, params_err = decision_params(a, owner)
+    if not params then return nil, params_err end
+    local runner_err = require_runner(owner)
+    if runner_err then return nil, runner_err end
+    return M.create_decision({ params = params })
 end
 
 return M

@@ -48,8 +48,6 @@ entries:
     meta: {}
     component: kickside/inbox
     parameters:
-    - name: kickside.inbox.security:assignment_security_scope
-      value: app.security:admin
     - name: kickside.inbox:api_router
       value: app:api
     - name: kickside.inbox:ui_server
