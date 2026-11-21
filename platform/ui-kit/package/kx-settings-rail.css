@@ -1,5 +1,11 @@
 /* SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 */
 
+.kx-settings-shell.kx-shell { grid-template-columns: 232px minmax(0, 1fr); }
+.kx-rail.kx-settings-list-rail { flex: 0 0 232px; min-width: 0; background: var(--p-content-background); }
+.kx-settings-list-rail .kx-railhead { min-height: 53px; }
+.kx-settings-list-rail .kx-rail-body { padding: 8px 12px 12px; }
+.kx-settings-rail-standalone { display: contents; }
+
 .kx-settings-rail {
   flex: 0 0 232px; min-width: 0; overflow-y: auto; overflow-x: hidden;
   padding: 16px 12px; display: flex; flex-direction: column; gap: 14px;
@@ -17,8 +23,8 @@
   color: var(--p-text-color); background: transparent;
   transition: background .15s, color .15s;
 }
-.kx-settings-rail-item:hover { background: color-mix(in srgb, var(--p-text-color) 7%, transparent); }
-.kx-settings-rail-item:where([aria-current="true"]) {
+.kx-settings-rail-item:hover:where(:not([aria-current="true"])) { background: color-mix(in srgb, var(--p-text-color) 7%, transparent); }
+.kx-settings-rail-item[aria-current="true"] {
   background: color-mix(in srgb, var(--p-primary-color) 14%, transparent);
   color: var(--p-primary-color);
 }
@@ -33,4 +39,46 @@
   }
   .kx-settings-rail-section { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; }
   .kx-settings-rail-group { margin: 0 6px 0 2px; }
+}
+
+
+.kx-settings-list-rail .kx-settings-rail-framed { padding: 0; border: 0; overflow: visible; }
+@media (max-width: 760px) {
+  .kx-settings-shell.kx-shell { grid-template-columns: minmax(0, 1fr); }
+  .kx-rail.kx-settings-list-rail { flex: 0 0 auto; }
+  .kx-settings-rail-framed { gap: 8px; }
+  .kx-settings-rail-framed .kx-settings-rail-section { flex-flow: row wrap; gap: 4px; }
+  .kx-settings-rail-framed .kx-settings-rail-group { flex-basis: 100%; }
+  .kx-settings-rail-framed .kx-settings-rail-item { width: auto; }
+}
+
+/* System directory rows follow the Security roles list. ListRail supplies the shared shell and header. */
+.kx-settings-list-rail .picker-search { flex: none; padding: 8px 10px; }
+.kx-settings-list-rail .picker-search-input { width: 100%; }
+.kx-settings-list-rail .picker-search-input::-webkit-search-cancel-button { display: none; }
+.kx-settings-list-rail .picker-search-clear { position: absolute; right: 0; top: 0; height: 100%; }
+.kx-settings-list-rail .picker-search:has(.picker-search-clear) .picker-search-input { padding-inline-end: 34px; }
+.kx-settings-list-rail .picker-group {
+  margin: 0; padding: 10px 6px 4px;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--p-text-muted-color);
+}
+.kx-settings-list-rail .picker-list { margin: 0; padding: 0; list-style: none; }
+.kx-settings-list-rail .picker-row {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border: none; border-radius: var(--kx-radius-8);
+  background: transparent; color: var(--p-text-color); cursor: pointer;
+  text-align: left; transition: background .12s; font: inherit;
+}
+.kx-settings-list-rail .picker-row:hover:where(:not(:disabled, [aria-current="true"])) { background: color-mix(in srgb, var(--p-text-color) 7%, transparent); }
+.kx-settings-list-rail .picker-row[aria-current="true"] { background: color-mix(in srgb, var(--p-primary-color) 14%, transparent); color: var(--p-primary-color); }
+.kx-settings-list-rail .picker-row:disabled { color: var(--p-text-muted-color); cursor: default; }
+.kx-settings-list-rail .picker-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kx-settings-list-rail .picker-message { color: var(--p-text-muted-color); font-size: 11.5px; line-height: 1.3; padding: 7px 10px; }
+
+:is(.kx-settings-rail-item, .kx-settings-list-rail .picker-row):focus:not(:focus-visible) { outline: none; box-shadow: none; }
+:is(.kx-settings-rail-item, .kx-settings-list-rail .picker-row):focus-visible {
+  outline: var(--p-focus-ring-width, 2px) var(--p-focus-ring-style, solid) var(--p-focus-ring-color, currentColor);
+  outline-offset: calc(-1 * var(--p-focus-ring-width, 2px));
+  box-shadow: none;
 }

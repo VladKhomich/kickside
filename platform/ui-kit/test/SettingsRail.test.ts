@@ -54,3 +54,12 @@ it('moves focus across groups without selecting and emits a key for the host to 
   expect(accounts.attributes('aria-current')).toBe('true')
   expect(images.attributes('aria-current')).toBeUndefined()
 })
+
+it('keeps the directory heading and actions outside the scrolling section navigation', async () => {
+  const rail = render()
+  await rail.setProps({ title: 'Boards', count: 4 })
+  expect(rail.get('.kx-settings-list-rail .kx-railhead-title').text()).toBe('Boards4')
+  const navigation = rail.get('.kx-settings-list-rail .kx-rail-body nav')
+  expect(navigation.attributes('aria-label')).toBe('Settings sections')
+  expect(navigation.get('[aria-current="true"]').text()).toBe('Images')
+})

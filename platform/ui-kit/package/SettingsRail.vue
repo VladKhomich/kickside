@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import ListRail from './ListRail.vue'
 
 export interface SettingsRailItem {
   value: string
@@ -16,6 +17,8 @@ export interface SettingsRailGroup {
 
 const props = defineProps<{
   label: string
+  title?: string
+  count?: number
   value: string
   groups: readonly SettingsRailGroup[]
   leadingItem?: SettingsRailItem
@@ -58,16 +61,19 @@ function moveFocus(event: KeyboardEvent) {
 </script>
 
 <template>
-  <nav class="kx-settings-rail" :aria-label="label" @keydown="moveFocus">
-    <div v-for="(group, groupIndex) in groups" :key="group.items[0]?.value ?? groupIndex"
-      class="kx-settings-rail-section" :class="{ 'kx-settings-rail-leading': leadingItem && groupIndex === 0 }">
-      <div v-if="group.heading" class="kx-settings-rail-group">{{ group.heading }}</div>
-      <button v-for="item in group.items" :key="item.value" type="button"
-        class="kx-settings-rail-item" :aria-current="item.value === value ? 'true' : undefined"
-        @click="$emit('update:value', item.value)">
-        <Icon v-if="item.icon" class="kx-settings-rail-icon" :icon="item.icon" aria-hidden="true" />
-        <span class="kx-settings-rail-label">{{ item.label }}</span>
-      </button>
-    </div>
-  </nav>
+  <component :is="title ? ListRail : 'div'" v-bind="title ? { title, count, settings: true } : { class: 'kx-settings-rail-standalone' }">
+    <template v-if="title && $slots.actions" #actions><slot name="actions" /></template>
+    <nav class="kx-settings-rail" :class="{ 'kx-settings-rail-framed': title }" :aria-label="label" @keydown="moveFocus">
+      <div v-for="(group, groupIndex) in groups" :key="group.items[0]?.value ?? groupIndex"
+        class="kx-settings-rail-section" :class="{ 'kx-settings-rail-leading': leadingItem && groupIndex === 0 }">
+        <div v-if="group.heading" class="kx-settings-rail-group">{{ group.heading }}</div>
+        <button v-for="item in group.items" :key="item.value" type="button"
+          class="kx-settings-rail-item" :aria-current="item.value === value ? 'true' : undefined"
+          @click="$emit('update:value', item.value)">
+          <Icon v-if="item.icon" class="kx-settings-rail-icon" :icon="item.icon" aria-hidden="true" />
+          <span class="kx-settings-rail-label">{{ item.label }}</span>
+        </button>
+      </div>
+    </nav>
+  </component>
 </template>
