@@ -1407,6 +1407,7 @@ entries:
     - time
     imports:
       custody: kickside.component.persist:custody
+      custody_cascade: kickside.component.persist:custody_cascade
       kind_authority: kickside.component:kind_authority
       jobs: kickside.core.jobs:jobs
       error_envelope: kickside.contract:error_envelope
@@ -1490,6 +1491,7 @@ entries:
     - time
     imports:
       custody: kickside.component.persist:custody
+      custody_cascade: kickside.component.persist:custody_cascade
       kind_authority: kickside.component:kind_authority
       jobs: kickside.core.jobs:jobs
       error_envelope: kickside.contract:error_envelope
@@ -1622,6 +1624,7 @@ entries:
     - sql
     imports:
       custody: kickside.component.persist:custody
+      custody_cascade: kickside.component.persist:custody_cascade
       system_query: kickside.component:system_query
       error_envelope: kickside.contract:error_envelope
       envelope: kickside.component:envelope
@@ -1675,6 +1678,7 @@ entries:
     - sql
     imports:
       custody: kickside.component.persist:custody
+      custody_cascade: kickside.component.persist:custody_cascade
       system_query: kickside.component:system_query
       error_envelope: kickside.contract:error_envelope
       envelope: kickside.component:envelope
@@ -1845,6 +1849,7 @@ entries:
     - time
     imports:
       custody: kickside.component.persist:custody
+      custody_cascade: kickside.component.persist:custody_cascade
       kind_authority: kickside.component:kind_authority
       meta_service: app:deletion_notify_fixture
       persisted_json: kickside.contract:persisted_json
