@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
 import { hostExternals, wcRuntimeChunk } from './wc-build'
+import { tablerIconNames } from './tabler-icon-names'
 
 // One build for every shared widget web component — the canonical module shape
 // (one ui/ -> one ../static, one mount). Each entry compiles to its own custom
@@ -18,7 +19,7 @@ const entries = {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [vue(), wippyComponentPlugin()],
+  plugins: [vue(), wippyComponentPlugin(), tablerIconNames()],
   define: mode === 'test' ? {} : {
     'process.env.NODE_ENV': JSON.stringify('production'),
     'process.env': '{}',

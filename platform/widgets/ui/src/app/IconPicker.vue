@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onBeforeUnmount, computed } from 'vue'
-import { Icon } from '@iconify/vue'
+import { ref, watch, nextTick, computed, shallowRef } from 'vue'
+import { Icon, listIcons } from '@iconify/vue'
+import tablerFingerprint from 'virtual:tabler-icon-names/fingerprint'
 import { useComponentProps, useComponentEvents } from '../constants.ts'
 import AnchoredPanel from './AnchoredPanel.vue'
+import { iconNamesFingerprint, searchIconNames } from './iconSearch'
 
 // Shared Tabler icon picker: a trigger showing the current glyph, opening a
-// searchable popover. Default view shows common icons; typing queries the
-// Iconify search API (the same source @iconify/vue renders from), scoped to the
-// tabler set. The popover renders inside the shadow root (so its styles apply)
+// searchable popover. Default view shows common icons; typing searches Tabler
+// names from the shared Iconify store and the bundled name index. The popover
+// renders inside the shadow root (so its styles apply)
 // and is fixed-positioned via place(), so surrounding scroll/overflow containers
 // never clip it — it is not teleported to <body> (that would leave the shadow
 // root and lose styling). Selection is reported via the `select` event.
 const props = useComponentProps()
 const emit = useComponentEvents()
+const PREFIX = 'tabler'
 
 const COMMON = [
   'tabler:home', 'tabler:layout-dashboard', 'tabler:inbox', 'tabler:bell', 'tabler:robot',
@@ -29,8 +32,10 @@ const COMMON = [
 
 const open = ref(false)
 const query = ref('')
-const results = ref<string[]>([])
+const catalogue = shallowRef<string[]>([])
 const loading = ref(false)
+const catalogueReady = ref(false)
+const catalogueUnavailable = ref(false)
 const trigger = ref<HTMLElement | null>(null)
 const searchEl = ref<HTMLInputElement | null>(null)
 
@@ -38,25 +43,27 @@ const searchEl = ref<HTMLInputElement | null>(null)
 // are props.value.<name>.
 const current = computed(() => { const v = props.value?.value; return typeof v === 'string' ? v : '' })
 const fallback = computed(() => { const f = props.value?.fallback; return typeof f === 'string' ? f : '' })
-const shown = () => (query.value.trim() ? results.value : COMMON)
+const searching = computed(() => Boolean(query.value.trim()))
+const results = computed(() => {
+  if (!searching.value) return COMMON
+  return searchIconNames([...listIcons('', PREFIX), ...catalogue.value], PREFIX, query.value)
+})
 
-let timer: ReturnType<typeof setTimeout> | undefined
-watch(query, (q) => {
-  if (timer) clearTimeout(timer)
-  const s = q.trim()
-  if (!s) { results.value = []; loading.value = false; return }
+watch(searching, async (active) => {
+  if (!active || catalogueReady.value || loading.value || catalogueUnavailable.value) return
   loading.value = true
-  timer = setTimeout(async () => {
-    try {
-      const r = await fetch(`https://api.iconify.design/search?query=${encodeURIComponent(s)}&prefix=tabler&limit=120`)
-      const d = await r.json()
-      results.value = Array.isArray(d.icons) ? d.icons : []
-    } catch {
-      results.value = []
-    } finally {
-      loading.value = false
+  try {
+    const registered = listIcons('', PREFIX)
+    if (await iconNamesFingerprint(registered, PREFIX) !== tablerFingerprint) {
+      const { default: names } = await import('virtual:tabler-icon-names')
+      catalogue.value = names.split('\n').map(name => PREFIX + ':' + name)
     }
-  }, 220)
+    catalogueReady.value = true
+  } catch {
+    catalogueUnavailable.value = true
+  } finally {
+    loading.value = false
+  }
 })
 
 // Placement, outside-click and Escape are owned by AnchoredPanel.
@@ -67,10 +74,6 @@ function toggle() {
 }
 function pick(name: string) { emit('select', name); open.value = false }
 function reset() { emit('select', ''); open.value = false }
-
-onBeforeUnmount(() => {
-  if (timer) clearTimeout(timer)
-})
 </script>
 
 <template>
@@ -98,11 +101,12 @@ onBeforeUnmount(() => {
           <input ref="searchEl" v-model="query" placeholder="Search Tabler icons…" spellcheck="false" />
           <button v-if="current" type="button" class="ip-reset" @click="reset">Reset</button>
         </div>
-        <div v-if="loading" class="ip-state"><Icon icon="tabler:loader-2" class="spin" aria-hidden="true" /> Searching…</div>
-        <div v-else-if="query.trim() && !results.length" class="ip-state">No icons for “{{ query }}”.</div>
-        <div v-else class="ip-grid">
+        <div v-if="searching && catalogueUnavailable" class="ip-state" role="status">Some icons are unavailable.</div>
+        <div v-if="searching && loading && !results.length" class="ip-state" role="status">Loading icon names…</div>
+        <div v-else-if="searching && !results.length && !catalogueUnavailable" class="ip-state">No icons for “{{ query }}”.</div>
+        <div v-else-if="results.length" class="ip-grid">
           <button
-            v-for="name in shown()"
+            v-for="name in results"
             :key="name"
             type="button"
             class="ip-cell"
