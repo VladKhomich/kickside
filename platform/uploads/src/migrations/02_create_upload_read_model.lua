@@ -1,11 +1,12 @@
--- Fresh-install schema. Columns, constraints and indexes are declared at creation.
+-- Historical migration 01 created this same table and its original indexes.
+-- Adopt those rows and install the current retention index.
 
 return require("migration").define(function()
     migration("02 create upload read model", function()
         database("postgres", function()
             up(function(db)
                 local _, err = db:execute([=[
-                    CREATE TABLE kickside_upload_read_model (
+                    CREATE TABLE IF NOT EXISTS kickside_upload_read_model (
                     "upload_id" text NOT NULL,
                     "component_id" text NOT NULL,
                     "status" text NOT NULL,
@@ -28,27 +29,26 @@ return require("migration").define(function()
                 ]=])
                 if err then error(tostring(err)) end
                 local _, err = db:execute([=[
-                    CREATE INDEX idx_kickside_upload_rm_component_status ON kickside_upload_read_model USING btree (component_id, status)
+                    CREATE INDEX IF NOT EXISTS idx_kickside_upload_rm_component_status ON kickside_upload_read_model USING btree (component_id, status)
                 ]=])
                 if err then error(tostring(err)) end
                 local _, err = db:execute([=[
-                    CREATE INDEX idx_kickside_upload_rm_component_completed ON kickside_upload_read_model USING btree (component_id, completed_at DESC)
+                    CREATE INDEX IF NOT EXISTS idx_kickside_upload_rm_component_completed ON kickside_upload_read_model USING btree (component_id, completed_at DESC)
                 ]=])
                 if err then error(tostring(err)) end
                 local _, err = db:execute([=[
-                    CREATE INDEX idx_upload_read_model_deleted_retention ON kickside_upload_read_model USING btree (deleted_at, upload_id) WHERE ((status = 'deleted'::text) AND (deleted_at IS NOT NULL))
+                    CREATE INDEX IF NOT EXISTS idx_upload_read_model_deleted_retention ON kickside_upload_read_model USING btree (deleted_at, upload_id) WHERE ((status = 'deleted'::text) AND (deleted_at IS NOT NULL))
                 ]=])
                 if err then error(tostring(err)) end
             end)
-            down(function(db)
-                local _, err = db:execute("DROP TABLE kickside_upload_read_model")
-                if err then error(tostring(err)) end
+            down(function()
+                error("Cannot roll back an adopted Uploads read model")
             end)
         end)
         database("sqlite", function()
             up(function(db)
                 local _, err = db:execute([=[
-                    CREATE TABLE kickside_upload_read_model (
+                    CREATE TABLE IF NOT EXISTS kickside_upload_read_model (
                     upload_id TEXT PRIMARY KEY,
                     component_id TEXT NOT NULL,
                     status TEXT NOT NULL CHECK (status IN ('processing', 'completed', 'error', 'deleted')),
@@ -69,22 +69,21 @@ return require("migration").define(function()
                 ]=])
                 if err then error(tostring(err)) end
                 local _, err = db:execute([=[
-                    CREATE INDEX idx_kickside_upload_rm_component_status ON kickside_upload_read_model(component_id, status)
+                    CREATE INDEX IF NOT EXISTS idx_kickside_upload_rm_component_status ON kickside_upload_read_model(component_id, status)
                 ]=])
                 if err then error(tostring(err)) end
                 local _, err = db:execute([=[
-                    CREATE INDEX idx_kickside_upload_rm_component_completed ON kickside_upload_read_model(component_id, completed_at DESC)
+                    CREATE INDEX IF NOT EXISTS idx_kickside_upload_rm_component_completed ON kickside_upload_read_model(component_id, completed_at DESC)
                 ]=])
                 if err then error(tostring(err)) end
                 local _, err = db:execute([=[
-                    CREATE INDEX idx_upload_read_model_deleted_retention ON kickside_upload_read_model(deleted_at, upload_id)
+                    CREATE INDEX IF NOT EXISTS idx_upload_read_model_deleted_retention ON kickside_upload_read_model(deleted_at, upload_id)
                     WHERE status='deleted' AND deleted_at IS NOT NULL
                 ]=])
                 if err then error(tostring(err)) end
             end)
-            down(function(db)
-                local _, err = db:execute("DROP TABLE kickside_upload_read_model")
-                if err then error(tostring(err)) end
+            down(function()
+                error("Cannot roll back an adopted Uploads read model")
             end)
         end)
     end)
