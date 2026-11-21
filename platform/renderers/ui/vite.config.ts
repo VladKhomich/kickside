@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
 import { hostExternals, wcRuntimeChunk } from '../../widgets/ui/wc-build'
+import { docxPreviewSymbolBullets } from './docx-preview-symbol-bullets'
 
 // One project, four isolated elements. Each entry is its own bundle, so the heavy
 // renderers (pdfjs in render-pdf, markdown-it + highlight.js in render-markdown)
@@ -11,7 +12,11 @@ import { hostExternals, wcRuntimeChunk } from '../../widgets/ui/wc-build'
 export default defineConfig({
   resolve: { alias: { '@widgets': resolve(__dirname, '../../widgets/ui/src') } },
   base: './',
-  plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }), wippyComponentPlugin()],
+  plugins: [
+    docxPreviewSymbolBullets(),
+    vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }),
+    wippyComponentPlugin(),
+  ],
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
     'process.env': '{}',
