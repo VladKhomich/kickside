@@ -1,0 +1,22 @@
+/* SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 */
+
+/* Accordion supplies the transition hooks. The grid animates to the natural
+   height of the slot with the platform's form-control motion. */
+.kx-disclosure .kx-disclosure-motion-enter-active,
+.kx-disclosure .kx-disclosure-motion-leave-active {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows var(--p-form-field-transition-duration, .2s) ease-in-out;
+}
+.kx-disclosure .kx-disclosure-motion-enter-from,
+.kx-disclosure .kx-disclosure-motion-leave-to {
+  grid-template-rows: 0fr;
+}
+.kx-disclosure .kx-disclosure-content { min-height: 0; overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kx-disclosure .kx-disclosure-motion-enter-active,
+  .kx-disclosure .kx-disclosure-motion-leave-active,
+  .kx-disclosure .kx-disclosure-toggle { transition: none; }
+}

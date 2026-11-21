@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import SettingsRail, { type SettingsRailItem } from '@kickside/ui-kit/SettingsRail.vue'
 import { useHostVisibilityRefresh } from '@wippy-fe/webcomponent-vue'
 import { useComponentProps } from '../constants'
 import SettingsForm from './SettingsForm.vue'
@@ -38,25 +39,29 @@ const loading = ref(true)
 const error = ref('')
 const selectedKey = ref('')
 const showingAll = ref(false)
+const allSettings = { value: '', label: 'All settings', icon: 'tabler:table' }
 
 // Sidebar sections: consecutive blocks sharing a group become one section with a
 // heading; ungrouped blocks form a heading-less section. The backend already
 // orders by (group, order, title), so a single pass preserves that order.
 const sections = computed(() => {
-  const out: { group: string, items: Block[] }[] = []
+  const out: { heading: string; items: SettingsRailItem[] }[] = []
   for (const b of blocks.value) {
-    const group = b.group || ''
+    const heading = b.group || ''
+    const item = { value: b.key, label: b.title, icon: b.icon || 'tabler:adjustments' }
     const last = out[out.length - 1]
-    if (last && last.group === group) last.items.push(b)
-    else out.push({ group, items: [b] })
+    if (last && last.heading === heading) last.items.push(item)
+    else out.push({ heading, items: [item] })
   }
   return out
 })
 
 const selected = computed(() => blocks.value.find(b => b.key === selectedKey.value) || null)
 
-function select(key: string) { showingAll.value = false; selectedKey.value = key }
-function selectAll() { showingAll.value = true }
+function select(key: string) {
+  showingAll.value = key === allSettings.value
+  if (!showingAll.value) selectedKey.value = key
+}
 
 async function load() {
   loading.value = true
@@ -89,20 +94,8 @@ useHostVisibilityRefresh(load)
     <div v-else-if="!blocks.length" class="ks-empty">No settings declared.</div>
 
     <div v-else class="ks-shell">
-      <nav class="ks-nav" aria-label="Settings sections">
-        <button type="button" class="ks-nav-item" :class="{ 'ks-nav-item-active': showingAll }" @click="selectAll">
-          <Icon class="ks-nav-ico" icon="tabler:table" aria-hidden="true" />
-          <span class="ks-nav-label">All settings</span>
-        </button>
-        <div v-for="(sec, i) in sections" :key="i" class="ks-nav-section">
-          <div v-if="sec.group" class="ks-nav-group">{{ sec.group }}</div>
-          <button v-for="b in sec.items" :key="b.key" type="button" class="ks-nav-item"
-            :class="{ 'ks-nav-item-active': !showingAll && b.key === selectedKey }" @click="select(b.key)">
-            <Icon class="ks-nav-ico" :icon="b.icon || 'tabler:adjustments'" aria-hidden="true" />
-            <span class="ks-nav-label">{{ b.title }}</span>
-          </button>
-        </div>
-      </nav>
+      <SettingsRail label="Settings sections" :value="showingAll ? allSettings.value : selectedKey"
+        :groups="sections" :leading-item="allSettings" @update:value="select" />
 
       <section class="ks-pane" :class="{ 'ks-pane-flush': !showingAll && selected && selected.component_tag }">
         <template v-if="showingAll">

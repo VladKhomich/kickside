@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 */
+
+.kx-settings-rail {
+  flex: 0 0 232px; min-width: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 16px 12px; display: flex; flex-direction: column; gap: 14px;
+  border-right: 1px solid var(--p-content-border-color);
+}
+.kx-settings-rail-section { display: flex; flex-direction: column; gap: 2px; }
+.kx-settings-rail-group {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--p-text-muted-color); margin: 2px 0 4px 10px;
+}
+.kx-settings-rail-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 10px; border: none; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 500;
+  color: var(--p-text-color); background: transparent;
+  transition: background .15s, color .15s;
+}
+.kx-settings-rail-item:hover { background: color-mix(in srgb, var(--p-text-color) 7%, transparent); }
+.kx-settings-rail-item:where([aria-current="true"]) {
+  background: color-mix(in srgb, var(--p-primary-color) 14%, transparent);
+  color: var(--p-primary-color);
+}
+.kx-settings-rail-icon { flex: 0 0 auto; width: 18px; height: 18px; }
+.kx-settings-rail-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kx-settings-rail-leading { display: contents; }
+
+@media (max-width: 640px) {
+  .kx-settings-rail {
+    flex: 0 0 auto; max-height: 40%; flex-direction: row; flex-wrap: wrap; gap: 6px;
+    border-right: none; border-bottom: 1px solid var(--p-content-border-color);
+  }
+  .kx-settings-rail-section { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .kx-settings-rail-group { margin: 0 6px 0 2px; }
+}
