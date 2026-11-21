@@ -248,12 +248,12 @@ local function registry_revision(): (string?, error?)
 end
 
 local function validate(binding: table, system_identity: boolean?, owner_revision: string?,
-        component_owned: boolean?): (Binding?, error?)
+        component_owned: boolean?): (Binding?, error?, boolean?)
     local revision, err = registry_revision()
     if not revision then return nil, err end
     if owner_revision and owner_revision ~= revision then
         return nil, errors.new({kind = errors.CONFLICT, retryable = true,
-            message = "projection declaration changed before dispatch"})
+            message = "projection declaration changed before dispatch"}), true
     end
     if admitted_version ~= revision then
         admitted_version, admitted_bindings = revision, {}
@@ -288,9 +288,9 @@ function worker.requires_owned_declaration(err: error): boolean
 end
 
 local owned_admissions: {[table]: string} = setmetatable({}, {__mode = "k"})
-function worker.admit_owned(binding: table, system_identity: boolean, revision: string): (Binding?, error?)
-    local admitted, err = validate(binding, system_identity, revision, true)
-    if err then return nil, err end
+function worker.admit_owned(binding: table, system_identity: boolean, revision: string): (Binding?, error?, boolean?)
+    local admitted, err, revision_changed = validate(binding, system_identity, revision, true)
+    if err then return nil, err, revision_changed end
     if not admitted or not admitted.component_owned then
         return nil, event_access.denied()
     end
@@ -478,7 +478,7 @@ end
 -- reaching this path is a wiring fault, surfaced as a hard error rather than run
 -- unsupervised.
 function worker.run(binding: table, worker_input: table, before_dispatch: (() -> error?)?,
-    execution_frame: table?): (table?, error?)
+    execution_frame: table?): (table?, error?, boolean?)
     local target_id = tostring(binding.target_id)
     local runtime = tostring(binding.worker_runtime)
     local worker_ref = tostring(binding.worker_ref)
@@ -491,8 +491,8 @@ function worker.run(binding: table, worker_input: table, before_dispatch: (() ->
     end
 
     local owned_revision = owned_admissions[binding]
-    local validated, validate_err = validate(binding, binding.system_identity == true, owned_revision, owned_revision ~= nil)
-    if validate_err or not validated then return nil, validate_err end
+    local validated, validate_err, revision_changed = validate(binding, binding.system_identity == true, owned_revision, owned_revision ~= nil)
+    if validate_err or not validated then return nil, validate_err, revision_changed end
     if validated.component_owned and not owned_revision then return nil, event_access.denied() end
 
     local actor, scope, ident_err
