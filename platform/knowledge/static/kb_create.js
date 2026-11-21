@@ -4,7 +4,7 @@ import { s } from "./styles-CtbZvY-c.js";
 import "@iconify/vue";
 import { define as r } from "@wippy-fe/proxy";
 const a = i(
-  () => import("./KbCreate-B-9BB9e8.js"),
+  () => import("./KbCreate-wzgAD-1i.js"),
   { loading: "Loading the new knowledge base dialog…", failed: "Could not load the new knowledge base dialog. Reload the page to try again." },
   n
 ), p = {

@@ -8,6 +8,8 @@ local support = require("engine_support")
 local errors = require("errors")
 local history = require("history_reader")
 local workflow_history = require("workflow_history")
+local registry = require("registry")
+local funcs = require("funcs")
 
 type Map = { [string]: any }
 type CurrentFailureReader = (string, any) -> (Map?, any?)
@@ -19,6 +21,48 @@ local MAX_PAGE_SIZE = 1000
 -- Readable automations are listed and aggregated in bounded chunks.
 local LIST_CHUNK = 500
 local AGGREGATE_CHUNK = 200
+
+local INDEXING = {pending=true,indexed=true,failed=true,superseded=true}
+local PUBLICATION_OUTCOMES = "kickside.kb10.injection:publication_outcomes"
+local PUBLICATION_OUTCOMES_TYPE = "automation.publication_outcomes_reader"
+
+-- The Knowledge reader receives only receipt-backed publication identities and
+-- is responsible for enforcing KB READ under the current actor. Accept a
+-- same-order bounded result so a reader cannot associate an outcome with a
+-- different history row.
+local function attach_publication_outcomes(page: Map, logger: any): ()
+    -- Knowledge is optional. Discover the explicitly tagged function at read
+    -- time so Automation has no install-time dependency or requirement edge.
+    local entry,discovery_err=registry.get(PUBLICATION_OUTCOMES)
+    local meta=type(entry) == "table" and entry.meta or nil
+    if discovery_err or type(entry) ~= "table" or entry.kind ~= "function.lua"
+        or type(meta) ~= "table" or meta.type ~= PUBLICATION_OUTCOMES_TYPE then return end
+    local refs: {Map}={}
+    local entries: {Map}={}
+    for _,entry in ipairs(page.entries or {}) do
+        local ref=entry.publication_ref
+        if entry.state == "resolved" and type(ref) == "table" then
+            refs[#refs+1]=ref;entries[#entries+1]=entry
+        end
+    end
+    if #refs == 0 then return end
+    local outcomes,read_err=funcs.call(PUBLICATION_OUTCOMES,{refs=refs})
+    if read_err or type(outcomes) ~= "table" or #outcomes ~= #refs then
+        logger:named("automation.history"):warn("could not read Knowledge publication outcomes")
+        return
+    end
+    for index,outcome in ipairs(outcomes) do
+        if type(outcome) == "table" and INDEXING[outcome.status] then
+            local projected: Map={status=outcome.status}
+            if type(outcome.reason) == "string" and outcome.reason ~= "" then projected.reason=outcome.reason end
+            entries[index].indexing=projected
+        end
+    end
+end
+
+local function clear_publication_refs(page: Map): ()
+    for _,entry in ipairs(page.entries or {}) do entry.publication_ref=nil end
+end
 
 -- The public projection of a drive: position, phase, fences and counters.
 -- The applied declaration, round token and occurrence payload stay private.
@@ -163,6 +207,10 @@ function part.attach(M: any, dependencies: any, P: any): ()
             return history.list(db, component_id, opts, (dependencies.execution_identity :: any).validate)
         end)
         if history_err or not page or page.kind ~= "deliveries" or not workflow_history.lookup then
+            if not history_err and page and page.kind == "deliveries" then
+                attach_publication_outcomes(page,dependencies.logger)
+                clear_publication_refs(page)
+            end
             return page, history_err
         end
         local keys: { string } = {}
@@ -173,7 +221,11 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 keys[#keys + 1] = entry.identity_key
             end
         end
-        if #keys == 0 then return page, nil end
+        if #keys == 0 then
+            attach_publication_outcomes(page,dependencies.logger)
+            clear_publication_refs(page)
+            return page, nil
+        end
         local outcomes, workflow_err = workflow_history.lookup(component_id, keys)
         if workflow_err then
             (dependencies.logger :: any):named("automation.history"):warn("could not read Workflow outcomes")
@@ -182,6 +234,8 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 if entry.state == "resolved" then entry.workflow_run = outcomes[entry.identity_key] end
             end
         end
+        attach_publication_outcomes(page,dependencies.logger)
+        clear_publication_refs(page)
         return page, nil
     end
 

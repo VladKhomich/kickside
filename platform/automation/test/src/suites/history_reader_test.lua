@@ -190,6 +190,19 @@ local function define_tests()
                 test.eq(encoded(row.error),encoded(failure))
             end
         end)
+        test.it("keeps retained Knowledge publication identity internal to the outcome reader",function()
+            local id=uuid.v7();seed(id,"drive-file",nil)
+            local ref={kb_id=uuid.v7(),external_id="google:drive:file",publication_id=uuid.v7()}
+            execute("UPDATE kickside_automation_delivery_history SET publication_ref_json=$1 WHERE automation_id=$2",{encoded(ref),id})
+            local row=read(id).entries[1]
+            test.is_nil(row.publication_ref)
+        end)
+        test.it("rejects malformed retained Knowledge publication identity",function()
+            local id=uuid.v7();seed(id,"drive-file",nil)
+            execute("UPDATE kickside_automation_delivery_history SET publication_ref_json=$1 WHERE automation_id=$2",{encoded({kb_id="kb"}),id})
+            local result,err=engine(id).history(id,{kind="deliveries"})
+            test.is_nil(result);test.not_nil(err)
+        end)
         test.it("propagates database failures and releases its connection",function()
             local id=uuid.v7()
             local released=false

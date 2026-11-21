@@ -73,6 +73,7 @@ interface Delivery {
   round_at: string
   state: string
   error?: string | { message?: string }
+  indexing?: { status: 'pending' | 'indexed' | 'failed' | 'superseded'; reason?: string }
 }
 const historyOpen = ref(false)
 const historyRows = ref<Delivery[]>([])
@@ -85,6 +86,14 @@ const failed = computed(() => historyRows.value.filter(row => row.state === 'dea
 function fileId(key: string) { return /^google:drive:([\w-]+)$/.exec(key)?.[1] }
 function fileUrl(id: string) { return `https://drive.google.com/open?id=${encodeURIComponent(id)}` }
 function failureMessage(e: Delivery['error']) { return typeof e === 'string' ? e : e?.message || 'No reason recorded' }
+function deliveryLabel(state: string) {
+  if (state === 'resolved') return 'Delivered'
+  if (state === 'dead' || state === 'failed' || state === 'uncertain') return 'Failed'
+  return 'Pending'
+}
+function indexingLabel(status: NonNullable<Delivery['indexing']>['status']) {
+  return ({ pending: 'Pending', indexed: 'Indexed', failed: 'Failed', superseded: 'Superseded' })[status]
+}
 function formatTime(value: string) { return new Date(value).toLocaleString() }
 
 async function readHistory(more = false) {
@@ -100,7 +109,7 @@ async function readHistory(more = false) {
     const { data } = await api.get<{ success: boolean; entries?: Delivery[]; next_page_token?: string; error?: unknown }>(`${endpoint.value}/history`, {
       params: { kind: 'deliveries', page_size: 25, ...(token ? { page_token: token } : {}) },
     })
-    if (!data.success) throw new Error(errMsg({ response: { data } }, 'Could not read failed files'))
+    if (!data.success) throw new Error(errMsg({ response: { data } }, 'Could not read file activity'))
     if (token && data.next_page_token === token) throw new Error('Delivery history repeated its page')
     if (!current()) return
     const latest = new Map(historyRows.value.map(row => [row.item_key, row]))
@@ -111,7 +120,7 @@ async function readHistory(more = false) {
     historyRows.value = [...latest.values()]
     historyCursor.value = data.next_page_token || ''
   } catch (cause) {
-    if (current()) historyError.value = errMsg(cause, 'Could not read failed files')
+    if (current()) historyError.value = errMsg(cause, 'Could not read file activity')
   } finally {
     if (current()) loadingHistory.value = false
   }
@@ -155,19 +164,22 @@ onBeforeUnmount(() => {
       <a v-if="lastFailure.item_key && fileId(lastFailure.item_key)" :href="fileUrl(fileId(lastFailure.item_key)!)" target="_blank" rel="noopener noreferrer">Drive file {{ fileId(lastFailure.item_key) }}</a>
       {{ lastFailure.message }}
     </p>
-    <Button v-if="canReadHistory && failureCount" type="button" size="small" severity="secondary" text
-      :label="historyOpen ? 'Hide failed files' : 'Show failed files'" :aria-expanded="historyOpen" @click="toggleHistory" />
+    <Button v-if="canReadHistory" type="button" size="small" severity="secondary" text
+      :label="historyOpen ? 'Hide file activity' : 'Show file activity'" :aria-expanded="historyOpen" @click="toggleHistory" />
     <template v-if="canReadHistory && historyOpen">
-      <p v-if="loadingHistory" role="status">Loading failed files…</p>
+      <p v-if="loadingHistory" role="status">Loading file activity…</p>
       <p v-if="historyError" role="alert" class="kx-err inline">{{ historyError }}</p>
-      <ul v-if="failed.length" class="kx-drive-failures">
-        <li v-for="row in failed" :key="row.item_key">
+      <ul v-if="historyRows.length" class="kx-drive-failures">
+        <li v-for="row in historyRows" :key="row.item_key">
           <a :href="fileUrl(fileId(row.item_key)!)" target="_blank" rel="noopener noreferrer">Drive file {{ fileId(row.item_key) }}</a>
-          <p>{{ failureMessage(row.error) }}</p>
+          <p>Delivery: {{ deliveryLabel(row.state) }}</p>
+          <p v-if="row.indexing">Indexing: {{ indexingLabel(row.indexing.status) }}</p>
+          <p v-if="row.indexing?.reason" class="kx-err inline">{{ row.indexing.reason }}</p>
+          <p v-else-if="row.state !== 'resolved'">{{ failureMessage(row.error) }}</p>
         </li>
       </ul>
-      <p v-else-if="!loadingHistory && !historyError" class="kx-2p-r-note">No failed files on this delivery history page.</p>
-      <Button v-if="historyError" type="button" size="small" severity="secondary" outlined label="Retry failed files" @click="readHistory()" />
+      <p v-else-if="!loadingHistory && !historyError" class="kx-2p-r-note">No files on this delivery history page.</p>
+      <Button v-if="historyError" type="button" size="small" severity="secondary" outlined label="Retry file activity" @click="readHistory()" />
       <Button v-else-if="historyCursor" type="button" size="small" severity="secondary" outlined label="More delivery history" :disabled="loadingHistory" @click="readHistory(true)" />
     </template>
   </section>
