@@ -11,6 +11,9 @@ entries:
         methods: {get_status: kickside.core.threads:thread_status}
   - name: reap
     kind: contract.binding
+    meta:
+      owned_child_producers:
+        kickside.test:reap: [kickside.core.lifecycle:reaper_register_child]
     contracts:
       - contract: kickside.contract:component
         methods: {get_status: kickside.core.threads:thread_status}
