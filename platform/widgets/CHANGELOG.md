@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.69](https://github.com/kicksideai/kickside/compare/widgets-v0.1.68...widgets-v0.1.69) (2026-11-21)
+
+
+### Bug Fixes
+
+* **widgets:** search Tabler icons locally ([73c06ad](https://github.com/kicksideai/kickside/commit/73c06ad803b8fe34cd1d8a5860650878e0fa30a0))
+
 ## [0.1.68](https://github.com/kicksideai/kickside/compare/widgets-v0.1.67...widgets-v0.1.68) (2026-11-21)
 
 
