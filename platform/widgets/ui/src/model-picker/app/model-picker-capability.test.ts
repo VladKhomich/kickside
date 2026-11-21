@@ -12,7 +12,9 @@ vi.mock('../constants.ts', () => ({
   useComponentEvents: () => vi.fn(),
 }))
 vi.mock('@iconify/vue', () => ({ Icon: { template: '<span />' } }))
-vi.mock('primevue/select', () => ({ default: { name: 'Select', props: ['options', 'modelValue'], template: '<div />' } }))
+vi.mock('primevue/select', () => ({
+  default: { name: 'Select', props: ['options', 'modelValue', 'loading'], emits: ['before-show'], template: '<div />' },
+}))
 
 describe('capability-filtered class selection', () => {
   beforeEach(() => {
@@ -64,6 +66,52 @@ describe('capability-filtered class selection', () => {
     expect(wrapper.findComponent({ name: 'Select' }).props('options')).toEqual([
       expect.objectContaining({ group: 'Models', items: [expect.objectContaining({ value: 'image-model' })] }),
     ])
+    wrapper.unmount()
+  })
+
+  it('uses published provider and class presentation with generic icons for older catalogue rows', async () => {
+    pickerProps.capability = 'generate'
+    vi.mocked(api.get).mockImplementation(async (url: string) => ({ data: url.includes('/classes')
+      ? { success: true, classes: [{ name: 'fast', title: 'Fast response', icon: 'tabler:bolt', capability: 'generate',
+          models: [{ name: 'gemma', title: 'Gemma' }] }] }
+      : { success: true, models: [
+          { name: 'gemma', title: 'Gemma', provider: 'openai_compat', provider_title: 'vLLM', provider_icon: 'tabler:server' },
+          { name: 'legacy', title: 'Legacy', provider: 'openai_compat' },
+        ] },
+    }))
+    const wrapper = mount(ModelPicker)
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'Select' }).props('options')).toEqual([
+      { group: 'Classes', items: [{ value: 'class:fast', title: 'Fast response', subtitle: 'Gemma', icon: 'tabler:bolt' }] },
+      { group: 'Models', items: [
+        { value: 'gemma', title: 'Gemma', subtitle: 'vLLM', icon: 'tabler:server' },
+        { value: 'legacy', title: 'Legacy', subtitle: '', icon: 'tabler:cpu' },
+      ] },
+    ])
+    wrapper.unmount()
+  })
+
+  it('shares the first request with opening and keeps loaded choices through a failed refresh', async () => {
+    pickerProps.capability = 'embed'
+    const response = { data: { success: true, models: [{ name: 'embed-model', title: 'Embedding model' }] } }
+    let resolveInitial!: (value: typeof response) => void
+    vi.mocked(api.get).mockImplementationOnce(() => new Promise(resolve => { resolveInitial = resolve }))
+    const wrapper = mount(ModelPicker)
+    const select = wrapper.findComponent({ name: 'Select' })
+    select.vm.$emit('before-show')
+    select.vm.$emit('before-show')
+    expect(api.get).toHaveBeenCalledExactlyOnceWith('/api/v1/models/list?capability=embed')
+    expect(select.props('loading')).toBeFalsy()
+    resolveInitial(response)
+    await flushPromises()
+    const options = select.props('options')
+    expect(options).toEqual([expect.objectContaining({ group: 'Models' })])
+    vi.mocked(api.get).mockRejectedValueOnce(new Error('Catalogue unavailable'))
+    select.vm.$emit('before-show')
+    expect(api.get).toHaveBeenCalledTimes(2)
+    expect(select.props('options')).toBe(options)
+    await flushPromises()
+    expect(select.props('options')).toBe(options)
     wrapper.unmount()
   })
 })
