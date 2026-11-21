@@ -56,10 +56,10 @@ M.run = test.run_cases(function()
                 end)
             end
         end
-        test.it("advances past legacy component reports without consulting custody", function()
+        test.it("requires a source address before acknowledging a legacy component report", function()
             local result, err = M.probe({event_type = consts.EVENT.COMPONENT_DELETED, body = {subject_id = "owner"}})
-            test.is_nil(err)
-            test.eq(result.last_seq, 42)
+            test.is_nil(result)
+            test.is_true(errors.is(err, errors.INVALID))
         end)
         test.it("retains subject validation after successful decoding", function()
             local result, err = M.probe({event_type = consts.EVENT.PRINCIPAL_DELETED, body = {subject_id = {"owner"}}})

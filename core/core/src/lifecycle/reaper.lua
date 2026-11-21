@@ -1,6 +1,6 @@
 -- The lifecycle projection retires the exact dependants named by a typed
 -- report. The cursor advances after physical retirement or after a historical
--- principal report is preserved for custody review.
+-- report is preserved for custody review.
 
 local component = require("component")
 local custody = require("custody")
@@ -166,7 +166,10 @@ local function run(input: table): (table?, error?)
             if etype == consts.EVENT.PRINCIPAL_DELETED then
                 local reap_err = reap_principal(ev, payload, owner_id, budget)
                 if reap_err then return nil, reap_err end
-            elseif payload.incarnation ~= nil then
+            elseif payload.incarnation == nil then
+                local store_err = disposition.record(ev, owner_id, nil, "missing_component_incarnation", nil)
+                if store_err then return nil, store_err end
+            else
                 if not uuid.validate(owner_id) or type(payload.incarnation) ~= "string" or not uuid.validate(payload.incarnation) then
                     return nil, errors.new({message = "component report requires a component id and incarnation", kind = errors.INVALID})
                 end

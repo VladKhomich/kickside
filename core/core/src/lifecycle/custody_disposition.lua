@@ -44,6 +44,11 @@ end
 function M.record(event: any, subject_id: string, principal_kind: string?, reason: string, witness: any?): error?
     local sequence, address_err = sequence_of(event)
     if address_err then return address_err end
+    local component_report = reason == "missing_component_incarnation"
+    local event_type = component_report and consts.EVENT.COMPONENT_DELETED or consts.EVENT.PRINCIPAL_DELETED
+    if event.type ~= event_type then return invalid("custody disposition reason does not match the report type") end
+    local qualification = component_report and "(e.body ->> 'incarnation') IS NULL"
+        or "COALESCE(e.body ->> 'principal_kind','')=COALESCE(CAST($2 AS TEXT),'')"
     local db, open_err = sql.get(core_db.id())
     if open_err then return open_err end
     local _, write_err = db:execute([[INSERT INTO kickside_lifecycle_custody_disposition
@@ -51,10 +56,10 @@ function M.record(event: any, subject_id: string, principal_kind: string?, reaso
         SELECT CAST(e.thread_id AS TEXT),e.seq,CAST(e.id AS TEXT),$1,$2,$3,$4,$5,$6 FROM kickside_event e
         WHERE e.thread_id=$7 AND e.seq=$8 AND e.id=$9 AND e.type=$10 AND e.role='system'
           AND e.external_source='lifecycle' AND (e.body ->> 'subject_id')=$1
-          AND COALESCE(e.body ->> 'principal_kind','')=COALESCE(CAST($2 AS TEXT),'')
+          AND ]] .. qualification .. [[
         ON CONFLICT (thread_id,event_seq) DO NOTHING]], {subject_id, principal_kind or sql.as.null(), reason,
         witness and witness.component_id or sql.as.null(), witness and witness.secrets_incarnation or sql.as.null(),
-        time.now():utc():format_rfc3339(), consts.thread_id(), sequence, event.id, consts.EVENT.PRINCIPAL_DELETED})
+        time.now():utc():format_rfc3339(), consts.thread_id(), sequence, event.id, event_type})
     local confirmed, read_err
     if not write_err then confirmed, read_err = inspect(db, sequence :: number) end
     local err = write_err or read_err

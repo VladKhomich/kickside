@@ -22,6 +22,8 @@ local time = require("time")
 local COMPONENT_SERVICE = "kickside.component:component_service"
 local TEST_IMPL = "kickside.test:reap"
 local RETRY_IMPL = "kickside.core.lifecycle:reaper_retry_binding"
+-- Direct typed worker probes use a sequence outside the materialized test queue.
+local PROBE_SEQ = 1000000
 
 local function define_tests()
     test.describe("Lifecycle Reaper", function()
@@ -151,9 +153,9 @@ local function define_tests()
         local function tick(subject_id: string?)
             return run_as_system({
                 thread_id = lifecycle_thread_id(),
-                events = { { type = "kickside.lifecycle.events:principal.deleted", role = "system", id = uuid.v7(), seq = 1,
+                events = { { type = "kickside.lifecycle.events:principal.deleted", role = "system", id = uuid.v7(), seq = PROBE_SEQ,
                     body = { subject_id = subject_id or owner_id, principal_kind = "user" } } },
-                range = { to_seq = 1 },
+                range = { to_seq = PROBE_SEQ },
                 projection = { body = {} },
             })
         end
@@ -241,10 +243,29 @@ local function define_tests()
             test.is_true(child.success, tostring(child.error))
             local component_child = child.component_id
 
-            local legacy, legacy_err = component_tick(collision)
+            local reporter = security.new_actor("report-admin-" .. suffix, {security_groups = {"app.security:admin"}})
+            local published = assert(funcs.new():with_actor(reporter):with_scope(admin_scope())
+                :call("kickside.core.lifecycle:reaper_report_probe", {subject_id = collision, component = true}))
+            test.is_true(published.reported, tostring(published.error))
+            local source = assert(query([[SELECT id,seq,type,body FROM kickside_event
+                WHERE external_source='lifecycle' AND external_id=$1]],
+                "kickside.lifecycle.events:component.deleted:" .. collision)[1])
+            local invocation = {thread_id = lifecycle_thread_id(), events = {source}, range = {to_seq = source.seq}}
+            local legacy, legacy_err = run_as_system(invocation)
             test.eq(job_count(principal_child) + job_count(component_child), 0, "an ID-only report has no custody authority")
             test.is_nil(legacy_err, tostring(legacy_err))
-            test.not_nil(legacy)
+            test.eq(legacy.last_seq, source.seq)
+            local saved = query([[SELECT event_id,event_seq,subject_id,reason,witness_id,witness_incarnation
+                FROM kickside_lifecycle_custody_disposition WHERE event_id=$1]], source.id)
+            test.eq(#saved, 1)
+            test.eq(saved[1].event_seq, source.seq)
+            test.eq(saved[1].subject_id, collision)
+            test.eq(saved[1].reason, "missing_component_incarnation")
+            test.is_nil(saved[1].witness_id)
+            test.is_nil(saved[1].witness_incarnation)
+            test.eq(assert(run_as_system(invocation)).last_seq, source.seq)
+            test.eq(#query("SELECT event_id FROM kickside_lifecycle_custody_disposition WHERE event_id=$1", source.id), 1)
+            test.eq(instance(collision), current)
             local stale, stale_err = component_tick(collision, previous)
             test.is_nil(stale_err, tostring(stale_err))
             test.not_nil(stale)
@@ -553,7 +574,7 @@ local function define_tests()
             test.is_true((finish_owner()))
             local out = tick()
             test.is_true(type(out) == "table")
-            test.eq(out.last_seq, 1)
+            test.eq(out.last_seq, PROBE_SEQ)
             test.eq(owned_count(), 0)
 
             -- Idempotent: a retried tick over the same report reaps nothing and never errors.
@@ -985,7 +1006,7 @@ local function define_tests()
 
         test.it("advances after the declared principal cleanup succeeds", function()
             local out = tick()
-            test.eq((out :: any).last_seq, 1)
+            test.eq((out :: any).last_seq, PROBE_SEQ)
         end)
 
         test.it("fails the tick when a declared principal cleanup fails", function()
