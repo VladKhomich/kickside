@@ -8,12 +8,11 @@
 @tailwind base;
 
 :host {
-  display: inline-block;
+  display: block;
   position: relative;
-  width: 14rem;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  vertical-align: top;
 }
 /* Keep the field footprint through empty, loading, failed and loaded states. */
 :host > div { min-height: 36px; }
