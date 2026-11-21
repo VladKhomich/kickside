@@ -51,6 +51,24 @@ function M.disable_card(args: any): any
     return respond(card_service.disable(args.name))
 end
 
+-- list_cards({}) -> { success, models?, error? }. Every catalog card, disabled included.
+function M.list_cards(_args: any): any
+    local cards, err = card_service.list()
+    if not cards then return { success = false, error = tostring(err) } end
+    local models: { any } = {}
+    for _, card in ipairs(cards :: { any }) do
+        local public = policy.split_config(card)
+        models[#models + 1] = redact_urls(public)
+    end
+    return { success = true, models = models }
+end
+
+-- get_card({ name }) -> { success, model?, error? }. Disabled cards included.
+function M.get_card(args: any): any
+    if type(args) ~= "table" then return { success = false, error = "request must be an object" } end
+    return respond(card_service.get(args.name))
+end
+
 -- delete_card({ name }) -> { success, error? }. Deletes a disabled stored card.
 function M.delete_card(args: any): any
     if type(args) ~= "table" then return { success = false, error = "request must be an object" } end

@@ -114,15 +114,19 @@ entries:
   kind: security.policy
   meta:
     title: Model card registration
-    comment: Grants a module the kickside.models.cards:cards contract, so it registers and retires model cards without admin HTTP.
+    comment: Grants a module the kickside.models.cards:cards contract, so it reads, registers, retires and deletes model cards without admin HTTP.
   groups: []
   policy:
     resources:
     - kickside.models.cards:cards
     - kickside.models.cards:cards_binding
+    - kickside.models.cards:list_cards
+    - kickside.models.cards:get_card
     - kickside.models.cards:upsert_card
     - kickside.models.cards:disable_card
     - kickside.models.cards:delete_card
+    - list_cards
+    - get_card
     - upsert_card
     - disable_card
     - delete_card
@@ -130,6 +134,37 @@ entries:
     - contract.get
     - contract.open
     - contract.call
+    - funcs.call
+    - funcs.security
+    effect: allow
+- name: card_tools
+  kind: security.policy
+  meta:
+    title: Model card tools
+    surface: kickside.models
+    intent: tool_access
+    comment: Grants the Model Card Manager trait and its tools, which list, read, save, retire and delete model cards through the kickside.models.cards:cards contract.
+    includes:
+    - kickside.models.security:card_tools_runtime
+    - kickside.models.security:card_registrar
+  groups: []
+  policy:
+    resources:
+    - kickside.models.traits:*
+    actions:
+    - registry.get
+    - registry.find
+    effect: allow
+- name: card_tools_runtime
+  kind: security.policy
+  meta:
+    private: true
+  groups: []
+  policy:
+    resources:
+    - kickside.models.traits:cards_read
+    - kickside.models.traits:cards_manage
+    actions:
     - funcs.call
     - funcs.security
     effect: allow

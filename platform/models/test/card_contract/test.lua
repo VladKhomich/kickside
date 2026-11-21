@@ -17,6 +17,8 @@ local json = require("json")
 local UPSERT = "kickside.models.cards:upsert_card"
 local DISABLE = "kickside.models.cards:disable_card"
 local DELETE = "kickside.models.cards:delete_card"
+local LIST = "kickside.models.cards:list_cards"
+local GET = "kickside.models.cards:get_card"
 local CONTRACT = "kickside.models.cards:cards"
 local BINDING = "kickside.models.cards:cards_binding"
 local NAME = "cc-trained-model"
@@ -315,6 +317,73 @@ local function define_tests()
         end)
     end)
 
+    test.describe("cards contract: list_cards and get_card", function()
+        local function listed(result: any, name: string): any
+            for _, card in ipairs(result.models) do
+                if card.name == name then return card end
+            end
+            return nil
+        end
+
+        test.it("lists every catalog card, retired cards included", function()
+            call(UPSERT, card_body())
+            local enabled = assert(registrar():list_cards({}))
+            test.eq(enabled.success, true, tostring(enabled.error))
+            test.eq(listed(enabled, NAME).enabled, true)
+            call(DISABLE, { name = NAME })
+            local retired = assert(registrar():list_cards({}))
+            local card = listed(retired, NAME)
+            test.not_nil(card, "retired card missing from list_cards")
+            test.eq(card.enabled, false)
+            test.eq(card.metadata.train.weights_digest, TRAIN.weights_digest)
+            test.eq(#retired.models, #assert(model_catalog.get_all_public()))
+            cleanup()
+        end)
+
+        test.it("reads one card by name, retired cards included", function()
+            call(UPSERT, card_body())
+            local result = assert(registrar():get_card({ name = NAME }))
+            test.eq(result.success, true, tostring(result.error))
+            test.eq(result.model.name, NAME)
+            test.eq(result.model.provider_model, "cc-trained-model-v1")
+            call(DISABLE, { name = NAME })
+            local retired = assert(registrar():get_card({ name = NAME }))
+            test.eq(retired.success, true, tostring(retired.error))
+            test.eq(retired.model.enabled, false)
+            cleanup()
+        end)
+
+        test.it("fails for a name the catalog does not hold", function()
+            local result = assert(registrar():get_card({ name = "cc-never-saved" }))
+            test.eq(result.success, false)
+            test.not_nil(result.error)
+        end)
+
+        test.it("reads a card with a cold cache", function()
+            call(UPSERT, card_body())
+            models_cache.clear()
+            local result = assert(registrar():get_card({ name = NAME }))
+            test.eq(result.success, true, tostring(result.error))
+            test.eq(result.model.name, NAME)
+            cleanup()
+        end)
+
+        test.it("redacts legacy credential URLs in read replies", function()
+            call(UPSERT, card_body())
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_model_cards SET metadata_json = $1 WHERE name = $2",
+                { assert(json.encode({ reference = "https://example.invalid/private?access_token=synthetic", count = 7 })), NAME }))
+            db:release()
+            assert(models_repo.reload())
+            local one = assert(registrar():get_card({ name = NAME }))
+            test.eq(one.model.metadata.reference, "[redacted]")
+            test.eq(one.model.metadata.count, 7)
+            local all = assert(registrar():list_cards({}))
+            test.eq(listed(all, NAME).metadata.reference, "[redacted]")
+            cleanup()
+        end)
+    end)
+
     test.describe("card_registrar policy", function()
         test.it("persists retirement while the provider is paused", function()
             with_existing_provider(function(profile)
@@ -430,13 +499,15 @@ local function define_tests()
                 test.not_nil(registry.get(id), id)
                 test.eq(policy:evaluate(actor, "contract.open", id), "allow", id)
             end
-            for _, id in ipairs({ UPSERT, DISABLE, DELETE }) do
+            for _, id in ipairs({ UPSERT, DISABLE, DELETE, LIST, GET }) do
                 test.not_nil(registry.get(id), id)
                 test.eq(policy:evaluate(actor, "funcs.call", id), "allow", id)
             end
             test.eq(policy:evaluate(actor, "contract.call", "upsert_card"), "allow")
             test.eq(policy:evaluate(actor, "contract.call", "disable_card"), "allow")
             test.eq(policy:evaluate(actor, "contract.call", "delete_card"), "allow")
+            test.eq(policy:evaluate(actor, "contract.call", "list_cards"), "allow")
+            test.eq(policy:evaluate(actor, "contract.call", "get_card"), "allow")
             test.eq(policy:evaluate(actor, "funcs.call", "kickside.models.persist:repo"), "undefined")
             test.eq(policy:evaluate(actor, "access", "kickside.models.api.admin:upsert_card.endpoint"), "undefined")
             test.eq(policy:evaluate(actor, "db.get", "*"), "undefined")
@@ -470,7 +541,7 @@ local function define_tests()
         test.it("keeps the contract out of the member module grant", function()
             local runtime = assert(security.policy("kickside.models.security:module_runtime"))
             local actor = security.new_actor("module-member", {})
-            for _, id in ipairs({ UPSERT, DISABLE, DELETE }) do
+            for _, id in ipairs({ UPSERT, DISABLE, DELETE, LIST, GET }) do
                 test.eq(runtime:evaluate(actor, "funcs.call", id), "undefined", id)
             end
             for _, id in ipairs({ CONTRACT, BINDING }) do

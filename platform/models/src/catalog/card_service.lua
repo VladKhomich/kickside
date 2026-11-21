@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
--- The admin HTTP handler and the registrar contract share this save path.
+-- Model card paths of the cards contract. The admin save handler shares the save path.
 local model_catalog = require("model_catalog")
 local models_repo = require("models_repo")
 
@@ -27,7 +27,23 @@ end
 -- retires it with disable first.
 function M.delete(name: any): (boolean, any?)
     if type(name) ~= "string" or name == "" then return false, "Model name is required" end
-    return models_repo.delete_disabled_card(name)
+    return models_repo.delete_card(name, true)
+end
+
+-- Every catalog card in its public projection, disabled cards included.
+function M.list(): ({ any }?, any?)
+    return model_catalog.get_all_public()
+end
+
+-- The catalog card named name in its public projection, disabled included.
+function M.get(name: any): (any?, any?)
+    if type(name) ~= "string" or name == "" then return nil, "Model name is required" end
+    local cards, err = model_catalog.get_all_public()
+    if err then return nil, err end
+    for _, card in ipairs(cards :: { any }) do
+        if card.name == name then return card end
+    end
+    return nil, "No model card named: " .. name
 end
 
 return M

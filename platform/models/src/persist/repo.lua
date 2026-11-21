@@ -424,27 +424,6 @@ function M.disable_card(name: string): (any?, any?)
     return nil, "No stored model card named: " .. name
 end
 
--- Delete a retired card. The enabled check and the delete are one statement, so
--- a card re-enabled concurrently stays stored.
-function M.delete_disabled_card(name: string): (boolean, any?)
-    local handle, derr = db()
-    if not handle then return false, derr end
-    local dbh = handle :: sql.DB
-    local result, write_err = dbh:execute("DELETE FROM kickside_model_cards WHERE name = $1 AND enabled = 0", { name })
-    if write_err then dbh:release(); return false, "model delete failed: " .. tostring(write_err) end
-    if result.rows_affected == 0 then
-        local rows, read_err = dbh:query("SELECT 1 FROM kickside_model_cards WHERE name = $1", { name })
-        dbh:release()
-        if read_err then return false, read_err end
-        if rows[1] then return false, "Model card " .. name .. " is enabled; disable it before deleting it" end
-        return false, "No stored model card named: " .. name
-    end
-    dbh:release()
-    local _, reload_err = M.reload()
-    if reload_err then return false, reload_err end
-    return true
-end
-
 -- The portable model setup: every provider profile (non-secret config, env
 -- pointers, and the names of omitted stored secrets) and every stored card.
 function M.export(): (any?, any?)
@@ -626,13 +605,25 @@ function M.import(doc: any): (any?, any?)
     return report
 end
 
-function M.delete_card(name: string): (boolean, any?)
+-- Delete the stored card named name. With retired_only the delete applies to a
+-- disabled row only, and the enabled check and the delete are one statement, so
+-- a card re-enabled concurrently stays stored.
+function M.delete_card(name: string, retired_only: boolean?): (boolean, any?)
     local handle, derr = db()
     if not handle then return false, derr end
     local dbh = handle :: sql.DB
-    local _, err = dbh:execute("DELETE FROM kickside_model_cards WHERE name = $1", { name })
+    local statement = "DELETE FROM kickside_model_cards WHERE name = $1"
+    if retired_only then statement = statement .. " AND enabled = 0" end
+    local result, err = dbh:execute(statement, { name })
+    if err then dbh:release(); return false, "model delete failed: " .. tostring(err) end
+    if retired_only and result.rows_affected == 0 then
+        local rows, read_err = dbh:query("SELECT 1 FROM kickside_model_cards WHERE name = $1", { name })
+        dbh:release()
+        if read_err then return false, read_err end
+        if rows[1] then return false, "Model card " .. name .. " is enabled; disable it before deleting it" end
+        return false, "No stored model card named: " .. name
+    end
     dbh:release()
-    if err then return false, "model delete failed: " .. tostring(err) end
     local _, reload_err = M.reload()
     if reload_err then return false, reload_err end
     return true
