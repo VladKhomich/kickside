@@ -60,7 +60,7 @@ entries:
     kind: function.lua
     meta:
       private: true
-      comment: Non-internal scope catalog read under Security's registry and database authority.
+      comment: Assignable account scope catalog read under Security's registry and database authority.
     source: file://read_assignable_scopes.lua
     method: read
     security:
@@ -79,5 +79,6 @@ entries:
     imports:
       error_envelope: kickside.contract:error_envelope
       policy_coverage: kickside.security:policy_coverage
+      scope_catalog: kickside.security.api:scope_catalog
       scope_key: kickside.security.projection:scope_key
 
