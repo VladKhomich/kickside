@@ -2960,6 +2960,8 @@ entries:
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
       checkpoint_declaration: kickside.core.projections.persist:checkpoint_declaration
+      registered_checkpoint: kickside.core.projections.persist:registered_checkpoint
+      core_db: kickside.core:db
 
   - name: projection_worker_native_test
     kind: function.lua
@@ -3496,6 +3498,8 @@ entries:
     modules: [ctx, security, funcs]
     imports:
       registration: kickside.core.projections.persist:register
+      registered_checkpoint: kickside.core.projections.persist:registered_checkpoint
+      event_access: kickside.core.threads:event_access
       error_envelope: kickside.contract:error_envelope
       sql: app:projection_apply_native_sql_adapter
       json: app:projection_apply_native_json_adapter

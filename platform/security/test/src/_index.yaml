@@ -224,6 +224,35 @@ entries:
     version: "*"
     component: wippy/test
 
+  - name: catalog_private_scope
+    kind: security.scope
+    meta: {private: true}
+    policies: []
+
+  - name: catalog_service_scope
+    kind: security.scope
+    meta: {service_only: true}
+    policies: []
+
+  - name: catalog_internal_scope
+    kind: security.scope
+    meta: {internal: true}
+    policies: []
+
+  - name: catalog_private_scope_descriptor
+    kind: registry.entry
+    meta: {type: kickside.security.role, title: A role descriptor}
+    role_id: app:catalog_private_scope
+
+  - name: catalog_role_for_service_scope
+    kind: registry.entry
+    meta: {type: kickside.security.role, title: A service role, service_only: true}
+    role_id: app:catalog_descriptor_restricted_scope
+
+  - name: catalog_descriptor_restricted_scope
+    kind: security.scope
+    policies: []
+
   - name: scope_catalog_test
     kind: function.lua
     meta:

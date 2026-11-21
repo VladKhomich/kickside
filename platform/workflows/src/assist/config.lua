@@ -108,7 +108,7 @@ function M.config_assist_surface(config_schema: any, current_config: any): (Map?
     for key, raw in pairs(properties) do
         local field = type(raw) == "table" and (raw :: Map) or {}
         local current_value = type(current_config) == "table" and (current_config :: Map)[key] or nil
-        if field.picker == nil and field.class == nil
+        if field.picker == nil and field.class == nil and field.readOnly ~= true
             and not schema_contains_picker(field, 1)
             and not schema_contains_sensitive(field, key, 1)
             and not value_contains_sensitive_key(current_value, 1) then

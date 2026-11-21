@@ -117,13 +117,14 @@ entries:
       comment: A kickside.lifecycle.events:principal.deleted report reaps every component the owner held, idempotently.
     source: file://reaper_test.lua
     method: run
-    modules: [sql, uuid, security, contract, funcs, time]
+    modules: [sql, uuid, security, contract, funcs, time, registry, json]
     imports:
       deletion_worker: app:deletion_test_worker
       test: wippy.test:test
       component: kickside.component:component
       provision: kickside.core.threads:provision
       lifecycle_consts: kickside.core.lifecycle:consts
+      lifecycle_log: kickside.core.threads.persist:lifecycle
       projection_worker: kickside.core.projections.persist:worker
       framework_events: kickside.core.threads:contract_events
       claim: kickside.core.jobs.persist:claim

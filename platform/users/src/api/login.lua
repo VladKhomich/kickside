@@ -1,7 +1,6 @@
 local http = require("http")
 local json = require("json")
 
-local user_repo = require("user_repo")
 local user_credentials_repo = require("user_credentials_repo")
 local user_repo_support = require("user_repo_support")
 local user_groups_repo = require("user_groups_repo")
@@ -86,13 +85,13 @@ local function handler()
 
     -- Password first, then status. Checking status first discloses the account's
     -- lifecycle state to a caller who has proven nothing.
-    local password_valid, verify_err = user_credentials_repo.verify_password(identifier, password)
+    local password_valid, verified = user_credentials_repo.verify_password(user.user_id, password)
     if not password_valid then
         invalid_credentials()
         return
     end
 
-    if user.status ~= consts.USER_STATUS.ACTIVE then
+    if verified.status ~= consts.USER_STATUS.ACTIVE then
         invalid_credentials()
         return
     end
@@ -106,7 +105,9 @@ local function handler()
         user_agent = req:header("User-Agent") or "unknown",
     }
 
-    local minted, mint_err = session.mint(user, actor_meta, token_meta)
+    -- Successful verification may have upgraded a legacy password hash. Mint
+    -- against the verified hash so a concurrent reset still fences this login.
+    local minted, mint_err = session.mint(verified, actor_meta, token_meta)
     if not minted then
         local kind, retryable
         if type(mint_err) == "userdata" then
@@ -130,18 +131,18 @@ local function handler()
         message = "Authentication successful",
         token = minted.token,
         user = {
-            user_id = user.user_id,
-            email = user.email,
-            full_name = user.full_name,
-            status = user.status,
-            created_at = user.created_at
+            user_id = verified.user_id,
+            email = verified.email,
+            full_name = verified.full_name,
+            status = verified.status,
+            created_at = verified.created_at
         },
         actor = {
             id = minted.actor:id(),
             metadata = minted.actor:meta()
         },
         security = {
-            groups = user.security_groups,
+            groups = minted.security_groups,
             scope = minted.scope_id,
             is_admin = minted.is_admin
         },

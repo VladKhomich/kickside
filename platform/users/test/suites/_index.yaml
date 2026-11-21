@@ -467,6 +467,8 @@ entries:
       - json
       - security
       - funcs
+      - hash
+      - sql
     imports:
       trigger_reconcile: kickside.security:trigger_reconcile
       scope_store: kickside.security.persist:scope_store

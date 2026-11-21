@@ -20,12 +20,15 @@ local jobs_config = require("jobs_config")
 local lease_status = require("lease_status")
 local registration = require("registration")
 local job_types = require("job_types")
+local registered_checkpoint = require("registered_checkpoint")
+local event_access = require("event_access")
 
 local M = {}
 
 type CheckpointWriter = (sql.Transaction, string) -> (boolean?, error?)
 type RangeInput = {id: string, seq: number}
-type Checkpoint = {write: CheckpointWriter?, first_seq: number?, owner: table?, manifest: {RangeInput}?, filter: table?}
+type Checkpoint = {write: CheckpointWriter?, first_seq: number?, owner: table?, manifest: {RangeInput}?, filter: table?,
+    registered: table?}
 
 local function invalid(message: string): error
     return (errors.new({ message = message, kind = errors.INVALID, retryable = false }) :: error)
@@ -286,11 +289,15 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         return nil, rollback(tx, err)
     end
     local owner = owned or (checkpoint and checkpoint.owner)
-    if owner then
+    local registered = checkpoint and checkpoint.registered
+    if registered then
+        local access_err = registered_checkpoint.lock(tx, dbtype, registered)
+        if access_err then return abort(access_err) end
+    elseif owner then
         local owner_err = check_checkpoint_owner(tx, dbtype, owner)
         if owner_err then return abort(owner_err) end
     end
-    local locked_threads, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, ids)
+    local locked_threads, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, ids, registered ~= nil)
     if lock_err then return abort(lock_err) end
     if type(locked_threads) ~= "table" then return abort(response_error("locked_threads")) end
     local source_thread = locked_threads[tostring(snapshot.thread_id)]
@@ -299,13 +306,20 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     if checkpoint and source_thread.deleting_at ~= nil then
         return abort(job_types.lease_lost_error("projection source thread is deleting"))
     end
+    if registered and not event_access.same_binding(source_thread, snapshot) then
+        return abort(errors.new({kind = errors.CONFLICT, retryable = true,
+            message = "registered checkpoint source binding changed during preparation"}))
+    end
     local suffix = dbtype == sql.type.POSTGRES and " FOR UPDATE" or ""
     -- Hot registry publication can precede migration 20. A pre-migration row
     -- simply has no optional lifecycle handoff position.
     local cursor_query = "SELECT * FROM kickside_projection_cursor WHERE id=$1"
     if checkpoint and checkpoint.manifest then
+        local declaration = registered and ",c.actor_id,c.execution_identity_json,"
+            .. registration.declaration_fields_sql(dbtype, "p.body") .. " AS registered_declaration" or ""
         cursor_query = [[SELECT c.generation,c.last_seq,c.status,c.job_id,c.thread_id,c.projection_id,c.continuation,
-            p.reset_generation FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
+            p.reset_generation]] .. declaration .. [[
+            FROM kickside_projection_cursor c JOIN kickside_projection p ON p.id=c.projection_id
             WHERE c.id=$1]]
     end
     local rows, cursor_err = tx:query(cursor_query .. suffix, {snapshot.id})
@@ -316,6 +330,10 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     if tostring(cursor.job_id or "") ~= tostring(job.id)
         or (checkpoint and (cursor.thread_id ~= snapshot.thread_id or cursor.projection_id ~= snapshot.projection_id)) then
         return abort(errors.new({message = "projection slot changed", kind = errors.CONFLICT, retryable = false}))
+    end
+    if registered then
+        local declaration_err = registered_checkpoint.check_cursor(cursor, registered)
+        if declaration_err then return abort(declaration_err) end
     end
     if cursor.status ~= "active" or tonumber(cursor.generation) ~= tonumber(snapshot.generation)
         or tonumber(cursor.last_seq) ~= tonumber(snapshot.last_seq)
@@ -410,7 +428,11 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         if (not checkpoint and not empty_scan) or output.body ~= nil or output.patch ~= nil then
             local folded, fold_err = next_body(body, output)
             if fold_err then return abort(fold_err) end
-            if owned and not registration.declaration_matches(body, folded) then
+            if registered then
+                local matches, declaration_err = registered_checkpoint.check_declaration(folded, registered.admission)
+                if declaration_err then return abort(declaration_err) end
+                if not matches then return abort(invalid("registered checkpoint cannot change its declaration")) end
+            elseif owned and not registration.declaration_matches(body, folded) then
                 return abort(invalid("component-owned projection cannot change its declaration"))
             end
             local encoded, encode_err = json.encode(folded)
@@ -477,6 +499,12 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
         local done_err
         done, done_err = completion(tx, job, options)
         if done_err then return abort(done_err) end
+    end
+    if registered then
+        local revision_err = registered_checkpoint.recheck_revision(registered.admission.revision)
+        if revision_err then return abort(revision_err) end
+        local access_err = registered_checkpoint.lock(tx, dbtype, registered)
+        if access_err then return abort(access_err) end
     end
     local _, commit_err = tx:commit()
     if commit_err then return nil, errors.wrap(commit_err, "projection apply commit failed") end
@@ -651,8 +679,10 @@ end
 
 -- The scheduler can settle a filtered physical page without spawning its worker.
 -- Revalidate the empty selection under the same thread and owner locks as publication.
-function M.advance_filtered_empty(db_id: string, job: table, snapshot: table, last: number, owner: table): (table?, error?)
-    return advance(db_id, job, snapshot, last, {}, {owner = owner, manifest = {}, filter = snapshot.body.events.input}, true)
+function M.advance_filtered_empty(db_id: string, job: table, snapshot: table, last: number, owner: table,
+        registered: table?): (table?, error?)
+    local filter = registered and registered.filter or snapshot.body.events.input
+    return advance(db_id, job, snapshot, last, {}, {owner = owner, manifest = {}, filter = filter, registered = registered}, true)
 end
 
 local function shared_db(target_db: string): (string?, error?)
@@ -676,9 +706,10 @@ function M.checkpoint(target_db: string, job: table, snapshot: table, prefetched
     if type(write) ~= "function" then return nil, invalid("projection checkpoint requires an owning writer") end
     local proof, proof_err = ctx.get("kickside.core.projection_checkpoint")
     if proof_err and not errors.is(proof_err, errors.NOT_FOUND) then return nil, proof_err end
+    local registered = type(proof) == "table" and proof.registered ~= nil
     if proof ~= nil and (type(proof) ~= "table" or type(proof.owner) ~= "table"
         or type(proof.owner.incarnation) ~= "string" or type(proof.owner.generation) ~= "number"
-        or proof.cursor_id ~= snapshot.id or proof.owner.component_id ~= snapshot.thread_id
+        or proof.cursor_id ~= snapshot.id or proof.owner.component_id ~= (registered and snapshot.component_id or snapshot.thread_id)
         or proof.job_id ~= job.id or proof.lease_token ~= job.lease_token
         or tonumber(proof.execution_seq) ~= tonumber(job.execution_seq)) then
         return nil, invalid("projection checkpoint does not match its admitted owner and lease")
@@ -694,8 +725,18 @@ function M.checkpoint(target_db: string, job: table, snapshot: table, prefetched
             return nil, invalid("filtered checkpoint is outside its assigned range")
         end
     end
+    local authority
+    if registered then
+        if not filter or not dense_array(manifest) then return nil, invalid("registered checkpoint requires its exact input range") end
+        local range_err = registered_checkpoint.check_offer(proof.inputs, manifest :: table, output.last_seq)
+        if range_err then return nil, range_err end
+        local err
+        authority, err = registered_checkpoint.authorize(proof, snapshot, db_id)
+        if not authority then return nil, err end
+        filter = authority.filter
+    end
     return advance(db_id, job, snapshot, prefetched_last, output, {write = write, owner = proof and proof.owner,
-        manifest = manifest, filter = filter})
+        manifest = manifest, filter = filter, registered = authority})
 end
 
 function M.finish_checkpointed(target_db: string, job: table, snapshot: table, first_seq: number,

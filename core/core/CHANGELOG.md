@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.49](https://github.com/kicksideai/kickside/compare/core-v0.3.48...core-v0.3.49) (2026-11-21)
+
+
+### Bug Fixes
+
+* **core:** publish registered filtered projections atomically ([b94fe22](https://github.com/kicksideai/kickside/commit/b94fe224f7388c476a15f033442ba238e014dd9c))
+
+## [0.3.48](https://github.com/kicksideai/kickside/compare/core-v0.3.47...core-v0.3.48) (2026-11-21)
+
+
+### Bug Fixes
+
+* **core:** publish ensure in the projection registration contract ([#855](https://github.com/kicksideai/kickside/issues/855)) ([859994b](https://github.com/kicksideai/kickside/commit/859994b46cd463b19b0258bc567a6e19dce9798a))
+
+## [0.3.47](https://github.com/kicksideai/kickside/compare/core-v0.3.46...core-v0.3.47) (2026-11-21)
+
+
+### Features
+
+* **core:** support a second subject expectation on append ([#851](https://github.com/kicksideai/kickside/issues/851)) ([ed0ef69](https://github.com/kicksideai/kickside/commit/ed0ef691b4bb9c40d7641973a63985c387fb5614))
+
+## [0.3.46](https://github.com/kicksideai/kickside/compare/core-v0.3.45...core-v0.3.46) (2026-11-21)
+
+
+### Features
+
+* **core:** expose a read-only lifecycle custody inventory ([#848](https://github.com/kicksideai/kickside/issues/848)) ([4a75f8e](https://github.com/kicksideai/kickside/commit/4a75f8ece580a8cff779f2270fac4545a55d4678))
+
 ## [0.3.45](https://github.com/kicksideai/kickside/compare/core-v0.3.44...core-v0.3.45) (2026-11-21)
 
 

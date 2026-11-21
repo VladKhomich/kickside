@@ -66,35 +66,51 @@ local function define_tests()
         test.it("rolls back all writes and versions on a later conflict", function()
             local a, b = scaffold.make_thread(), scaffold.make_thread()
             if b < a then a, b = b, a end
+            test.is_nil(select(2, write(b, { { subject = "schema" } }, nil)))
             local db = open_db()
             local result, err = writer.ingest_multi(db, {
                 { thread_id = a, events = { { subject = "settings" } }, expect = { subject = "settings", version = 0 } },
-                { thread_id = b, events = { {} }, expect = { head = 1 } },
+                { thread_id = b, events = { { subject = "settings" } },
+                    expect = { subject = "settings", version = 0, also = { subject = "schema", version = 0 } } },
             }, nil, true)
             db:release()
             test.is_nil(result)
-            conflict(err, "head_mismatch")
+            conflict(err, "version_mismatch")
+            test.eq(err:details().subject, "schema")
+            test.eq(err:details().version, 1)
+            test.eq(err:details().expected, 0)
             test.eq(#scaffold.seqs_of(a), 0)
             test.eq(version(a, "settings"), 0)
+            test.eq(#scaffold.seqs_of(b), 1)
+            test.eq(version(b, "settings"), 0)
         end)
-        test.it("returns id and external retries after the version moves and rejects mixed retries", function()
+        test.it("returns id and external retries after both versions move and rejects mixed retries", function()
             local id = scaffold.make_thread()
+            local expect = { subject = "settings", version = 0, also = { subject = "schema", version = 0 }, head = 0 }
             local events = { { id = uuid.v7(), subject = "settings" },
                 { subject = "settings", external = { external_source = "settings", external_id = "save-1" } } }
-            local first, err = write(id, events, { subject = "settings", version = 0 })
+            local first, err = write(id, events, expect)
             test.is_nil(err)
-            test.is_nil(select(2, write(id, { { subject = "settings" } }, { subject = "settings", version = 2 })))
-            local retry, retry_err = write(id, events, { subject = "settings", version = 0, head = 0 })
+            test.is_nil(select(2, write(id, { { subject = "settings" }, { subject = "schema" } },
+                { subject = "settings", version = 2 })))
+            local retry, retry_err = write(id, events, expect)
             test.is_nil(retry_err)
             test.eq(retry.inserted, 0)
             test.eq(retry.duplicates, 2)
             for i = 1, 2 do
+                test.eq(retry.events[i].duplicate, true)
                 test.eq(retry.events[i].event_id, first.events[i].event_id)
-                test.eq(retry.events[i].subject_version, i)
+                test.eq(retry.events[i].seq, first.events[i].seq)
+                test.eq(retry.events[i].subject, first.events[i].subject)
+                test.eq(retry.events[i].subject_version, first.events[i].subject_version)
             end
             test.eq(version(id, "settings"), 3)
-            local _, mixed = write(id, { events[1], { subject = "settings" } }, { subject = "settings", version = 0 })
+            test.eq(version(id, "schema"), 1)
+            test.eq(#scaffold.seqs_of(id), 4)
+            expect.head = nil
+            local _, mixed = write(id, { events[1], { subject = "settings" } }, expect)
             conflict(mixed, "version_mismatch")
+            test.eq(mixed:details().subject, "settings")
         end)
         test.it("refuses identity retries that name a different subject", function()
             for _, external in ipairs({ false, true }) do
@@ -134,6 +150,30 @@ local function define_tests()
                 test.eq(err:kind(), errors.INVALID)
             end
             test.eq(#scaffold.seqs_of(id), 0)
+        end)
+        test.it("rejects malformed and cross-thread secondary expectations", function()
+            local id, other = scaffold.make_thread(), scaffold.make_thread()
+            test.is_nil(select(2, write(other, { { subject = "schema" } }, nil)))
+            local events = { { subject = "settings" } }
+            local _, no_primary = write(id, events, { head = 0, also = { subject = "schema", version = 0 } })
+            test.is_true(errors.is(no_primary, errors.INVALID))
+            for _, also in ipairs({ false, "schema", {}, { subject = "schema" }, { version = 0 },
+                { subject = "", version = 0 }, { subject = "schema\n", version = 0 },
+                { subject = "settings", version = 0 }, { subject = "schema", version = -1 },
+                { subject = "schema", version = 0.5 }, { subject = "schema", version = math.huge },
+                { subject = "schema", version = "0" }, { subject = "schema", version = 1, thread_id = other },
+                { { subject = "schema", version = 0 } },
+            }) do
+                local _, err = write(id, events, { subject = "settings", version = 0, also = also })
+                test.is_true(errors.is(err, errors.INVALID))
+            end
+            local _, wrong_thread_version = write(id, events,
+                { subject = "settings", version = 0, also = { subject = "schema", version = 1 } })
+            conflict(wrong_thread_version, "version_mismatch")
+            test.eq(wrong_thread_version:details().version, 0)
+            test.eq(#scaffold.seqs_of(id), 0)
+            test.is_nil(select(2, write(id, events,
+                { subject = "settings", version = 0, also = { subject = "schema", version = 0 } })))
         end)
         test.it("keeps versions through pruning and removes them through teardown", function()
             local id = scaffold.make_thread()
@@ -177,21 +217,64 @@ local function define_tests()
             test.eq(version(id, "settings"), 1)
             test.eq(#scaffold.seqs_of(id), 1)
         end)
-        test.it("uses the subject primary key for version reads", function()
-            local id = scaffold.make_thread()
-            test.is_nil(select(2, write(id, { { subject = "settings" } }, nil)))
+        for _, race in ipairs({
+            { subject = "other-item", label = "accepts a guarded append after an unrelated append" },
+            { subject = "schema", label = "rejects a guarded append after its secondary subject advances" },
+            { subject = "item", label = "still rejects stale primary versions with a secondary guard" },
+        }) do
+            test.it(race.label, function()
+                local id = scaffold.make_thread()
+                test.is_nil(select(2, write(id, { { subject = "item" }, { subject = "schema" } }, nil)))
+                local dbtype = scaffold.dialect()
+                local db = open_db()
+                local tx, begin_err = db:begin()
+                test.is_nil(begin_err)
+                local _, err = append.append_events_tx(tx, id, { { subject = race.subject } })
+                test.is_nil(err)
+                local expect = { subject = "item", version = 1, also = { subject = "schema", version = 1 } }
+                local events = { { subject = "item" } }
+                local done = channel.new(1)
+                coroutine.spawn(function()
+                    local result, stale = write(id, events, expect)
+                    done:send({ result = result, err = stale })
+                end)
+                scaffold.await_lock_waiter(dbtype)
+                local _, commit_err = tx:commit()
+                db:release()
+                test.is_nil(commit_err)
+                local guarded = done:receive()
+                if race.subject == "other-item" then
+                    test.is_nil(guarded.err)
+                    test.eq(guarded.result.events[1].seq, 4)
+                    test.eq(guarded.result.events[1].subject_version, 2)
+                else
+                    test.is_nil(guarded.result)
+                    conflict(guarded.err, "version_mismatch")
+                    test.eq(guarded.err:details().subject, race.subject)
+                    test.eq(guarded.err:details().version, 2)
+                    test.eq(guarded.err:details().expected, 1)
+                    test.eq(#scaffold.seqs_of(id), 3)
+                    test.eq(version(id, "item"), race.subject == "item" and 2 or 1)
+                    test.eq(version(id, "schema"), race.subject == "schema" and 2 or 1)
+                    if race.subject == "schema" then
+                        expect.also.version = 2
+                        test.is_nil(select(2, write(id, events, expect)))
+                    end
+                end
+            end)
+        end
+        local function check_index(statement: string, args: {string})
             local dbtype = scaffold.dialect()
             local db = open_db()
-            local statement = "SELECT version FROM kickside_thread_subject WHERE thread_id=$1 AND subject=$2"
             local plan, err
             if dbtype == sql.type.POSTGRES then
                 local _, setting_err = db:execute("SET enable_seqscan = off")
                 test.is_nil(setting_err)
-                plan, err = db:query("EXPLAIN " .. statement, { id, "settings" })
+                plan, err = db:query("EXPLAIN " .. statement, args)
                 local _, reset_err = db:execute("RESET enable_seqscan")
                 test.is_nil(reset_err)
             else
-                plan, err = db:query("EXPLAIN QUERY PLAN " .. statement, { id, "settings" })
+                plan, err = db:query("EXPLAIN QUERY PLAN " .. statement, args)
             end
             db:release()
             test.is_nil(err)
@@ -201,6 +284,13 @@ local function define_tests()
             end
             local index_at = text:find(dbtype == sql.type.POSTGRES and "kickside_thread_subject_pkey" or "INDEX", 1, true)
             test.not_nil(index_at)
+        end
+        test.it("uses the subject primary key for single and dual version reads", function()
+            local id = scaffold.make_thread()
+            test.is_nil(select(2, write(id, { { subject = "settings" }, { subject = "schema" } }, nil)))
+            check_index("SELECT version FROM kickside_thread_subject WHERE thread_id=$1 AND subject=$2", { id, "settings" })
+            check_index("SELECT subject, version FROM kickside_thread_subject WHERE thread_id=$1 AND subject IN ($2, $3)",
+                { id, "settings", "schema" })
         end)
     end)
 end

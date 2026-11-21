@@ -46,6 +46,8 @@ entries:
       lease_status: kickside.core.jobs.persist:lease_status
       registration: kickside.core.projections.persist:register
       job_types: kickside.core.jobs:types
+      registered_checkpoint: kickside.core.projections.persist:registered_checkpoint
+      event_access: kickside.core.threads:event_access
 
   - name: invoke
     kind: library.lua

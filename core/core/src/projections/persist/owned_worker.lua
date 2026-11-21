@@ -58,6 +58,15 @@ local function scope_entries(snapshot: any, kind: any, target: any): (boolean?, 
     return true, nil
 end
 
+-- These entries can only be linked by their installed package. An entry's
+-- author-editable metadata cannot stand in for the Registry owner.
+function M.same_package(snapshot: any, source_id: string, writer_id: string, config_id: string): (boolean?, error?)
+    local by_id, err = entry_owners(snapshot)
+    if err or not by_id then return nil, err or event_access.denied() end
+    local owner = by_id[source_id]
+    return owner ~= nil and owner == by_id[writer_id] and owner == by_id[config_id], nil
+end
+
 function M.check_package(snapshot: any, impl_id: string, target_id: string): (boolean?, error?)
     local kind, err = snapshot:get(impl_id)
     if err then return nil, err end

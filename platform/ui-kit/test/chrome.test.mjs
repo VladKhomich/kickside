@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
 const root = new URL('../', import.meta.url)
-const sheets = ['kx-shell.css', 'kx-controls.css', 'kx-overlay.css', 'kx-state.css', 'kx-settings-rail.css', 'kx-disclosure.css']
+const sheets = ['kx-shell.css', 'kx-controls.css', 'kx-overlay.css', 'kx-state.css', 'kx-settings-rail.css', 'kx-settings-head.css', 'kx-disclosure.css']
 const read = name => readFileSync(new URL(`package/${name}`, root), 'utf8')
 
 test('chrome sheets ship as package exports and files', () => {
@@ -18,7 +18,7 @@ test('chrome sheets ship as package exports and files', () => {
 
 test('shared navigation and empty states ship as package components', () => {
   const pkg = JSON.parse(read('package.json'))
-  for (const component of ['SystemTabs.vue', 'EmptyState.vue', 'SettingsRail.vue', 'ListRail.vue', 'Disclosure.vue']) {
+  for (const component of ['SystemTabs.vue', 'EmptyState.vue', 'SettingsRail.vue', 'ListRail.vue', 'SettingsDirectoryActions.vue', 'SettingsDraftActions.vue', 'SettingsSectionHead.vue', 'Disclosure.vue']) {
     assert.equal(pkg.exports[`./${component}`], `./${component}`)
     assert.ok(pkg.files.includes(component))
     assert.ok(read(component).length > 0)

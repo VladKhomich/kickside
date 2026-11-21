@@ -98,6 +98,10 @@ local function apply_declaration_fields(target: table, declaration: table): tabl
     return target
 end
 
+function writer.declaration_fields(body: table): table
+    return apply_declaration_fields({}, body)
+end
+
 -- Structural equality over the declaration fields. Used to detect that a module
 -- upgrade changed what a stored projection declares, which is the one condition
 -- that retires a recorded config fault.
@@ -167,7 +171,23 @@ function writer.declaration_body(params: table): (table?, error?)
 end
 
 function writer.declaration_matches(stored: table, declared: table): boolean
-    return same_declaration(apply_declaration_fields({}, stored), apply_declaration_fields({}, declared))
+    return same_declaration(writer.declaration_fields(stored), writer.declaration_fields(declared))
+end
+
+local REGISTERED_CHECKPOINT_PRINCIPAL = "registered_checkpoint_principal"
+
+-- Only registration can record that it captured this caller. A worker's
+-- returned fold does not alter the stored execution identity.
+function writer.is_registered_checkpoint_principal(raw: any): boolean
+    local identity = type(raw) == "string" and json.decode(raw) or raw
+    return type(identity) == "table" and identity[REGISTERED_CHECKPOINT_PRINCIPAL] == true
+end
+
+local function mark_registered_checkpoint_principal(raw: string): (string?, error?)
+    local identity, err = json.decode(raw)
+    if err then return nil, err end
+    identity[REGISTERED_CHECKPOINT_PRINCIPAL] = true
+    return json.encode(identity)
 end
 
 -- The installed destination worker can declare compatibility with one predecessor.
@@ -513,6 +533,11 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
     if id_row then
         actor_id_col = (id_row :: any).actor_id :: string?
         actor_context_col = (id_row :: any).actor_context :: string?
+        if params.registered_checkpoint_principal == true then
+            local marker_err
+            actor_context_col, marker_err = mark_registered_checkpoint_principal(actor_context_col :: string)
+            if marker_err then return nil, marker_err end
+        end
     end
 
     local body_json, body_encode_err = json.encode(body)

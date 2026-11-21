@@ -48,6 +48,49 @@ Declare a kind’s exact input/output events and append them through the Threads
 
 A component kind declares lifecycle projections with `meta.projections[].on: lifecycle`. Workers receive committed `kickside.component.events:created`, `updated`, and `deleted` events under the framework system identity. The cursor persists across updates and deletion. Use `on: child.lifecycle` to observe children; omit `on` to use the primary thread.
 
+An authorized Threads caller can pass `ensure = true` to `register_projection`
+when updating a projection's declaration. With `reset` omitted, an existing
+cursor keeps its status, checkpoint, folded state and execution identity. A
+changed declaration applies to all cursors at that projection address and
+advances their generations. Repeating the same declaration preserves those
+generations. Call `resume_projection` when the owner wants a paused cursor to
+run again. Ordinary explicit registration resumes the addressed cursor.
+
+### Registered filtered publication
+
+A public process worker can opt into shared-database publication for registered
+projections that prefetch a filtered range and name multiple destination
+components in their stored worker configuration.
+
+```yaml
+meta:
+  type: projection.worker
+  registered_checkpoint:
+    writer_ref: proc://vendor.projection:publish
+    target_db_config: vendor.projection:db_config
+    destinations_key: target_ids
+```
+
+The same package owns the declared private process and its database config
+entry. Set `private`, `checkpointed_apply`, `filtered_checkpoint` and
+`registered_checkpoint_writer` to `true` under the private process's `meta`.
+The process inherits the registered actor's execution frame. When the target
+config's `meta.db_id` names the shared Core and Jobs database resource, the
+private process handles configurations with 2 to 32 distinct destination
+components. Other configurations use the ordinary process.
+
+An explicit registration records the calling principal for this path. Existing
+registrations can opt in through explicit registration at their current
+position. An `ensure` call retains an existing execution identity.
+
+The private process receives `input.checkpoint`, with the fold body on
+`input.projection.body`. Supply the body to the checkpoint cursor before calling
+`kickside.core.projections:apply.checkpoint` with the ordered event IDs and
+sequences for the committed prefix. Its in-process write callback receives the
+shared transaction. Core checks the registered declaration, source binding,
+destination WRITE, exact inputs, lease and reset before committing the callback,
+fold, output events and cursor together.
+
 ## Reference
 
 - [Module reference](src/README.md)
@@ -59,6 +102,29 @@ A component kind declares lifecycle projections with `meta.projections[].on: lif
 | [`kickside.core:source_delete_fence`](src/_index.yaml) | `fence` |
 | [`kickside.core:read_models`](src/registry/read_models/_index.yaml) | `get` |
 | [`kickside.core:threads`](src/registry/thread_contract/_index.yaml) | `create`, `ensure_thread`, `emit`, `purge`, `find`, `upsert`, `update`, `delete`, `list`, `list_events`, `prune_boundary`, `retire_subjects`, `find_event_by_external`, `append_events`, `append_event`, `list_children`, `list_edges`, `list_classes`, `register_projection`, `list_projections`, `get_projection_cursor`, `catch_up_projection`, `pause_projection`, `resume_projection`, `remove_projection` |
+
+Each Lua Threads `append_events` write and `append_event` accepts an optional
+`expect`. A write guarded by a subject version can also check a second subject
+in the same thread.
+
+```lua
+expect = {
+    subject = item_subject,
+    version = item_version,
+    also = { subject = "schema", version = schema_version },
+}
+```
+
+`also` requires a complete primary subject/version pair and a distinct subject
+name. Both versions must be non-negative integers. An absent subject reads as
+zero. Core checks any supplied `head` first, followed by the primary and
+secondary versions under the append transaction's thread lock. A version
+mismatch returns CONFLICT with `reason = "version_mismatch"` and, for callers
+with event-read access, the failing `subject`, current `version`, and
+`expected` version. A failed expectation rolls back the entire append
+transaction. A fully duplicate retry identified by event IDs or external
+identities returns its original event receipts even after either version
+advances, subject to event-read access.
 
 ### Host requirements
 

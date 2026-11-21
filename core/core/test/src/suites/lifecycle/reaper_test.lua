@@ -18,6 +18,9 @@ local projection_worker = require("projection_worker")
 local framework_events = require("framework_events")
 local claim = require("claim")
 local time = require("time")
+local registry = require("registry")
+local json = require("json")
+local lifecycle_log = require("lifecycle_log")
 
 local COMPONENT_SERVICE = "kickside.component:component_service"
 local TEST_IMPL = "kickside.test:reap"
@@ -409,6 +412,103 @@ local function define_tests()
             test.is_nil(hidden_err, tostring(hidden_err))
             test.is_false(hidden.success)
             test.is_true(hidden.kind == errors.PERMISSION_DENIED or hidden.kind == errors.NOT_FOUND)
+        end)
+
+        test.it("preserves an explicit child lifecycle cursor through upgrade, replacement and revocation", function()
+            local singleton = lifecycle_thread_id()
+            local admin = as_owner("lifecycle-admin-" .. suffix, { "app:admin" })
+            local editor_id = "lifecycle-editor-" .. suffix
+            local subject = { subject_id = editor_id, subject_type = "user" }
+            test.is_true(assert(admin:grant_subtree({ root_component_id = singleton,
+                subject = subject, access_mask = 8 })).success)
+
+            local template = assert(registry.get("app:lifecycle_folder"))
+            local binding = {id = "app:explicit_lifecycle_parent_" .. suffix, kind = template.kind,
+                data = template.data, meta = {title = "Explicit lifecycle parent"}}
+            local changes = assert(registry.snapshot()):changes()
+            changes:create(binding)
+            assert(changes:apply())
+            local owner = as_owner()
+            local parent = assert(owner:register({impl_id = binding.id})).component_id
+            local child = assert(owner:register({impl_id = TEST_IMPL, parent_id = parent})).component_id
+            local thread_id = lifecycle_log.thread_id(child)
+            local spec = {thread_id = thread_id, kind = "test.child.lifecycle", projection_key = "parent:" .. parent,
+                worker_ref = "func://app:test_count_worker", worker_input_mode = "prefetch_events",
+                worker_config = {parent_component_id = parent, child_component_id = child}}
+            local editor = threads_as(editor_id)
+            local original = assert(editor:register_projection(spec)).projection
+            local system_scope = assert(security.named_scope(lifecycle_consts.SYSTEM_SCOPE))
+            local executor = funcs.new():with_actor(security.new_actor("system:kickside.jobs", {})):with_scope(system_scope)
+            local function advance(seq: integer, generation: integer): any
+                local db = assert(sql.get("app:db"))
+                local dialect = assert(db:type())
+                local tx = assert(db:begin())
+                local token = uuid.v4()
+                local now = time.now():utc()
+                local lease = assert(claim.lease_row(tx, dialect, original.job_id, token,
+                    now:add("45s"):format_rfc3339(), now:format_rfc3339()))
+                assert(tx:commit())
+                assert(db:release())
+                local result = assert(executor:call("kickside.core.projections:advance", {
+                    job = {id = original.job_id, lease_token = token, execution_seq = lease.execution_seq},
+                    payload = {cursor_id = original.cursor_id},
+                }))
+                test.eq(tonumber(result.last_seq), seq)
+                db = assert(sql.get("app:db"))
+                local cursor = assert(db:query([[SELECT p.body,k.last_seq,k.generation,k.actor_id,k.execution_identity_json
+                    FROM kickside_projection p JOIN kickside_projection_cursor k ON k.projection_id=p.id
+                    WHERE k.id=$1]], {original.cursor_id}))[1]
+                assert(db:release())
+                test.eq(tonumber(cursor.last_seq), seq)
+                test.eq(tonumber(cursor.generation), generation)
+                test.is_nil(cursor.actor_id)
+                test.is_nil(cursor.execution_identity_json)
+                return assert(json.decode(cursor.body))
+            end
+            test.eq(advance(1, original.generation).stats.count, 1)
+
+            binding.meta = {title = "Upgraded lifecycle parent"}
+            changes = assert(registry.snapshot()):changes()
+            changes:update(binding)
+            assert(changes:apply())
+            local lifecycle_actor = security.new_actor(lifecycle_consts.SYSTEM_ACTOR,
+                {system = true, groups = {"system", "lifecycle"}})
+            local continuation: table? = nil
+            repeat
+                local summary = assert(provision.converge(lifecycle_actor, system_scope, continuation))
+                continuation = summary.continuation
+            until not continuation
+            test.is_true(assert(owner:set_meta({component_id = child, fields = {status = "after upgrade"}})).success)
+            test.eq(advance(2, original.generation).stats.count, 2)
+
+            spec.worker_ref = "func://kickside.core.lifecycle:child_lifecycle_projection"
+            local replacement = assert(editor:register_projection(spec)).projection
+            test.eq(replacement.projection_id, original.projection_id)
+            test.eq(replacement.cursor_id, original.cursor_id)
+            test.eq(replacement.job_id, original.job_id)
+            test.eq(tonumber(replacement.generation), assert(tonumber(original.generation)) + 1)
+
+            test.is_true(assert(admin:revoke_subtree({root_component_id = singleton, subject = subject})).success)
+            spec.worker_ref = "func://app:test_count_worker"
+            local refused, err = editor:register_projection(spec)
+            test.is_nil(refused)
+            test.is_true(errors.is(err, errors.PERMISSION_DENIED), tostring(err))
+            test.is_true(assert(owner:set_meta({component_id = child, fields = {status = "after revocation"}})).success)
+            local body = advance(3, replacement.generation)
+            test.eq(body.meta.worker_ref, replacement.worker_ref)
+            test.eq(body.stats.count, 2)
+            test.eq(body.child.component_id, child)
+            test.eq(body.child.parent_component_id, parent)
+            test.eq(tonumber(body.child.last_event_seq), 3)
+            test.eq(body.child.last_event_type, lifecycle_log.EVENT.UPDATED)
+
+            test.is_true(assert(owner:delete({component_id = child})).success)
+            assert(deletion_worker.run(child))
+            test.is_true(assert(owner:delete({component_id = parent})).success)
+            assert(deletion_worker.run(parent))
+            changes = assert(registry.snapshot()):changes()
+            changes:delete(binding.id)
+            assert(changes:apply())
         end)
 
         test.it("system setup installs and can dispatch the private lifecycle reaper", function()
