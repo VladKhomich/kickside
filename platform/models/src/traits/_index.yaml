@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: kickside.models.traits
+
+# Agent surface over the kickside.models.cards:cards contract. The namespace is
+# outside the member module grant; a group receives the trait and its tools
+# through the kickside.models.security:card_tools policy.
+
+entries:
+  - name: card_manager
+    kind: registry.entry
+    meta:
+      type: agent.trait
+      title: Model Card Manager
+      public: true
+      icon: tabler:cpu
+      comment: Lists, reads, saves, retires and deletes model catalog cards.
+      tags: [models, catalog, cards, management]
+    prompt: |
+      You can manage the model catalog with **ModelCardsRead** and **ModelCardsManage**.
+
+      Call ModelCardsRead action=list for compact card summaries in pages of 25
+      by default; pass next_cursor as cursor for the next page and q to filter
+      by name, title or provider model. Call action=get with a card name for the
+      full card, including its options, pricing and metadata.
+
+      ModelCardsManage action=upsert creates or updates a card by name; fields
+      the card omits keep their saved values. A card routes through a provider
+      profile (provider_profile_id) or a provider entry (provider_id) and names
+      the provider's model in provider_model. Credentials belong on the provider
+      profile: card fields and URLs never carry them. action=disable retires a
+      card and keeps its row; upsert with enabled true restores it. action=delete
+      removes a card and accepts only a disabled one, so disable a card first.
+      A refusal returns success false with the reason.
+    tools:
+      - kickside.models.traits:cards_read
+      - kickside.models.traits:cards_manage
+
+  - name: cards_client
+    kind: library.lua
+    meta:
+      comment: Opens the model cards contract as the caller and maps its replies onto tool results.
+    source: file://cards_client.lua
+    modules: [contract, security]
+    imports:
+      tool_result: kickside.contract:tool_result
+
+  - name: cards_read
+    kind: function.lua
+    meta:
+      type: tool
+      title: Model Cards Read
+      public: true
+      mcp:
+        required_scopes: [state.read]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["list", "get"], "description": "list: compact card summaries in pages. get: one full card by name." },
+            "name": { "type": "string", "minLength": 1, "description": "get: the card name." },
+            "q": { "type": "string", "description": "list: case-insensitive substring of the card name, title or provider model." },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "list: cards per page; default 25." },
+            "cursor": { "type": "string", "description": "list: the next_cursor of the previous page." }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "The action's record. Failures return no result and a typed tool error with a clear message; a contract refusal returns success false with its error.",
+          "properties": {
+            "success": { "type": "boolean" },
+            "error": { "type": "string", "description": "Present with success false: the contract's refusal." },
+            "count": { "type": "integer", "description": "list: number of cards in this page." },
+            "cards": {
+              "type": "array",
+              "description": "list: compact summaries (name, title, enabled, source, provider_id, provider_model, provider_profile_id, class, capabilities, priority, error). Use get for the full card.",
+              "items": { "type": "object" }
+            },
+            "next_cursor": { "type": "string", "description": "list: pass as cursor for the next page; absent on the last page." },
+            "card": { "type": "object", "description": "get: the full card in its public projection." }
+          },
+          "required": ["success"]
+        }
+      llm_alias: ModelCardsRead
+      llm_description: "Read the model catalog: list compact card summaries in pages of 25 by default (limit at most 100, q filters by name, title or provider model; pass next_cursor as cursor for the next page), or get one full card by name. Disabled cards are included. Read-only. Failures return a typed tool error; a refusal returns success false with its error."
+    source: file://cards_read.lua
+    method: handler
+    imports:
+      cards_client: kickside.models.traits:cards_client
+      tool_action: kickside.contract:tool_action
+      tool_result: kickside.contract:tool_result
+      keyset: kickside.contract:keyset
+
+  - name: cards_manage
+    kind: function.lua
+    meta:
+      type: tool
+      title: Model Cards Manage
+      public: true
+      mcp:
+        required_scopes: [state.write]
+      input_schema: |
+        {
+          "type": "object",
+          "properties": {
+            "action": { "type": "string", "enum": ["upsert", "disable", "delete"], "description": "upsert: card. disable, delete: name. delete accepts only a disabled card." },
+            "name": { "type": "string", "minLength": 1, "description": "disable, delete: the card name." },
+            "card": {
+              "type": "object",
+              "description": "upsert: the card, created or updated by name; omitted fields keep their saved values.",
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "title": { "type": "string" },
+                "description": { "type": "string" },
+                "provider_id": { "type": "string", "description": "Provider entry id" },
+                "provider_profile_id": { "type": "string", "description": "Provider profile the card routes through" },
+                "provider_model": { "type": "string", "description": "Model name at the provider" },
+                "capabilities": { "type": "array", "items": { "type": "string" } },
+                "class": { "type": "array", "items": { "type": "string" } },
+                "priority": { "type": "number" },
+                "max_tokens": { "type": "number" },
+                "output_tokens": { "type": "number" },
+                "dimensions": { "type": "number" },
+                "pricing": { "type": "object" },
+                "options": { "type": "object" },
+                "source": { "type": "string" },
+                "enabled": { "type": "boolean" },
+                "metadata": { "type": "object", "description": "metadata.train, when present, carries weights_digest and manifest_sha256." }
+              },
+              "required": ["name"]
+            }
+          },
+          "required": ["action"],
+          "additionalProperties": false
+        }
+      output_schema: |
+        {
+          "type": "object",
+          "description": "The action's record. Failures return no result and a typed tool error with a clear message; a contract refusal returns success false with its error.",
+          "properties": {
+            "success": { "type": "boolean" },
+            "error": { "type": "string", "description": "Present with success false: the contract's refusal." },
+            "card": { "type": "object", "description": "upsert, disable: the stored card in its public projection." },
+            "name": { "type": "string", "description": "delete: the deleted card." }
+          },
+          "required": ["success"]
+        }
+      llm_alias: ModelCardsManage
+      llm_description: "Manage model catalog cards. upsert creates or updates a card by name (omitted fields keep saved values; credentials belong on the provider profile, never on the card). disable retires a card and keeps its row; upsert with enabled true restores it. delete removes a disabled card; disable an enabled card first. Failures return a typed tool error; a refusal returns success false with its error."
+    source: file://cards_manage.lua
+    method: handler
+    imports:
+      cards_client: kickside.models.traits:cards_client
+      tool_action: kickside.contract:tool_action
+      tool_result: kickside.contract:tool_result

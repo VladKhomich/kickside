@@ -111,15 +111,32 @@ the provider reports none, and rewrites the other discovered fields.
 
 ## Cards contract
 
-`kickside.models.cards:cards` lets a module register and retire model cards
-without the admin HTTP surface. `upsert_card(card)` creates or updates the card
-by name through the same write path as `PUT /models/cards`; `disable_card({name})`
-disables a stored card and keeps its row. When `metadata.train` is present it
-must carry `weights_digest` and `manifest_sha256`. Card writes discard
-credential fields and reject URLs containing credentials. Replies redact
-credential-bearing URLs already stored on legacy cards. The contract is outside the
-member module grant; a module receives it through the
-`kickside.models.security:card_registrar` policy.
+`kickside.models.cards:cards` lets a module read, register and retire model
+cards without the admin HTTP surface. `list_cards({})` returns every catalog
+card and `get_card({name})` one card, disabled cards included, in the public
+projection the admin surface lists. `list_card_summaries({q, limit, cursor})`
+returns compact cards in name order, with an optional substring filter and
+`next_cursor` when more matches remain. `upsert_card(card)` creates or updates the
+card by name through the same write path as `PUT /models/cards`;
+`disable_card({name})` disables a stored card and keeps its row;
+`delete_card({name})` deletes a stored card once it is disabled and refuses an
+enabled one, which is in use. When `metadata.train` is present it must carry
+`weights_digest` and `manifest_sha256`. Card writes discard credential fields
+and reject URLs containing credentials. Replies redact credential-bearing URLs
+already stored on legacy cards. The contract is outside the member module
+grant; a module receives it through the `kickside.models.security:card_registrar`
+policy.
+
+## Card agent tools
+
+The `kickside.models.traits:card_manager` trait carries two tools over the cards
+contract. `ModelCardsRead` (`cards_read`, MCP scope `state.read`) lists compact
+card summaries in keyset pages and reads one full card. `ModelCardsManage`
+(`cards_manage`, MCP scope `state.write`) upserts, disables and deletes cards. A
+contract refusal returns `success = false` with its error. The trait and tools
+are outside the member module grant; administrators assign them to a group
+through the `kickside.models.security:card_tools` tool capability, which
+includes `card_registrar`.
 
 ## Runtime resolution
 

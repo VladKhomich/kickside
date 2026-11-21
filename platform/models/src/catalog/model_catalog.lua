@@ -107,6 +107,24 @@ function M.get_all_public(): ({ any }?, any?)
     return out
 end
 
+function M.get_public_card_summaries(): ({ any }?, any?)
+    local map, err = by_name_map()
+    if err then return nil, err end
+    local out = {}
+    for _, card in pairs(map) do
+        out[#out + 1] = catalog_card_policy.public_card_summary(card)
+    end
+    return out
+end
+
+function M.get_public_by_name(name: string): (any?, any?)
+    local map, err = by_name_map()
+    if err then return nil, err end
+    local card = (map :: { [string]: any })[name]
+    if not card then return nil, "No model card named: " .. name end
+    return catalog_card_policy.public_card(card)
+end
+
 function M.get_by_name(name: string): (any?, any?)
     if not name or name == "" then return nil, "Model name is required" end
     local map, err = by_name_map()

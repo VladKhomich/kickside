@@ -11,7 +11,7 @@ entries:
     kind: security.policy
     meta:
       private: true
-      comment: Read the Models database binding when retiring a stored card.
+      comment: Read the Models database binding when reading, retiring or deleting a stored card.
     policy:
       resources: [kickside.models:db_config]
       actions: [registry.get]
@@ -21,8 +21,47 @@ entries:
     kind: contract.definition
     meta:
       title: Model Cards
-      description: Register and retire model cards without the admin HTTP surface. Upserts share the PUT /models/cards save path. Retirement keeps the stored row and refreshes the cache.
+      description: Read, register, retire and delete model cards without the admin HTTP surface. Upserts share the PUT /models/cards save path. Retirement keeps the stored row; deleting a retired card removes it. Both refresh the cache.
     methods:
+      - name: list_cards
+        description: list_cards({}) -> { success, models?, error? }. Every catalog card in its public projection, registry-declared and stored, disabled cards included.
+        input_schemas:
+          - definition: |
+              { "type": "object", "properties": {} }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "success": { "type": "boolean" }, "models": { "type": "array", "items": { "type": "object" } }, "error": { "type": "string" } },
+                "required": ["success"] }
+            format: application/schema+json
+      - name: get_card
+        description: get_card({ name }) -> { success, model?, error? }. One catalog card in its public projection, disabled cards included.
+        input_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "name": { "type": "string", "minLength": 1 } },
+                "required": ["name"] }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "success": { "type": "boolean" }, "model": { "type": "object" }, "error": { "type": "string" } },
+                "required": ["success"] }
+            format: application/schema+json
+      - name: list_card_summaries
+        description: Page compact public card summaries, including disabled cards, in name order. Filter by a case-insensitive substring of the name, title or provider model.
+        input_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "q": { "type": "string" }, "limit": { "type": "integer", "minimum": 1, "maximum": 100 }, "cursor": { "type": "string" } } }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "success": { "type": "boolean" }, "cards": { "type": "array", "items": { "type": "object" } }, "next_cursor": { "type": "string" }, "error": { "type": "string" } },
+                "required": ["success"] }
+            format: application/schema+json
       - name: upsert_card
         description: upsert_card(card) -> { success, model?, error? }. Creates or updates the card by name; omitted fields keep the saved values.
         input_schemas:
@@ -82,6 +121,71 @@ entries:
                 "properties": { "success": { "type": "boolean" }, "model": { "type": "object" }, "error": { "type": "string" } },
                 "required": ["success"] }
             format: application/schema+json
+      - name: delete_card
+        description: delete_card({ name }) -> { success, error? }. Deletes a stored card that is disabled; an enabled card is in use and is refused, so a caller retires a card with disable_card before deleting it.
+        input_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "name": { "type": "string", "minLength": 1 } },
+                "required": ["name"] }
+            format: application/schema+json
+        output_schemas:
+          - definition: |
+              { "type": "object",
+                "properties": { "success": { "type": "boolean" }, "error": { "type": "string" } },
+                "required": ["success"] }
+            format: application/schema+json
+
+  - name: list_cards
+    kind: function.lua
+    meta:
+      comment: cards contract -- every catalog card, disabled cards included.
+    source: file://cards_contract.lua
+    method: list_cards
+    imports:
+      card_service: kickside.models.catalog:card_service
+      policy: kickside.models.catalog:policy
+      keyset: kickside.contract:keyset
+    security:
+      policies:
+        - kickside.models.cards:database_config_read
+        - kickside.models.catalog:catalog_database
+        - kickside.models.catalog:catalog_read
+        - kickside.models:reload_profiles_call
+
+  - name: list_card_summaries
+    kind: function.lua
+    meta:
+      comment: cards contract -- page compact public card summaries, disabled cards included.
+    source: file://cards_contract.lua
+    method: list_card_summaries
+    imports:
+      card_service: kickside.models.catalog:card_service
+      policy: kickside.models.catalog:policy
+      keyset: kickside.contract:keyset
+    security:
+      policies:
+        - kickside.models.cards:database_config_read
+        - kickside.models.catalog:catalog_database
+        - kickside.models.catalog:catalog_read
+        - kickside.models:reload_profiles_call
+
+  - name: get_card
+    kind: function.lua
+    meta:
+      comment: cards contract -- one catalog card by name, disabled cards included.
+    source: file://cards_contract.lua
+    method: get_card
+    imports:
+      card_service: kickside.models.catalog:card_service
+      policy: kickside.models.catalog:policy
+      keyset: kickside.contract:keyset
+    security:
+      policies:
+        - kickside.models.cards:database_config_read
+        - kickside.models.catalog:catalog_database
+        - kickside.models.catalog:catalog_read
+        - kickside.models:reload_profiles_call
 
   - name: upsert_card
     kind: function.lua
@@ -92,6 +196,7 @@ entries:
     imports:
       card_service: kickside.models.catalog:card_service
       policy: kickside.models.catalog:policy
+      keyset: kickside.contract:keyset
     security:
       policies:
         - kickside.models.catalog:catalog_database
@@ -108,6 +213,23 @@ entries:
     imports:
       card_service: kickside.models.catalog:card_service
       policy: kickside.models.catalog:policy
+      keyset: kickside.contract:keyset
+    security:
+      policies:
+        - kickside.models.cards:database_config_read
+        - kickside.models.catalog:catalog_database
+        - kickside.models:reload_profiles_call
+
+  - name: delete_card
+    kind: function.lua
+    meta:
+      comment: cards contract -- delete a retired stored card.
+    source: file://cards_contract.lua
+    method: delete_card
+    imports:
+      card_service: kickside.models.catalog:card_service
+      policy: kickside.models.catalog:policy
+      keyset: kickside.contract:keyset
     security:
       policies:
         - kickside.models.cards:database_config_read
@@ -123,5 +245,9 @@ entries:
       - contract: kickside.models.cards:cards
         default: true
         methods:
+          list_cards: kickside.models.cards:list_cards
+          list_card_summaries: kickside.models.cards:list_card_summaries
+          get_card: kickside.models.cards:get_card
           upsert_card: kickside.models.cards:upsert_card
           disable_card: kickside.models.cards:disable_card
+          delete_card: kickside.models.cards:delete_card
