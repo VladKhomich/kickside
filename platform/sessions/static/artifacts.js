@@ -1,6 +1,6 @@
 import { W as o, m as r } from "./wc-runtime-enaNScz7.js";
 import { l as s } from "./lazy-DX8B4FNv.js";
-import { s as i } from "./styles-urvsV3uf.js";
+import { s as i } from "./styles-HhfABgzS.js";
 import { define as n } from "@wippy-fe/proxy";
 class e extends o {
   static get wippyConfig() {

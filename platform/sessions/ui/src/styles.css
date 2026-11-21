@@ -424,7 +424,7 @@ wippy-loading ~ wippy-loading { display: none; }
 .kx-chat-start-item-comment { display: block; padding-inline-start: 1.5rem; color: var(--p-text-muted-color); font-size: .875rem; overflow-wrap: anywhere; }
 .kx-chat-start-empty { margin: 0; padding: .625rem; color: var(--p-text-muted-color); font-size: .875rem; }
 .kx-chat-start-note { margin: 0; display: flex; align-items: center; gap: .5rem; color: var(--p-text-muted-color); font-size: .875rem; }
-.kx-chat-start-note.is-error { color: var(--p-message-error-color, var(--p-danger-500)); }
+.kx-chat-start-note.is-error { color: var(--p-danger-500); }
 .kx-chat-start-note svg { inline-size: 1rem; block-size: 1rem; flex: none; }
 .kx-chat-start-retry { padding: .25rem .375rem; border-radius: var(--kx-radius-6); color: var(--p-primary-color); font: inherit; font-weight: 600; cursor: pointer; }
 
