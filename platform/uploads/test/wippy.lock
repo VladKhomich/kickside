@@ -9,7 +9,7 @@ modules:
     - name: kickside/core
       version: 0.3.18
     - name: kickside/doc2md
-      version: 0.8.19
+      version: 0.8.28
     - name: kickside/execution
       version: 0.2.7
     - name: kickside/jobs

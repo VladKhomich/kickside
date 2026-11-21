@@ -4,8 +4,8 @@
 --   * policies  — policy inventory and declared module permissions
 --   * scopes    — built-in implicit groups (app.security:*), registry-shipped
 --                 security.scope entries, and DB-backed custom scopes
--- Internal/system scopes (ingress + meta.internal) are classified so the UI can
--- hide them. DB custom scopes are the source of truth for their own rows; their
+-- Private, service-only, and internal scopes are reserved for diagnostics.
+-- DB custom scopes are the source of truth for their own rows. Their
 -- projected security.scope registry entries are owned by the projection service.
 
 local registry = require("registry")
@@ -19,6 +19,11 @@ local M = {}
 
 local function meta_of(entry: any): { [string]: any }
     return (type(entry) == "table" and type(entry.meta) == "table") and (entry.meta :: { [string]: any }) or {}
+end
+
+function M.is_restricted(entry: any): boolean
+    local meta = meta_of(entry)
+    return meta.internal == true or meta.private == true or meta.service_only == true
 end
 
 local function policy_summary(entry: any): stypes.PolicySummary
@@ -102,8 +107,8 @@ function M.policies(opts: any?): ({ stypes.PolicySummary }?, error?)
     return out
 end
 
-local function role_descriptors(): (any?, error?)
-    local entries, read_err = registry.find({ [".kind"] = "registry.entry", ["meta.type"] = consts.ROLE_META_TYPE })
+function M.role_descriptors(find): (any?, error?)
+    local entries, read_err = find({ [".kind"] = "registry.entry", ["meta.type"] = consts.ROLE_META_TYPE })
     if read_err then return nil, read_err end
     local by_id: { [string]: any } = {}
     for _, entry in ipairs(entries :: { any }) do
@@ -114,7 +119,7 @@ local function role_descriptors(): (any?, error?)
                 label = meta.title,
                 description = meta.comment,
                 protected = data.protected == true,
-                internal = meta.internal == true,
+                internal = M.is_restricted(entry),
             }
         end
     end
@@ -187,18 +192,22 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
             by_target[meta.target] = entry
         end
     end
-    local descriptors, roles_err = role_descriptors()
+    local descriptors, roles_err = M.role_descriptors(registry.find)
     if roles_err then return nil, roles_err end
     local scope_entries, scopes_err = registry.find({ [".kind"] = consts.SCOPE_KIND })
     if scopes_err then return nil, scopes_err end
     local declared_by_id = {}
-    for _, entry in ipairs(scope_entries or {}) do declared_by_id[tostring(entry.id)] = entry.data end
+    for _, entry in ipairs(scope_entries or {}) do declared_by_id[tostring(entry.id)] = entry end
     local by_id = index.by_id
     local out: { stypes.CatalogScope } = {}
     local seen: { [string]: boolean } = {}
 
     local overlays_by_target: { [string]: any } = {}
     local function emit(scope: any): (boolean?, error?)
+        local declared = declared_by_id[scope.id]
+        local descriptor = descriptors[scope.id]
+        scope.internal = scope.internal == true or M.is_restricted(declared)
+            or (descriptor ~= nil and descriptor.internal == true)
         if scope.internal and not include_internal then return true, nil end
         if seen[scope.id] or (opts.id and scope.id ~= opts.id) then return true, nil end
 
@@ -206,7 +215,7 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
         local stored = scope.source == consts.SOURCE.CUSTOM
         local ids = scope.policies
         if permissions_only and overlay then
-            ids = original_policies(scope.id, declared_by_id[scope.id] or {}, index, by_target)
+            ids = original_policies(scope.id, declared and declared.data or {}, index, by_target)
         end
         local policies, policy_err = resolve_policies(ids, by_id, stored, include_unavailable)
         if policy_err then return nil, policy_err end
@@ -222,7 +231,7 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
 
         if overlay then
             if not permissions_only then
-                local original_ids = original_policies(scope.id, declared_by_id[scope.id] or {}, index, by_target)
+                local original_ids = original_policies(scope.id, declared and declared.data or {}, index, by_target)
                 local base_policies, base_err = resolve_policies(original_ids, by_id, false, include_unavailable)
                 if base_err then return nil, base_err end
                 scope.base_policies = base_policies
@@ -301,7 +310,7 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
             label = desc.label or default_label(g),
             description = desc.description or "",
             source = consts.SOURCE.BUILTIN,
-            internal = desc.internal == true or group_internal[g] == true,
+            internal = group_internal[g] == true,
             built_in = desc.protected == true,
             enabled = true,
             policies = group_policies[g] or {},
@@ -322,7 +331,6 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
                 label = meta.title or id,
                 description = meta.comment or "",
                 source = consts.SOURCE.REGISTRY,
-                internal = meta.internal == true,
                 built_in = false,
                 enabled = true,
                 policies = descriptor_policies(entry.data or {}, index.groups, {route.policies or {}}),

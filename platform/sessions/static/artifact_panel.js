@@ -8,7 +8,7 @@ import { s as Ct, a as kt } from "./index-AZnOi_Q-.js";
 import { s as ze, a as Lt, l as zt, e as Tt, b as Ft, A as Vt } from "./hostRoute-zAgJIcxb.js";
 import { u as At } from "./useHostRoute-CdzDcqsP.js";
 import { u as xt } from "./useSessionsApi-BIuCYu5K.js";
-import { s as Mt } from "./styles-urvsV3uf.js";
+import { s as Mt } from "./styles-HhfABgzS.js";
 var Ee = {
   name: "BlankIcon",
   extends: fe

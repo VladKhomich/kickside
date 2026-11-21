@@ -2,6 +2,17 @@ version: "1.0"
 namespace: kickside.uploads.migrations
 
 entries:
+  - name: 05_legacy_upload_schema
+    kind: function.lua
+    meta:
+      type: migration
+      tags: [uploads, database]
+      comment: Complete historical Uploads schemas before deduplication and checkpoint indexing.
+      timestamp: "2025-04-01T11:15:00Z"
+    source: file://05_legacy_upload_schema.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
   - name: 06_index_terminal_checkpoints
     kind: function.lua
     meta:

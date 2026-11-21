@@ -61,6 +61,29 @@ local function define_tests()
             test.eq(#assert(scope_catalog.scopes({id = "app.security:ingress"})), 0)
         end)
 
+        test.it("keeps restricted declarations in diagnostics only, even with a public role descriptor", function()
+            local list = {}
+            for _, scope in ipairs(assert(scope_catalog.scopes({include_internal = true}))) do
+                list[scope.id] = scope
+            end
+            local ids = {
+                "app:catalog_private_scope",
+                "app:catalog_service_scope",
+                "app:catalog_internal_scope",
+                "app:catalog_descriptor_restricted_scope",
+            }
+            for _, id in ipairs(ids) do
+                test.not_nil(list[id], id)
+                test.is_true(list[id].internal, id)
+            end
+            local available = {}
+            for _, scope in ipairs(assert(scope_catalog.scopes())) do
+                available[scope.id] = true
+            end
+            test.not_nil(available["app.security:user"])
+            for _, id in ipairs(ids) do test.is_nil(available[id], id) end
+        end)
+
         test.it("policies catalog excludes private grants by default", function()
             local pub = scope_catalog.policies()
             for _, p in ipairs(pub or {}) do
