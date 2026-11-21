@@ -60,6 +60,29 @@ A component kind declares lifecycle projections with `meta.projections[].on: lif
 | [`kickside.core:read_models`](src/registry/read_models/_index.yaml) | `get` |
 | [`kickside.core:threads`](src/registry/thread_contract/_index.yaml) | `create`, `ensure_thread`, `emit`, `purge`, `find`, `upsert`, `update`, `delete`, `list`, `list_events`, `prune_boundary`, `retire_subjects`, `find_event_by_external`, `append_events`, `append_event`, `list_children`, `list_edges`, `list_classes`, `register_projection`, `list_projections`, `get_projection_cursor`, `catch_up_projection`, `pause_projection`, `resume_projection`, `remove_projection` |
 
+Each Lua Threads `append_events` write and `append_event` accepts an optional
+`expect`. A write guarded by a subject version can also check a second subject
+in the same thread.
+
+```lua
+expect = {
+    subject = item_subject,
+    version = item_version,
+    also = { subject = "schema", version = schema_version },
+}
+```
+
+`also` requires a complete primary subject/version pair and a distinct subject
+name. Both versions must be non-negative integers. An absent subject reads as
+zero. Core checks any supplied `head` first, followed by the primary and
+secondary versions under the append transaction's thread lock. A version
+mismatch returns CONFLICT with `reason = "version_mismatch"` and, for callers
+with event-read access, the failing `subject`, current `version`, and
+`expected` version. A failed expectation rolls back the entire append
+transaction. A fully duplicate retry identified by event IDs or external
+identities returns its original event receipts even after either version
+advances, subject to event-read access.
+
 ### Host requirements
 
 Bind these exact requirement IDs through the module’s dependency declaration
