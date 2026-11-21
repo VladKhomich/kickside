@@ -26,15 +26,6 @@ local function schema(tx, engine)
             if err then error(err) end
         end
     end
-    local _, principal_err = tx:execute([[CREATE INDEX IF NOT EXISTS idx_kickside_components_custody_principal
-        ON kickside_components (owner_kind,owner_id,component_id) WHERE owner_type='principal']])
-    if principal_err then error(principal_err) end
-    local _, component_err = tx:execute([[CREATE INDEX IF NOT EXISTS idx_kickside_components_custody_component
-        ON kickside_components (owner_id,owner_incarnation,component_id) WHERE owner_type='component']])
-    if component_err then error(component_err) end
-    local _, scope_err = tx:execute([[CREATE INDEX IF NOT EXISTS idx_kickside_components_custody_unresolved
-        ON kickside_components (impl_id,component_id) WHERE owner_type='unresolved']])
-    if scope_err then error(scope_err) end
 end
 
 return require("migration").define(function()
