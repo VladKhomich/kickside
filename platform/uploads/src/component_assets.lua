@@ -2,6 +2,7 @@
 local security = require("security")
 local uuid = require("uuid")
 local component = require("component")
+local access_policy = require("access_policy")
 local records = require("upload_query_repo")
 local storage = require("uploads_resources")
 local content = require("artifact_content_repo")
@@ -28,8 +29,12 @@ function M.adopt(request: any)
     if not actor or not security.can("uploads.asset.adopt", types.CLASS) then
         return nil, fail(errors.PERMISSION_DENIED, "asset adoption is unavailable", "asset_adoption_denied")
     end
-    local _, access_err = component.validate_access(request.component_id, component.ACCESS.WRITE)
+    local owner, access_err = component.get_context_snapshot(request.component_id, component.ACCESS.WRITE)
     if access_err then return nil, access_err end
+    if not owner or type(owner.impl_id) ~= "string" or owner.deleting_at
+        or not access_policy.has_all(owner.access_level or 0, component.ACCESS.WRITE) then
+        return nil, fail(errors.PERMISSION_DENIED, "component WRITE is required", "asset_adoption_denied")
+    end
     local original, lookup_err = records.get(request.upload_id)
     if lookup_err and not errors.is(lookup_err, errors.NOT_FOUND) then return nil, lookup_err end
     if original and original.actor_id ~= actor:id() then
@@ -50,19 +55,20 @@ function M.adopt(request: any)
     end
     local filename = original.metadata.filename or original.metadata.original_filename or "file"
     local asset, err = uploads.store_component_file(request.component_id, request.version_id,
-        bytes, filename, original.mime_type)
+        bytes, filename, original.mime_type, owner.impl_id)
     if err then return nil, err end
     return {upload_id = asset.uuid}, nil
 end
 
 function M.reap(request: any)
-    if type(request) ~= "table" or not valid_id(request.component_id) or not valid_id(request.version_id) then
+    if type(request) ~= "table" or not valid_id(request.component_id) or not valid_id(request.version_id)
+        or type(request.owner_impl) ~= "string" or request.owner_impl == "" then
         return nil, fail(errors.INVALID, "component and version IDs are required", "invalid_asset_request")
     end
-    if not security.can("uploads.asset.reap", types.CLASS) then
+    if not security.can("uploads.asset.reap", request.component_id, {impl_id = request.owner_impl}) then
         return nil, fail(errors.PERMISSION_DENIED, "asset collection is unavailable", "asset_reap_denied")
     end
-    local deleted, err = uploads.reap_component_file(request.component_id, request.version_id)
+    local deleted, err = uploads.reap_component_file(request.component_id, request.version_id, request.owner_impl)
     if err and not errors.is(err, errors.NOT_FOUND) then return nil, err end
     return {deleted = deleted ~= nil}, nil
 end

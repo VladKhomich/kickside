@@ -1,6 +1,6 @@
 local autoinit = require("autoinit")
 
-type UploadReadRef = {uuid: string, actor_id: string}
+type UploadReadRef = {uuid: string, actor_id: string, storage_state: string?}
 type PageUpload = { uuid: string, actor_id: string, mime_type: string?, content_sha256: string?,
     storage_id: string, storage_path: string, metadata: {[string]: unknown}? }
 type PageArtifact = { artifact_id: string, upload_id: string, parent_artifact_id: string?, checksum: string?,
@@ -55,6 +55,7 @@ M.EVENT = {
 -- Component-owned versions are storage-only. A colon-bearing owner key
 -- cannot be the key of a user, group, service or runtime maintenance actor.
 local COMPONENT_OWNER_PREFIX = "upload-component:"
+M.ASSET_STAGING = "component_staging"
 
 function M.component_owner_key(component_id: string): string
     return COMPONENT_OWNER_PREFIX .. component_id

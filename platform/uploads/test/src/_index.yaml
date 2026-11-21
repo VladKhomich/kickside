@@ -195,7 +195,7 @@ entries:
     meta: { type: test, suite: uploads }
     source: file://shared_upload_access_test.lua
     method: run
-    modules: [uuid, security, funcs, contract, sql, json, fs]
+    modules: [uuid, security, funcs, contract, sql, json, fs, hash]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision

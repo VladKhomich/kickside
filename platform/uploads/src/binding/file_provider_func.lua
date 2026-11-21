@@ -22,6 +22,7 @@ function M.get_info(args)
     if type(upload) ~= "table" then
         return nil
     end
+    if upload.storage_state == types.ASSET_STAGING then return nil end
     if types.owned_component(upload.actor_id) then
         local allowed, access_err = original_read.authorize_container(upload.actor_id)
         if access_err or not allowed then return nil, access_err end

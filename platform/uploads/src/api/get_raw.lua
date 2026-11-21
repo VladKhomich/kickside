@@ -71,6 +71,7 @@ local function raw_handler()
     end
 
     if component_owned then
+        res:set_header("Cache-Control", "private, no-store")
         res:set_header("X-Content-Type-Options", "nosniff")
         res:set_header("Content-Disposition", "attachment")
     end

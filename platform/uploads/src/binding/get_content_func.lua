@@ -42,6 +42,9 @@ local function handle(args)
             errors.is(err, errors.NOT_FOUND) and "upload_not_found" or "upload_lookup_failed")
     end
 
+    if upload.storage_state == upload_types.ASSET_STAGING then
+        return nil, binding_errors.new(errors.NOT_FOUND, "Upload not found", "upload_not_found")
+    end
     local actor = security.actor()
     if not actor then
         return nil, binding_errors.new(errors.PERMISSION_DENIED, "No authenticated actor found", "actor_required")

@@ -23,6 +23,10 @@ function M.authorize(upload: types.UploadReadRef): (boolean?, error?)
         return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "Authentication required",
             retryable = false, details = {code = "authentication_required"}})
     end
+    if upload.storage_state == types.ASSET_STAGING then
+        return nil, errors.new({kind = errors.NOT_FOUND, message = "Upload not found",
+            details = {code = "upload_not_found"}})
+    end
     local allowed, container_err = M.authorize_container(upload.actor_id)
     if types.owned_component(upload.actor_id) then return allowed, container_err end
     if allowed then return true, nil end

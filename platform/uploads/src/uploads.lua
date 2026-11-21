@@ -272,11 +272,8 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
     -- Freeze the uploader's execution identity so the durable job can run pipeline
     -- stages as the authorizing user. Scoped work reconstructs from this.
     -- The managed key is stripped from callbacks/API views, so it never leaves the server.
-    local component_owner = not processing and admission_id ~= nil and upload_types.owned_component(actor_id)
-    if not component_owner then
-        local identity_err = freeze_current_identity(metadata, parent_upload_id, actor_id)
-        if identity_err then return nil, identity_err end
-    end
+    local identity_err = freeze_current_identity(metadata, parent_upload_id, actor_id)
+    if identity_err then return nil, identity_err end
 
     local description, mime_err = upload_mime.describe(mime_type, filename)
     if mime_err then return nil, typed(mime_err, errors.UNAVAILABLE, "infrastructure", "") end
@@ -322,7 +319,7 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
     -- is hashed from the stored copy. A hashing failure degrades to a non-deduplicated
     -- upload rather than blocking it.
     local content_sha256: string? = nil
-    if (processing or component_owner) and type(file_data) == "string" then
+    if processing and type(file_data) == "string" then
         content_sha256 = hash.sha256(file_data :: string)
     elseif processing then
         local stored = storage:readfile(storage_path)
@@ -332,12 +329,12 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
     end
     -- A callback token names this upload exactly; content dedup cannot redirect it
     -- to a prior upload with a different UUID.
-    if bound_id or (admission_id and not component_owner) then content_sha256 = nil end
+    if bound_id or admission_id then content_sha256 = nil end
 
     -- If this account already holds these exact bytes, drop the just-written copy and
     -- resolve to the existing upload: no second blob, no re-processing. The same file may
     -- still be attached to multiple KBs -- dedup is at the file/blob level only.
-    if content_sha256 and content_sha256 ~= "" and not bound_id and not component_owner then
+    if content_sha256 and content_sha256 ~= "" and not bound_id then
         local existing, lookup_err = upload_query_repo.find_by_content_hash(actor_id, content_sha256, parent_upload_id or "")
         if lookup_err then
             local remove_err = remove_storage_path(storage, storage_path, upload_uuid)
@@ -417,9 +414,37 @@ local function persist_file(actor_id: string, file_data: string | stream.Stream,
 end
 
 function upload_lib.store_component_file(component_id: string, version_id: string, data: string,
-    filename: string, mime_type: string)
-    return persist_file(upload_types.component_owner_key(component_id), data, filename, #data,
-        mime_type, nil, {}, nil, false, nil, version_id)
+    filename: string, mime_type: string, owner_impl: string)
+    local digest, hash_err = hash.sha256(data)
+    if hash_err or type(digest) ~= "string" or #digest ~= 64 then
+        return nil, failure("failed to hash component-owned bytes", errors.INTERNAL, "infrastructure", true)
+    end
+    local storage, storage_err = resources.get_storage()
+    if storage_err then return nil, storage_err end
+    local type_id, type_err = determine_upload_type(mime_type, filename)
+    if type_err then return nil, type_err end
+    -- Reserve the exact storage address before opening it for write. A repeated
+    -- UUID can only use the existing completed record, never overwrite its bytes.
+    local path = uuid.v4()
+    local asset, record_err = upload_record_repo.create(version_id, upload_types.component_owner_key(component_id),
+        #data, mime_type, resources.get_storage_id(), path, type_id,
+        {filename = filename, _component_owner_impl = owner_impl}, upload_types.ASSET_STAGING, digest)
+    if record_err then return nil, record_err end
+    if asset.deduped then
+        if asset.storage_state == "completed" then return asset, nil end
+        return nil, failure("asset version is already being stored", errors.CONFLICT, "subject", true)
+    end
+    local written, write_err = storage:writefile(path, data)
+    if write_err or not written then
+        return nil, typed(write_err, errors.UNAVAILABLE, "infrastructure", "failed to store component-owned bytes: ")
+    end
+    local published, publish_err = upload_record_repo.complete_component_upload(version_id)
+    if publish_err then return nil, publish_err end
+    if not published then
+        local remove_err = remove_storage_path(storage, path, version_id)
+        return nil, remove_err or failure("component-owned upload was reaped", errors.CONFLICT, "subject")
+    end
+    return asset, nil
 end
 
 function upload_lib.store_file(actor_id: string, file_data: string | stream.Stream, filename: string, size: number, mime_type: string?, storage_id: string?, metadata: any, parent_upload_id: string?)
@@ -499,7 +524,7 @@ function upload_lib.retry_upload(uuid)
     return upload
 end
 
-local function delete_upload(uuid, teardown_owner: string?)
+local function delete_upload(uuid, teardown_owner: string?, owner_impl: string?)
     local upload, err = upload_query_repo.get(uuid)
     if err then
         if errors.is(err, errors.NOT_FOUND) then
@@ -512,6 +537,9 @@ local function delete_upload(uuid, teardown_owner: string?)
         return nil, failure("upload is owned by another principal", errors.PERMISSION_DENIED, "subject")
     end
 
+    if owner_impl and upload.metadata._component_owner_impl ~= owner_impl then
+        return nil, failure("upload is owned by another component implementation", errors.PERMISSION_DENIED, "subject")
+    end
     local component_owner = upload_types.owned_component(upload.actor_id)
     if component_owner and not teardown_owner then
         return nil, failure("component-owned versions are reaped by their owner", errors.PERMISSION_DENIED, "subject")
@@ -547,8 +575,8 @@ function upload_lib.delete_upload(uuid)
     return delete_upload(uuid)
 end
 
-function upload_lib.reap_component_file(component_id: string, version_id: string)
-    return delete_upload(version_id, upload_types.component_owner_key(component_id))
+function upload_lib.reap_component_file(component_id: string, version_id: string, owner_impl: string)
+    return delete_upload(version_id, upload_types.component_owner_key(component_id), owner_impl)
 end
 
 -- Trusted component and principal lifecycle callers supply the stored owner.

@@ -44,8 +44,8 @@ Consumers open `kickside.uploads:content_provider` with the version ID as
 `upload_id`. The raw descriptor includes the destination `source_ref.component_id`,
 SHA-256, MIME type and size. Metadata, content and the original download require
 component READ. The module's retention worker uses
-`kickside.uploads:reap_component_upload({component_id, version_id})`, which checks
-the stored owner and safely acknowledges an already absent version.
+`kickside.uploads:reap_component_upload({component_id, version_id, owner_impl})`, which checks
+the stored owner and implementation and safely acknowledges an already absent version.
 
 ## Upload lifecycle and completion callbacks
 

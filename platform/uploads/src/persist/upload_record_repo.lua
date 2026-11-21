@@ -317,6 +317,17 @@ function upload_record_repo.mark_storage_completed(uuid)
     return mark_storage_state(uuid, "completed")
 end
 
+function upload_record_repo.complete_component_upload(uuid: string): (boolean?, error?)
+    local db, open_err = resources.get_db()
+    if open_err then return nil, open_err end
+    local result, err = sql.builder.update("kickside_uploads")
+        :set("storage_state", "completed"):set("updated_at", now_rfc3339())
+        :where("uuid = ? AND storage_state = ?", uuid, upload_types.ASSET_STAGING):run_with(db):exec()
+    db:release()
+    if err then return nil, err end
+    return tonumber(result.rows_affected) == 1, nil
+end
+
 function upload_record_repo.mark_storage_failed(uuid)
     return mark_storage_state(uuid, "failed")
 end
