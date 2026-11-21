@@ -151,3 +151,19 @@ entries:
     method: migration
     imports:
       migration: wippy.migration:migration
+
+  - name: 22_recurring_task_custody
+    kind: function.lua
+    meta:
+      type: migration
+      timestamp: "2026-11-21T08:00:02Z"
+      depends_on:
+        - ns:wippy.migration
+        - kickside.automation.migrations:10_drive_schema
+        - kickside.component.migrations:18_custody_backfill
+    source: file://22_recurring_task_custody.lua
+    method: migrate
+    imports:
+      migration: wippy.migration:migration
+      recurring_custody: kickside.component.migrations:recurring_custody
+      types: kickside.automation:types

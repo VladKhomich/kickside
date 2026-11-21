@@ -179,3 +179,13 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: recurring_custody
+    kind: library.lua
+    meta: {private: true}
+    source: file://recurring_custody.lua
+    modules: [json]
+    imports:
+      component_types: kickside.component:types
+      execution_identity: kickside.execution:execution_identity
+      identity_ops: kickside.component.persist:identity_ops
