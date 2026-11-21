@@ -296,7 +296,7 @@ entries:
       type: migration
       target_db: ""
       comment: Link converted historical cursors after the Jobs slot schema is ready.
-      depends_on: [ns:wippy.migration]
+      depends_on: [ns:wippy.migration, kickside.core.jobs:policy, kickside.core.jobs.policy:settings_overrides]
       timestamp: "2026-11-21T00:00:22Z"
     source: file://22_legacy_projection_slots.lua
     modules: [sql]
