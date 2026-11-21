@@ -32,6 +32,10 @@
     "./SettingsRail.vue": "./SettingsRail.vue",
     "./kx-settings-rail.css": "./kx-settings-rail.css",
     "./ListRail.vue": "./ListRail.vue",
+    "./SettingsDirectoryActions.vue": "./SettingsDirectoryActions.vue",
+    "./SettingsSectionHead.vue": "./SettingsSectionHead.vue",
+    "./SettingsDraftActions.vue": "./SettingsDraftActions.vue",
+    "./kx-settings-head.css": "./kx-settings-head.css",
     "./Disclosure.vue": "./Disclosure.vue",
     "./kx-disclosure.css": "./kx-disclosure.css"
   },
@@ -59,6 +63,10 @@
     "SettingsRail.vue",
     "kx-settings-rail.css",
     "ListRail.vue",
+    "SettingsDirectoryActions.vue",
+    "SettingsSectionHead.vue",
+    "SettingsDraftActions.vue",
+    "kx-settings-head.css",
     "Disclosure.vue",
     "kx-disclosure.css"
   ],

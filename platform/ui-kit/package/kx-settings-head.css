@@ -1,0 +1,6 @@
+/* SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 */
+.system-section-head { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0; }
+.system-section-head-text { flex: 1 1 180px; min-width: 0; }
+.system-section-head-text h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.2px; color: var(--p-text-color); }
+.system-section-head-text p { margin: 2px 0 0; font-size: 13px; color: var(--p-text-muted-color); }
+.system-section-head .kx-head-actions { justify-content: flex-end; }
