@@ -49,14 +49,12 @@ local function define_tests()
                 test.not_nil(list[id], id)
                 test.is_true(list[id].internal, id)
             end
-            for _, opts in ipairs({{}, {assignable = true, include_internal = true}}) do
-                local available = {}
-                for _, scope in ipairs(assert(scope_catalog.scopes(opts))) do
-                    available[scope.id] = true
-                end
-                test.not_nil(available["app.security:user"])
-                for _, id in ipairs(ids) do test.is_nil(available[id], id) end
+            local available = {}
+            for _, scope in ipairs(assert(scope_catalog.scopes())) do
+                available[scope.id] = true
             end
+            test.not_nil(available["app.security:user"])
+            for _, id in ipairs(ids) do test.is_nil(available[id], id) end
         end)
 
         test.it("policies catalog excludes private grants by default", function()

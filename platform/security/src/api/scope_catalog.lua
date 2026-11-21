@@ -173,7 +173,6 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     opts = opts or {}
     local include_internal = opts.include_internal == true
     local include_unavailable = opts.include_unavailable == true
-    local assignable = opts.assignable == true
     local index, policies_err = policy_index()
     if policies_err then return nil, policies_err end
     local projections, projection_err = registry.find({[".kind"] = "registry.entry", ["meta.type"] = scope_key.META_TYPE})
@@ -202,8 +201,7 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
         local descriptor = descriptors[scope.id]
         scope.internal = scope.internal == true or M.is_restricted(declared)
             or (descriptor ~= nil and descriptor.internal == true)
-        if scope.internal and (assignable or not include_internal) then return true, nil end
-        if assignable and scope.enabled == false then return true, nil end
+        if scope.internal and not include_internal then return true, nil end
         if seen[scope.id] then return true, nil end
         local policies, policy_err = resolve_policies(scope.policies, by_id, scope.source == consts.SOURCE.CUSTOM, include_unavailable)
         if policy_err then return nil, policy_err end
