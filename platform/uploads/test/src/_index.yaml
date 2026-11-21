@@ -199,6 +199,7 @@ entries:
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
+      query: kickside.uploads.persist:upload_query_repo
       records: kickside.uploads.persist:upload_record_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
       types: kickside.uploads:types

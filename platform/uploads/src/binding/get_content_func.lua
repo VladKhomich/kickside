@@ -158,6 +158,7 @@ local function handle(args)
             source_ref = {
                 kind = "upload",
                 upload_id = upload_id,
+                component_id = upload_types.owned_component(upload.actor_id),
                 artifact_id = nil,
             },
         }

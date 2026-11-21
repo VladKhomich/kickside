@@ -7,6 +7,7 @@ local resources = require("uploads_resources")
 local upload_query_repo = require("upload_query_repo")
 local persisted_json = require("persisted_json")
 local artifact_content_repo = require("artifact_content_repo")
+local upload_types = require("upload_types")
 
 local upload_record_repo = {}
 
@@ -134,7 +135,7 @@ local function create_on(db, uuid, actor_id, size, mime_type, storage_id, storag
     local now = now_rfc3339()
 
     local content_hash = nil
-    local dedup_scope = type(metadata) == "table" and metadata.parent_upload_id or ""
+    local dedup_scope = upload_types.owned_component(actor_id) and uuid or (type(metadata) == "table" and metadata.parent_upload_id or "")
     if type(content_sha256) == "string" and content_sha256 ~= "" then
         content_hash = content_sha256
     end

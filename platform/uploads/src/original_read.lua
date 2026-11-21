@@ -24,6 +24,7 @@ function M.authorize(upload: types.UploadReadRef): (boolean?, error?)
             retryable = false, details = {code = "authentication_required"}})
     end
     local allowed, container_err = M.authorize_container(upload.actor_id)
+    if types.owned_component(upload.actor_id) then return allowed, container_err end
     if allowed then return true, nil end
     if not errors.is(container_err, errors.PERMISSION_DENIED) and not errors.is(container_err, errors.NOT_FOUND) then
         return nil, container_err
