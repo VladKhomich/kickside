@@ -2,6 +2,17 @@ version: "1.0"
 namespace: kickside.component.persist
 
 entries:
+  - name: custody_inventory
+    kind: library.lua
+    meta:
+      private: true
+      comment: Operator-only physical component pages for lifecycle custody review.
+    source: file://custody_inventory.lua
+    modules: [security, sql, uuid]
+    imports:
+      component_types: kickside.component:types
+      execution_identity: kickside.execution:execution_identity
+
   - name: secrets_migration
     kind: library.lua
     source: file://secrets_migration.lua
