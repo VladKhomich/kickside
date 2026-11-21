@@ -20,6 +20,17 @@ local function handler(args)
         result.loop = result
         return result
     end
+    if type(args) == "table" and type(args.images) == "number" then
+        local images = {}
+        local png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aU2sAAAAASUVORK5CYII="
+        local data = args.large and string.rep("A", 4 * 1024 * 1024 + 4) or png
+        for i = 1, args.images do
+            images[i] = { type = "image", source = { type = "base64", mime_type = "image/png",
+                data = args.invalid and "not_base64!!" or data } }
+        end
+        if args.image_error then return { success = false, error = "image fixture failed", _images = images } end
+        return { ok = true, _images = images }
+    end
     return { ok = true, echoed = args or {}, fixture_context = ctx.get("fixture_context"), configured_tool_ids = ctx.get("tool_ids"), connection_id = ctx.get("connection_id"), mcp_session_id = ctx.get("mcp_session_id") }
 end
 

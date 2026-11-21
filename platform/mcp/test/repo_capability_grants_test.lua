@@ -14,6 +14,8 @@ local time = require("time")
 local uuid = require("uuid")
 local security = require("security")
 local funcs = require("funcs")
+local system = require("system")
+local http_client = require("http_client")
 local repo = require("mcp_repo")
 local mcp_security = require("mcp_security")
 local dispatcher = require("mcp_dispatcher")
@@ -93,6 +95,17 @@ local function define_tests()
             local body = json.encode({ jsonrpc = "2.0", id = 1, method = method, params = params })
             local resp, status = dispatcher.handle(body, bearer and ("Bearer " .. bearer) or nil, nil)
             return resp, status
+        end
+
+        local function tool_http(params: any): any
+            local gateway = assert(system.supervisor.state("app:gateway"))
+            local port = assert(tostring(gateway.details):match(":(%d+)$"))
+            local body = assert(json.encode({ jsonrpc = "2.0", id = 1, method = "tools/call", params = params }))
+            local response = assert(http_client.post("http://127.0.0.1:" .. port .. "/public/mcp", {
+                body = body, headers = { Authorization = "Bearer " .. raw_token, ["Content-Type"] = "application/json" },
+            }))
+            test.eq(response.status_code, 200, tostring(response.body))
+            return assert(json.decode(response.body))
         end
 
         test.it("validates complete real-tool schemas before direct and meta invocation", function()
@@ -194,6 +207,49 @@ local function define_tests()
                     test.eq(canonical_json.encode(structured), (canonical_json.encode(from_text)))
                 end
             end
+        end)
+
+        test.it("lifts canonical images into ordered MCP blocks without duplicating data in metadata", function()
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { DUMMY_TOOL_ID } })
+            for _, request in ipairs({
+                { name = "dummy", arguments = { images = 2 } },
+                { name = "call_tool", arguments = { id = "dummy", arguments = { images = 2 } } },
+            }) do
+                local wire = tool_http(request)
+                test.is_false(wire.result.isError)
+                test.eq(#wire.result.content, 3)
+                test.eq(wire.result.content[1].type, "text")
+                test.eq(wire.result.content[2].type, "image")
+                test.eq(wire.result.content[2].mimeType, "image/png")
+                test.eq(wire.result.content[2].data,
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aU2sAAAAASUVORK5CYII=")
+                test.eq(wire.result.content[3].data, wire.result.content[2].data)
+                local text = assert(json.decode(wire.result.content[1].text))
+                test.eq(text.ok, true)
+                test.is_nil(text._images)
+                test.eq(wire.result.structuredContent.ok, true)
+                test.is_nil(wire.result.structuredContent._images)
+            end
+        end)
+
+        test.it("refuses malformed or over-budget producer output without leaking image data", function()
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { DUMMY_TOOL_ID } })
+            for _, args in ipairs({ { images = 9 }, { images = 2, large = true }, { images = 1, invalid = true } }) do
+                local response = tool_http({ name = "dummy", arguments = args })
+                test.is_true(response.result.isError)
+                test.eq(response.result.structuredContent.error.kind, errors.INVALID)
+                test.eq(#response.result.content, 1)
+                test.is_false(response.result.content[1].text:find("not_base64", 1, true) ~= nil)
+            end
+            local failure = tool_http({ name = "dummy", arguments = { images = 1, image_error = true } })
+            test.is_true(failure.result.isError)
+            test.eq(#failure.result.content, 1)
+            test.is_nil(assert(json.decode(failure.result.content[1].text))._images)
+            test.is_nil(failure.result.structuredContent._images)
+            seed(consts.STATUS.ACTIVE, nil, { allowed_tool_ids = { "app:schema_tool" } })
+            local denied = tool_http({ name = "dummy", arguments = { images = 1 } })
+            test.is_true(denied.result.isError)
+            test.eq(#denied.result.content, 1)
         end)
 
         test.it("isolates transport identity without inventing a domain connection on direct and meta calls", function()
