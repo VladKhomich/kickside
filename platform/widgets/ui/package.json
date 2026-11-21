@@ -19,6 +19,7 @@
     "primevue": "4.5.5"
   },
   "devDependencies": {
+    "@iconify-json/tabler": "1.2.42",
     "@types/node": "^26.1.1",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vitest/coverage-v8": "^4.1.9",
