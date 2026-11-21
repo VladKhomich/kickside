@@ -194,6 +194,20 @@ originally accepted child policy and options. The Component retention sweep leav
 in place. Follow the new job and verify the component
 has been removed when cleanup completes.
 
+Fresh components with verified lifecycle custody retire their owned children
+through the same delete request. One root job admits 24 direct children per
+transaction and stores progress with the existing deletion intent. Each child
+job completes its own custody work before running its teardown. Parent cleanup
+waits for the physical child rows to disappear. A terminal child failure keeps
+the parent fenced and surfaces through the parent job. An authorized retry
+resumes the original policy without repeating successful removals.
+
+Plain delete still refuses independent live placements at the boundary being
+admitted. Choose `child_policy=reparent_root` to preserve those components and
+reroot their placement. Each child is checked before its own fence. If a later
+branch refuses admission, the root retains its accepted intent and records the
+failure. Legacy custodians still require a verified upgrade disposition.
+
 ## Deleting placement dependents
 
 `component.delete_children(parent_id)` requires DELETE access to the parent and

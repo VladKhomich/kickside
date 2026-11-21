@@ -330,6 +330,18 @@ entries:
       component_types: kickside.component:types
       error_envelope: kickside.contract:error_envelope
 
+  - name: custody_cascade
+    kind: library.lua
+    source: file://custody_cascade.lua
+    modules: [sql, json]
+    imports:
+      custody: kickside.component.persist:custody
+      component_ops: kickside.component.persist:component_ops
+      persisted_json: kickside.contract:persisted_json
+      delete_admission: kickside.component:delete_admission
+      placement: kickside.component.persist:placement
+      error_envelope: kickside.contract:error_envelope
+
   - name: teardown
     kind: library.lua
     meta:
@@ -356,4 +368,5 @@ entries:
       placement: kickside.component.persist:placement
       component_lifecycle: kickside.component:component_lifecycle
       custody: kickside.component.persist:custody
+      custody_cascade: kickside.component.persist:custody_cascade
       delete_admission: kickside.component:delete_admission
