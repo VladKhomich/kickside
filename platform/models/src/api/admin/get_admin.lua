@@ -18,11 +18,12 @@ local function handler()
     if profile_err then return nil, profile_err end
     local models, model_err = model_catalog.get_all_public()
     if model_err then return nil, model_err end
+    local presets = provider_read_model.presets()
     res:set_status(http.STATUS.OK)
     res:write_json({
         success = true,
-        adapters = provider_read_model.adapters(),
-        presets = provider_read_model.presets(),
+        adapters = provider_read_model.adapters(presets),
+        presets = presets,
         profiles = profiles,
         models = models,
     })

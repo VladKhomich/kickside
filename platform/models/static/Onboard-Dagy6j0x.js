@@ -1,15 +1,15 @@
 import { defineComponent as Oe, ref as P, computed as p, onMounted as Ve, openBlock as a, createElementBlock as l, unref as s, createBlock as j, withCtx as ee, createTextVNode as q, toDisplayString as k, createCommentVNode as M, Fragment as I, createVNode as b, createElementVNode as n, renderList as G, normalizeClass as xe } from "vue";
-import { Icon as x } from "@iconify/vue";
+import { Icon as V } from "@iconify/vue";
 import { u as De } from "./wc-runtime-CHL0PH8L.js";
-import { u as Fe, j as Te, k as pe, l as Le, n as Be, p as Re, a as ze, b as Ue, _ as me, m as je } from "./useModelsApi-DgTdS6OA.js";
-import { d as qe, i as Ge, c as He, a as be, _ as Ke } from "./ProviderProfileEditor.vue_vue_type_script_setup_true_lang-ZRGEU-eL.js";
+import { u as Fe, j as Te, k as pe, l as Le, n as Be, p as Re, a as ze, b as Ue, _ as me, m as je } from "./useModelsApi-BQUoAP2d.js";
+import { d as qe, i as Ge, c as He, a as be, _ as Ke } from "./ProviderProfileEditor.vue_vue_type_script_setup_true_lang-DhB1ATyK.js";
 const We = () => De();
-function Ye(D, h, u) {
-  const N = D.filter((c) => c.enabled !== !1 && c.status !== "unhealthy");
+function Ye(x, h, u) {
+  const N = x.filter((c) => c.enabled !== !1 && c.status !== "unhealthy");
   if (!N.length) return null;
-  const A = u.find((c) => c.declared && c.name === "fast")?.models?.[0]?.name;
-  if (!A) return null;
-  const i = h.find((c) => c.name === A && c.enabled !== !1 && !Je(c));
+  const D = u.find((c) => c.declared && c.name === "fast")?.models?.[0]?.name;
+  if (!D) return null;
+  const i = h.find((c) => c.name === D && c.enabled !== !1 && !Je(c));
   if (!i) return null;
   const f = i.provider_profile_id ? N.find((c) => c.id === i.provider_profile_id) : N.find((c) => !!i.provider_id && c.provider_id === i.provider_id);
   return !f || i.provider_id && i.provider_id !== f.provider_id ? null : {
@@ -19,8 +19,8 @@ function Ye(D, h, u) {
     provider_id: i.provider_id || f.provider_id
   };
 }
-function Je(D) {
-  const h = (D.capabilities ?? []).map((u) => u.toLowerCase());
+function Je(x) {
+  const h = (x.capabilities ?? []).map((u) => u.toLowerCase());
   return h.length > 0 && h.every((u) => u === "embed" || u === "embedding" || u === "embeddings");
 }
 const Qe = { class: "ob" }, Xe = {
@@ -59,8 +59,8 @@ const Qe = { class: "ob" }, Xe = {
   class: "ob-autobar"
 }, Ct = { class: "ob-block-head" }, wt = { class: "ob-classes" }, Mt = ["title"], St = { class: "ob-class-top" }, Et = { class: "ob-class-ico" }, $t = { class: "ob-class-name" }, Pt = { class: "ob-foot" }, It = ["disabled"], Nt = "kickside-model-provider-openai-compatible", At = "wippy.llm.openai_compat:provider", Tt = /* @__PURE__ */ Oe({
   __name: "Onboard",
-  setup(D) {
-    const h = We(), u = Fe(), { adapters: N, presets: A, profiles: i, models: f, classes: c, loading: fe, saving: F, error: O } = u, te = je(() => N.value, () => i.value, () => A.value), g = P("pick"), S = P(null), y = P(null), E = P(""), C = P(""), $ = P(!1), ge = p(() => A.value.filter((e) => e.onboarding !== !1)), _e = p(() => S.value?.provider_id || At), H = p(() => te.adapterFor(_e.value)), K = p(
+  setup(x) {
+    const h = We(), u = Fe(), { adapters: N, presets: D, profiles: i, models: f, classes: c, loading: fe, saving: F, error: A } = u, te = je(() => N.value, () => i.value), g = P("pick"), S = P(null), y = P(null), E = P(""), C = P(""), $ = P(!1), ge = p(() => D.value.filter((e) => e.onboarding !== !1)), _e = p(() => S.value?.provider_id || At), H = p(() => te.adapterFor(_e.value)), K = p(
       () => S.value?.profile_editor_tag || H.value?.profile_editor_tag || Nt
     ), ke = p(() => qe(K.value)), ye = p(() => Ge(K.value));
     function W(e, t) {
@@ -98,7 +98,7 @@ const Qe = { class: "ob" }, Xe = {
       le();
     }
     function re(e) {
-      C.value = e, O.value = "";
+      C.value = e, A.value = "";
     }
     function de() {
       S.value = null, E.value = "", C.value = "", g.value = "pick";
@@ -116,7 +116,7 @@ const Qe = { class: "ob" }, Xe = {
           e.enabled = !0;
           const t = new Set(i.value.map((d) => d.id));
           if (E.value = "Saving connection…", !await u.saveProfile("create", "", e)) {
-            re(O.value || "Could not save the connection.");
+            re(A.value || "Could not save the connection.");
             return;
           }
           const r = i.value.find((d) => !t.has(d.id));
@@ -163,8 +163,8 @@ const Qe = { class: "ob" }, Xe = {
       for (const v of f.value) {
         const _ = new Set(v.class ?? []), w = r.get(v.name);
         if (_.size === w.size && [...w].every((Z) => _.has(Z))) continue;
-        const V = d.has(v.name) ? 1e3 : Number(v.priority ?? 10);
-        m.push(Se(v, [...w], V));
+        const O = d.has(v.name) ? 1e3 : Number(v.priority ?? 10);
+        m.push(Se(v, [...w], O));
       }
       m.length && (await u.saveCards(m), await u.loadClasses());
     }
@@ -199,7 +199,7 @@ const Qe = { class: "ob" }, Xe = {
       if (!o.length || !e.length) return t;
       const r = [...o].sort((m, v) => X(z(m), z(v))), d = r.length - 1;
       return e.forEach((m, v) => {
-        const _ = o.filter((V) => (V.class ?? []).includes(m.name)).sort((V, Z) => X(z(Z), z(V)));
+        const _ = o.filter((O) => (O.class ?? []).includes(m.name)).sort((O, Z) => X(z(Z), z(O)));
         if (_.length) {
           t.set(m.name, _[0].name);
           return;
@@ -226,13 +226,13 @@ const Qe = { class: "ob" }, Xe = {
     return Ve(async () => {
       await Promise.all([u.load(), u.loadClasses()]), g.value = i.value.length ? "review" : "pick", i.value.length && T.value.length && L.value.every((e) => !B(e.name)) && await U(!1);
     }), (e, t) => (a(), l("div", Qe, [
-      s(O) && g.value !== "connect" ? (a(), j(s(Te), {
+      s(A) && g.value !== "connect" ? (a(), j(s(Te), {
         key: 0,
         severity: "danger",
-        onDismiss: t[0] || (t[0] = (o) => O.value = "")
+        onDismiss: t[0] || (t[0] = (o) => A.value = "")
       }, {
         default: ee(() => [
-          q(k(s(O)), 1)
+          q(k(s(A)), 1)
         ]),
         _: 1
       })) : M("", !0),
@@ -241,7 +241,7 @@ const Qe = { class: "ob" }, Xe = {
         label: "Loading…"
       })) : (a(), l(I, { key: 2 }, [
         g.value === "pick" && !R.value ? (a(), l("div", Xe, [
-          b(s(x), {
+          b(s(V), {
             icon: "tabler:brain",
             "aria-hidden": "true"
           }),
@@ -259,7 +259,7 @@ const Qe = { class: "ob" }, Xe = {
               onClick: (r) => Me(o)
             }, [
               n("span", ot, [
-                b(s(x), {
+                b(s(V), {
                   icon: o.icon || "tabler:plug",
                   "aria-hidden": "true"
                 }, null, 8, ["icon"])
@@ -314,7 +314,7 @@ const Qe = { class: "ob" }, Xe = {
               onCancel: ue
             }, null, 8, ["tag", "preset", "adapter", "saving"])),
             C.value ? (a(), l("div", rt, [
-              b(s(x), {
+              b(s(V), {
                 icon: "tabler:circle-x",
                 "aria-hidden": "true"
               }),
@@ -333,7 +333,7 @@ const Qe = { class: "ob" }, Xe = {
           }, null, 8, ["aria-label", "model", "profiles", "saving"])
         ])) : (a(), l("section", ct, [
           C.value ? (a(), l("div", vt, [
-            b(s(x), {
+            b(s(V), {
               icon: "tabler:circle-x",
               "aria-hidden": "true"
             }),
@@ -361,7 +361,7 @@ const Qe = { class: "ob" }, Xe = {
                 class: "ob-prov"
               }, [
                 b(s(Ke), {
-                  icon: s(te).providerIcon(o.provider_id),
+                  icon: s(te).providerIcon(o.provider_id, o.id),
                   size: "sm"
                 }, null, 8, ["icon"]),
                 n("div", ft, [
@@ -417,7 +417,7 @@ const Qe = { class: "ob" }, Xe = {
               }, [
                 n("div", St, [
                   n("span", Et, [
-                    b(s(x), {
+                    b(s(V), {
                       icon: r.icon || "tabler:layers-subtract",
                       "aria-hidden": "true"
                     }, null, 8, ["icon"])
@@ -462,4 +462,4 @@ const Qe = { class: "ob" }, Xe = {
 export {
   Tt as default
 };
-//# sourceMappingURL=Onboard-CG36hNbb.js.map
+//# sourceMappingURL=Onboard-Dagy6j0x.js.map

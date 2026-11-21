@@ -254,6 +254,7 @@ local function public_profile(profile: any): any
         id = profile.id,
         name = profile.name,
         provider_id = profile.provider_id,
+        icon = profile.icon or "",
         config = config,
         enabled = profile.enabled ~= false,
         error = profile.error,
@@ -276,6 +277,7 @@ local function export_profile(profile: any): any
         id = public.id,
         name = public.name,
         provider_id = public.provider_id,
+        icon = public.icon,
         enabled = public.enabled,
         config = public.config,
         secret_fields = #public.secret_fields > 0 and public.secret_fields or nil,
@@ -503,6 +505,14 @@ local function clean_profile_input(input: any, existing: any?, secret_config: an
     local provider_id = input.provider_id or (existing and existing.provider_id) or models_types.DEFAULT_PROVIDER
     if type(provider_id) ~= "string" or provider_id == "" then return nil, "provider_id is required" end
 
+    local icon = existing and existing.icon or ""
+    if input.icon ~= nil then
+        if input.icon ~= "" and not models_types.icon_name(input.icon) then
+            return nil, "icon must be an icon set name such as tabler:cloud, or empty"
+        end
+        icon = input.icon
+    end
+
     local config = copy_config(input, existing and existing.config or {})
     if secret_config == nil then
         secret_config = copy_secret_config(input, existing and existing.secret_config or {})
@@ -545,6 +555,7 @@ local function clean_profile_input(input: any, existing: any?, secret_config: an
     return {
         name = name,
         provider_id = provider_id,
+        icon = icon,
         config = config,
         secret_config = secret_config,
         enabled = enabled,

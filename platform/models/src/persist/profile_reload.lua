@@ -1,5 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local policy = require("catalog_policy")
+local models_types = require("models_types")
 
 local function run(profile_rows: { any }): { any }
     local profiles = {}
@@ -13,6 +14,7 @@ local function run(profile_rows: { any }): { any }
             id = r.id,
             name = r.name,
             provider_id = r.provider_id,
+            icon = models_types.icon_name(r.icon) or "",
             config = config,
             secret_config = secret,
             enabled = configured_enabled and load_err == nil,

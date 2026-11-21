@@ -1,29 +1,30 @@
-import { openBlock as l, createElementBlock as p, mergeProps as v, createElementVNode as c, renderSlot as P, createTextVNode as N, toDisplayString as x, resolveComponent as q, resolveDirective as st, withDirectives as ut, createBlock as y, resolveDynamicComponent as ct, withCtx as f, createCommentVNode as m, normalizeClass as A, defineComponent as F, computed as w, unref as u, createVNode as g, ref as bt, reactive as pt, watch as gt, withModifiers as ht, Fragment as L, renderList as U } from "vue";
+import { openBlock as i, createElementBlock as p, mergeProps as v, createElementVNode as b, renderSlot as C, createTextVNode as L, toDisplayString as S, resolveComponent as q, resolveDirective as ct, withDirectives as bt, createBlock as k, resolveDynamicComponent as pt, withCtx as y, createCommentVNode as w, normalizeClass as F, defineComponent as I, computed as _, unref as c, createVNode as g, ref as Z, onMounted as gt, watch as Q, onBeforeUnmount as ht, useModel as vt, mergeModels as mt, reactive as ft, withModifiers as yt, Fragment as R, renderList as U } from "vue";
 import { Icon as j } from "@iconify/vue";
-import { E as vt } from "./provider-tags-C0mtMONl.js";
-import { a as mt, B as Y, y as Z, g as G, s as M, f as O, R as ft } from "./wc-runtime-CHL0PH8L.js";
-var Q = {
+import { E as kt } from "./provider-tags-C0mtMONl.js";
+import { a as wt, B as W, y as tt, g as G, s as Y, f as T, R as $t } from "./wc-runtime-CHL0PH8L.js";
+import { loadByTagName as xt } from "@wippy-fe/proxy";
+var nt = {
   name: "SpinnerIcon",
-  extends: mt
+  extends: wt
 };
-function yt(t) {
-  return xt(t) || $t(t) || wt(t) || kt();
+function _t(t) {
+  return Ct(t) || Vt(t) || Pt(t) || St();
 }
-function kt() {
+function St() {
   throw new TypeError(`Invalid attempt to spread non-iterable instance.
 In order to be iterable, non-array objects must have a [Symbol.iterator]() method.`);
 }
-function wt(t, n) {
+function Pt(t, n) {
   if (t) {
     if (typeof t == "string") return K(t, n);
     var e = {}.toString.call(t).slice(8, -1);
     return e === "Object" && t.constructor && (e = t.constructor.name), e === "Map" || e === "Set" ? Array.from(t) : e === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e) ? K(t, n) : void 0;
   }
 }
-function $t(t) {
+function Vt(t) {
   if (typeof Symbol < "u" && t[Symbol.iterator] != null || t["@@iterator"] != null) return Array.from(t);
 }
-function xt(t) {
+function Ct(t) {
   if (Array.isArray(t)) return K(t);
 }
 function K(t, n) {
@@ -31,20 +32,20 @@ function K(t, n) {
   for (var e = 0, o = Array(n); e < n; e++) o[e] = t[e];
   return o;
 }
-function St(t, n, e, o, b, a) {
-  return l(), p("svg", v({
+function It(t, n, e, o, s, d) {
+  return i(), p("svg", v({
     width: "14",
     height: "14",
     viewBox: "0 0 14 14",
     fill: "none",
     xmlns: "http://www.w3.org/2000/svg"
-  }, t.pti()), yt(n[0] || (n[0] = [c("path", {
+  }, t.pti()), _t(n[0] || (n[0] = [b("path", {
     d: "M6.99701 14C5.85441 13.999 4.72939 13.7186 3.72012 13.1832C2.71084 12.6478 1.84795 11.8737 1.20673 10.9284C0.565504 9.98305 0.165424 8.89526 0.041387 7.75989C-0.0826496 6.62453 0.073125 5.47607 0.495122 4.4147C0.917119 3.35333 1.59252 2.4113 2.46241 1.67077C3.33229 0.930247 4.37024 0.413729 5.4857 0.166275C6.60117 -0.0811796 7.76026 -0.0520535 8.86188 0.251112C9.9635 0.554278 10.9742 1.12227 11.8057 1.90555C11.915 2.01493 11.9764 2.16319 11.9764 2.31778C11.9764 2.47236 11.915 2.62062 11.8057 2.73C11.7521 2.78503 11.688 2.82877 11.6171 2.85864C11.5463 2.8885 11.4702 2.90389 11.3933 2.90389C11.3165 2.90389 11.2404 2.8885 11.1695 2.85864C11.0987 2.82877 11.0346 2.78503 10.9809 2.73C9.9998 1.81273 8.73246 1.26138 7.39226 1.16876C6.05206 1.07615 4.72086 1.44794 3.62279 2.22152C2.52471 2.99511 1.72683 4.12325 1.36345 5.41602C1.00008 6.70879 1.09342 8.08723 1.62775 9.31926C2.16209 10.5513 3.10478 11.5617 4.29713 12.1803C5.48947 12.7989 6.85865 12.988 8.17414 12.7157C9.48963 12.4435 10.6711 11.7264 11.5196 10.6854C12.3681 9.64432 12.8319 8.34282 12.8328 7C12.8328 6.84529 12.8943 6.69692 13.0038 6.58752C13.1132 6.47812 13.2616 6.41667 13.4164 6.41667C13.5712 6.41667 13.7196 6.47812 13.8291 6.58752C13.9385 6.69692 14 6.84529 14 7C14 8.85651 13.2622 10.637 11.9489 11.9497C10.6356 13.2625 8.85432 14 6.99701 14Z",
     fill: "currentColor"
   }, null, -1)])), 16);
 }
-Q.render = St;
-var _t = `
+nt.render = It;
+var At = `
     .p-badge {
         display: inline-flex;
         border-radius: dt('badge.border.radius');
@@ -119,12 +120,12 @@ var _t = `
         min-width: dt('badge.xl.min.width');
         height: dt('badge.xl.height');
     }
-`, Pt = {
+`, Ft = {
   root: function(n) {
     var e = n.props, o = n.instance;
     return ["p-badge p-component", {
       "p-badge-circle": G(e.value) && String(e.value).length === 1,
-      "p-badge-dot": Z(e.value) && !o.$slots.default,
+      "p-badge-dot": tt(e.value) && !o.$slots.default,
       "p-badge-sm": e.size === "small",
       "p-badge-lg": e.size === "large",
       "p-badge-xl": e.size === "xlarge",
@@ -136,13 +137,13 @@ var _t = `
       "p-badge-contrast": e.severity === "contrast"
     }];
   }
-}, Ct = Y.extend({
+}, Bt = W.extend({
   name: "badge",
-  style: _t,
-  classes: Pt
-}), It = {
+  style: At,
+  classes: Ft
+}), Tt = {
   name: "BaseBadge",
-  extends: M,
+  extends: Y,
   props: {
     value: {
       type: [String, Number],
@@ -157,7 +158,7 @@ var _t = `
       default: null
     }
   },
-  style: Ct,
+  style: Bt,
   provide: function() {
     return {
       $pcBadge: this,
@@ -165,54 +166,54 @@ var _t = `
     };
   }
 };
-function T(t) {
+function O(t) {
   "@babel/helpers - typeof";
-  return T = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return O = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, T(t);
+  }, O(t);
 }
 function X(t, n, e) {
-  return (n = Vt(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+  return (n = Ot(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function Vt(t) {
-  var n = At(t, "string");
-  return T(n) == "symbol" ? n : n + "";
+function Ot(t) {
+  var n = Et(t, "string");
+  return O(n) == "symbol" ? n : n + "";
 }
-function At(t, n) {
-  if (T(t) != "object" || !t) return t;
+function Et(t, n) {
+  if (O(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (T(o) != "object") return o;
+    if (O(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var tt = {
+var et = {
   name: "Badge",
-  extends: It,
+  extends: Tt,
   inheritAttrs: !1,
   computed: {
     dataP: function() {
-      return O(X(X({
+      return T(X(X({
         circle: this.value != null && String(this.value).length === 1,
         empty: this.value == null && !this.$slots.default
       }, this.severity, this.severity), this.size, this.size));
     }
   }
-}, Ft = ["data-p"];
-function Bt(t, n, e, o, b, a) {
-  return l(), p("span", v({
+}, zt = ["data-p"];
+function Nt(t, n, e, o, s, d) {
+  return i(), p("span", v({
     class: t.cx("root"),
-    "data-p": a.dataP
-  }, t.ptmi("root")), [P(t.$slots, "default", {}, function() {
-    return [N(x(t.value), 1)];
-  })], 16, Ft);
+    "data-p": d.dataP
+  }, t.ptmi("root")), [C(t.$slots, "default", {}, function() {
+    return [L(S(t.value), 1)];
+  })], 16, zt);
 }
-tt.render = Bt;
-var Ot = `
+et.render = Nt;
+var Lt = `
     .p-button {
         display: inline-flex;
         cursor: pointer;
@@ -863,35 +864,35 @@ var Ot = `
         color: dt('button.link.active.color');
     }
 `;
-function z(t) {
+function E(t) {
   "@babel/helpers - typeof";
-  return z = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return E = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, z(t);
+  }, E(t);
 }
-function k(t, n, e) {
-  return (n = Tt(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+function x(t, n, e) {
+  return (n = jt(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function Tt(t) {
-  var n = zt(t, "string");
-  return z(n) == "symbol" ? n : n + "";
+function jt(t) {
+  var n = Rt(t, "string");
+  return E(n) == "symbol" ? n : n + "";
 }
-function zt(t, n) {
-  if (z(t) != "object" || !t) return t;
+function Rt(t, n) {
+  if (E(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (z(o) != "object") return o;
+    if (E(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var Et = {
+var Ut = {
   root: function(n) {
     var e = n.instance, o = n.props;
-    return ["p-button p-component", k(k(k(k(k(k(k(k(k({
+    return ["p-button p-component", x(x(x(x(x(x(x(x(x({
       "p-button-icon-only": e.hasIcon && !o.label && !o.badge,
       "p-button-vertical": (o.iconPos === "top" || o.iconPos === "bottom") && o.label,
       "p-button-loading": o.loading,
@@ -901,16 +902,16 @@ var Et = {
   loadingIcon: "p-button-loading-icon",
   icon: function(n) {
     var e = n.props;
-    return ["p-button-icon", k({}, "p-button-icon-".concat(e.iconPos), e.label)];
+    return ["p-button-icon", x({}, "p-button-icon-".concat(e.iconPos), e.label)];
   },
   label: "p-button-label"
-}, Nt = Y.extend({
+}, Dt = W.extend({
   name: "button",
-  style: Ot,
-  classes: Et
-}), jt = {
+  style: Lt,
+  classes: Ut
+}), Gt = {
   name: "BaseButton",
-  extends: M,
+  extends: Y,
   props: {
     label: {
       type: String,
@@ -997,7 +998,7 @@ var Et = {
       default: null
     }
   },
-  style: Nt,
+  style: Dt,
   provide: function() {
     return {
       $pcButton: this,
@@ -1005,34 +1006,34 @@ var Et = {
     };
   }
 };
-function E(t) {
+function z(t) {
   "@babel/helpers - typeof";
-  return E = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
+  return z = typeof Symbol == "function" && typeof Symbol.iterator == "symbol" ? function(n) {
     return typeof n;
   } : function(n) {
     return n && typeof Symbol == "function" && n.constructor === Symbol && n !== Symbol.prototype ? "symbol" : typeof n;
-  }, E(t);
+  }, z(t);
 }
 function h(t, n, e) {
-  return (n = Rt(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
+  return (n = Kt(n)) in t ? Object.defineProperty(t, n, { value: e, enumerable: !0, configurable: !0, writable: !0 }) : t[n] = e, t;
 }
-function Rt(t) {
-  var n = Lt(t, "string");
-  return E(n) == "symbol" ? n : n + "";
+function Kt(t) {
+  var n = Mt(t, "string");
+  return z(n) == "symbol" ? n : n + "";
 }
-function Lt(t, n) {
-  if (E(t) != "object" || !t) return t;
+function Mt(t, n) {
+  if (z(t) != "object" || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (e !== void 0) {
     var o = e.call(t, n);
-    if (E(o) != "object") return o;
+    if (z(o) != "object") return o;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
   return (n === "string" ? String : Number)(t);
 }
-var nt = {
+var ot = {
   name: "Button",
-  extends: jt,
+  extends: Gt,
   inheritAttrs: !1,
   inject: {
     $pcFluid: {
@@ -1077,80 +1078,80 @@ var nt = {
       };
     },
     hasFluid: function() {
-      return Z(this.fluid) ? !!this.$pcFluid : this.fluid;
+      return tt(this.fluid) ? !!this.$pcFluid : this.fluid;
     },
     dataP: function() {
-      return O(h(h(h(h(h(h(h(h(h(h({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge), "loading", this.loading), "fluid", this.hasFluid), "rounded", this.rounded), "raised", this.raised), "outlined", this.outlined || this.variant === "outlined"), "text", this.text || this.variant === "text"), "link", this.link || this.variant === "link"), "vertical", (this.iconPos === "top" || this.iconPos === "bottom") && this.label));
+      return T(h(h(h(h(h(h(h(h(h(h({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge), "loading", this.loading), "fluid", this.hasFluid), "rounded", this.rounded), "raised", this.raised), "outlined", this.outlined || this.variant === "outlined"), "text", this.text || this.variant === "text"), "link", this.link || this.variant === "link"), "vertical", (this.iconPos === "top" || this.iconPos === "bottom") && this.label));
     },
     dataIconP: function() {
-      return O(h(h({}, this.iconPos, this.iconPos), this.size, this.size));
+      return T(h(h({}, this.iconPos, this.iconPos), this.size, this.size));
     },
     dataLabelP: function() {
-      return O(h(h({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge));
+      return T(h(h({}, this.size, this.size), "icon-only", this.hasIcon && !this.label && !this.badge));
     }
   },
   components: {
-    SpinnerIcon: Q,
-    Badge: tt
+    SpinnerIcon: nt,
+    Badge: et
   },
   directives: {
-    ripple: ft
+    ripple: $t
   }
-}, Ut = ["data-p"], Dt = ["data-p"];
-function Gt(t, n, e, o, b, a) {
-  var $ = q("SpinnerIcon"), S = q("Badge"), C = st("ripple");
-  return t.asChild ? P(t.$slots, "default", {
+}, Wt = ["data-p"], Yt = ["data-p"];
+function Ht(t, n, e, o, s, d) {
+  var m = q("SpinnerIcon"), $ = q("Badge"), f = ct("ripple");
+  return t.asChild ? C(t.$slots, "default", {
     key: 1,
-    class: A(t.cx("root")),
-    a11yAttrs: a.a11yAttrs
-  }) : ut((l(), y(ct(t.as), v({
+    class: F(t.cx("root")),
+    a11yAttrs: d.a11yAttrs
+  }) : bt((i(), k(pt(t.as), v({
     key: 0,
     class: t.cx("root"),
-    "data-p": a.dataP
-  }, a.attrs), {
-    default: f(function() {
-      return [P(t.$slots, "default", {}, function() {
-        return [t.loading ? P(t.$slots, "loadingicon", v({
+    "data-p": d.dataP
+  }, d.attrs), {
+    default: y(function() {
+      return [C(t.$slots, "default", {}, function() {
+        return [t.loading ? C(t.$slots, "loadingicon", v({
           key: 0,
           class: [t.cx("loadingIcon"), t.cx("icon")]
         }, t.ptm("loadingIcon")), function() {
-          return [t.loadingIcon ? (l(), p("span", v({
+          return [t.loadingIcon ? (i(), p("span", v({
             key: 0,
             class: [t.cx("loadingIcon"), t.cx("icon"), t.loadingIcon]
-          }, t.ptm("loadingIcon")), null, 16)) : (l(), y($, v({
+          }, t.ptm("loadingIcon")), null, 16)) : (i(), k(m, v({
             key: 1,
             class: [t.cx("loadingIcon"), t.cx("icon")],
             spin: ""
           }, t.ptm("loadingIcon")), null, 16, ["class"]))];
-        }) : P(t.$slots, "icon", v({
+        }) : C(t.$slots, "icon", v({
           key: 1,
           class: [t.cx("icon")]
         }, t.ptm("icon")), function() {
-          return [t.icon ? (l(), p("span", v({
+          return [t.icon ? (i(), p("span", v({
             key: 0,
             class: [t.cx("icon"), t.icon, t.iconClass],
-            "data-p": a.dataIconP
-          }, t.ptm("icon")), null, 16, Ut)) : m("", !0)];
-        }), t.label ? (l(), p("span", v({
+            "data-p": d.dataIconP
+          }, t.ptm("icon")), null, 16, Wt)) : w("", !0)];
+        }), t.label ? (i(), p("span", v({
           key: 2,
           class: t.cx("label")
         }, t.ptm("label"), {
-          "data-p": a.dataLabelP
-        }), x(t.label), 17, Dt)) : m("", !0), t.badge ? (l(), y(S, {
+          "data-p": d.dataLabelP
+        }), S(t.label), 17, Yt)) : w("", !0), t.badge ? (i(), k($, {
           key: 3,
           value: t.badge,
-          class: A(t.badgeClass),
+          class: F(t.badgeClass),
           severity: t.badgeSeverity,
           unstyled: t.unstyled,
           pt: t.ptm("pcBadge")
-        }, null, 8, ["value", "class", "severity", "unstyled", "pt"])) : m("", !0)];
+        }, null, 8, ["value", "class", "severity", "unstyled", "pt"])) : w("", !0)];
       })];
     }),
     _: 3
-  }, 16, ["class", "data-p"])), [[C]]);
+  }, 16, ["class", "data-p"])), [[f]]);
 }
-nt.render = Gt;
-const D = /* @__PURE__ */ F({
+ot.render = Ht;
+const D = /* @__PURE__ */ I({
   __name: "Button",
   props: {
     icon: {},
@@ -1162,33 +1163,33 @@ const D = /* @__PURE__ */ F({
   },
   emits: ["click"],
   setup(t, { emit: n }) {
-    const e = t, o = n, b = w(
+    const e = t, o = n, s = _(
       () => e.variant === "danger" ? "danger" : e.variant === "primary" ? void 0 : "secondary"
     );
-    return (a, $) => (l(), y(u(nt), {
+    return (d, m) => (i(), k(c(ot), {
       type: t.type,
-      severity: b.value,
+      severity: s.value,
       outlined: t.variant === "ghost",
       loading: t.loading,
       disabled: t.disabled || t.loading,
       size: t.small ? "small" : void 0,
-      onClick: $[0] || ($[0] = (S) => o("click"))
+      onClick: m[0] || (m[0] = ($) => o("click"))
     }, {
-      default: f(() => [
-        t.icon && !t.loading ? (l(), y(u(j), {
+      default: y(() => [
+        t.icon && !t.loading ? (i(), k(c(j), {
           key: 0,
           icon: t.icon,
           "aria-hidden": "true"
-        }, null, 8, ["icon"])) : m("", !0),
-        P(a.$slots, "default")
+        }, null, 8, ["icon"])) : w("", !0),
+        C(d.$slots, "default")
       ]),
       _: 3
     }, 8, ["type", "severity", "outlined", "loading", "disabled", "size"]));
   }
 });
-var Kt = {
+var Jt = {
   name: "BaseEditableHolder",
-  extends: M,
+  extends: Y,
   emits: ["update:modelValue", "value-change"],
   props: {
     modelValue: {
@@ -1273,8 +1274,8 @@ var Kt = {
   formField: {},
   methods: {
     writeValue: function(n, e) {
-      var o, b;
-      this.controlled && (this.d_value = n, this.$emit("update:modelValue", n)), this.$emit("value-change", n), (o = (b = this.formField).onChange) === null || o === void 0 || o.call(b, {
+      var o, s;
+      this.controlled && (this.d_value = n, this.$emit("update:modelValue", n)), this.$emit("value-change", n), (o = (s = this.formField).onChange) === null || o === void 0 || o.call(s, {
         originalEvent: e,
         value: n
       });
@@ -1323,23 +1324,23 @@ var Kt = {
     }
   }
 };
-const Wt = { class: "km-field" }, Yt = { class: "km-field-label" }, Mt = {
+const qt = { class: "km-field" }, Xt = { class: "km-field-label" }, Zt = {
   key: 0,
   class: "km-field-help"
-}, I = /* @__PURE__ */ F({
+}, V = /* @__PURE__ */ I({
   __name: "FormField",
   props: {
     label: {},
     help: {}
   },
   setup(t) {
-    return (n, e) => (l(), p("label", Wt, [
-      c("span", Yt, x(t.label), 1),
-      P(n.$slots, "default"),
-      t.help ? (l(), p("small", Mt, x(t.help), 1)) : m("", !0)
+    return (n, e) => (i(), p("label", qt, [
+      b("span", Xt, S(t.label), 1),
+      C(n.$slots, "default"),
+      t.help ? (i(), p("small", Zt, S(t.help), 1)) : w("", !0)
     ]));
   }
-}), Jt = ["type", "value", "placeholder", "readonly", "disabled", "autocomplete", "min", "max", "step"], V = /* @__PURE__ */ F({
+}), Qt = ["type", "value", "placeholder", "readonly", "disabled", "autocomplete", "min", "max", "step"], A = /* @__PURE__ */ I({
   __name: "TextInput",
   props: {
     modelValue: {},
@@ -1356,12 +1357,12 @@ const Wt = { class: "km-field" }, Yt = { class: "km-field-label" }, Mt = {
   emits: ["update:modelValue"],
   setup(t, { emit: n }) {
     const e = n;
-    function o(b) {
-      const a = b.target;
-      e("update:modelValue", a.value);
+    function o(s) {
+      const d = s.target;
+      e("update:modelValue", d.value);
     }
-    return (b, a) => (l(), p("input", {
-      class: A(["km-input", t.mono && "mono"]),
+    return (s, d) => (i(), p("input", {
+      class: F(["km-input", t.mono && "mono"]),
       type: t.type,
       value: t.modelValue,
       placeholder: t.placeholder,
@@ -1372,10 +1373,10 @@ const Wt = { class: "km-field" }, Yt = { class: "km-field-label" }, Mt = {
       max: t.max,
       step: t.step,
       onInput: o
-    }, null, 42, Jt));
+    }, null, 42, Qt));
   }
 });
-var Ht = `
+var tn = `
     .p-toggleswitch {
         display: inline-block;
         width: dt('toggleswitch.width');
@@ -1489,11 +1490,11 @@ var Ht = `
     .p-toggleswitch.p-disabled .p-toggleswitch-handle {
         background: dt('toggleswitch.handle.disabled.background');
     }
-`, qt = {
+`, nn = {
   root: {
     position: "relative"
   }
-}, Xt = {
+}, en = {
   root: function(n) {
     var e = n.instance, o = n.props;
     return ["p-toggleswitch p-component", {
@@ -1505,14 +1506,14 @@ var Ht = `
   input: "p-toggleswitch-input",
   slider: "p-toggleswitch-slider",
   handle: "p-toggleswitch-handle"
-}, Zt = Y.extend({
+}, on = W.extend({
   name: "toggleswitch",
-  style: Ht,
-  classes: Xt,
-  inlineStyles: qt
-}), Qt = {
+  style: tn,
+  classes: en,
+  inlineStyles: nn
+}), rn = {
   name: "BaseToggleSwitch",
-  extends: Kt,
+  extends: Jt,
   props: {
     trueValue: {
       type: null,
@@ -1551,16 +1552,16 @@ var Ht = `
       default: null
     }
   },
-  style: Zt,
+  style: on,
   provide: function() {
     return {
       $pcToggleSwitch: this,
       $parentInstance: this
     };
   }
-}, et = {
+}, rt = {
   name: "ToggleSwitch",
-  extends: Qt,
+  extends: rn,
   inheritAttrs: !1,
   emits: ["change", "focus", "blur"],
   methods: {
@@ -1592,62 +1593,62 @@ var Ht = `
       return this.d_value === this.trueValue;
     },
     dataP: function() {
-      return O({
+      return T({
         checked: this.checked,
         disabled: this.disabled,
         invalid: this.$invalid
       });
     }
   }
-}, tn = ["data-p-checked", "data-p-disabled", "data-p"], nn = ["id", "checked", "tabindex", "disabled", "readonly", "aria-checked", "aria-labelledby", "aria-label", "aria-invalid"], en = ["data-p"], on = ["data-p"];
-function rn(t, n, e, o, b, a) {
-  return l(), p("div", v({
+}, dn = ["data-p-checked", "data-p-disabled", "data-p"], an = ["id", "checked", "tabindex", "disabled", "readonly", "aria-checked", "aria-labelledby", "aria-label", "aria-invalid"], ln = ["data-p"], sn = ["data-p"];
+function un(t, n, e, o, s, d) {
+  return i(), p("div", v({
     class: t.cx("root"),
     style: t.sx("root")
-  }, a.getPTOptions("root"), {
-    "data-p-checked": a.checked,
+  }, d.getPTOptions("root"), {
+    "data-p-checked": d.checked,
     "data-p-disabled": t.disabled,
-    "data-p": a.dataP
-  }), [c("input", v({
+    "data-p": d.dataP
+  }), [b("input", v({
     id: t.inputId,
     type: "checkbox",
     role: "switch",
     class: [t.cx("input"), t.inputClass],
     style: t.inputStyle,
-    checked: a.checked,
+    checked: d.checked,
     tabindex: t.tabindex,
     disabled: t.disabled,
     readonly: t.readonly,
-    "aria-checked": a.checked,
+    "aria-checked": d.checked,
     "aria-labelledby": t.ariaLabelledby,
     "aria-label": t.ariaLabel,
     "aria-invalid": t.invalid || void 0,
     onFocus: n[0] || (n[0] = function() {
-      return a.onFocus && a.onFocus.apply(a, arguments);
+      return d.onFocus && d.onFocus.apply(d, arguments);
     }),
     onBlur: n[1] || (n[1] = function() {
-      return a.onBlur && a.onBlur.apply(a, arguments);
+      return d.onBlur && d.onBlur.apply(d, arguments);
     }),
     onChange: n[2] || (n[2] = function() {
-      return a.onChange && a.onChange.apply(a, arguments);
+      return d.onChange && d.onChange.apply(d, arguments);
     })
-  }, a.getPTOptions("input")), null, 16, nn), c("div", v({
+  }, d.getPTOptions("input")), null, 16, an), b("div", v({
     class: t.cx("slider")
-  }, a.getPTOptions("slider"), {
-    "data-p": a.dataP
-  }), [c("div", v({
+  }, d.getPTOptions("slider"), {
+    "data-p": d.dataP
+  }), [b("div", v({
     class: t.cx("handle")
-  }, a.getPTOptions("handle"), {
-    "data-p": a.dataP
-  }), [P(t.$slots, "handle", {
-    checked: a.checked
-  })], 16, on)], 16, en)], 16, tn);
+  }, d.getPTOptions("handle"), {
+    "data-p": d.dataP
+  }), [C(t.$slots, "handle", {
+    checked: d.checked
+  })], 16, sn)], 16, ln)], 16, dn);
 }
-et.render = rn;
-const dn = {
+rt.render = un;
+const cn = {
   key: 0,
   class: "km-switch-label"
-}, an = /* @__PURE__ */ F({
+}, bn = /* @__PURE__ */ I({
   __name: "Toggle",
   props: {
     modelValue: { type: Boolean },
@@ -1656,38 +1657,38 @@ const dn = {
   },
   emits: ["update:modelValue"],
   setup(t, { emit: n }) {
-    const e = t, o = n, b = w({
+    const e = t, o = n, s = _({
       get: () => e.modelValue,
-      set: (a) => o("update:modelValue", a)
+      set: (d) => o("update:modelValue", d)
     });
-    return (a, $) => (l(), p("label", {
-      class: A(["km-switch", { disabled: t.disabled }])
+    return (d, m) => (i(), p("label", {
+      class: F(["km-switch", { disabled: t.disabled }])
     }, [
-      g(u(et), {
-        modelValue: b.value,
-        "onUpdate:modelValue": $[0] || ($[0] = (S) => b.value = S),
+      g(c(rt), {
+        modelValue: s.value,
+        "onUpdate:modelValue": m[0] || (m[0] = ($) => s.value = $),
         disabled: t.disabled
       }, null, 8, ["modelValue", "disabled"]),
-      t.label ? (l(), p("span", dn, x(t.label), 1)) : m("", !0)
+      t.label ? (i(), p("span", cn, S(t.label), 1)) : w("", !0)
     ], 2));
   }
-}), ln = /* @__PURE__ */ F({
+}), pn = /* @__PURE__ */ I({
   __name: "Avatar",
   props: {
     icon: {},
     size: { default: "md" }
   },
   setup(t) {
-    return (n, e) => (l(), p("span", {
-      class: A(["km-avatar", t.size !== "md" && t.size])
+    return (n, e) => (i(), p("span", {
+      class: F(["km-avatar", t.size !== "md" && t.size])
     }, [
-      g(u(j), {
+      g(c(j), {
         icon: t.icon,
         "aria-hidden": "true"
       }, null, 8, ["icon"])
     ], 2));
   }
-}), W = {
+}), M = {
   openai_compat: {
     key: "openai_compat",
     title: "OpenAI Compatible",
@@ -1784,30 +1785,87 @@ const dn = {
       { key: "timeout", label: "Timeout", type: "number", section: "advanced" }
     ]
   }
-}, ot = vt;
-function sn(t) {
-  return t && ot[t] || "openai_compat";
+}, dt = kt;
+function gn(t) {
+  return t && dt[t] || "openai_compat";
 }
-function Vn(t) {
-  return !!(t && ot[t]);
+function Nn(t) {
+  return !!(t && dt[t]);
 }
-function An(t) {
-  return W[sn(t)];
+function Ln(t) {
+  return M[gn(t)];
 }
-const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, bn = { class: "km-editor-head-title" }, pn = { class: "km-editor-head-sub" }, gn = { class: "km-form-sec" }, hn = { class: "km-form-grid" }, vn = {
+const hn = /* @__PURE__ */ I({
+  __name: "IconField",
+  props: {
+    modelValue: {},
+    fallback: {}
+  },
+  emits: ["update:modelValue"],
+  setup(t, { emit: n }) {
+    const e = t, o = n, s = Z(null);
+    let d = null;
+    function m(f) {
+      o("update:modelValue", f.detail || "");
+    }
+    async function $() {
+      if (s.value) {
+        d && d.removeEventListener("select", m), s.value.innerHTML = "";
+        try {
+          customElements.get("wc-icon-picker") || await xt("wc-icon-picker", { timeoutMs: 8e3 });
+        } catch {
+        }
+        s.value && (d = document.createElement("wc-icon-picker"), d.setAttribute("value", e.modelValue || ""), e.fallback && d.setAttribute("fallback", e.fallback), d.addEventListener("select", m), s.value.appendChild(d));
+      }
+    }
+    return gt($), Q(() => e.modelValue, (f) => {
+      d && d.getAttribute("value") !== f && d.setAttribute("value", f || "");
+    }), ht(() => {
+      d && d.removeEventListener("select", m);
+    }), (f, N) => (i(), p("div", {
+      ref_key: "host",
+      ref: s,
+      class: "wc-iconfield"
+    }, null, 512));
+  }
+}), vn = /* @__PURE__ */ I({
+  __name: "ProfileIconField",
+  props: /* @__PURE__ */ mt({
+    fallback: {},
+    disabled: { type: Boolean }
+  }, {
+    modelValue: { required: !0 },
+    modelModifiers: {}
+  }),
+  emits: ["update:modelValue"],
+  setup(t) {
+    const n = vt(t, "modelValue");
+    return (e, o) => (i(), k(c(V), { label: "Provider icon" }, {
+      default: y(() => [
+        g(hn, {
+          modelValue: n.value,
+          "onUpdate:modelValue": o[0] || (o[0] = (s) => n.value = s),
+          fallback: t.fallback || "tabler:cpu",
+          inert: t.disabled
+        }, null, 8, ["modelValue", "fallback", "inert"])
+      ]),
+      _: 1
+    }));
+  }
+}), mn = { class: "km-editor-head" }, fn = { class: "km-editor-head-text" }, yn = { class: "km-editor-head-title" }, kn = { class: "km-editor-head-sub" }, wn = { class: "km-form-sec" }, $n = { class: "km-form-grid" }, xn = {
   key: 0,
   class: "km-form-sec"
-}, mn = { class: "km-form-grid" }, fn = {
+}, _n = { class: "km-form-grid" }, Sn = {
   key: 1,
   class: "km-form-sec"
-}, yn = { class: "km-form-grid" }, kn = ["aria-expanded"], wn = {
+}, Pn = { class: "km-form-grid" }, Vn = ["aria-expanded"], Cn = {
   key: 2,
   class: "km-form-sec"
-}, $n = { class: "km-form-grid" }, xn = {
+}, In = { class: "km-form-grid" }, An = {
   key: 0,
   class: "km-spin",
   "aria-hidden": "true"
-}, Sn = { class: "km-form-foot" }, Fn = /* @__PURE__ */ F({
+}, Fn = { class: "km-form-foot" }, jn = /* @__PURE__ */ I({
   __name: "ProviderProfileEditor",
   props: {
     mode: {},
@@ -1820,93 +1878,101 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
   },
   emits: ["save", "cancel", "test"],
   setup(t, { emit: n }) {
-    const e = t, o = n, b = w(() => W[e.specKey] ?? W.openai_compat), a = w(() => e.mode === "edit"), $ = w(() => a.value), S = w(() => e.testState?.status === "testing"), C = w(() => b.value.fields), R = (s) => s.section ?? "endpoint", J = w(() => C.value.filter((s) => R(s) === "endpoint")), H = w(() => C.value.filter((s) => R(s) === "auth")), rt = w(() => C.value.filter((s) => R(s) === "advanced")), B = bt(!1), i = pt({
+    const e = t, o = n, s = _(() => M[e.specKey] ?? M.openai_compat), d = _(() => e.mode === "edit"), m = _(() => d.value), $ = _(() => e.testState?.status === "testing"), f = _(() => s.value.fields), N = (u) => u.section ?? "endpoint", H = _(() => f.value.filter((u) => N(u) === "endpoint")), J = _(() => f.value.filter((u) => N(u) === "auth")), at = _(() => f.value.filter((u) => N(u) === "advanced")), B = Z(!1), l = ft({
       id: "",
       name: "",
       provider_id: "",
+      icon: "",
       retry_attempts: "",
       retry_backoff_ms: "",
       enabled: !0
     });
-    function dt(s, d) {
-      if (s.secret) return "";
-      const r = d[s.key];
-      return s.type === "number" ? r ?? "" : r || "";
+    function lt(u, a) {
+      if (u.secret) return "";
+      const r = a[u.key];
+      return u.type === "number" ? r ?? "" : r || "";
     }
-    function at() {
-      const s = e.profile?.config || e.preset?.config || {};
-      i.id = e.profile?.id || "", i.name = e.profile?.name || e.preset?.title || b.value.title, i.provider_id = e.profile?.provider_id || e.preset?.provider_id || e.adapter?.id || b.value.defaultProviderId, i.retry_attempts = s.retry?.attempts ?? "", i.retry_backoff_ms = s.retry?.backoff_ms ?? "", i.enabled = e.profile?.enabled !== !1;
-      for (const d of C.value) i[d.key] = dt(d, s);
+    function it() {
+      const u = e.profile?.config || e.preset?.config || {};
+      l.id = e.profile?.id || "", l.name = e.profile?.name || e.preset?.title || s.value.title, l.provider_id = e.profile?.provider_id || e.preset?.provider_id || e.adapter?.id || s.value.defaultProviderId, l.icon = d.value ? e.profile?.icon || "" : e.preset?.icon || "", l.retry_attempts = u.retry?.attempts ?? "", l.retry_backoff_ms = u.retry?.backoff_ms ?? "", l.enabled = e.profile?.enabled !== !1;
+      for (const a of f.value) l[a.key] = lt(a, u);
     }
-    gt(() => [e.profile, e.preset, e.adapter, e.mode, e.specKey], at, { immediate: !0 });
-    function lt(s, d) {
-      const r = i[d.key];
-      if (d.secret) {
-        typeof r == "string" && r.trim() && (s[d.key] = r);
+    Q(() => [e.profile, e.preset, e.adapter, e.mode, e.specKey], it, { immediate: !0 });
+    function st(u, a) {
+      const r = l[a.key];
+      if (a.secret) {
+        typeof r == "string" && r.trim() && (u[a.key] = r);
         return;
       }
-      if (d.type === "number") {
-        r !== "" ? s[d.key] = Number(r) : e.profile?.config?.[d.key] != null && (s[d.key] = "");
+      if (a.type === "number") {
+        r !== "" ? u[a.key] = Number(r) : e.profile?.config?.[a.key] != null && (u[a.key] = "");
         return;
       }
       if (typeof r == "string") {
-        const _ = r.trim();
-        _ && (s[d.key] = _);
+        const P = r.trim();
+        P && (u[a.key] = P);
         return;
       }
-      r != null && r !== "" && (s[d.key] = r);
+      r != null && r !== "" && (u[a.key] = r);
     }
-    function it() {
-      const s = {
-        id: i.id || void 0,
-        name: i.name,
-        provider_id: i.provider_id,
-        enabled: i.enabled
+    function ut() {
+      const u = {
+        id: l.id || void 0,
+        name: l.name,
+        provider_id: l.provider_id,
+        icon: l.icon,
+        enabled: l.enabled
       };
-      for (const r of C.value) lt(s, r);
-      const d = {};
-      i.retry_attempts !== "" && (d.attempts = Number(i.retry_attempts)), i.retry_backoff_ms !== "" && (d.backoff_ms = Number(i.retry_backoff_ms)), s.retry = d, o("save", s);
+      for (const r of f.value) st(u, r);
+      const a = {};
+      l.retry_attempts !== "" && (a.attempts = Number(l.retry_attempts)), l.retry_backoff_ms !== "" && (a.backoff_ms = Number(l.retry_backoff_ms)), u.retry = a, o("save", u);
     }
-    return (s, d) => (l(), p("form", {
+    return (u, a) => (i(), p("form", {
       class: "km-form",
-      onSubmit: ht(it, ["prevent"])
+      onSubmit: yt(ut, ["prevent"])
     }, [
-      c("div", un, [
-        g(u(ln), {
-          icon: b.value.icon
+      b("div", mn, [
+        g(c(pn), {
+          icon: l.icon || e.adapter?.icon || s.value.icon
         }, null, 8, ["icon"]),
-        c("div", cn, [
-          c("div", bn, x(e.preset?.title || b.value.title), 1),
-          c("div", pn, x(b.value.subtitle), 1)
+        b("div", fn, [
+          b("div", yn, S(e.preset?.title || s.value.title), 1),
+          b("div", kn, S(s.value.subtitle), 1)
         ])
       ]),
-      c("section", gn, [
-        d[8] || (d[8] = c("div", { class: "km-form-sec-title" }, "Identity", -1)),
-        c("div", hn, [
-          g(u(I), { label: "Name" }, {
-            default: f(() => [
-              g(u(V), {
-                modelValue: i.name,
-                "onUpdate:modelValue": d[0] || (d[0] = (r) => i.name = r),
+      b("section", wn, [
+        a[9] || (a[9] = b("div", { class: "km-form-sec-title" }, "Identity", -1)),
+        b("div", $n, [
+          g(c(V), { label: "Name" }, {
+            default: y(() => [
+              g(c(A), {
+                modelValue: l.name,
+                "onUpdate:modelValue": a[0] || (a[0] = (r) => l.name = r),
                 disabled: e.saving
               }, null, 8, ["modelValue", "disabled"])
             ]),
             _: 1
-          })
+          }),
+          g(vn, {
+            modelValue: l.icon,
+            "onUpdate:modelValue": a[1] || (a[1] = (r) => l.icon = r),
+            fallback: e.adapter?.icon,
+            disabled: e.saving
+          }, null, 8, ["modelValue", "fallback", "disabled"])
         ])
       ]),
-      J.value.length ? (l(), p("section", vn, [
-        d[9] || (d[9] = c("div", { class: "km-form-sec-title" }, "Endpoint", -1)),
-        c("div", mn, [
-          (l(!0), p(L, null, U(J.value, (r) => (l(), y(u(I), {
+      H.value.length ? (i(), p("section", xn, [
+        a[10] || (a[10] = b("div", { class: "km-form-sec-title" }, "Endpoint", -1)),
+        b("div", _n, [
+          (i(!0), p(R, null, U(H.value, (r) => (i(), k(c(V), {
             key: r.key,
             label: r.label,
             help: r.help
           }, {
-            default: f(() => [
-              g(u(V), {
-                modelValue: i[r.key],
-                "onUpdate:modelValue": (_) => i[r.key] = _,
+            default: y(() => [
+              g(c(A), {
+                modelValue: l[r.key],
+                "onUpdate:modelValue": (P) => l[r.key] = P,
                 type: r.type === "number" ? "number" : "text",
                 placeholder: r.placeholder,
                 disabled: e.saving
@@ -1915,19 +1981,19 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
             _: 2
           }, 1032, ["label", "help"]))), 128))
         ])
-      ])) : m("", !0),
-      H.value.length ? (l(), p("section", fn, [
-        d[10] || (d[10] = c("div", { class: "km-form-sec-title" }, "Authentication", -1)),
-        c("div", yn, [
-          (l(!0), p(L, null, U(H.value, (r) => (l(), y(u(I), {
+      ])) : w("", !0),
+      J.value.length ? (i(), p("section", Sn, [
+        a[11] || (a[11] = b("div", { class: "km-form-sec-title" }, "Authentication", -1)),
+        b("div", Pn, [
+          (i(!0), p(R, null, U(J.value, (r) => (i(), k(c(V), {
             key: r.key,
             label: r.label,
             help: r.help
           }, {
-            default: f(() => [
-              g(u(V), {
-                modelValue: i[r.key],
-                "onUpdate:modelValue": (_) => i[r.key] = _,
+            default: y(() => [
+              g(c(A), {
+                modelValue: l[r.key],
+                "onUpdate:modelValue": (P) => l[r.key] = P,
                 type: r.type === "password" ? "password" : "text",
                 placeholder: r.placeholder,
                 autocomplete: r.secret ? "new-password" : void 0,
@@ -1937,45 +2003,45 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
             _: 2
           }, 1032, ["label", "help"]))), 128))
         ])
-      ])) : m("", !0),
-      c("button", {
+      ])) : w("", !0),
+      b("button", {
         type: "button",
         class: "km-adv-toggle",
         "aria-expanded": B.value,
-        onClick: d[1] || (d[1] = (r) => B.value = !B.value)
+        onClick: a[2] || (a[2] = (r) => B.value = !B.value)
       }, [
-        g(u(j), {
+        g(c(j), {
           icon: B.value ? "tabler:chevron-down" : "tabler:chevron-right",
           "aria-hidden": "true"
         }, null, 8, ["icon"]),
-        d[11] || (d[11] = c("span", null, "Advanced settings", -1))
-      ], 8, kn),
-      B.value ? (l(), p("section", wn, [
-        c("div", $n, [
-          a.value ? m("", !0) : (l(), y(u(I), {
+        a[12] || (a[12] = b("span", null, "Advanced settings", -1))
+      ], 8, Vn),
+      B.value ? (i(), p("section", Cn, [
+        b("div", In, [
+          d.value ? w("", !0) : (i(), k(c(V), {
             key: 0,
             label: "ID",
             help: "Optional; generated when left blank."
           }, {
-            default: f(() => [
-              g(u(V), {
-                modelValue: i.id,
-                "onUpdate:modelValue": d[2] || (d[2] = (r) => i.id = r),
+            default: y(() => [
+              g(c(A), {
+                modelValue: l.id,
+                "onUpdate:modelValue": a[3] || (a[3] = (r) => l.id = r),
                 disabled: e.saving,
                 placeholder: "auto"
               }, null, 8, ["modelValue", "disabled"])
             ]),
             _: 1
           })),
-          (l(!0), p(L, null, U(rt.value, (r) => (l(), y(u(I), {
+          (i(!0), p(R, null, U(at.value, (r) => (i(), k(c(V), {
             key: r.key,
             label: r.label,
             help: r.help
           }, {
-            default: f(() => [
-              g(u(V), {
-                modelValue: i[r.key],
-                "onUpdate:modelValue": (_) => i[r.key] = _,
+            default: y(() => [
+              g(c(A), {
+                modelValue: l[r.key],
+                "onUpdate:modelValue": (P) => l[r.key] = P,
                 type: r.type === "number" ? "number" : r.type === "password" ? "password" : "text",
                 step: r.type === "number" ? "any" : void 0,
                 placeholder: r.placeholder,
@@ -1985,11 +2051,11 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
             ]),
             _: 2
           }, 1032, ["label", "help"]))), 128)),
-          g(u(I), { label: "Retry attempts" }, {
-            default: f(() => [
-              g(u(V), {
-                modelValue: i.retry_attempts,
-                "onUpdate:modelValue": d[3] || (d[3] = (r) => i.retry_attempts = r),
+          g(c(V), { label: "Retry attempts" }, {
+            default: y(() => [
+              g(c(A), {
+                modelValue: l.retry_attempts,
+                "onUpdate:modelValue": a[4] || (a[4] = (r) => l.retry_attempts = r),
                 type: "number",
                 step: "any",
                 disabled: e.saving
@@ -1997,11 +2063,11 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
             ]),
             _: 1
           }),
-          g(u(I), { label: "Retry backoff (ms)" }, {
-            default: f(() => [
-              g(u(V), {
-                modelValue: i.retry_backoff_ms,
-                "onUpdate:modelValue": d[4] || (d[4] = (r) => i.retry_backoff_ms = r),
+          g(c(V), { label: "Retry backoff (ms)" }, {
+            default: y(() => [
+              g(c(A), {
+                modelValue: l.retry_backoff_ms,
+                "onUpdate:modelValue": a[5] || (a[5] = (r) => l.retry_backoff_ms = r),
                 type: "number",
                 step: "any",
                 disabled: e.saving
@@ -2010,57 +2076,57 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
             _: 1
           })
         ])
-      ])) : m("", !0),
-      a.value ? (l(), y(u(an), {
+      ])) : w("", !0),
+      d.value ? (i(), k(c(bn), {
         key: 3,
-        modelValue: i.enabled,
-        "onUpdate:modelValue": d[5] || (d[5] = (r) => i.enabled = r),
+        modelValue: l.enabled,
+        "onUpdate:modelValue": a[6] || (a[6] = (r) => l.enabled = r),
         label: "Enabled",
         disabled: e.saving
-      }, null, 8, ["modelValue", "disabled"])) : m("", !0),
-      e.testState && e.testState.status !== "idle" ? (l(), p("div", {
+      }, null, 8, ["modelValue", "disabled"])) : w("", !0),
+      e.testState && e.testState.status !== "idle" ? (i(), p("div", {
         key: 4,
-        class: A(["km-test-result", e.testState.status])
+        class: F(["km-test-result", e.testState.status])
       }, [
-        S.value ? (l(), p("span", xn)) : (l(), y(u(j), {
+        $.value ? (i(), p("span", An)) : (i(), k(c(j), {
           key: 1,
           icon: e.testState.status === "ok" ? "tabler:circle-check" : "tabler:circle-x",
           "aria-hidden": "true"
         }, null, 8, ["icon"])),
-        c("span", null, x(S.value ? "Testing connection…" : e.testState.message), 1)
-      ], 2)) : m("", !0),
-      c("div", Sn, [
-        $.value ? (l(), y(u(D), {
+        b("span", null, S($.value ? "Testing connection…" : e.testState.message), 1)
+      ], 2)) : w("", !0),
+      b("div", Fn, [
+        m.value ? (i(), k(c(D), {
           key: 0,
           variant: "soft",
           icon: "tabler:plug-connected",
-          loading: S.value,
+          loading: $.value,
           disabled: e.saving,
-          onClick: d[6] || (d[6] = (r) => o("test"))
+          onClick: a[7] || (a[7] = (r) => o("test"))
         }, {
-          default: f(() => [...d[12] || (d[12] = [
-            N(" Test connection ", -1)
+          default: y(() => [...a[13] || (a[13] = [
+            L(" Test connection ", -1)
           ])]),
           _: 1
-        }, 8, ["loading", "disabled"])) : m("", !0),
-        d[14] || (d[14] = c("span", { class: "km-form-foot-sp" }, null, -1)),
-        g(u(D), {
+        }, 8, ["loading", "disabled"])) : w("", !0),
+        a[15] || (a[15] = b("span", { class: "km-form-foot-sp" }, null, -1)),
+        g(c(D), {
           variant: "ghost",
           disabled: e.saving,
-          onClick: d[7] || (d[7] = (r) => o("cancel"))
+          onClick: a[8] || (a[8] = (r) => o("cancel"))
         }, {
-          default: f(() => [...d[13] || (d[13] = [
-            N("Cancel", -1)
+          default: y(() => [...a[14] || (a[14] = [
+            L("Cancel", -1)
           ])]),
           _: 1
         }, 8, ["disabled"]),
-        g(u(D), {
+        g(c(D), {
           type: "submit",
           icon: "tabler:device-floppy",
           loading: e.saving
         }, {
-          default: f(() => [
-            N(x(e.saving ? "Saving" : "Save provider"), 1)
+          default: y(() => [
+            L(S(e.saving ? "Saving" : "Save provider"), 1)
           ]),
           _: 1
         }, 8, ["loading"])
@@ -2069,17 +2135,18 @@ const un = { class: "km-editor-head" }, cn = { class: "km-editor-head-text" }, b
   }
 });
 export {
-  ln as _,
+  pn as _,
   D as a,
-  sn as b,
-  Fn as c,
-  An as d,
-  Kt as e,
-  Q as f,
-  I as g,
-  V as h,
-  Vn as i,
-  an as j,
-  nt as s
+  gn as b,
+  jn as c,
+  Ln as d,
+  Jt as e,
+  nt as f,
+  V as g,
+  A as h,
+  Nn as i,
+  bn as j,
+  vn as k,
+  ot as s
 };
-//# sourceMappingURL=ProviderProfileEditor.vue_vue_type_script_setup_true_lang-ZRGEU-eL.js.map
+//# sourceMappingURL=ProviderProfileEditor.vue_vue_type_script_setup_true_lang-DhB1ATyK.js.map

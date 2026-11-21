@@ -37,6 +37,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.models.migrations:06_unset_zero_profile_timeouts
         path: .meta.target_db
+      - entry: kickside.models.migrations:07_provider_profile_icon
+        path: .meta.target_db
       - entry: kickside.models:db_config
         path: .meta.db_id
       - entry: kickside.models.catalog:catalog_database

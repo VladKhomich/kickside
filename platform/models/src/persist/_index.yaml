@@ -80,6 +80,7 @@ entries:
     method: run
     imports:
       catalog_policy: kickside.models.catalog:policy
+      models_types: kickside.models:models_types
     security:
       policies: [kickside.models:secret_key_access]
 
