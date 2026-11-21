@@ -105,6 +105,8 @@ entries:
         path: .meta.router
       - entry: kickside.core.threads.api:list_job_runs.endpoint
         path: .meta.router
+      - entry: kickside.core.lifecycle:inspect_custody.endpoint
+        path: .meta.router
 
   # ─── Tunable knob (env.variable) ─────────────────────────────────────
   # ─── Constant vocabulary ─────────────────────────────────────────────

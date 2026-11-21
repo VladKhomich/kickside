@@ -9,7 +9,7 @@ namespace: kickside.ui
 
 entries:
   - name: dep.kickside.component
-    version: '>=0.3.31'
+    version: '>=0.3.32'
     kind: ns.dependency
     meta:
       comment: Actor-scoped navigation badges use Component singleton addresses and protected principal queries.

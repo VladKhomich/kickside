@@ -9,6 +9,37 @@ namespace: kickside.core.lifecycle
 # a provisioned component-kind declaration + a projection; no new machinery, it rides the thread engine.
 
 entries:
+  - name: custody_inventory
+    kind: library.lua
+    meta:
+      private: true
+    source: file://custody_inventory.lua
+    modules: [sql, uuid, json]
+    imports:
+      component_inventory: kickside.component.persist:custody_inventory
+      lifecycle_consts: kickside.core.lifecycle:consts
+      core_db: kickside.core:db
+      persisted_json: kickside.contract:persisted_json
+      execution_identity: kickside.execution:execution_identity
+
+  - name: inspect_custody
+    kind: function.lua
+    source: file://custody_inventory_http.lua
+    method: handle
+    modules: [http]
+    imports:
+      http_params: kickside.contract:http_params
+      http_errors: kickside.contract:http_errors
+      inventory: kickside.core.lifecycle:custody_inventory
+
+  - name: inspect_custody.endpoint
+    kind: http.endpoint
+    meta:
+      comment: Instance operator inspection of retained lifecycle custody evidence.
+    method: GET
+    path: /lifecycle/custody-inventory
+    func: inspect_custody
+
   # ─── Dependency interface (ns.requirement, userspace pattern) ────────
   - name: process_host
     kind: ns.requirement
