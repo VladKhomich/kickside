@@ -56,6 +56,41 @@ advances their generations. Repeating the same declaration preserves those
 generations. Call `resume_projection` when the owner wants a paused cursor to
 run again. Ordinary explicit registration resumes the addressed cursor.
 
+### Registered filtered publication
+
+A public process worker can opt into shared-database publication for registered
+projections that prefetch a filtered range and name multiple destination
+components in their stored worker configuration.
+
+```yaml
+meta:
+  type: projection.worker
+  registered_checkpoint:
+    writer_ref: proc://vendor.projection:publish
+    target_db_config: vendor.projection:db_config
+    destinations_key: target_ids
+```
+
+The same package owns the declared private process and its database config
+entry. Set `private`, `checkpointed_apply`, `filtered_checkpoint` and
+`registered_checkpoint_writer` to `true` under the private process's `meta`.
+The process inherits the registered actor's execution frame. When the target
+config's `meta.db_id` names the shared Core and Jobs database resource, the
+private process handles configurations with 2 to 32 distinct destination
+components. Other configurations use the ordinary process.
+
+An explicit registration records the calling principal for this path. Existing
+registrations can opt in through explicit registration at their current
+position. An `ensure` call retains an existing execution identity.
+
+The private process receives `input.checkpoint`, with the fold body on
+`input.projection.body`. Supply the body to the checkpoint cursor before calling
+`kickside.core.projections:apply.checkpoint` with the ordered event IDs and
+sequences for the committed prefix. Its in-process write callback receives the
+shared transaction. Core checks the registered declaration, source binding,
+destination WRITE, exact inputs, lease and reset before committing the callback,
+fold, output events and cursor together.
+
 ## Reference
 
 - [Module reference](src/README.md)

@@ -64,10 +64,19 @@ function M.register_projection(args: any): (any?, error?)
     local source, gate_err = reader.gate_projection_registration(_db, args.thread_id :: string)
     if gate_err then return nil, (release(_db, gate_err)) end
     local lifecycle_thread = source.lifecycle == true
+    local member_binding = not lifecycle_thread and binding.worker_runtime == "proc" and proj_worker.validate(binding, false) or nil
+    local registered_checkpoint, checkpoint_err
+    if member_binding and member_binding.registered_checkpoint then
+        registered_checkpoint, checkpoint_err = proj_worker.registers_checkpoint_principal(member_binding,
+            args.worker_config, args.worker_input_mode, args.events)
+        if checkpoint_err then return nil, (release(_db, checkpoint_err)) end
+    end
 
     local identity, identity_load_err
     if lifecycle_thread then
         identity = {system = true}
+    elseif registered_checkpoint then
+        identity, identity_load_err = common.captured_identity()
     else
         identity, identity_load_err = declared_identity(args.thread_id :: string)
     end
@@ -80,7 +89,9 @@ function M.register_projection(args: any): (any?, error?)
         return nil, (release(_db, err))
     end
 
-    local validated, validate_err = proj_worker.validate(binding, identity.system == true)
+    local validated = identity.system ~= true and member_binding or nil
+    local validate_err
+    if not validated then validated, validate_err = proj_worker.validate(binding, identity.system == true) end
     if validate_err or not validated then
         return nil, (release(_db, validate_err))
     end
@@ -93,6 +104,7 @@ function M.register_projection(args: any): (any?, error?)
     register_args.system_identity = nil
     register_args.execution_identity_row = identity.row
     register_args.system_identity = identity.system == true
+    register_args.registered_checkpoint_principal = registered_checkpoint == true
 
     local result, register_err = proj_writer.register_projection(_db, args.thread_id :: string, register_args, nil, nil, not lifecycle_thread and source or nil)
     register_err = release(_db, register_err, register_err == nil and result ~= nil)

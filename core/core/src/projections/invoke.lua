@@ -134,9 +134,10 @@ local function batch_access(row: table, binding: table, snapshot: any?): (any?, 
     end
     if identity_err then return nil, nil, nil, identity_err end
     if not actor then return nil, nil, nil, event_access.denied() end
-    local acl, acl_err = component_query.snapshot_access(row.component_id, event_access.read_mask(restricted), actor)
+    local read_mask = event_access.read_mask(restricted)
+    local acl, acl_err = component_query.snapshot_access(row.component_id, read_mask, actor)
     if acl_err then return nil, nil, nil, acl_err end
-    return acl, snapshot, {actor = actor, scope = scope}, nil
+    return acl, snapshot, {actor = actor, scope = scope, read_mask = read_mask}, nil
 end
 
 local function declaration(snapshot: any, id: string): (string?, error?)
@@ -293,7 +294,7 @@ end
 
 local function run_checkpointed(binding: table, input: table, host: string, db_id: string, job: table,
         current: table, prefetched_last: number, before_dispatch: () -> error?, execution_frame: table?,
-        owner: table?): (table?, error?, table?, table?)
+        owner: table?, registered: boolean?): (table?, error?, table?, table?)
     local first = tonumber(current.last_seq)
     if first == nil then return nil, response_error("cursor.position"), current end
     local first_continuation = current.continuation
@@ -301,10 +302,13 @@ local function run_checkpointed(binding: table, input: table, host: string, db_i
     for key, value in pairs(current) do assigned_cursor[key] = value end
     assigned_cursor.component_identity_generation = nil
     assigned_cursor.component_owned_candidate = nil
+    -- The plain input already carries the registered projection body.
+    if registered then assigned_cursor.body, assigned_cursor.raw_body = nil, nil end
     input.checkpoint = {
         job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq},
         cursor = assigned_cursor,
         prefetched_last = prefetched_last,
+        registered = registered,
     }
     local result, run_err = worker.run_proc_supervised(binding, input, {
         proc_host = host, before_dispatch = before_dispatch, execution_frame = execution_frame,
@@ -424,6 +428,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         local acl: any = nil
         local execution_frame: table? = nil
         local checkpoint_owner: table? = nil
+        local registered: boolean? = nil
         if component_backed or needs_declaration or needs_owned_declaration then
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
@@ -457,6 +462,13 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                 local access_err: error?
                 acl, revision, execution_frame, access_err = batch_access(current, binding, revision)
                 if access_err then return nil, access_err end
+            end
+            if binding.registered_checkpoint and execution_frame then
+                local admitted, admission_err, owner = worker.admit_registered_checkpoint(binding, current, db_id, revision, types)
+                if admission_err then return nil, admission_err end
+                if admitted then
+                    binding, checkpoint_owner, registered = admitted, owner, true
+                end
             end
             local open_err: error?
             db, open_err = sql.get(db_id)
@@ -502,7 +514,13 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
         if binding.filtered_checkpoint and #batch == 0 then
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
-            local result, empty_err = apply.advance_filtered_empty(db_id, job, current, seen_last, checkpoint_owner :: table)
+            local authority
+            if registered then
+                local capture_err
+                authority, capture_err = worker.capture_registered_checkpoint(binding, current, execution_frame :: table, true)
+                if not authority then return nil, capture_err or response_error("registered.checkpoint"), current, checkpoint_owner end
+            end
+            local result, empty_err = apply.advance_filtered_empty(db_id, job, current, seen_last, checkpoint_owner :: table, authority)
             return result, empty_err, current, checkpoint_owner
         end
         if #batch > 0 then
@@ -516,6 +534,10 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             -- before invoking either a function or a monitored process.
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
+            if registered then
+                local captured, capture_err = worker.capture_registered_checkpoint(binding, current, execution_frame :: table)
+                if not captured then return nil, capture_err or response_error("registered.checkpoint"), current, checkpoint_owner end
+            end
             local revision_changed = false
             local function before_dispatch(): error?
                 if needs_owned_declaration then
@@ -529,6 +551,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                     end
                     return nil
                 end
+                if registered then return check_revision(revision, current.component_impl_id, target_id, fold_target :: string) end
                 return check_revision(revision, current.component_impl_id, target_id)
             end
             if binding.worker_runtime == "proc" then
@@ -537,7 +560,7 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                 if type(host) ~= "string" or host == "" then return nil, response_error("process_host") end
                 if binding.checkpointed_apply then
                     return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last, before_dispatch,
-                        execution_frame, checkpoint_owner)
+                        execution_frame, checkpoint_owner, registered)
                 end
                 output, row_err = worker.run_proc_supervised(binding, work_input, {
                     proc_host = host,

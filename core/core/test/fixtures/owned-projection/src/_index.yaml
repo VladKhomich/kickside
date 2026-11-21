@@ -121,3 +121,56 @@ entries:
       - contract: kickside.contract:component
         methods:
           get_status: kickside.core.threads:thread_status
+
+  - name: registered_checkpoint_ordinary
+    kind: process.lua
+    meta:
+      type: projection.worker
+      registered_checkpoint:
+        writer_ref: proc://core.owned.fixture:registered_checkpoint_writer
+        target_db_config: core.owned.fixture:registered_checkpoint_db
+        destinations_key: destinations
+    source: file://registered_checkpoint_worker.lua
+    method: ordinary
+    modules: [process, security, sql, time]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
+  - name: registered_checkpoint_split
+    kind: process.lua
+    meta:
+      type: projection.worker
+      registered_checkpoint:
+        writer_ref: proc://core.owned.fixture:registered_checkpoint_writer
+        target_db_config: core.owned.fixture:registered_checkpoint_split_db
+        destinations_key: destinations
+    source: file://registered_checkpoint_worker.lua
+    method: ordinary
+    modules: [process, security, sql, time]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
+  - name: registered_checkpoint_db
+    kind: registry.entry
+    meta: {db_id: app:db}
+
+  - name: registered_checkpoint_split_db
+    kind: registry.entry
+    meta: {db_id: app:sql_transient_first}
+
+  - name: registered_checkpoint_writer
+    kind: process.lua
+    meta:
+      type: projection.worker
+      private: true
+      checkpointed_apply: true
+      filtered_checkpoint: true
+      registered_checkpoint_writer: true
+    source: file://registered_checkpoint_worker.lua
+    method: write
+    modules: [process, security, sql, time]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types

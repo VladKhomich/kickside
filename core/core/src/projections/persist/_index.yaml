@@ -32,6 +32,25 @@ entries:
       error_envelope: kickside.contract:error_envelope
       job_types: kickside.core.jobs:types
       checkpoint_declaration: kickside.core.projections.persist:checkpoint_declaration
+      registered_checkpoint: kickside.core.projections.persist:registered_checkpoint
+      core_db: kickside.core:db
+
+  - name: registered_checkpoint
+    kind: library.lua
+    source: file://registered_checkpoint.lua
+    modules: [sql, json, registry, security]
+    imports:
+      canonical_json: kickside.contract:canonical_json
+      access_subjects: kickside.component.persist:access_subjects
+      component_query: kickside.component.persist:component_query
+      component_types: kickside.component:types
+      event_access: kickside.core.threads:event_access
+      execution_identity: kickside.execution:execution_identity
+      jobs_config: kickside.core.jobs:config
+      core_types: kickside.core:types
+      registration: kickside.core.projections.persist:register
+      text_trim: kickside.contract:text_trim
+      owned_worker: kickside.core.projections.persist:owned_worker
 
   - name: checkpoint_declaration
     kind: library.lua
