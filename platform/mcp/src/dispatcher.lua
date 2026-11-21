@@ -8,6 +8,7 @@
 
 local trim = require("text_trim").trim
 local json = require("json")
+local base64 = require("base64")
 local registry = require("registry")
 local security = require("security")
 local consts = require("mcp_consts")
@@ -22,12 +23,54 @@ local tool_arguments = require("tool_arguments")
 local M = {}
 
 local JSONRPC = "2.0"
+local MAX_IMAGES = 10
+local MAX_IMAGE_DATA_BYTES = 8 * 1024 * 1024
 
 local function rpc_result(id: any, result: any): any
     return { jsonrpc = JSONRPC, id = id, result = result }
 end
 local function rpc_error(id: any, code: integer, message: string): any
     return { jsonrpc = JSONRPC, id = id, error = { code = code, message = message } }
+end
+
+-- The tool producer owns access and redaction. Lift its canonical vision
+-- attachments into MCP content without repeating the bytes in the JSON result.
+local function image_content(images: any): (any?, error?)
+    if type(images) ~= "table" then
+        return nil, errors.new({ kind = errors.INVALID, message = "Tool images must be a list" })
+    end
+    local blocks: { any } = {}
+    local total = 0
+    local size = #images
+    if size == 0 and next(images) ~= nil then
+        return nil, errors.new({ kind = errors.INVALID, message = "Tool images must be a list" })
+    end
+    for index = 1, math.min(size, MAX_IMAGES) do
+        local image = images[index]
+        local source = type(image) == "table" and image.type == "image" and image.source or nil
+        local data = type(source) == "table" and source.type == "base64" and source.data or nil
+        local mime = type(source) == "table" and source.mime_type or nil
+        if type(data) ~= "string" or #data == 0 or #data % 4 ~= 0 or type(mime) ~= "string"
+            or #mime > 100 or not mime:match("^image/[a-z0-9][a-z0-9.+-]*$") then
+            return nil, errors.new({ kind = errors.INVALID, message = "Tool returned an invalid image attachment" })
+        end
+        if total + #data > MAX_IMAGE_DATA_BYTES then
+            blocks[index] = { type = "text", text = "Image " .. index
+                .. " exceeded the MCP image byte limit. Request fewer or smaller images." }
+        else
+            local _, decode_err = base64.decode(data)
+            if decode_err then
+                return nil, errors.new({ kind = errors.INVALID, message = "Tool returned an invalid image attachment" })
+            end
+            total = total + #data
+            blocks[index] = { type = "image", mimeType = mime, data = data }
+        end
+    end
+    if size > MAX_IMAGES then
+        blocks[#blocks + 1] = { type = "text", text = "Image attachments after " .. MAX_IMAGES
+            .. " exceeded the MCP image count limit. Request fewer images." }
+    end
+    return blocks, nil
 end
 
 -- Shape a tool/meta result into MCP content. Strings pass through; tables are JSON.
@@ -37,10 +80,25 @@ local function content(result: any, is_error: boolean, has_output_schema: boolea
     if type(result) == "string" then
         return { content = { { type = "text", text = result } }, isError = is_error }, nil
     end
+    local blocks: { any } = {}
+    if type(result) == "table" and result._images ~= nil then
+        if not is_error and result.success ~= false then
+            local images, image_err = image_content(result._images)
+            if image_err then return nil, image_err end
+            blocks = images :: { any }
+        end
+        local metadata = table.create(0, 1)
+        for key, value in pairs(result) do
+            if key ~= "_images" then metadata[key] = value end
+        end
+        result = metadata
+    end
     local text, encode_err = json.encode(result)
     if encode_err then return nil, encode_err end
-    local shaped: any = { content = { { type = "text", text = text } }, isError = is_error }
-    if has_output_schema and type(result) == "table" and result.success ~= false and text:sub(1, 1) == "{" then
+    table.insert(blocks, 1, { type = "text", text = text })
+    local shaped: any = { content = blocks, isError = is_error }
+    if type(result) == "table" and text:sub(1, 1) == "{"
+        and ((has_output_schema and result.success ~= false) or (is_error and result.success == false)) then
         shaped.structuredContent = result
     end
     return shaped, nil
@@ -161,7 +219,8 @@ local function handle_tools_call(id: any, principal: any, authorized: any, param
     if meta_tools.is_meta(name) then
         local result, merr, _, has_output_schema = meta_tools.handle(name, arguments, principal, invoke)
         if merr then return rpc_result(id, content_error("error: ", merr)) end
-        local shaped, encode_err = content(result, false, has_output_schema)
+        local domain_error = name == "call_tool" and type(result) == "table" and result.success == false
+        local shaped, encode_err = content(result, domain_error, has_output_schema)
         if encode_err then return rpc_result(id, content_error("error: ", encode_err)) end
         return rpc_result(id, shaped)
     end
@@ -182,7 +241,6 @@ local function handle_tools_call(id: any, principal: any, authorized: any, param
     local domain_error = type(result) == "table" and result.success == false
     local shaped, encode_err = content(result, domain_error, has_output_schema)
     if encode_err then return rpc_result(id, content_error("tool result error: ", encode_err)) end
-    if domain_error then shaped.structuredContent = result end
     return rpc_result(id, shaped)
 end
 

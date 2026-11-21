@@ -35,7 +35,7 @@ entries:
     meta: { type: tool, llm_alias: dummy_allowed }
     source: file://dummy_tool.lua
     method: handler
-    modules: [ctx]
+    modules: [ctx, base64]
 
   - name: hidden_prompt
     kind: registry.entry
@@ -364,7 +364,7 @@ entries:
         additionalProperties: false
     source: file://dummy_tool.lua
     method: handler
-    modules: [ctx]
+    modules: [ctx, base64]
 
   - name: dummy_tool
     kind: function.lua
@@ -376,7 +376,7 @@ entries:
       # Intentionally no input_schema: exercises the no-argument MCP object schema.
     source: file://dummy_tool.lua
     method: handler
-    modules: [ctx]
+    modules: [ctx, base64]
 
 
   # Reads a component through the access-filtered service, so the folder-scope e2e

@@ -28,6 +28,13 @@ entries:
         - template.get
       effect: allow
 
+  - name: host_url_read
+    kind: security.policy
+    policy:
+      resources: wippy.facade:host_url
+      actions: funcs.call
+      effect: allow
+
   - name: handler
     kind: function.lua
     source: file://login_jet.lua
@@ -35,6 +42,7 @@ entries:
       text_trim: kickside.contract:text_trim
     method: handler
     modules:
+      - funcs
       - http
       - registry
       - templates
@@ -43,6 +51,7 @@ entries:
         id: app.login:handler
       policies:
         - app.login:theme_read
+        - app.login:host_url_read
 
   - name: endpoint
     kind: http.endpoint

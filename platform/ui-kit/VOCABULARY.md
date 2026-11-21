@@ -10,6 +10,41 @@ last section tells you where it should live instead.
 The module mechanics — how the package is published, materialized and wired into
 a consumer — are in [README.md](README.md). This file is about the vocabulary.
 
+## Settings sections and advanced options
+
+**SettingsRail** is the System Settings section navigation. It occupies 232 CSS
+px on desktop and wraps above the content at widths up to 640 CSS px, with its
+own scroll and a 40% height cap when the host provides a bounded height.
+
+| Prop or event | Use |
+|---|---|
+| `label` | Accessible name of the navigation landmark. |
+| `value` | Current item value, supplied by the host. The active button exposes `aria-current`. |
+| `groups` | Ordered `{ heading?, items }` groups. Each item has `{ value, label, icon? }`. Put section status in the content header. |
+| `leadingItem` | Optional item above the groups, such as All settings. |
+| `update:value` | The string value chosen by click, Enter, or Space. Use it to update host state or the URL. |
+
+Tab and Shift+Tab move between buttons. Arrow keys move focus and wrap across
+groups. Home and End move focus to the first and last items. Focus movement
+keeps the current selection until activation.
+
+**ListRail** is the Models and Security entity-list frame. Place it next to
+its detail pane inside `.kx-shell`, and import `kx-tokens.css` and
+`kx-shell.css`. The shell uses a 264 CSS px desktop column and stacks at
+widths up to 760 CSS px. Pass `title` and an optional `count`. Put header
+buttons in `actions`, search or filters above the scrolling area in
+`toolbar`, and the entity list in the default slot. The host owns entity
+selection and its effects.
+
+**Disclosure** wraps PrimeVue Accordion for a single expandable area such as
+Advanced options. Its `label` prop names the button, `open` defaults to
+`false`, and `update:open` supports `v-model:open`. Put content in the default
+slot. PrimeVue provides the chevrons, keyboard activation, and
+`aria-expanded` / `aria-controls`. The theme uses PrimeVue's expand/collapse
+motion and respects reduced motion.
+
+Import `kx-settings-rail.css` and `kx-disclosure.css` where the controls render.
+
 ---
 
 ## The one rule that catches everyone

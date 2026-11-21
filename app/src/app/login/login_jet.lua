@@ -1,4 +1,5 @@
 local trim = require("text_trim").trim
+local funcs = require("funcs")
 local http = require("http")
 local registry = require("registry")
 local templates = require("templates")
@@ -38,6 +39,12 @@ local function handler()
     local storage_key, key_err = facade_requirement("theme_storage_key")
     if key_err then return nil, key_err end
 
+    local host_url = funcs.call("wippy.facade:host_url")
+    local host_base = ""
+    if type(host_url) == "string" then
+        host_base = host_url:gsub("/+$", "")
+    end
+
     local has_theme = false
     local theme_class = ""
     local color_scheme = ""
@@ -66,6 +73,7 @@ local function handler()
         hasTheme = has_theme,
         themeClass = theme_class,
         colorScheme = color_scheme,
+        hostBase = host_base,
     })
     if render_err then
         res:set_status(http.STATUS.INTERNAL_ERROR)

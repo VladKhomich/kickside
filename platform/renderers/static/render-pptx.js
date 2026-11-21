@@ -24,7 +24,7 @@ const z = { class: "pptxv" }, F = {
       if (e) {
         f.value = !0;
         try {
-          const { data: s } = await D.get(e, { responseType: "arraybuffer" }), { pptxToHtml: R } = await import("./index-Dtzr2iRB.js");
+          const { data: s } = await D.get(e, { responseType: "arraybuffer" }), { pptxToHtml: R } = await import("./index-BGM9Ur-w.js");
           n.value = await R(s, { width: x, height: y, scaleToFit: !0 }), await B(), h();
         } catch (s) {
           i.value = s?.response?.data?.error || s?.message || "could not render presentation";

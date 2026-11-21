@@ -1,6 +1,11 @@
 version: "1.0"
 override:
   "app:db:file": "${sqlite_path}"
+  # The live HTTP endpoint uses the harness implementation of the Users binding.
+  "kickside.mcp.security:endpoint_identity_resolver:policy.resources":
+    - kickside.contract:scope_resolver
+    - kickside.users:scope_resolver_binding
+    - app:scope_resolver_binding
 workspace:
   replacements:
     kickside/realtime-dispatch: ../../../core/realtime-dispatch

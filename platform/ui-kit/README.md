@@ -1,6 +1,6 @@
 # kickside/ui-kit
 
-Shared frontend CSS vocabulary and component deletion tracking for KickSide
+Shared frontend styles, controls, and component deletion tracking for KickSide
 modules, packaged as a build-time artifact.
 
 The [package/](package/) directory is the deliverable. Consumers materialize it
@@ -40,6 +40,43 @@ The package provides cards, headers, modal headers, state displays, focus
 styles, animation, tag sizing, and decorative category tones. Theme severity
 colors remain the responsibility of the Wippy theme. Replace duplicated local
 rules when adopting a shared class.
+
+## Rails and disclosure
+
+Import each Vue file from `@kickside/ui-kit`. Add the corresponding styles
+to the consumer's stylesheet. In a web component, include those styles in
+its shadow root stylesheet.
+
+```css
+@import "@kickside/ui-kit/kx-settings-rail.css";
+/* ListRail uses the shared split layout. */
+@import "@kickside/ui-kit/kx-tokens.css";
+@import "@kickside/ui-kit/kx-shell.css";
+@import "@kickside/ui-kit/kx-disclosure.css";
+```
+
+| Component | Props | Events and slots |
+|---|---|---|
+| `SettingsRail` | `label: string` names the navigation landmark. `value: string` selects the current item. `groups: readonly SettingsRailGroup[]` supplies ordered groups. Optional `leadingItem: SettingsRailItem` sits above the groups. | `update:value` emits the selected item's string value. |
+| `ListRail` | `title: string` names the rail. Optional `count: number` adds a count beside the title. | The `actions` slot sits beside the title, `toolbar` sits above the scroll body, and the default slot contains the entity list. |
+| `Disclosure` | `label: string` names the toggle. Optional `open: boolean` starts closed by default and supports `v-model:open`. | `update:open` emits the next open state. The default slot contains the disclosed content, which stays mounted while collapsed. |
+
+`SettingsRailGroup` has an optional `heading: string` and an ordered
+`items: readonly SettingsRailItem[]`. An item has a unique `value: string`,
+a `label: string` and an optional Iconify `icon: string`. Put section status
+in the content header. Values are unique across the entire rail, including
+the leading item. Both types are exported by `SettingsRail.vue`.
+
+For URL-backed sections, derive `value` from the current route and handle
+`update:value` by navigating in the host. Use `v-model:value` for local
+selection. The host renders the selected pane and puts the rail and pane in a
+flex container that changes from row to column at 640 CSS px.
+
+Put `ListRail` and its detail pane inside `.kx-shell`. The shell stacks them
+at 760 CSS px. Supply entity rows, selection and actions from the host.
+
+The rail uses the `@iconify/vue` peer for icons. Disclosure uses the PrimeVue
+Accordion with the consumer's PrimeVue configuration.
 
 ## Component deletion tracking
 

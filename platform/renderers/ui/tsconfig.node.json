@@ -7,5 +7,5 @@
     "allowSyntheticDefaultImports": true,
     "strict": true
   },
-  "include": ["docx-preview-symbol-bullets.ts", "vite.config.ts", "../../widgets/ui/wc-build.ts"]
+  "include": ["docx-preview-compat.ts", "vite.config.ts", "../../widgets/ui/wc-build.ts"]
 }

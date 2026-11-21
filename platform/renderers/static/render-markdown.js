@@ -51,7 +51,7 @@ const O = {
       for (const n of a) {
         const r = n.textContent ?? "";
         try {
-          const { default: s } = await import("./mermaid.core-9Jub3RWO.js").then((z) => z.cb);
+          const { default: s } = await import("./mermaid.core-DdcjU-G4.js").then((z) => z.cb);
           if (o !== l) return;
           const e = getComputedStyle(n), h = e.getPropertyValue("--p-content-background").trim(), M = e.getPropertyValue("--p-content-border-color").trim();
           s.initialize({
