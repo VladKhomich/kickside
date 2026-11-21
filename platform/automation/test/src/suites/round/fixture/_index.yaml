@@ -184,7 +184,7 @@ entries:
       type: kickside.automation.port
       title: Round Fixture Event Feed
     binding: kickside.automation.round.fixture:round_source_kind
-    event: kickside.automation.round.fixture.events:source.received
+    event: kickside.automation.round.fixture.events:source.changed
     output_schema: '{ "type": "object", "properties": { "directive": { "type": "string" } } }'
     config_schema:
       thread_id:
