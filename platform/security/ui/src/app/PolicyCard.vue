@@ -7,10 +7,7 @@ import Pill from './shared/Pill.vue'
 const props = defineProps<{ policy: Policy, mode: 'palette' | 'selected' | 'locked' }>()
 const emit = defineEmits<{ add: []; remove: [] }>()
 
-const title = computed(() => {
-  if (props.policy.available === false) return props.policy.id
-  return props.policy.title && props.policy.title !== props.policy.id ? props.policy.title : 'Unnamed permission'
-})
+const title = computed(() => props.policy.title || props.policy.id)
 
 function onDragStart(e: DragEvent) {
   if (props.mode === 'locked' || !e.dataTransfer) return

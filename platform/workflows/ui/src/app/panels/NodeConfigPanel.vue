@@ -75,10 +75,27 @@ const execution = computed(() => props.node?.ref ? blockDefs[props.node.ref]?.ex
 const supportsRetries = computed(() => isBlock.value && ['function', 'tool'].includes(execution.value?.kind || ''))
 const isToolBlock = computed(() => isBlock.value && isToolBlockRef(props.node?.ref))
 
-const extConfigRow = computed(() => {
+const blockConfigRow = computed(() => {
   if (!props.node || !isBlock.value) return null
   return configRowFromSchema(blockConfigSchema(props.node.ref))
 })
+const runnerReview = computed(() => props.node?.ref === 'kickside.inbox:block.review'
+  && blockConfigRow.value?.config_schema.assignee?.readOnly === true)
+const savedAssignee = computed(() => runnerReview.value && typeof nodeConfig.value.assignee === 'string'
+  && nodeConfig.value.assignee !== '')
+const extConfigRow = computed(() => {
+  const row = blockConfigRow.value
+  if (!row || !runnerReview.value) return row
+  const fields = { ...row.config_schema }
+  delete fields.assignee
+  return { config_schema: fields }
+})
+function useFlowRunner() {
+  if (!savedAssignee.value) return
+  const config = { ...nodeConfig.value }
+  delete config.assignee
+  commitConfig(config)
+}
 const blockWc = computed(() => props.node && isBlock.value ? blockConfigWc(props.node.ref) : undefined)
 const extPicker = computed(() => primaryPicker(extConfigRow.value, 'workflow-extension-node'))
 const extFormSchema = computed(() => schemaFormFields(extConfigRow.value, 'workflow-extension-node'))
@@ -211,6 +228,11 @@ function commitTitle() {
 
       <!-- Block configuration comes from the canonical Block descriptor. -->
       <template v-if="isBlock">
+        <template v-if="runnerReview">
+          <p class="wf-panel-hint">Review goes to the person running this Flow.</p>
+          <p v-if="savedAssignee" class="wf-panel-hint">This step has a saved assignee from an earlier version.</p>
+          <Button v-if="savedAssignee" severity="secondary" text @click="useFlowRunner">Use Flow runner</Button>
+        </template>
         <template v-if="blockWc">
           <div class="wf-panel-label">Configuration</div>
           <WcMount :tag="blockWc" :schema="blockConfigSchema(node.ref)" :config="nodeConfig" @change="onConfigChange" />

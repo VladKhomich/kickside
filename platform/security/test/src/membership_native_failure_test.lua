@@ -21,6 +21,25 @@ local function define_tests()
                 test.eq(err:details().field, case.field)
             end)
         end
+        test.it("rejects new internal grants and permits retention or explicit removal", function()
+            local classify = "kickside.security.binding:classify_membership_effect"
+            for _, id in ipairs({
+                "app:catalog_private_scope", "app:catalog_service_scope", "app:catalog_internal_scope",
+                "app:catalog_descriptor_restricted_scope", "app.security:ingress",
+            }) do
+                local result, err = funcs.call(classify, {before_groups = {}, after_groups = {id}})
+                test.is_nil(result, id)
+                test.is_true(errors.is(err, errors.PERMISSION_DENIED), tostring(err))
+                test.eq(err:details().code, "scope_not_assignable")
+                local same, same_err = funcs.call(classify, {before_groups = {id}, after_groups = {id}})
+                test.is_nil(same_err)
+                test.eq(same.effect, "unchanged")
+                local removed, remove_err = funcs.call(classify, {before_groups = {id}, after_groups = {}})
+                test.is_nil(remove_err)
+                test.eq(removed.effect, "reduction")
+            end
+        end)
+
         test.it("retains the Unavailable facade and the complete native dependency cause", function()
             local result, err = funcs.call("app:membership_native_failure_binding", {
                 before_groups = {"security_test"}, after_groups = {"security_test"},

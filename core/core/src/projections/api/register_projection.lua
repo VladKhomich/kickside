@@ -29,7 +29,7 @@ local M = {}
 function M.register(thread_id: string, data: any): (integer, { [string]: any })
     if type(thread_id) ~= "string" or thread_id == "" then return math.floor(http.STATUS.BAD_REQUEST), {success = false, error = "thread id is required"} end
     if type(data) ~= "table" then return math.floor(http.STATUS.BAD_REQUEST), {success = false, error = "request body is required"} end
-    for _, field in ipairs({ "execution_identity", "execution_identity_row", "system_identity" }) do
+    for _, field in ipairs({ "execution_identity", "execution_identity_row", "system_identity", "registered_checkpoint_principal" }) do
         if data[field] ~= nil then
             local refused = errors.new({ message = field .. " is server-derived and cannot be supplied",
                 kind = errors.INVALID, retryable = false, details = { error_kind = "declaration" } })
@@ -68,7 +68,17 @@ function M.register(thread_id: string, data: any): (integer, { [string]: any })
     end
     local lifecycle_thread = source.lifecycle == true
     local identity
+    local registered_checkpoint
     if not lifecycle_thread then
+        if validated.registered_checkpoint then
+            local checkpoint_err
+            registered_checkpoint, checkpoint_err = worker.registers_checkpoint_principal(validated,
+                data.worker_config, data.worker_input_mode, data.events)
+            if checkpoint_err then
+                local status, payload = thread_access.failure_response(db, checkpoint_err, tostring(checkpoint_err))
+                return status, payload
+            end
+        end
         local capture_err
         identity, capture_err = execution_identity.capture({ component_id = source.binding.component_id })
         if not capture_err then identity, capture_err = error_envelope.binding(identity, nil, nil, "capture projection identity", "core_http_operation_response") end
@@ -88,6 +98,7 @@ function M.register(thread_id: string, data: any): (integer, { [string]: any })
         worker_ref = validated.worker_ref,
         worker_input_mode = data.worker_input_mode,
         execution_identity = identity,
+        registered_checkpoint_principal = registered_checkpoint == true,
         system_identity = lifecycle_thread,
         worker_config = data.worker_config,
         events = data.events,

@@ -73,12 +73,12 @@ entries:
           operator: ne
           value: threads.output.publish
 
-  - name: self_only
+  - name: legacy_assigner
     kind: security.policy
     policy:
-      resources: '*'
+      resources: 'user:*'
       actions: inbox.assign
-      effect: deny
+      effect: allow
 
   - name: owned_item_type
     kind: registry.entry
@@ -177,7 +177,7 @@ entries:
     kind: ns.dependency
     version: "*"
     meta:
-      comment: Real user persistence owns app_users and the principal directory used by Inbox assignment.
+      comment: Real user persistence owns app_users and the principal directory used to check the Flow runner.
     component: "kickside/users"
     parameters:
       - { name: kickside.users:env_storage, value: app:env_storage }

@@ -21,6 +21,8 @@ entries:
     targets:
       - entry: kickside.core.jobs.migrations:04_jobs
         path: .meta.target_db
+      - entry: kickside.core.jobs.migrations:06_retained_queue
+        path: .meta.target_db
       - entry: kickside.core.jobs.migrations:07_job_slots
         path: .meta.target_db
       - entry: kickside.core.jobs.migrations:14_worker_pulse
