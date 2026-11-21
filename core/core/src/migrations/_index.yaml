@@ -153,6 +153,19 @@ entries:
       natural_key: kickside.core.threads.persist:natural_key
     method: migrate
 
+  - name: 21_legacy_thread_schema
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      comment: Adopt historical thread and cursor storage before the blocked projection pin backfill.
+      depends_on: [ns:wippy.migration]
+      timestamp: "2026-10-22T00:00:11Z"
+    source: file://21_legacy_thread_schema.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
   - name: 12_blocked_projection_pins
     kind: function.lua
     meta:
@@ -277,15 +290,31 @@ entries:
       migration: wippy.migration:migration
     method: migrate
 
-
-  - name: 21_lifecycle_custody_disposition
+  - name: 22_legacy_projection_slots
     kind: function.lua
     meta:
       type: migration
       target_db: ""
-      depends_on: [ns:wippy.migration]
-      timestamp: "2026-11-21T00:00:21Z"
-    source: file://21_lifecycle_custody_disposition.lua
+      comment: Link converted historical cursors after the Jobs slot schema is ready.
+      depends_on: [ns:wippy.migration, kickside.core.jobs:policy, kickside.core.jobs.policy:settings_overrides]
+      timestamp: "2026-11-21T00:00:22Z"
+    source: file://22_legacy_projection_slots.lua
+    modules: [sql]
+    imports:
+      migration: wippy.migration:migration
+      jobs_policy: kickside.core.jobs.policy:runtime
+      register: kickside.core.projections.persist:register
+      threads_writer: kickside.core.threads.persist:writer
+    method: migrate
+
+  - name: 23_lifecycle_custody_disposition
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ""
+      depends_on: [ns:wippy.migration, kickside.core.migrations:22_legacy_projection_slots]
+      timestamp: "2026-11-21T00:00:23Z"
+    source: file://23_lifecycle_custody_disposition.lua
     imports:
       migration: wippy.migration:migration
     method: migrate

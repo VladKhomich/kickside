@@ -55,6 +55,23 @@ local function response_error(field: string, message: string?, code: string?): e
         details = {code = code or "projection_registration_response", field = field}})
 end
 
+function writer.enqueue_slot(tx: sql.Transaction, dbtype: string, thread_id: string,
+    cursor_id: string, parked: boolean, max_attempts: integer?): (string?, error?)
+    local job_id, job_err = job_lifecycle.enqueue_job(tx, dbtype, {
+        owner_locator = { kind = "thread", id = thread_id },
+        job_type = "kickside.core.projections:advance",
+        worker_ref = "kickside.core.projections:advance",
+        payload = { cursor_id = cursor_id },
+        job_identity = { namespace = "projection", scope = cursor_id, key = "slot" },
+        slot = true, wake_key = "thread:" .. thread_id, parked = parked, max_attempts = max_attempts,
+    })
+    if job_err then return nil, job_err end
+    if type(job_id) ~= "string" or job_id == "" then
+        return nil, response_error("job_id", "projection slot enqueue returns no job id")
+    end
+    return job_id, nil
+end
+
 local function projection_insert_response(field: string): error
     return response_error(field, "projection insert returns no affected-row proof", "projection_insert_result_invalid")
 end
@@ -822,19 +839,8 @@ function writer.register_projection_tx(tx: sql.Transaction, dbtype: string, thre
             "failed to insert cursor", "cursor.insert", 1, response_error)
         if proof_err then return nil, proof_err end
     end
-    local job_id, job_err = job_lifecycle.enqueue_job(tx, dbtype, {
-        owner_locator = { kind = "thread", id = thread_id },
-        job_type = "kickside.core.projections:advance",
-        worker_ref = "kickside.core.projections:advance",
-        payload = { cursor_id = cursor_id },
-        job_identity = { namespace = "projection", scope = cursor_id, key = "slot" },
-        slot = true, wake_key = "thread:" .. thread_id,
-        parked = cursor_head >= event_count,
-    })
-    if job_err then return nil, job_err end
-    if type(job_id) ~= "string" or job_id == "" then
-        return nil, response_error("job_id", "projection slot enqueue returns no job id")
-    end
+    local job_id, job_err = writer.enqueue_slot(tx, dbtype, thread_id, cursor_id, cursor_head >= event_count)
+    if not job_id then return nil, job_err end
     local linked, link_err = sql.builder.update("kickside_projection_cursor")
         :set("job_id", job_id):where(sql.builder.eq({ id = cursor_id }))
         :run_with(tx):exec()

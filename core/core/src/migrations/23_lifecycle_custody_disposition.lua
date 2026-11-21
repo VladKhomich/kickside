@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 return require("migration").define(function()
-    migration("21 retain lifecycle report custody dispositions", function()
+    migration("23 retain lifecycle report custody dispositions", function()
         for _, dialect in ipairs({"sqlite", "postgres"}) do
             database(dialect, function()
                 up(function(tx)

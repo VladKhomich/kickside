@@ -52,7 +52,11 @@ entries:
         path: .meta.target_db
       - entry: kickside.core.migrations:20_pending_projection_transition
         path: .meta.target_db
-      - entry: kickside.core.migrations:21_lifecycle_custody_disposition
+      - entry: kickside.core.migrations:21_legacy_thread_schema
+        path: .meta.target_db
+      - entry: kickside.core.migrations:22_legacy_projection_slots
+        path: .meta.target_db
+      - entry: kickside.core.migrations:23_lifecycle_custody_disposition
         path: .meta.target_db
       - entry: kickside.core:db_config
         path: .meta.db_id
