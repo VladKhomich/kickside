@@ -56,14 +56,14 @@ local function response_error(field: string, message: string?, code: string?): e
 end
 
 function writer.enqueue_slot(tx: sql.Transaction, dbtype: string, thread_id: string,
-    cursor_id: string, parked: boolean): (string?, error?)
+    cursor_id: string, parked: boolean, max_attempts: integer?): (string?, error?)
     local job_id, job_err = job_lifecycle.enqueue_job(tx, dbtype, {
         owner_locator = { kind = "thread", id = thread_id },
         job_type = "kickside.core.projections:advance",
         worker_ref = "kickside.core.projections:advance",
         payload = { cursor_id = cursor_id },
         job_identity = { namespace = "projection", scope = cursor_id, key = "slot" },
-        slot = true, wake_key = "thread:" .. thread_id, parked = parked,
+        slot = true, wake_key = "thread:" .. thread_id, parked = parked, max_attempts = max_attempts,
     })
     if job_err then return nil, job_err end
     if type(job_id) ~= "string" or job_id == "" then

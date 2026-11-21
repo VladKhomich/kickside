@@ -302,6 +302,7 @@ entries:
     modules: [sql]
     imports:
       migration: wippy.migration:migration
+      jobs_policy: kickside.core.jobs.policy:runtime
       register: kickside.core.projections.persist:register
       threads_writer: kickside.core.threads.persist:writer
     method: migrate
