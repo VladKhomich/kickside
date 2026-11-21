@@ -249,11 +249,11 @@ M.ALLOW = {
             entry = "kickside.core.threads:append_event_method",
         },
     },
-    ["platform/uploads/src/binding/delete_uploads_func.lua"] = {
-        component_owner = {
+    ["platform/uploads/src/binding/delete_admission.lua"] = {
+        component_owner_record = {
             count = 1,
-            why = "the component deletable contract drains uploads owned by the deleted component's stored actor",
-            entry = "kickside.uploads:delete_uploads_func",
+            why = "deletion admission and the deletable callback resolve protected principal custody after Component authorizes the deletion",
+            entry = "kickside.uploads.binding:delete_admission",
         },
     },
     ["core/component/src/binding/list_access_func.lua"] = {
