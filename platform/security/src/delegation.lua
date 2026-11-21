@@ -53,11 +53,11 @@ local function validate(request)
         if root_err then return nil, root_err end
         if not exists then return nil, failure(errors.NOT_FOUND, "delegation root is absent") end
     end
-    local available, catalog_err = catalog.scopes()
+    local available, catalog_err = catalog.scopes({assignable = true})
     if catalog_err then return nil, catalog_err end
     local assignable = {}
     for _, group in ipairs(available) do
-        if group.enabled and not group.internal then assignable[group.id] = true end
+        assignable[group.id] = true
     end
     for _, group in ipairs(request.groups) do
         if not assignable[group] then return nil, failure(errors.PERMISSION_DENIED, "operator group is not assignable") end
