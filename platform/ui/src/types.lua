@@ -191,7 +191,7 @@ M.DEFAULT_ORDER = 500
 -- Nav badge: an optional binding on a nav_item that surfaces a live component-meta
 -- field (e.g. inbox pending_count on the nav badge). `source` is the extension
 -- point — a future aggregate is a NEW source value, not a new code path. The badge
--- is resolved by nav_badges (a single access-filtered component.query) after the
+-- is resolved by nav_badges (batched, access-filtered component reads) after the
 -- pure nav merge; nav.effective only carries the declared, validated spec.
 M.BADGE = {
     SOURCE = { COMPONENT_META = "component_meta" },

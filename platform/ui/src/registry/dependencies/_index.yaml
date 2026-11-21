@@ -12,7 +12,7 @@ entries:
     version: '>=0.3.30'
     kind: ns.dependency
     meta:
-      comment: Actor-scoped navigation badges read the protected principal owner from the component query.
+      comment: Actor-scoped navigation badges use Component singleton addresses and protected principal queries.
     component: kickside/component
 
   - name: dep.kickside.settings

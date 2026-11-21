@@ -167,6 +167,74 @@ local function define_tests()
             test.eq(items[1].badge, nil)
         end)
 
+        test.it("batches actor singleton addresses and preserves protected-owner selection for other badges", function()
+            local items: { any } = {
+                badged_item("retained", "test:retained", "pending_count", true),
+                badged_item("fresh", "test:fresh", "pending_count", true),
+                badged_item("repeated", "test:retained", "pending_count", true),
+                badged_item("owned", "test:owned", "pending_count", true),
+            }
+            local filters: { any } = {}
+            local function query(filter: any): (any, any)
+                filters[#filters + 1] = filter
+                if filter.component_ids then
+                    return {
+                        { component_id = "wrong-id", impl_id = "test:retained", principal_owner = "actor",
+                            meta = { pending_count = "9" } },
+                        { component_id = "legacy-address", impl_id = "test:retained", meta = { pending_count = "3" } },
+                        { component_id = "fresh-address", impl_id = "test:fresh", meta = { pending_count = "0" } },
+                    }, nil
+                end
+                return {
+                    { component_id = "owned", impl_id = "test:owned", principal_owner = "actor",
+                        meta = { pending_count = "2" } },
+                }, nil
+            end
+            local function singleton_id(impl_id: string, actor_id: string): string?
+                test.eq(actor_id, "actor")
+                if impl_id == "test:retained" then return "legacy-address" end
+                if impl_id == "test:fresh" then return "fresh-address" end
+                return nil
+            end
+
+            nav_badges.resolve(items, query, 1, "actor", singleton_id)
+
+            test.eq(#filters, 2)
+            test.eq(#filters[1].component_ids, 2)
+            test.eq(filters[1].component_ids[1], "legacy-address")
+            test.eq(filters[1].component_ids[2], "fresh-address")
+            test.eq(filters[1].principal_owner, nil)
+            test.eq(filters[1].include.meta, true)
+            test.eq(filters[1].access_mask, 1)
+            test.eq(#filters[2].impl_ids, 1)
+            test.eq(filters[2].impl_ids[1], "test:owned")
+            test.eq(filters[2].principal_owner, "actor")
+            test.eq(filters[2].include.principal_owner, true)
+            test.eq(filters[2].access_mask, 1)
+            test.eq(items[1].badge.value, 3)
+            test.eq(items[1].badge.component_id, "legacy-address")
+            test.eq(items[2].badge.component_id, "fresh-address")
+            test.eq(ui_types.badge_visible(items[2].badge), false)
+            test.eq(items[3].badge.value, 3)
+            test.eq(items[4].badge.value, 2)
+        end)
+
+        test.it("omits a provisioned badge without an exact readable binding and address", function()
+            local items: { any } = { badged_item("single", "test:personal", "pending_count", true) }
+            local queries = 0
+            nav_badges.resolve(items, function(filter: any): (any, any)
+                queries = queries + 1
+                test.eq(filter.component_ids[1], "actor-address")
+                return {
+                    { component_id = "actor-address", impl_id = "test:wrong", meta = { pending_count = "4" } },
+                    { component_id = "other-address", impl_id = "test:personal", principal_owner = "actor",
+                        meta = { owner = "actor", pending_count = "3" } },
+                }, nil
+            end, 1, "actor", function(): string return "actor-address" end)
+            test.eq(queries, 1)
+            test.eq(items[1].badge, nil)
+        end)
+
         test.it("leaves a non-badged item untouched", function()
             local items: { any } = {
                 plain_item("home"),
