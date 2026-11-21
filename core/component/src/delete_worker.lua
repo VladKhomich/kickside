@@ -5,6 +5,7 @@ local security = require("security")
 local component_types = require("component_types")
 local persisted_json = require("persisted_json")
 local teardown = require("teardown")
+local custody = require("custody")
 local error_envelope = require("error_envelope")
 local jobs_policy = require("jobs_policy")
 
@@ -33,7 +34,10 @@ function M.run(input: any): (any?, error?)
     end
     local db, open_err = sql.get(component_types.db_id())
     if open_err then return nil, open_err end
-    local rows, read_err = db:query("SELECT impl_id,private_context,deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", {id})
+    local rows, read_err = db:query("SELECT component_id,impl_id,private_context,deleting_at,delete_intent,secrets_incarnation,custody_legacy FROM kickside_components WHERE component_id=$1", {id})
+    if not read_err and rows and rows[1] then
+        read_err = custody.validate_removal(db, id, rows[1])
+    end
     read_err = error_envelope.cleanup(function(): (any, error?) return db:release() end, read_err, "release component deletion database")
     if read_err then return nil, read_err end
     if type(rows) ~= "table" then

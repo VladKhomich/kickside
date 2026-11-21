@@ -2,6 +2,7 @@
 -- Component deletion intent, provider cleanup and final unregister.
 
 local sql = require("sql")
+local custody = require("custody")
 local contract = require("contract")
 local registry = require("registry")
 local security = require("security")
@@ -220,7 +221,7 @@ end
 -- mark waits for the writes already past the fence.
 -- Returns (ok, step?, err?, newly_marked?, job_id?) with the same step vocabulary as unregister.
 
-function M.begin_delete(component_id: string, gate_user_id: string?, child_policy: string?, delete_options: any?): (boolean, string?, any, boolean?, string?)
+function M.begin_delete(component_id: string, gate_user_id: string?, child_policy: string?, delete_options: any?, expected: any?): (boolean, string?, any, boolean?, string?)
     local db, db_err = sql.get(ops.db_id())
     if db_err then return false, "connect", db_err end
     -- Implementation storage may share SQLite's single application connection.
@@ -231,15 +232,20 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
             err, "release component admission database")
     end
     local admission_rows, read_err = db:query(
-        "SELECT impl_id,deleting_at FROM kickside_components WHERE component_id=$1", {component_id})
+        "SELECT component_id,impl_id,deleting_at,secrets_incarnation,custody_legacy,owner_type,owner_kind,owner_id,owner_incarnation FROM kickside_components WHERE component_id=$1", {component_id})
     if read_err or type(admission_rows) ~= "table" then
         return refuse("delete", internal("component admission read failed", read_err or "missing rows"))
+    end
+    if expected and (not admission_rows[1] or not custody.matches(admission_rows[1], expected)) then
+        return refuse("absent", errors.new({message = "component custody instance is absent", kind = errors.NOT_FOUND}))
     end
     if admission_rows[1] and admission_rows[1].deleting_at == nil then
         if gate_user_id ~= nil then
             local allowed, access_err = ops.check_user_access(db, gate_user_id, component_id, ops.ACCESS.DELETE)
             if access_err or not allowed then return refuse("access", access_err) end
         end
+        local custody_err = custody.validate_removal(db, component_id, admission_rows[1])
+        if custody_err then return refuse("delete", custody_err) end
         local _, validation_err = ops.validate_delete_tx(db, {component_id=component_id, child_policy=child_policy})
         if validation_err then return refuse("delete", validation_err) end
         local admission_err = delete_admission.validate({component_id=component_id,
@@ -272,12 +278,19 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
     if lock_err or not locked or tonumber(locked.rows_affected) == nil then
         return false, "delete", abort_transaction(db, tx, internal("component delete fence lock failed", lock_err or "missing row proof"))
     end
-    local rows, fence_err = tx:query("SELECT impl_id,deleting_at,delete_intent FROM kickside_components WHERE component_id=$1", { component_id })
+    local rows, fence_err = tx:query("SELECT component_id,impl_id,deleting_at,delete_intent,secrets_incarnation,custody_legacy,owner_type,owner_kind,owner_id,owner_incarnation FROM kickside_components WHERE component_id=$1", { component_id })
     if fence_err or type(rows) ~= "table" then
         return false, "delete", abort_transaction(db, tx, internal("component delete fence read failed", fence_err or "missing result"))
     end
+    if expected and (not rows[1] or not custody.matches(rows[1], expected)) then
+        local absent = errors.new({message = "component custody instance is absent", kind = errors.NOT_FOUND})
+        local close_err = abort_transaction(db, tx, absent)
+        return false, close_err == absent and "absent" or "delete", close_err
+    end
     local newly_marked = rows[1] ~= nil and rows[1].deleting_at == nil
     if newly_marked then
+        local custody_err = custody.validate_removal(tx, component_id, rows[1])
+        if custody_err then return false, "delete", abort_transaction(db, tx, custody_err) end
         local _, validation_err = ops.validate_delete_tx(tx, {
             component_id = component_id,
             child_policy = child_policy,
@@ -390,12 +403,17 @@ function M.unregister(component_id: string, child_policy: string?): (any, string
     if lock_err or not locked or tonumber(locked.rows_affected) == nil then
         return nil, "delete", abort_transaction(db, tx, internal("component unregister lock failed", lock_err or "missing row proof"))
     end
-    local rows, fence_err = tx:query("SELECT deleting_at FROM kickside_components WHERE component_id=$1", { component_id })
+    local rows, fence_err = tx:query("SELECT component_id,impl_id,deleting_at,secrets_incarnation,custody_legacy FROM kickside_components WHERE component_id=$1", { component_id })
     if fence_err or type(rows) ~= "table" then
         return nil, "delete", abort_transaction(db, tx, internal("component unregister fence read failed", fence_err or "missing result"))
     end
     if rows[1] and rows[1].deleting_at == nil then
         return nil, "delete", abort_transaction(db, tx, (errors.new({ message = "component delete fence is not committed", kind = errors.CONFLICT }) :: error))
+    end
+
+    if rows[1] then
+        local custody_err = custody.validate_removal(tx, component_id, rows[1])
+        if custody_err then return nil, "delete", abort_transaction(db, tx, custody_err) end
     end
 
     local delete_result, err_delete = ops.dispatch(tx, db, {

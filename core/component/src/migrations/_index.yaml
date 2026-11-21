@@ -154,3 +154,28 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: 17_custody_schema
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ''
+      depends_on: [ns:wippy.migration]
+      timestamp: '2026-11-21T08:00:00Z'
+    source: file://17_custody_schema.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate
+
+  - name: 18_custody_backfill
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ''
+      depends_on: [ns:wippy.migration]
+      timestamp: '2026-11-21T08:00:01Z'
+    source: file://18_custody_backfill.lua
+    modules: [json, uuid]
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

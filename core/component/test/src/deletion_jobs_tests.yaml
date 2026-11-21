@@ -45,6 +45,7 @@ entries:
     source: file://delete_worker_native_source.lua
     modules: [security, time]
     imports:
+      custody: kickside.component.persist:custody
       jobs_policy: kickside.core.jobs.policy:runtime
       sql: app:system_delete_worker_sql
       component_types: kickside.component:types
@@ -61,6 +62,7 @@ entries:
     source: file://delete_worker_native_source.lua
     modules: [security, time]
     imports:
+      custody: kickside.component.persist:custody
       jobs_policy: kickside.core.jobs.policy:runtime
       sql: app:gated_delete_worker_sql
       component_types: kickside.component:types

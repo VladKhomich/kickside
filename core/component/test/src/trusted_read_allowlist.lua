@@ -27,6 +27,7 @@ type Allowlist = { [string]: CallerAllow } -- caller path -> methods
 -- `<qualifier>.<method>(` for each of these.
 M.METHODS = {
     "list_system",
+    "list_lifecycle_dependants",
     "open_private",
     "list_for_subject",
     "get_private_context",
@@ -263,7 +264,7 @@ M.ALLOW = {
         },
     },
     ["core/core/src/lifecycle/reaper.lua"] = {
-        list_system = {
+        list_lifecycle_dependants = {
             count = 2,
             why = "the lifecycle reaper is the trusted teardown engine and enumerates owned components to delete",
             entry = "kickside.core.lifecycle:reaper",

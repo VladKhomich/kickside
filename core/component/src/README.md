@@ -19,6 +19,27 @@ Backed by the `kickside_components`, `kickside_component_meta`, and
 `kickside_component_access` tables. Depends on the `kickside.contract:*` base
 contracts (`component`, `deletable`).
 
+## Lifecycle custody (SPEC)
+
+Every new Component row has a protected owner. Ordinary registration and
+imports record the authenticated principal. An admitted owned-child or
+root-attachment registration records the custodian's Component ID,
+incarnation, and producer in the creation transaction. A root attachment
+keeps root placement. Placement still controls inherited grants.
+
+Principal adoption is the ownership write for an orphan with a principal
+owner. Metadata, placement, and execution-identity updates do not change
+custody. The public `owner` metadata is a display label. Authorization
+consumers can read `component_owner_record` or request
+`include.principal_owner` on an authorized query. The `principal_owner`
+query filter selects the protected principal by actor key.
+
+On upgrade the database assigns stable incarnations in resumable pages.
+Rows without explicit ownership proof remain unresolved for producer
+classification. A possible legacy custodian receives a
+`custody_unresolved` conflict before its deletion is fenced. A marked
+attachment can still finish the job that already established its authority.
+
 ## Authority checks (SPEC)
 
 `validate_identity_authorizer_admin` and `validate_principal_access` check the
