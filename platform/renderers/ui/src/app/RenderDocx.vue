@@ -3,7 +3,6 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Icon } from '@iconify/vue'
 import { api } from '@wippy-fe/proxy'
 import { useProps } from '@wippy-fe/webcomponent-vue'
-import { documentLinkFactory } from '../docx/links'
 
 // High-fidelity Word viewer: fetches the original .docx bytes through the authed
 // proxy and renders the actual document layout (styles, tables, images) with
@@ -22,10 +21,11 @@ async function load() {
   if (!url || !target) return
   loading.value = true
   try {
-    // Loaded lazily so docx-preview (and its JSZip dependency, whose setImmediate
-    // polyfill posts empty window messages on init) only initializes when a Word
-    // document is actually rendered — not on every page that registers this element.
-    const { defaultOptions, renderAsync } = await import('docx-preview')
+    // Keep dependencies shared with embedded HTML out of the registration entry.
+    const [{ defaultOptions, renderAsync }, { documentLinkFactory }] = await Promise.all([
+      import('docx-preview'),
+      import('../docx/links'),
+    ])
     const { data } = await api.get(url, { responseType: 'blob' })
     await renderAsync(data as Blob, target, undefined, {
       className: 'docx',

@@ -1,6 +1,6 @@
 import { a as br, g as pr } from "./_commonjsHelpers-B4e78b8K.js";
 import { r as mr } from "./dayjs.min-Bqm5tm0Y.js";
-import { d as yr, a as wr } from "./render-docx-D1Y2cSWP.js";
+import { documentLinkSchemes as yr, approvedDocumentHref as wr } from "./links-7T67xoOU.js";
 var $ = {}, ee = {}, ye = {}, Ze = {}, je = {}, Kt;
 function Ht() {
   return Kt || (Kt = 1, (function(a) {
@@ -6435,4 +6435,4 @@ function ni(a) {
 export {
   ni as sanitizeEmbeddedDocumentHtml
 };
-//# sourceMappingURL=embedded-html-BcnYi13h.js.map
+//# sourceMappingURL=embedded-html-Bhbh4-te.js.map

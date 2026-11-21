@@ -2965,7 +2965,7 @@ section.${e}>footer { z-index: 1; }
     var t = this.h({ tagName: "iframe" });
     return t.setAttribute("sandbox", ""), t.title = "Embedded Word content", this.tasks.push(this.document.loadAltChunk(e.id, this.currentPart).then(async (r) => {
       if (typeof r != "string") return;
-      const { sanitizeEmbeddedDocumentHtml: s } = await import("./embedded-html-BcnYi13h.js");
+      const { sanitizeEmbeddedDocumentHtml: s } = await import("./embedded-html-Bhbh4-te.js");
       t.srcdoc = s(r);
     })), t;
   }
@@ -3265,4 +3265,4 @@ export {
   zt as renderAsync,
   It as renderDocument
 };
-//# sourceMappingURL=docx-preview-Bulzlcpk.js.map
+//# sourceMappingURL=docx-preview-CMyzyHb_.js.map

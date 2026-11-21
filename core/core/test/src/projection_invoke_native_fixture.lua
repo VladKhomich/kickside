@@ -11,6 +11,9 @@ function M.reset(stage: string, source: any)
     M.failures, M.deterministic = 0, nil
     M.previous_error, M.forwarded_error = nil, nil
     M.dialect_reads = 0
+    M.owned = stage:sub(1, 6) == "owned_"
+    M.actor_qualified = stage == "owned_downgraded" or stage == "owned_validation_unavailable"
+    M.admissions, M.owned_checks = 0, 0
     M.debounce = stage == "first" or stage == "latest" or stage == "type" or stage == "begin"
         or stage == "complete" or stage == "commit" or stage == "time"
     M.proc = stage == "process_host" or stage == "proc"
@@ -33,19 +36,61 @@ function M.decode(_raw: any): (any, error?) return M.outcome("decode", {meta = {
 function M.from_row(_actor: any, _raw: any): (any, error?) return M.outcome("identity", {}) end
 function M.parse(_ref: any, _system: any): (any, error?) return M.outcome("parse", {}) end
 function M.validate(_parsed: any, _system: any): (any, error?)
-    return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func", target_id = "app:worker"})
+    if M.stage == "owned_validation_unavailable" and M.admissions > 0 then return nil, M.source end
+    local downgraded = M.stage == "owned_downgraded" and M.admissions > 0
+    return M.outcome("validate", {worker_runtime = M.proc and "proc" or "func", target_id = "app:worker",
+        component_owned = M.owned and not downgraded})
 end
 function M.requires_checkpoint_declaration(_err: any): boolean return false end
 function M.requires_owned_declaration(_err: any): boolean return false end
+function M.core_lifecycle(...: any): boolean return false end
+function M.snapshot(): (any, error?)
+    return {
+        version = function(): any return {id = function(): string return "registry-revision" end} end,
+        get = function(_self: any, _id: string): any return {kind = "contract.binding"} end,
+    }, nil
+end
+function M.resolve_binding_identity(_binding: any): (any, any, error?) return {}, {}, nil end
+function M.snapshot_access(_id: string, _mask: number, _actor: any): (any, error?)
+    return {to_sql = function(): (string, {string}) return "SELECT ? AS component_id", {"thread"} end}, nil
+end
+function M.current_version(): (any, error?)
+    return {id = function(): string
+        return M.stage == "owned_before_dispatch" and M.admissions == 1 and "changed-revision" or "registry-revision"
+    end}, nil
+end
+function M.check(...: any): (boolean?, error?)
+    M.owned_checks = M.owned_checks + 1
+    if M.stage == "owned_replaced" and M.owned_checks == 2 then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "installed declaration no longer matches"})
+    end
+    return true, nil
+end
+function M.frame(row: any): (any, any, error?)
+    return {}, {component_id = row.component_id, generation = row.component_identity_generation}, nil
+end
+local function rollover(): error
+    return errors.new({kind = errors.CONFLICT, retryable = true, message = "projection declaration changed before dispatch"})
+end
+function M.admit_owned(_binding: any, _system: any, _revision: any): (any, error?, boolean?)
+    M.admissions = M.admissions + 1
+    if M.stage == "owned_churn" or (M.admissions == 1 and (M.stage == "owned_admission"
+        or M.stage == "owned_replaced" or M.actor_qualified)) then
+        return nil, rollover(), true
+    end
+    return {worker_runtime = "func", target_id = "app:worker", component_owned = true}, nil
+end
 function M.post_commit_binding(_binding: any): (any, error?)
     return M.outcome("post_binding", (M.stage == "post_run" or M.stage == "stale_callback" or M.stage == "next_claim") and {} or nil)
 end
 function M.query_event_rows(...: any): (any, error?) return M.outcome("events", {{seq = 1}}) end
 function M.common(_batch: any): any return nil end
-function M.run(_binding: any, input: any, before_dispatch: (() -> error?)?): (any, error?)
+function M.run(_binding: any, input: any, before_dispatch: (() -> error?)?): (any, error?, boolean?)
+    if M.stage == "owned_worker_validation" and M.admissions == 1 then return nil, rollover(), true end
     local fence_err = before_dispatch and before_dispatch()
     if fence_err then return nil, fence_err end
     M.calls = M.calls + 1
+    if M.stage == "owned_worker_conflict" then return nil, rollover() end
     M.forwarded_error = input.cursor.last_error
     if M.stage == "failure" then return nil, errors.new({kind = errors.INVALID, message = "worker refusal",
         retryable = false, details = {reason = "worker_failed", code = "worker_refusal"}}) end
@@ -84,7 +129,13 @@ function M.database(): any
                 slot_execution_seq = M.stage == "next_claim" and M.advances > 0 and 2 or 1,
                 debounce_idle_ms = M.debounce and 1000 or 0, debounce_max_ms = 10000}
             if statement:find("k.last_error", 1, true) then row.last_error = M.previous_error end
-            if M.stage == "identity" then row.actor_id, row.execution_identity_json = "actor", "identity" end
+            if M.stage == "identity" or M.actor_qualified then
+                row.actor_id, row.execution_identity_json = "actor", "identity"
+            end
+            if M.owned then
+                row.component_id, row.component_impl_id, row.component_incarnation = "thread", "app:component", "component"
+                row.component_owned_candidate, row.component_identity_generation = 1, 1
+            end
             if M.stage == "position" then row.last_seq = nil end
             return M.outcome("snapshot", {row})
         end,

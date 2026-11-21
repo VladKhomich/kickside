@@ -1,7 +1,7 @@
 {
   "core/component": "0.3.29",
   "core/contract": "0.3.12",
-  "core/core": "0.3.44",
+  "core/core": "0.3.45",
   "core/execution": "0.2.10",
   "core/jobs": "0.1.98",
   "platform/agents": "0.2.23",
@@ -19,7 +19,7 @@
   "platform/oauth": "0.1.45",
   "platform/realtime": "0.1.32",
   "core/realtime-dispatch": "0.1.1",
-  "platform/renderers": "0.1.42",
+  "platform/renderers": "0.1.43",
   "platform/security": "0.2.30",
   "platform/self-reflection": "0.1.25",
   "platform/sessions": "0.1.45",
@@ -35,5 +35,5 @@
   "platform/webhooks": "0.1.47",
   "platform/widgets": "0.1.66",
   "platform/workflows": "0.2.21",
-  "app": "0.2.54"
+  "app": "0.2.55"
 }

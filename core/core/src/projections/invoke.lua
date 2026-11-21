@@ -337,7 +337,8 @@ local function run_checkpointed(binding: table, input: table, host: string, db_i
     return settled, settle_err
 end
 
-local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number): (table?, error?, table?, table?)
+local function attempt(connection: sql.DB, db_id: string, job: table, current: table, page_size: number,
+        readmitting_owned: boolean?): (table?, error?, table?, table?, boolean?)
     local db: sql.DB? = connection
     local cursor_id = tostring(current.id)
     local head = tonumber(current.event_count)
@@ -380,6 +381,9 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             or (binding_err and worker.requires_owned_declaration(binding_err))
         if needs_owned and not needs_owned_declaration then
             return nil, release(db, event_access.denied())
+        end
+        if readmitting_owned and not needs_owned_declaration then
+            return nil, release(db, binding_err or event_access.denied())
         end
         local needs_declaration = binding_err and worker.requires_checkpoint_declaration(binding_err)
         if needs_owned_declaration then
@@ -431,8 +435,11 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                 local _, proof_err = owned_worker.check(revision, current, binding.target_id)
                 if proof_err then return nil, proof_err end
                 local admitted
-                admitted, admission_err = worker.admit_owned(binding, system_identity, tostring(revision:version():id()))
-                if not admitted then return nil, admission_err or response_error("owned.worker") end
+                local revision_changed: boolean?
+                admitted, admission_err, revision_changed = worker.admit_owned(binding, system_identity, tostring(revision:version():id()))
+                if not admitted then
+                    return nil, admission_err or response_error("owned.worker"), nil, nil, revision_changed
+                end
                 binding = admitted
                 binding.actor_id = current.actor_id
                 binding.actor_context = current.execution_identity_json
@@ -509,12 +516,14 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
             -- before invoking either a function or a monitored process.
             local release_err = release(db, nil)
             if release_err then return nil, release_err end
+            local revision_changed = false
             local function before_dispatch(): error?
                 if needs_owned_declaration then
                     local live, err = registry.current_version()
                     if err then return err end
                     if not live then return response_error("registry.version") end
                     if tostring(live:id()) ~= tostring(revision:version():id()) then
+                        revision_changed = true
                         return errors.new({kind = errors.CONFLICT, retryable = true,
                             message = "component-owned projection declaration changed before dispatch"})
                     end
@@ -536,9 +545,11 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                     execution_frame = execution_frame,
                 })
             else
-                output, row_err = worker.run(binding, work_input, before_dispatch, execution_frame)
+                local worker_revision_changed: boolean?
+                output, row_err, worker_revision_changed = worker.run(binding, work_input, before_dispatch, execution_frame)
+                revision_changed = revision_changed or worker_revision_changed == true
             end
-            if row_err then return nil, row_err end
+            if row_err then return nil, row_err, nil, nil, revision_changed end
             db = nil
         end
     end
@@ -614,7 +625,20 @@ function M.run(input: any): (table?, error?)
         if not row then return nil, attempt_err end
     else
         local failed_at
-        result, attempt_err, failed_at, failed_owner = attempt(db, db_id, job, row :: table, page_size)
+        local revision_changed: boolean?
+        result, attempt_err, failed_at, failed_owner, revision_changed = attempt(db, db_id, job, row :: table, page_size)
+        if revision_changed then
+            -- The stale attempt stopped before calling the worker. Re-admit
+            -- once under the same claim, cursor and deadline. The input and
+            -- publication fences still check the stored owner and lease. Any
+            -- further rollover follows the existing Jobs failure path.
+            local fresh_db, fresh_err = sql.get(db_id)
+            if fresh_err then return nil, errors.wrap(fresh_err, "projection re-admission DB unavailable") end
+            if type(fresh_db) ~= "table" and type(fresh_db) ~= "userdata" then
+                return nil, response_error("database")
+            end
+            result, attempt_err, failed_at, failed_owner = attempt(fresh_db, db_id, job, row :: table, page_size, true)
+        end
         if failed_at then
             row = failed_at
             checkpoint_failed = true

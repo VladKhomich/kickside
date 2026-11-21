@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.43](https://github.com/kicksideai/kickside/compare/renderers-v0.1.42...renderers-v0.1.43) (2026-11-21)
+
+
+### Bug Fixes
+
+* **renderers:** register the DOCX viewer from its declared entry ([#816](https://github.com/kicksideai/kickside/issues/816)) ([6d21842](https://github.com/kicksideai/kickside/commit/6d218423f94da50c890e087c2cac766aa9629b9f))
+
 ## [0.1.42](https://github.com/kicksideai/kickside/compare/renderers-v0.1.41...renderers-v0.1.42) (2026-11-21)
 
 
