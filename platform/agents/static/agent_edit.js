@@ -13,7 +13,7 @@ const p = {
     mode: { type: "string" }
   }
 }, a = i(
-  () => import("./AgentEdit-Ckq_ghKK.js"),
+  () => import("./AgentEdit-DZwRc21J.js"),
   { loading: "Loading agent editor…", failed: "Could not load the agent editor. Reload the page to try again." },
   n
 );

@@ -177,6 +177,8 @@ local function create(args: table, get_service: any): (any?, error?)
     if not model or model == "" then
         return nil, errors.new({ message = "model is required", kind = errors.INVALID })
     end
+    local budget, budget_err = agent_types.response_token_budget(args.max_tokens)
+    if budget_err then return nil, budget_err end
 
     local service, svc_err = get_service()
     if svc_err or not service then
@@ -221,7 +223,7 @@ local function create(args: table, get_service: any): (any?, error?)
             prompt = args.prompt or "",
             model = model,
             temperature = type(args.temperature) == "number" and clamp(args.temperature, agent_types.DEFAULT_TEMPERATURE, 0, 2) or nil,
-            max_tokens = clamp(args.max_tokens, nil, 1),
+            max_tokens = budget,
             thinking_effort = args.thinking_effort,
             traits = traits,
             trait_contexts = args.trait_contexts or {},
@@ -259,6 +261,8 @@ local function update(component_id: string, args: table, get_service: any): (any
     if not component_id or component_id == "" then
         return nil, errors.new({ message = "component_id is required", kind = errors.INVALID })
     end
+    local budget, budget_err = agent_types.response_token_budget(args.max_tokens)
+    if budget_err then return nil, budget_err end
 
     local ok, verr = validate_entry_ids(args.traits, "trait")
     if not ok then return nil, verr end
@@ -304,7 +308,7 @@ local function update(component_id: string, args: table, get_service: any): (any
             if type(wanted) ~= "number" then return nil end
             return clamp(wanted, agent_types.DEFAULT_TEMPERATURE, 0, 2)
         end)(),
-        max_tokens = clamp(args.max_tokens ~= nil and args.max_tokens or existing_ctx.max_tokens, nil, 1),
+        max_tokens = budget or existing_ctx.max_tokens,
         traits = args.traits ~= nil and args.traits or existing_ctx.traits or {},
         trait_contexts = args.trait_contexts ~= nil and args.trait_contexts or existing_ctx.trait_contexts or {},
         trait_agent_options = args.trait_agent_options ~= nil and args.trait_agent_options or existing_ctx.trait_agent_options or {},
