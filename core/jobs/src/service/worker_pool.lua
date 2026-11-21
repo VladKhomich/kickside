@@ -402,10 +402,10 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
 
     -- due_evidence is a due backlog read before this dispatch's claim: every row
     -- it counts was committed before the claim read its candidates.
-    local function dispatch_idle(reclaim_due: boolean, due_evidence: table?): ()
-        if draining or not admitted or shutdown.requested() then return end
+    local function dispatch_pass(reclaim_due: boolean, due_evidence: table?): (boolean, table?)
+        if draining or not admitted or shutdown.requested() then return false, nil end
         local policy = active_policy
-        if not policy then return end
+        if not policy then return false, nil end
         -- Apply queued capacity reports before the authoritative scan, under
         -- the same assignment fence as the selected report. The bounded drain
         -- also coalesces committed wake demand without delaying new notices.
@@ -425,14 +425,14 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
         if db_err or not db then
             logger:error("job_worker dispatcher db unavailable: " .. tostring(db_err))
             retry_dispatch(reclaim_due)
-            return
+            return false, nil
         end
         local raw_type, type_err = db:type()
         if type_err then
             db:release()
             logger:error("job_worker dispatcher db type failed: " .. tostring(type_err))
             retry_dispatch(reclaim_due)
-            return
+            return false, nil
         end
         local dbtype = tostring(raw_type)
         local dispatch_at = clock.now(dbtype)
@@ -527,7 +527,7 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
         end
         if shutdown.requested() then
             db:release()
-            return
+            return false, nil
         end
         -- An idle general slot claims any claimable due row, so a dispatch that
         -- leaves such work unclaimed is a fault to surface at once. A backlog
@@ -584,13 +584,15 @@ local function run_pool(handover: any?, events_ch: any, state: Slots, shutdown: 
             dispatch_retry_ns = nil
             dispatch_retry_count = 0
         end
-        if recheck then
-            dispatch_idle(false, recheck)
-        elseif #claimed > 0 then
-            for _ in pairs(idle) do
-                dispatch_idle(false)
-                break
-            end
+        return recheck ~= nil or (#claimed > 0 and next(idle) ~= nil), recheck
+    end
+
+    local function dispatch_idle(reclaim_due: boolean): ()
+        -- Workers can finish during every pass, so sustained progress has
+        -- no fixed batch count. Each pass returns before the next starts.
+        local more, due_evidence = dispatch_pass(reclaim_due, nil)
+        while more do
+            more, due_evidence = dispatch_pass(false, due_evidence)
         end
     end
 
