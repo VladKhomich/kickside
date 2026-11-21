@@ -254,9 +254,13 @@ entries:
     meta: {type: test, suite: kickside_core}
     source: file://default_backlog_test.lua
     method: run
+    security:
+      actor: {id: "system:automation"}
+      policies: [app:test_scope_policy]
     modules: [sql, time]
     imports:
       test: wippy.test:test
+      migration_scratch: kickside.core.migration_tests:migration_scratch
       prune_scaffold: app:prune_scaffold
       sweeper: kickside.core.retention:sweeper
 
