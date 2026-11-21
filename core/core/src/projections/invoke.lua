@@ -562,6 +562,10 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                     return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last, before_dispatch,
                         execution_frame, checkpoint_owner, registered)
                 end
+                -- The outer Jobs watchdog can terminate this invocation before
+                -- Core has a chance to record its own timeout on the cursor.
+                work_input.previous_execution_timed_out = job.previous_execution_timed_out == true
+                    or current.last_error == worker.PROC_TIMEOUT_MARKER or nil
                 output, row_err = worker.run_proc_supervised(binding, work_input, {
                     proc_host = host,
                     before_dispatch = before_dispatch,

@@ -236,6 +236,43 @@ local function define_tests()
             test.is_nil(release_err)
         end)
 
+        test.it("passes either watchdog outcome to an ordinary process across the claimed cursor", function()
+            for _, case in ipairs({
+                {outer = true}, {outer = true, diagnostic = "provider unavailable"},
+                {diagnostic = "projection worker exceeded max_execution_ms"},
+                {diagnostic = "provider unavailable"}, {},
+            }) do
+                local db = assert(sql.get("app:db"))
+                local thread = uuid.v7()
+                assert(db:execute("INSERT INTO kickside_thread (id,thread_class,component_id,event_count) VALUES ($1,'test','',1)", {thread}))
+                assert(db:execute("INSERT INTO kickside_event (id,thread_id,type,role,body,seq) VALUES ($1,$2,'test:event','user','{}',1)", {uuid.v7(),thread}))
+                local registered = assert(writer.register_projection(db, thread, {
+                    kind = "timeout-hint", worker_ref = "proc://app:test_proc_worker",
+                    worker_input_mode = "prefetch_events", system_identity = true,
+                }))
+                if case.diagnostic then
+                    assert(db:execute("UPDATE kickside_projection_cursor SET last_error=$1 WHERE id=$2",
+                        {case.diagnostic, registered.cursor_id}))
+                end
+                db:release()
+                local selected
+                for _, row in ipairs(assert(claim_batch(16))) do
+                    if row.id == registered.job_id then selected = row end
+                end
+                assert(selected, "expected the projection's slot")
+                assert(invoke.run({job = {id = selected.id, lease_token = selected.lease_token,
+                    execution_seq = selected.execution_seq, previous_execution_timed_out = case.outer},
+                    payload = {cursor_id = registered.cursor_id}}))
+                db = assert(sql.get("app:db"))
+                local row = assert(db:query([[SELECT c.last_seq,p.body FROM kickside_projection_cursor c
+                    JOIN kickside_projection p ON p.id=c.projection_id WHERE c.id=$1]], {registered.cursor_id}))[1]
+                db:release()
+                test.eq(tonumber(row.last_seq), 1)
+                test.eq(assert(json.decode(row.body)).proc_previous_execution_timed_out,
+                    case.outer or case.diagnostic == "projection worker exceeded max_execution_ms" or nil)
+            end
+        end)
+
         test.it("advances a registered cursor through its claimed jobs slot", function()
             local db, db_err = sql.get("app:db")
             test.is_nil(db_err)
