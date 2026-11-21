@@ -131,3 +131,47 @@ return their original identity/version without a new write.
 ## License
 
 [KickSide Community License 1.0](LICENSE). Vendored dependencies retain their own licenses.
+
+## Review retained lifecycle custody before upgrading
+
+From the host's authenticated API router, an instance operator can request one
+read-only page at a time. The installed component policy checks
+`component.custody.inspect` on the components resource. The standard instance
+administrator role has this capability. Component sharing grants, including
+ADMIN, do not authorize instance inspection. Keep this capability within the
+instance operator role. Component, credential, delegated and subtree-confined
+frames are refused. In a shared instance the report queue spans all accounts.
+
+| Request | Result |
+| --- | --- |
+| `GET /lifecycle/custody-inventory?view=components&impl_id=…&limit=50` | Unresolved physical rows for one exact implementation ID. Each item contains a component ID, `incarnation_known` and the incarnation when recorded. |
+| `GET /lifecycle/custody-inventory?view=reports&limit=50` | Pending legacy or malformed lifecycle reports from the reaper's durable checkpoint through the first page's event head. Each item contains a sequence, type and reason. Old reports have no reliable implementation or tenant attribution. |
+
+Use the same view and implementation and URL-encode the returned `cursor` on
+the next request. The limit is 1–100 physical rows or event positions. An empty
+`items` with a cursor means the inspected window contained no matching records.
+When the cursor is absent, check the report state and cursor status. `observed`
+with an active cursor describes retained events through `through_seq`.
+`pruned_history` means part of the pending range was already removed.
+`source_gap`, an unavailable thread or cursor, an unexpected worker, or an
+invalid position means the observed history is incomplete. A paused or invalid
+cursor requires review even when the returned page is empty. On `restart`,
+discard the report traversal and start at the current checkpoint.
+
+Keep the existing lifecycle behavior installed during review. Record the
+implementation, component ID and observed incarnation in the instance's
+restricted upgrade record. For an unqualified report, record its sequence and
+reason and seek the deletion-time record from the responsible module. Ask the
+module or account custodian for independent registration or deletion evidence
+that binds the exact physical object and the typed principal or parent. A
+current ACL, matching UUID, public owner field or later login cannot establish
+historical custody. If the incarnation or evidence is missing, record the
+outstanding case and keep destructive activation on hold. Privileged review can
+document that a future **new custody decision** is needed. Such a decision
+requires explicit authority, a recorded disposition and a fresh check of the
+same physical object when applied.
+
+Component pages observe live rows. A component may disappear or be recreated
+during traversal, and more reports can arrive after the captured head. An
+empty traversal provides an observation for this review. Upgrade activation
+requires a separate, atomic check when the upgrade is applied.

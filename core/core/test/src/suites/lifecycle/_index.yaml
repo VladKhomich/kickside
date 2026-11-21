@@ -143,3 +143,32 @@ entries:
       test: wippy.test:test
       component_lifecycle_log: kickside.core.threads.persist:lifecycle
       audit_publisher: kickside.core.lifecycle:component_lifecycle_impl
+
+  - name: custody_inventory_test_consts
+    kind: library.lua
+    source: file://custody_inventory_test_consts.lua
+    imports:
+      lifecycle_consts: kickside.core.lifecycle:consts
+
+  - name: custody_inventory_test_read
+    kind: function.lua
+    meta: {type: test_helper}
+    source: file://custody_inventory_source.lua
+    method: read
+    modules: [sql, uuid, json]
+    imports:
+      component_inventory: kickside.component.persist:custody_inventory
+      lifecycle_consts: kickside.core.lifecycle:custody_inventory_test_consts
+      core_db: kickside.core:db
+      persisted_json: kickside.contract:persisted_json
+      execution_identity: kickside.execution:execution_identity
+
+  - name: custody_inventory_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_core, group: KickSide Core / Lifecycle}
+    source: file://custody_inventory_test.lua
+    method: run
+    modules: [sql, uuid, funcs, security, json]
+    imports:
+      test: wippy.test:test
+      lifecycle: kickside.core.lifecycle:custody_inventory_test_consts
