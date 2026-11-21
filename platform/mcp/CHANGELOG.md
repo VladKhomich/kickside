@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.15](https://github.com/kicksideai/kickside/compare/mcp-v0.2.14...mcp-v0.2.15) (2026-11-21)
+
+
+### Bug Fixes
+
+* **mcp:** return inline images as content blocks ([#806](https://github.com/kicksideai/kickside/issues/806)) ([3e7ad0b](https://github.com/kicksideai/kickside/commit/3e7ad0b6fe282975c578dd495a282beef9071368))
+
 ## [0.2.14](https://github.com/kicksideai/kickside/compare/mcp-v0.2.13...mcp-v0.2.14) (2026-11-19)
 
 
