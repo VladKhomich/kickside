@@ -5,6 +5,7 @@ local sql = require("sql")
 local json = require("json")
 local clock = require("clock")
 local registry = require("registry")
+local logger = require("logger"):named("kickside.projections")
 local ctx = require("ctx")
 local threads_writer = require("threads_writer")
 local jobs = require("jobs")
@@ -609,6 +610,12 @@ function M.fail(db_id: string, job: table, snapshot: table, failure: error, dete
         result = { self_completed = true, completion = done, invalid = true }
     end
     local _, commit_err = tx:commit()
+    if result and not commit_err then
+        logger:error("projection cursor invalidated", {
+            thread_id = snapshot.thread_id, projection = snapshot.kind, cursor_id = snapshot.id,
+            generation = snapshot.generation, last_seq = snapshot.last_seq, error_kind = tostring(failure:kind()),
+        })
+    end
     local finish_err = release(db, commit_err and errors.wrap(commit_err, "projection failure commit failed") or nil)
     if finish_err then return nil, finish_err end
     if result then

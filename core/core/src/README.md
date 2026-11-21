@@ -168,7 +168,9 @@ harness-owned suites. Suites also run against PostgreSQL by pointing
 Once the slot's cursor is read, binding, stored-identity, worker and apply failures
 are recorded on that cursor through the same fenced failure transition.
 Deterministic failures invalidate the cursor and projection, preserve the error and failed run, and disable event
-wakes until a corrected declaration is registered. Infrastructure failures keep
+wakes until a corrected declaration is registered. The committed invalidation
+emits an error log with the cursor, projection, durable sequence and failure kind.
+Infrastructure failures keep
 the cursor active with its error and use Jobs' existing slot retries. Lease loss
 returns without publishing a projection failure; infrastructure errors publish
 only while the attempt still owns the running slot's lease token.
