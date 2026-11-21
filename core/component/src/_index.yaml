@@ -244,6 +244,8 @@ entries:
         path: .meta.target_db
       - entry: kickside.component.migrations:17_custody_schema
         path: .meta.target_db
+      - entry: kickside.component.migrations:18_retained_grants
+        path: .meta.target_db
       - entry: kickside.component.migrations:15_delete_intent
         path: .meta.target_db
       - entry: kickside.component:db_config

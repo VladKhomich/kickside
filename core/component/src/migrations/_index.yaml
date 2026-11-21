@@ -166,3 +166,20 @@ entries:
     imports:
       migration: wippy.migration:migration
     method: migrate
+
+  - name: retained_grant_schema
+    kind: library.lua
+    source: file://retained_grant_schema.lua
+
+  - name: 18_retained_grants
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ''
+      depends_on: [ns:wippy.migration]
+      timestamp: '2026-11-21T08:01:00Z'
+    source: file://18_retained_grants.lua
+    imports:
+      migration: wippy.migration:migration
+      retained_grant_schema: kickside.component.migrations:retained_grant_schema
+    method: migrate

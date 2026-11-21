@@ -41,3 +41,11 @@ profiles:
       "app:db:options.sslmode": disable
       "app:db:pool.max_open": 16
       "app:db:pool.max_idle": 8
+      "app:retained_grants_db:kind": db.sql.postgres
+      "app:retained_grants_db:host": "${pg_host}"
+      "app:retained_grants_db:port": "${pg_port}"
+      "app:retained_grants_db:database": "${pg_database}"
+      "app:retained_grants_db:username": "${pg_username}"
+      "app:retained_grants_db:password": "${pg_password}"
+      "app:retained_grants_db:options.sslmode": disable
+      "app:retained_grants_db:options.search_path": component_retained_grants_test
