@@ -1,5 +1,6 @@
 local test = require("test")
 local login = require("login")
+local funcs = require("funcs")
 local registry = require("registry")
 local templates = require("templates")
 local http = require("http")
@@ -31,6 +32,23 @@ local function define_tests()
             test.is_nil(err)
             test.is_true(templates.rendered.hasTheme)
             test.eq(templates.rendered.themeClass, "w-theme-dark")
+            test.eq(templates.rendered.hostBase, "")
+        end)
+        test.it("uses the resolved Host URL when no theme is stored", function()
+            local failure = registry.failure
+            local values = registry.values
+            registry.failure = nil
+            registry.values = {["wippy.facade:theme_persist"] = "cookie", ["wippy.facade:theme_storage_key"] = "theme"}
+            funcs.host_url = "https://host.example/custom/"
+            templates.available = true
+
+            local ok, result, err = pcall(login.handler)
+            registry.failure, registry.values = failure, values
+            funcs.host_url, templates.available = nil, nil
+            test.is_true(ok, tostring(result))
+            test.is_nil(err)
+            test.is_false(templates.rendered.hasTheme)
+            test.eq(templates.rendered.hostBase, "https://host.example/custom")
         end)
         test.it("preserves registry failure before reading the template", function()
             templates.calls = 0
