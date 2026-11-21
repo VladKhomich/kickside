@@ -110,16 +110,16 @@ local function define_tests()
 
         -- scope=actor singleton: an admin can READ many users' inbox components, so the
         -- access-filtered read returns several rows for one impl_id. The badge must still
-        -- resolve to the ACTOR'S OWN row (matched by the owner meta), never another user's,
+        -- resolve to the ACTOR'S OWN row (matched by protected custody), never another user's,
         -- and never drop just because more than one row is readable.
         test.it("resolves a scope=actor singleton to the actor's OWN component among many readable rows", function()
             local items: { any } = { badged_item("inbox", "kickside.inbox:inbox_binding", "pending_count", true) }
             local counter = { n = 0 }
             nav_badges.resolve(items, stub_query({
                 ["kickside.inbox:inbox_binding"] = {
-                    { component_id = "other", impl_id = "kickside.inbox:inbox_binding", meta = { owner = "user-2", pending_count = "9" } },
-                    { component_id = "own", impl_id = "kickside.inbox:inbox_binding", meta = { owner = "admin", pending_count = "1" } },
-                    { component_id = "other2", impl_id = "kickside.inbox:inbox_binding", meta = { owner = "user-3", pending_count = "5" } },
+                    { component_id = "other", impl_id = "kickside.inbox:inbox_binding", principal_owner = "user-2", meta = { owner = "admin", pending_count = "9" } },
+                    { component_id = "own", impl_id = "kickside.inbox:inbox_binding", principal_owner = "admin", meta = { pending_count = "1" } },
+                    { component_id = "other2", impl_id = "kickside.inbox:inbox_binding", principal_owner = "user-3", meta = { pending_count = "5" } },
                 },
             }, counter), nil, "admin")
             local b = items[1].badge
@@ -133,7 +133,7 @@ local function define_tests()
             local items: { any } = { badged_item("inbox", "kickside.inbox:inbox_binding", "pending_count", true) }
             nav_badges.resolve(items, stub_query({
                 ["kickside.inbox:inbox_binding"] = {
-                    { component_id = "own", impl_id = "kickside.inbox:inbox_binding", meta = { owner = "user-7", pending_count = "2" } },
+                    { component_id = "own", impl_id = "kickside.inbox:inbox_binding", principal_owner = "user-7", meta = { pending_count = "2" } },
                 },
             }, { n = 0 }), nil, "user-7")
             local b = items[1].badge
@@ -146,8 +146,8 @@ local function define_tests()
             local items: { any } = { badged_item("inbox", "kickside.inbox:inbox_binding", "pending_count", true) }
             nav_badges.resolve(items, stub_query({
                 ["kickside.inbox:inbox_binding"] = {
-                    { component_id = "other", impl_id = "kickside.inbox:inbox_binding", meta = { owner = "user-2", pending_count = "9" } },
-                    { component_id = "own", impl_id = "kickside.inbox:inbox_binding", meta = { owner = "admin", pending_count = "0" } },
+                    { component_id = "other", impl_id = "kickside.inbox:inbox_binding", principal_owner = "user-2", meta = { pending_count = "9" } },
+                    { component_id = "own", impl_id = "kickside.inbox:inbox_binding", principal_owner = "admin", meta = { pending_count = "0" } },
                 },
             }, { n = 0 }), nil, "admin")
             local b = items[1].badge
@@ -161,7 +161,7 @@ local function define_tests()
             local items: { any } = { badged_item("inbox", "kickside.inbox:inbox_binding", "pending_count", true) }
             nav_badges.resolve(items, stub_query({
                 ["kickside.inbox:inbox_binding"] = {
-                    { component_id = "other", impl_id = "kickside.inbox:inbox_binding", meta = { owner = "user-2", pending_count = "9" } },
+                    { component_id = "other", impl_id = "kickside.inbox:inbox_binding", principal_owner = "user-2", meta = { pending_count = "9" } },
                 },
             }, { n = 0 }), nil, "admin")
             test.eq(items[1].badge, nil)

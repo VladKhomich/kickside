@@ -9,7 +9,7 @@
 -- scope=actor + cardinality=singleton means the badge resolves to the ACTOR'S OWN
 -- component for a badge's impl_id. The access-filtered read may return several rows
 -- (an admin can READ other users' components of the same impl_id); the actor's own
--- row is selected by matching the owner meta. Zero owned rows fails closed (the badge
+-- row is selected by matching the protected principal owner. Zero owned rows fails closed (the badge
 -- is omitted, never an arbitrary pick). An unreadable/absent component omits the
 -- badge; access is never surfaced on a nav item. A present component whose field is
 -- absent keeps the badge (so the client can subscribe) with no value.
@@ -19,10 +19,9 @@ local ui_types = require("ui_types")
 local M = {}
 
 local COMPONENT_META = ui_types.BADGE.SOURCE.COMPONENT_META
-local OWNER_META_KEY = ui_types.COMPONENT_OWNER_META_KEY
 local SCOPE_ACTOR = ui_types.BADGE.SCOPE.ACTOR
 
-type Row = { component_id: string, impl_id: string, meta: { [string]: any }? }
+type Row = { component_id: string, impl_id: string, principal_owner: string?, meta: { [string]: any }? }
 
 -- active_tone is selected ONLY by a truthy boolean tone_field; a count never
 -- infers urgency.
@@ -34,15 +33,8 @@ local function resolve_tone(spec: ui_types.Badge, meta: { [string]: any }): stri
     return spec.base_tone
 end
 
-local function row_owner(row: Row): string?
-    local meta = row.meta
-    if type(meta) ~= "table" then return nil end
-    local owner = (meta :: { [string]: any })[OWNER_META_KEY]
-    return type(owner) == "string" and owner :: string or nil
-end
-
 -- Select the one row a singleton badge resolves against. For scope=actor with a
--- known actor, this is the actor's OWN component (matched by owner meta): the
+-- known actor, this is the actor's OWN component (matched by the protected principal owner): the
 -- access-filtered read may return other users' rows, which are never picked. Without
 -- an actor (e.g. the standalone nav harness) it falls back to the sole readable row.
 -- Zero or ambiguous matches fail closed.
@@ -50,7 +42,7 @@ local function select_row(spec: ui_types.Badge, rows: { Row }, owner_id: string?
     if spec.scope == SCOPE_ACTOR and owner_id and owner_id ~= "" then
         local owned: Row? = nil
         for _, row in ipairs(rows) do
-            if row_owner(row) == owner_id then
+            if row.principal_owner == owner_id then
                 if owned then return nil end
                 owned = row
             end
@@ -122,15 +114,15 @@ function M.resolve(items: { any }, query_fn: any, access_read: integer?, owner_i
 
     -- Single access-filtered read for every badged impl_id. Every declared badge is
     -- scope=actor, so when the actor is known the read is narrowed to the actor's own
-    -- components by owner meta (mirroring how the inbox list scopes to the owner); the
-    -- per-row owner match below still fences a widened read that ignores the filter.
+    -- components by principal custody. The returned relation also guards against a
+    -- reader that does not apply the filter.
     local filter: { [string]: any } = {
         impl_ids = impl_ids,
-        include = { meta = true },
+        include = { meta = true, principal_owner = true },
         access_mask = access_read,
     }
     if owner_id and owner_id ~= "" then
-        filter.meta = { [OWNER_META_KEY] = owner_id }
+        filter.principal_owner = owner_id
     end
     local rows, err = query_fn(filter)
     if err or type(rows) ~= "table" then
