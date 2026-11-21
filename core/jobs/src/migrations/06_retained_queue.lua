@@ -62,6 +62,10 @@ local function cleanup(db, pg)
     sql.exec(db, [[INSERT INTO kickside_job_thread_cleanup(thread_id,started,next_page_seq,completed_at)
         SELECT owner_id,thread_cleanup_started,thread_cleanup_next_page_seq,thread_cleanup_completed_at
         FROM kickside_job_owner_usage WHERE owner_kind='thread']])
+    -- A current receipt may already cover the retention indexes. Install the
+    -- index on this newly materialized table even when 25 will be skipped.
+    sql.exec(db, [[CREATE INDEX IF NOT EXISTS idx_job_cleanup_completed_order
+        ON kickside_job_thread_cleanup(completed_at,thread_id) WHERE completed_at IS NOT NULL]])
 end
 
 local function adopt(db, pg)
@@ -79,7 +83,10 @@ local function adopt(db, pg)
     if not oldest and not old_cleanup and not nullable then return end
 
     if pg then
-        sql.exec(db, "LOCK TABLE kickside_thread,kickside_job,kickside_job_run IN ACCESS EXCLUSIVE MODE NOWAIT")
+        -- Only the old queue still links to Core. A cleanup-only adoption also
+        -- works in a standalone Jobs installation after that link was removed.
+        if oldest then sql.exec(db, "LOCK TABLE kickside_thread IN ACCESS EXCLUSIVE MODE NOWAIT") end
+        sql.exec(db, "LOCK TABLE kickside_job,kickside_job_run IN ACCESS EXCLUSIVE MODE NOWAIT")
         if old_cleanup then sql.exec(db, "LOCK TABLE kickside_job_owner_usage,kickside_job_thread_cleanup_receipt IN ACCESS EXCLUSIVE MODE NOWAIT") end
     else
         sql.exec(db, "UPDATE kickside_job SET id=id WHERE 0")

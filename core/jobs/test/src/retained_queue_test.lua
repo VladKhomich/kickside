@@ -108,6 +108,9 @@ return {run = test.run_cases(function()
             result(migrate("06_retained_queue", "intermediate"))
             result(migrate("06_retained_queue", "intermediate"))
             db = assert(sql.get(database))
+            local inspect_index = pg and "SELECT 1 FROM pg_indexes WHERE schemaname=current_schema() AND indexname='idx_job_cleanup_completed_order'"
+                or "SELECT 1 FROM pragma_index_list('kickside_job_thread_cleanup') WHERE name='idx_job_cleanup_completed_order'"
+            test.eq(#assert(db:query(inspect_index)), 1)
             local fence = assert(db:query("SELECT thread_id,next_page_seq FROM kickside_job_thread_cleanup"))[1]
             test.eq(fence.thread_id, thread)
             test.eq(tonumber(fence.next_page_seq), 2)
