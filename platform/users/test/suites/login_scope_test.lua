@@ -13,6 +13,8 @@ local scope_store = require("scope_store")
 local trigger_reconcile = require("trigger_reconcile")
 local consts = require("user_consts")
 local funcs = require("funcs")
+local hash = require("hash")
+local sql = require("sql")
 
 local USER_ID = "login_scope_test_user"
 local EMAIL = "login-scope@test.local"
@@ -56,6 +58,35 @@ local function define_tests()
             test.is_nil(apply_err)
             test.is_nil(projection_err)
             test.not_nil(projected, "fixture removal acknowledged")
+        end)
+
+        test.it("mints a session on the first successful login with a legacy hash", function()
+            local uid = "retained_legacy_password_user"
+            local email = uid .. "@test.local"
+            test.not_nil((user_repo.create({user_id = uid, email = email, password = PASSWORD, status = "active"})))
+            test.not_nil((user_group_sources_repo.set_user_groups(uid, {SCOPE_ID})))
+            local salt = "0123456789abcdef0123456789abcdef"
+            local legacy = "pbk1$1$" .. salt .. "$" .. assert(hash.hmac_sha512(PASSWORD, salt))
+            local db = assert(sql.get("app:db"))
+            local _, update_err = db:execute("UPDATE app_users SET password_hash=$1 WHERE user_id=$2", {legacy, uid})
+            db:release()
+            test.is_nil(update_err)
+            local before = assert(user_repo.get(uid))
+
+            local response, http_err = http_client.post(gateway_url("/api/public/user/token"), {
+                headers = {["Content-Type"] = "application/json"},
+                body = json.encode({email = email, password = PASSWORD}),
+            })
+            test.is_nil(http_err)
+            test.eq(response.status_code, 200, tostring(response.body))
+            local credentials = decode_response(response)
+            test.eq(credentials.user.user_id, uid)
+            test.is_false(credentials.security.is_admin)
+            test.not_nil(credentials.token)
+            local after = assert(user_repo.get(uid))
+            test.eq(after.password_hash:sub(1, 12), "pbk2$210000$")
+            test.eq(after.auth_generation, before.auth_generation)
+            test.not_nil((user_lifecycle_repo.delete(uid)))
         end)
 
         test.it("applies added group policies to an existing token without login", function()
