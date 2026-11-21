@@ -39,30 +39,33 @@
         });
       })();
     </script>
+    {{ if hostBase != "" }}
+    <!-- Keep the integrity hashes in sync if a Host release changes these CSS assets. -->
     <link
       rel="stylesheet"
-      href="https://web-host.wippy.ai/webcomponents-1.0.57/@wippy-fe/assets/theme-config.css"
+      href="{{ hostBase }}/@wippy-fe/assets/theme-config.css"
       integrity="sha384-EowOVlkTIU0/9+tbEad+lsIiO8JRj9G8XI8VGJKMalpxoSWNV6P0EERXv1Ehsgj1"
       crossorigin="anonymous"
     />
     <link
       rel="stylesheet"
-      href="https://web-host.wippy.ai/webcomponents-1.0.57/@wippy-fe/assets/preflight.css"
+      href="{{ hostBase }}/@wippy-fe/assets/preflight.css"
       integrity="sha384-HYhcqJkOFc9nDMBAcrFgm+g/0huoj89BN9Wm1bahNmV6PaClx/fod2Uyv5ZO5pGS"
       crossorigin="anonymous"
     />
     <link
       rel="stylesheet"
-      href="https://web-host.wippy.ai/webcomponents-1.0.57/@wippy-fe/assets/iframe.css"
+      href="{{ hostBase }}/@wippy-fe/assets/iframe.css"
       integrity="sha384-ze0ui4Dn6prFSwZQp/zIfXddlRhhNkqrT86hWqxRrUNlfC11jb32Ng2l8FzP/Y/Z"
       crossorigin="anonymous"
     />
     <link
       rel="stylesheet"
-      href="https://web-host.wippy.ai/webcomponents-1.0.57/@wippy-fe/assets/tailwind.css"
+      href="{{ hostBase }}/@wippy-fe/assets/tailwind.css"
       integrity="sha384-fz89ldHB4I+aXvbsWrdcmFwR/hSZ1NZSrig4NTQAVkJkTY+yPacdRw7E/1wNCKQ1"
       crossorigin="anonymous"
     />
+    {{ end }}
     <!-- Facade theme, same as the app: real --p-* tokens (primary, dark-mode
          aware) from css_variables + PrimeVue .p-* chrome. Keeps sign-in on the app
          theme instead of a hand-picked accent. -->

@@ -1,6 +1,9 @@
 version: '1.0'
 namespace: app
 entries:
+  - name: login_funcs
+    kind: library.lua
+    source: file://login_funcs.lua
   - name: login_registry
     kind: library.lua
     source: file://login_registry.lua
@@ -15,6 +18,7 @@ entries:
     source: file://login_subject.lua
     imports:
       text_trim: kickside.contract:text_trim
+      funcs: app:login_funcs
       registry: app:login_registry
       http: app:login_http
       templates: app:login_templates
@@ -26,6 +30,7 @@ entries:
     imports:
       test: wippy.test:test
       login: app:login_subject
+      funcs: app:login_funcs
       http: app:login_http
       registry: app:login_registry
       templates: app:login_templates
