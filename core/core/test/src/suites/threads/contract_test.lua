@@ -80,7 +80,7 @@ local function define_tests()
             test.is_nil(read_err)
             test.eq(before.subject_version, 0)
             local appended, err = as_owner(APPEND_EVENT, { thread_id = id,
-                expect = { subject = "settings", version = 0 },
+                expect = { subject = "settings", version = 0, also = { subject = "schema", version = 0 } },
                 event = { type = "app:threads_test_external", subject = "settings", body = {} } })
             test.is_nil(err)
             test.eq(appended.events[1].subject_version, 1)
@@ -97,6 +97,19 @@ local function define_tests()
             local event = page.events[#page.events]
             test.eq(event.subject, "settings")
             test.eq(event.subject_version, 1)
+            local _, schema_err = as_owner(APPEND_EVENT, { thread_id = id,
+                event = { type = "app:threads_test_external", subject = "schema", body = {} } })
+            test.is_nil(schema_err)
+            local _, stale_schema = as_owner(APPEND_EVENTS, { writes = { {
+                thread_id = id,
+                expect = { subject = "settings", version = 1, also = { subject = "schema", version = 0 } },
+                events = { { type = "app:threads_test_external", subject = "settings", body = {} } },
+            } } })
+            test.is_true(errors.is(stale_schema, errors.CONFLICT))
+            test.eq(stale_schema:details().reason, "version_mismatch")
+            test.eq(stale_schema:details().subject, "schema")
+            test.eq(stale_schema:details().version, 1)
+            test.eq(stale_schema:details().expected, 0)
             local hidden, hidden_err = run_as(stranger, FIND, { thread_id = id, subject = "settings" })
             test.is_nil(hidden_err)
             test.is_nil(hidden)

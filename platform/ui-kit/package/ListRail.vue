@@ -2,13 +2,13 @@
 <script setup lang="ts">
 import { useId } from 'vue'
 
-defineProps<{ title: string; count?: number }>()
+defineProps<{ title: string; count?: number; settings?: boolean }>()
 
 const titleId = useId()
 </script>
 
 <template>
-  <aside class="kx-rail" :aria-labelledby="titleId">
+  <aside class="kx-rail" :class="{ 'kx-settings-list-rail': settings }" :aria-labelledby="titleId">
     <div class="kx-railhead">
       <span :id="titleId" class="kx-railhead-title">{{ title }}<b v-if="count !== undefined">{{ count }}</b></span>
       <div class="kx-railhead-acts"><slot name="actions" /></div>

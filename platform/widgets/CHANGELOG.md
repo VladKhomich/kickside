@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.69](https://github.com/kicksideai/kickside/compare/widgets-v0.1.68...widgets-v0.1.69) (2026-11-21)
+
+
+### Bug Fixes
+
+* **widgets:** search Tabler icons locally ([73c06ad](https://github.com/kicksideai/kickside/commit/73c06ad803b8fe34cd1d8a5860650878e0fa30a0))
+
+## [0.1.68](https://github.com/kicksideai/kickside/compare/widgets-v0.1.67...widgets-v0.1.68) (2026-11-21)
+
+
+### Bug Fixes
+
+* **widgets:** keep model choices readable and responsive ([#822](https://github.com/kicksideai/kickside/issues/822)) ([cfb50b0](https://github.com/kicksideai/kickside/commit/cfb50b04222bd873b2dcc881ea0d2a3f52ccf38a))
+
+## [0.1.67](https://github.com/kicksideai/kickside/compare/widgets-v0.1.66...widgets-v0.1.67) (2026-11-21)
+
+
+### Bug Fixes
+
+* **widgets:** let the model picker fill its form field ([#820](https://github.com/kicksideai/kickside/issues/820)) ([396b507](https://github.com/kicksideai/kickside/commit/396b50799f07539ad342d3bc10a396c670e55fd0))
+
 ## [0.1.66](https://github.com/kicksideai/kickside/compare/widgets-v0.1.65...widgets-v0.1.66) (2026-11-20)
 
 

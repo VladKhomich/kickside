@@ -92,27 +92,19 @@ export function optionString(model: ModelCard, key: string): string {
 }
 
 // Catalog lookups bound to the live adapter / profile / preset collections. The
-// provider brand icon is sourced from the registry presets (each provider's preset
-// declares its icon), so the UI stays fully driven by registry metadata rather
-// than a hardcoded table.
-export function makeLookups(
-  adapters: () => Adapter[],
-  profiles: () => Profile[],
-  presets: () => Preset[] = () => [],
-) {
+// Models returns registry-derived adapter icons and optional profile selections.
+export function makeLookups(adapters: () => Adapter[], profiles: () => Profile[]) {
   const adapterFor = (id?: string) => adapters().find(a => a.id === id)
   const profileFor = (id?: string) => profiles().find(p => p.id === id)
-  const iconFor = (providerId?: string) => {
-    if (!providerId) return 'tabler:cpu'
-    for (const p of presets()) if (p.provider_id === providerId && p.icon) return p.icon
-    return 'tabler:cpu'
-  }
   return {
     adapterFor,
     profileFor,
     adapterTitle: (id?: string) => adapterFor(id)?.title || id || '',
     profileTitle: (id?: string) => profileFor(id)?.name || id || '',
     isDiscoverable: (profile: Profile) => adapterFor(profile.provider_id)?.discoverable === true,
-    providerIcon: iconFor,
+    providerIcon: (id?: string, profileId?: string) => {
+      const profile = profileFor(profileId)
+      return (profile?.provider_id === id && profile?.icon) || adapterFor(id)?.icon || 'tabler:cpu'
+    },
   }
 }

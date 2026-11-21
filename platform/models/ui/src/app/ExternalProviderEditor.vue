@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { loadByTagName } from '@wippy-fe/proxy'
 import type { Adapter, Preset, Profile, TestState } from '../types.ts'
+import ProfileIconField from './ProfileIconField.vue'
 
 const props = defineProps<{
   tag: string
@@ -21,10 +22,13 @@ const emit = defineEmits<{
 const host = ref<HTMLElement | null>(null)
 const loading = ref(false)
 const error = ref('')
+const icon = ref('')
 let element: HTMLElement | null = null
 let generation = 0
 
-function relaySave(event: Event) { emit('save', (event as CustomEvent).detail || {}) }
+function relaySave(event: Event) {
+  emit('save', { ...((event as CustomEvent).detail || {}), icon: icon.value })
+}
 function relayCancel() { emit('cancel') }
 function relayTest() { emit('test') }
 
@@ -72,6 +76,9 @@ async function mount() {
   }
 }
 
+watch(() => [props.mode, props.profile, props.preset], () => {
+  icon.value = props.mode === 'edit' ? props.profile?.icon || '' : props.preset?.icon || ''
+}, { immediate: true })
 onMounted(mount)
 watch(() => props.tag, mount)
 watch(() => [props.mode, props.adapter, props.preset, props.profile, props.saving, props.testState], assignProperties)
@@ -85,6 +92,7 @@ onBeforeUnmount(() => { generation++; unmount() })
       <span>Provider editor failed to load: {{ error }}</span>
       <button type="button" class="km-adv-toggle" @click="mount">Retry</button>
     </div>
+    <ProfileIconField v-if="!loading && !error" v-model="icon" :fallback="adapter?.icon" :disabled="saving" />
     <div ref="host" v-show="!loading && !error" />
   </div>
 </template>

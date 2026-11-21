@@ -98,6 +98,28 @@ local function define_tests()
             test.eq(captured.private_context.model, agent_types.DEFAULT_MODEL)
         end)
 
+        test.it("stores large whole response budgets and rejects invalid values before writing", function()
+            local captured: any = nil
+            local svc = fake_service({ success = true, components = {} }, nil)
+            svc.register = function(_self: any, args: any): (any, any)
+                captured = args
+                return { success = true, component_id = "budget-agent" }, nil
+            end
+            local instance = with_service(svc)
+            local result, err = instance.create({ title = "Response budget", max_tokens = 128000, traits = {} })
+            test.is_nil(err)
+            test.is_true(result.success)
+            test.eq(captured.private_context.max_tokens, 128000)
+
+            captured = nil
+            for _, invalid in ipairs({0, -1, 16384.5, 9007199254740992, "unknown"}) do
+                result, err = instance.create({ title = "Invalid budget", max_tokens = invalid, traits = {} })
+                test.is_nil(result)
+                test.is_true(errors.is(err, errors.INVALID))
+                test.is_nil(captured)
+            end
+        end)
+
         test.it("accepts canonical public trait and tool references", function()
             local svc = fake_service({ success = true, components = {} }, nil)
             local instance = with_service(svc)

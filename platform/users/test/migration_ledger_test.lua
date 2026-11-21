@@ -75,6 +75,15 @@ local function define_tests()
             test.eq(#missing, 0)
         end)
 
+        test.it("binds retained authentication adoption to the Users database", function()
+            local id = "kickside.users.migrations:15_retained_auth_generation"
+            local bound = false
+            for _, entry in ipairs(registered_migrations()) do
+                if tostring(entry.id) == id then bound = true end
+            end
+            test.is_true(bound)
+        end)
+
         test.it("detects a registered migration missing from the ledger", function()
             local registered = registered_migrations()
             local db, db_err = sql.get("app:db")

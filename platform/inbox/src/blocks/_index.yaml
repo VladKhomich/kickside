@@ -12,7 +12,7 @@ entries:
       type: kickside.block
       public: true
       title: Inbox review
-      description: Creates an Inbox decision, parks durably, and returns the reviewer outcome.
+      description: Creates a decision in the Flow runner's Inbox, parks durably, and returns their decision.
     data:
       block:
         api_version: kickside.block/v1
@@ -39,10 +39,9 @@ entries:
               description: Optional JSON Schema fields returned in output.form. A property default_expr evaluates a Wippy expression over input to prefill its default; string format textarea renders a multiline editor.
             assignee:
               type: string
-              title: Assignee
-              picker: wc-principal-picker
-              kinds: user
-              empty_label: Use Flow runner
+              title: Saved assignee
+              readOnly: true
+              description: Retained for saved Flow versions. New reviews always go to the Flow runner.
             approve_label: { type: string, title: Approve label, default: Approve }
             reject_label: { type: string, title: Reject label, default: Reject }
             priority: { type: string, title: Priority, enum: [low, normal, high, urgent], default: normal }
@@ -73,7 +72,7 @@ entries:
           category: Human
           icon: tabler:inbox
           hue: rose
-          blurb: Sends the incoming data for review, waits safely, then routes the decision.
+          blurb: Sends the incoming data to the Flow runner's Inbox and waits for their decision.
         execution:
           kind: wait
           arm_id: kickside.inbox:arm_decision
@@ -86,7 +85,7 @@ entries:
 
   - name: arm_decision_lib
     kind: library.lua
-    meta: { comment: "Inbox-owned review arm with assignment policy and idempotent item creation." }
+    meta: { comment: "Inbox-owned review arm with owner-only idempotent item creation." }
     source: file://arm_decision.lua
     modules: [security, contract, expr]
     imports:
@@ -94,7 +93,6 @@ entries:
       inbox_files: kickside.inbox:inbox_files
       inbox_writer: kickside.inbox.persist:inbox_writer
       inbox_reader: kickside.inbox.persist:inbox_reader
-      component: kickside.component:component
 
   - name: arm_decision
     kind: function.lua
@@ -113,11 +111,10 @@ entries:
       inbox_files: kickside.inbox:inbox_files
       inbox_writer: kickside.inbox.persist:inbox_writer
       inbox_reader: kickside.inbox.persist:inbox_reader
-      component: kickside.component:component
 
   - name: create_decision
     kind: function.lua
-    meta: { private: true, comment: "Actor-bound Inbox decision creation after assignment policy resolution." }
+    meta: { private: true, comment: "Actor-bound Inbox decision creation with stable item identity." }
     security:
       policies:
       - kickside.inbox.security:submit_output_publish
@@ -129,7 +126,6 @@ entries:
       inbox_files: kickside.inbox:inbox_files
       inbox_writer: kickside.inbox.persist:inbox_writer
       inbox_reader: kickside.inbox.persist:inbox_reader
-      component: kickside.component:component
 
   - name: preview_decision
     kind: function.lua
@@ -142,7 +138,6 @@ entries:
       inbox_files: kickside.inbox:inbox_files
       inbox_writer: kickside.inbox.persist:inbox_writer
       inbox_reader: kickside.inbox.persist:inbox_reader
-      component: kickside.component:component
 
   - name: item_type.flow_decision
     kind: registry.entry

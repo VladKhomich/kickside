@@ -4041,6 +4041,21 @@ entries:
       worker_pool: kickside.core.jobs.service:worker_pool
       job_fixture: app:job_fixture
 
+  - name: retained_queue_db
+    kind: db.sql.sqlite
+    file: ":memory:"
+    foreign_keys: true
+    pool: {max_open: 1, max_idle: 1}
+
+  - name: retained_queue_test
+    kind: function.lua
+    meta: {type: test, suite: jobs_retained_queue}
+    source: file://retained_queue_test.lua
+    method: run
+    modules: [sql, funcs]
+    imports:
+      test: wippy.test:test
+
   - name: policy_migration_db
     meta: {comment: "Policy migration db."}
     kind: db.sql.sqlite

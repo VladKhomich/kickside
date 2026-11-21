@@ -277,6 +277,15 @@ entries:
     imports:
       http: app:models_list_fixture_state
       models: app:models_catalog_fixture
+      provider_read_model: kickside.models.providers:provider_read_model
+
+  - name: native_models_list_fixture
+    kind: library.lua
+    source: file://fixtures/list_models.lua
+    imports:
+      http: app:models_list_fixture_state
+      models: kickside.models.catalog:model_catalog
+      provider_read_model: kickside.models.providers:provider_read_model
 
   - name: models_list_test
     kind: function.lua
@@ -286,7 +295,9 @@ entries:
     imports:
       test: wippy.test:test
       list_fixture: app:models_list_fixture
+      native_list_fixture: app:native_models_list_fixture
       list_fixture_state: app:models_list_fixture_state
+      models_repo: kickside.models.persist:repo
 
   - name: reference_http_fixture
     kind: library.lua

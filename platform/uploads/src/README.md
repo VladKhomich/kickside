@@ -31,6 +31,26 @@ content deduplication and queues the declared ingestion pipeline. Result snapsho
 use `store_file` so storing a permitted tool result does not require access to
 another component or start jobs.
 
+## Component-owned originals
+
+Modules with asset lifecycle management call
+`kickside.uploads:adopt_component_upload({upload_id, component_id, version_id, lease_until})`
+with the authenticated uploader and destination component WRITE. Uploads copies
+the completed original, up to 25 MiB, into a new immutable version and returns
+its `upload_id`. Personal upload retention stays independent. The caller reserves
+the version ID and a UTC lease of at most 15 minutes before the call and keeps
+the reservation until collection finishes. Uploads verifies the source checksum
+when available. The configured Uploads volume opens the exact staging address
+exclusively before the copy. The write uses that open handle. Collection fences
+future opens and unlinks the file before dropping its record.
+
+Consumers open `kickside.uploads:content_provider` with the version ID as
+`upload_id`. The raw descriptor includes the destination `source_ref.component_id`,
+SHA-256, MIME type and size. Metadata, content and the original download require
+component READ. The module's retention worker uses
+`kickside.uploads:reap_component_upload({component_id, version_id, owner_impl})`, which checks
+the stored owner and implementation and safely acknowledges an already absent version.
+
 ## Upload lifecycle and completion callbacks
 
 An upload moves through storage, processing, and completion:

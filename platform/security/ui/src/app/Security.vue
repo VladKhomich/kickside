@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SystemTabs from '@kickside/ui-kit/SystemTabs.vue'
-import { computed, nextTick, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref, shallowRef } from 'vue'
 import { Icon } from '@iconify/vue'
 import { host } from '@wippy-fe/proxy'
 import { useHostVisibilityRefresh } from '@wippy-fe/webcomponent-vue'
@@ -8,7 +8,7 @@ import type { Policy, Scope, ScopeDraft } from '../types.ts'
 import { Button, EmptyState, FormField, IconButton, Notice, Pill, RailHeader, SearchField, Shell, Spinner, TextInput } from './shared'
 import Delegations from './Delegations.vue'
 import PolicyCard from './PolicyCard.vue'
-import { useSecurityApi } from './useSecurityApi.ts'
+import { messageOf, useSecurityApi } from './useSecurityApi.ts'
 
 // kickside-security — roles/scopes admin. Rail lists scopes (built-in groups +
 // registry scopes read-only, DB-backed custom scopes editable). Selecting a
@@ -16,12 +16,17 @@ import { useSecurityApi } from './useSecurityApi.ts'
 // palette into the scope, reorder, remove. Saving writes the DB row; the projection
 // service materializes it as a security.scope registry entry.
 const store = useSecurityApi()
-const { scopes, assignablePolicies, installedPolicies, loading, saving, error } = store
+const { scopes, assignablePolicies, loading, saving, error } = store
 
 const railSearch = ref('')
 const paletteSearch = ref('')
 const selectedId = ref<string | null>(null)
 const draft = ref<ScopeDraft | null>(null)
+const technicalDetails = ref<HTMLDetailsElement | null>(null)
+const composition = shallowRef<{ scope: Scope | null; loading: boolean; error: string } | null>(null)
+const openingOverlay = ref(false)
+const lockedPolicyIds = shallowRef(new Set<string>())
+let selection = 0
 
 const activeTab = ref('scopes')
 const delegationPanel = ref<InstanceType<typeof Delegations> | null>(null)
@@ -33,8 +38,13 @@ async function selectTab(value: string | number) {
   await nextTick()
   await delegationPanel.value?.load()
 }
-useHostVisibilityRefresh(async () => {
+async function refreshRoles() {
+  resetComposition()
   await store.load()
+}
+
+useHostVisibilityRefresh(async () => {
+  await refreshRoles()
   if (activeTab.value === 'delegations') await delegationPanel.value?.load()
 })
 
@@ -50,25 +60,69 @@ const filteredScopes = computed(() => {
 const selectedScope = computed(() => scopes.value.find(s => s.id === selectedId.value) || null)
 const readOnlyScope = computed(() => (selectedScope.value && selectedScope.value.source !== 'custom') ? selectedScope.value : null)
 const isOverlay = computed(() => !!draft.value?.target)
-const originalPolicies = computed(() => readOnlyScope.value?.base_policies ?? readOnlyScope.value?.policies ?? [])
+const originalPolicies = computed(() => readOnlyScope.value?.policies ?? [])
 const basePolicies = computed(() => isOverlay.value ? originalPolicies.value : [])
 
-const installedById = computed(() => new Map(installedPolicies.value.map(policy => [policy.id, policy])))
-
+const assignableById = computed(() => new Map(assignablePolicies.value.map(policy => [policy.id, policy])))
+const draftPolicies = computed(() => {
+  const role = selectedScope.value
+  const stored = isOverlay.value ? role?.overlay_policies : role?.policies
+  return new Map((stored ?? []).map(policy => [policy.id, policy]))
+})
 const selectedPolicies = computed(() => (draft.value?.policyIds ?? [])
-  .map(id => installedById.value.get(id) ?? { id, available: false }))
+  .map(id => draftPolicies.value.get(id) ?? assignableById.value.get(id) ?? { id, available: false }))
+
+function resetComposition() {
+  selection++
+  openingOverlay.value = false
+  composition.value = null
+  if (technicalDetails.value) technicalDetails.value.open = false
+}
+
+async function showComposition(event: Event) {
+  const details = event.currentTarget as HTMLDetailsElement
+  const role = readOnlyScope.value
+  if (!details.open || !role || (composition.value && !composition.value.error)) return
+  const pending = { scope: null, loading: true, error: '' }
+  composition.value = pending
+  try {
+    const full = await store.loadComposition(role.id)
+    if (composition.value !== pending) return
+    composition.value = { scope: full, loading: false, error: '' }
+  }
+  catch (e) {
+    if (composition.value !== pending) return
+    composition.value = { scope: null, loading: false, error: messageOf(e, 'Failed to load technical policies') }
+  }
+}
+
+const technicalPolicies = computed(() => {
+  const full = composition.value?.scope
+  if (!full) return []
+  const visible = new Set(originalPolicies.value.map(policy => policy.id))
+  return (full.base_policies ?? full.policies).filter(policy => !visible.has(policy.id))
+})
+
+function copyablePolicyIds(role: Scope): string[] {
+  return [...new Set([...role.policies, ...(role.overlay_policies ?? [])]
+    .filter(policy => policy.available !== false && assignableById.value.has(policy.id))
+    .map(policy => policy.id))]
+}
+const canCopy = computed(() => selectedScope.value && copyablePolicyIds(selectedScope.value).length > 0)
 
 const palettePolicies = computed<Policy[]>(() => {
   if (!draft.value) return []
   // Exclude already-chosen extensions and, for an overlay, the locked base
   // policies (base can't be re-added).
-  const chosen = new Set([...draft.value.policyIds, ...basePolicies.value.map(p => p.id)])
+  const chosen = new Set([...draft.value.policyIds, ...(isOverlay.value ? lockedPolicyIds.value : [])])
   const q = paletteSearch.value.trim().toLowerCase()
   return assignablePolicies.value.filter(p => !chosen.has(p.id)
     && (!q || (p.title || '').toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || (p.comment || '').toLowerCase().includes(q)))
 })
 
 function selectScope(s: Scope) {
+  resetComposition()
+  paletteSearch.value = ''
   selectedId.value = s.id
   draft.value = s.source === 'custom'
     ? { slug: s.slug || '', label: s.label, description: s.description, policyIds: s.policies.map(p => p.id), enabled: s.enabled, isNew: false, target: '' }
@@ -76,18 +130,20 @@ function selectScope(s: Scope) {
 }
 
 function newScope() {
+  resetComposition()
+  paletteSearch.value = ''
   selectedId.value = null
   draft.value = { slug: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''), label: '', description: '', policyIds: [], enabled: true, isNew: true, target: '' }
 }
 
-// Clone any scope (built-in, registry, or custom) into a NEW editable custom
-// scope, pre-filled with its policies.
 function copyScope(s: Scope) {
+  const policyIds = copyablePolicyIds(s)
+  if (!policyIds.length) return
   newScope()
   Object.assign(draft.value!, {
     label: s.label ? `Copy of ${s.label}` : '',
     description: s.description,
-    policyIds: [...new Set([...s.policies, ...(s.overlay_policies ?? [])].filter(p => p.available !== false).map(p => p.id))],
+    policyIds,
   })
 }
 
@@ -97,22 +153,36 @@ function sanitizeId(id: string): string {
 
 // Extend a built-in/registry scope via an overlay: base policies stay locked
 // (can't be removed), the admin adds extra policies that union onto the default.
-function openOverlay(s: Scope) {
-  selectedId.value = s.id
-  draft.value = {
-    slug: s.overlay_slug || sanitizeId(s.id),
-    label: s.label || shortId(s.id),
-    description: s.description,
-    policyIds: (s.overlay_policies ?? []).map(p => p.id),
-    enabled: true,
-    isNew: !s.overlay_slug,
-    target: s.id,
+async function openOverlay(s: Scope) {
+  const started = selection
+  openingOverlay.value = true
+  try {
+    const full = composition.value?.scope ?? await store.loadComposition(s.id)
+    if (started !== selection) return
+    resetComposition()
+    paletteSearch.value = ''
+    lockedPolicyIds.value = new Set((full.base_policies ?? full.policies).map(policy => policy.id))
+    draft.value = {
+      slug: s.overlay_slug || sanitizeId(s.id),
+      label: s.label || shortId(s.id),
+      description: s.description,
+      policyIds: (s.overlay_policies ?? []).map(p => p.id),
+      enabled: true,
+      isNew: !s.overlay_slug,
+      target: s.id,
+    }
+  }
+  catch (e) {
+    if (started === selection) error.value = messageOf(e, 'Failed to open the role extension')
+  }
+  finally {
+    if (started === selection) openingOverlay.value = false
   }
 }
 
 function addPolicy(id: string, index?: number) {
-  if (!draft.value || draft.value.policyIds.includes(id) || basePolicies.value.some(p => p.id === id)) return
-  if (assignablePolicies.value.some(p => p.id === id)) draft.value.policyIds.splice(index ?? draft.value.policyIds.length, 0, id)
+  if (!draft.value || draft.value.policyIds.includes(id) || (isOverlay.value && lockedPolicyIds.value.has(id))) return
+  if (assignableById.value.has(id)) draft.value.policyIds.splice(index ?? draft.value.policyIds.length, 0, id)
 }
 function removePolicy(id: string) {
   if (draft.value) draft.value.policyIds = draft.value.policyIds.filter(policyId => policyId !== id)
@@ -218,7 +288,7 @@ function shortId(id: string): string {
         <RailHeader title="Roles" :count="scopes.length">
           <template #actions>
             <IconButton icon="tabler:plus" label="New role" :disabled="saving" @click="newScope" />
-            <IconButton icon="tabler:refresh" label="Refresh" :disabled="loading" :spin="loading" @click="store.load" />
+            <IconButton icon="tabler:refresh" label="Refresh" :disabled="loading" :spin="loading" @click="refreshRoles" />
           </template>
         </RailHeader>
 
@@ -260,7 +330,7 @@ function shortId(id: string): string {
             <Pill v-if="isOverlay" severity="warn">Additional permissions</Pill>
           </div>
           <div class="ks-builder-acts">
-            <Button v-if="!draft.isNew && !isOverlay && selectedScope" variant="soft" small icon="tabler:copy" :disabled="saving" @click="copyScope(selectedScope)">Duplicate</Button>
+            <Button v-if="!draft.isNew && !isOverlay && selectedScope" variant="soft" small icon="tabler:copy" :disabled="saving || !canCopy" @click="copyScope(selectedScope)">Copy permissions</Button>
             <Button v-if="!draft.isNew" variant="danger" small icon="tabler:trash" :disabled="saving" @click="askDelete">{{ isOverlay ? 'Remove extension' : 'Delete' }}</Button>
             <Button variant="primary" small icon="tabler:device-floppy" :loading="saving" :disabled="!canSave" @click="save">{{ isOverlay ? 'Save extension' : 'Save role' }}</Button>
           </div>
@@ -268,7 +338,7 @@ function shortId(id: string): string {
 
         <div v-if="isOverlay" class="ks-overlay-warn">
           <Icon icon="tabler:alert-triangle" aria-hidden="true" />
-          <span>Adding permissions grants them to <b>everyone assigned {{ selectedScope?.label || shortId(draft.target) }}</b>. Original permissions cannot be removed here. To restrict access, create a new role with only the permissions needed.</span>
+          <span>Adding permissions grants them to <b>everyone assigned {{ selectedScope?.label || shortId(draft.target) }}</b>. You can remove permissions added by this extension. To restrict access, create a new role with only the permissions needed.</span>
         </div>
         <p v-else class="ks-view-note">Choose the permissions this role grants, then assign it in System → Users. To restrict a Member, assign this role instead of Member; other assigned roles may still grant access.</p>
 
@@ -284,12 +354,12 @@ function shortId(id: string): string {
         <div class="ks-panes" :class="{ three: isOverlay }">
           <section v-if="isOverlay" class="ks-pane locked-pane">
             <header class="ks-pane-head">
-              <span>Original permissions</span>
+              <span>Original assignable permissions</span>
               <span class="ks-pane-sub">{{ basePolicies.length }} · locked</span>
             </header>
             <div class="ks-pane-body">
               <PolicyCard v-for="p in basePolicies" :key="p.id" :policy="p" mode="locked" />
-              <div v-if="!basePolicies.length" class="ks-pane-empty">No original permissions.</div>
+              <div v-if="!basePolicies.length" class="ks-pane-empty">No original permissions available to assign.</div>
             </div>
           </section>
 
@@ -342,17 +412,30 @@ function shortId(id: string): string {
             <span>{{ readOnlyScope.label || shortId(readOnlyScope.id) }}</span>
           </div>
           <div class="ks-builder-acts">
-            <Button variant="primary" small icon="tabler:stack-2" @click="openOverlay(readOnlyScope)">{{ readOnlyScope.overlay_slug ? 'Edit extension' : 'Add permissions' }}</Button>
-            <Button variant="soft" small icon="tabler:copy" @click="copyScope(readOnlyScope)">Copy role</Button>
+            <Button variant="primary" small icon="tabler:stack-2" :loading="openingOverlay" :disabled="composition?.loading" @click="openOverlay(readOnlyScope)">{{ readOnlyScope.overlay_slug ? 'Edit extension' : 'Add permissions' }}</Button>
+            <Button variant="soft" small icon="tabler:copy" :disabled="!canCopy" @click="copyScope(readOnlyScope)">Copy permissions</Button>
           </div>
         </div>
+        <p v-if="readOnlyScope.description" class="ks-view-note">{{ readOnlyScope.description }}</p>
         <p class="ks-view-note">
-          Included with the application. Adding permissions affects everyone with this role. For restricted access, create a new role with only the permissions needed and assign it in System → Users instead of this role. Other assigned roles may still grant access.
+          Adding permissions affects everyone with this role. Copy permissions starts a custom role with the permissions available to assign.
         </p>
-        <div class="ks-pane-body ks-view-list">
-          <PolicyCard v-for="p in originalPolicies" :key="p.id" :policy="p" mode="locked" />
-          <div v-if="!originalPolicies.length" class="ks-pane-empty">No permissions in this role.</div>
-        </div>
+        <section class="ks-view-list">
+          <header class="ks-pane-head">Assignable permissions</header>
+          <div class="ks-pane-body">
+            <PolicyCard v-for="p in originalPolicies" :key="p.id" :policy="p" mode="locked" />
+            <div v-if="!originalPolicies.length" class="ks-pane-empty">No assignable permissions in the original role.</div>
+          </div>
+        </section>
+        <details :key="readOnlyScope.id" ref="technicalDetails" class="ks-technical" @toggle="showComposition">
+          <summary>Technical policies</summary>
+          <Spinner v-if="composition?.loading" label="Loading technical policies…" />
+          <p v-else-if="composition?.error" class="ks-view-note" role="alert">{{ composition.error }}. Reopen to try again.</p>
+          <ul v-else-if="technicalPolicies.length" class="ks-technical-list">
+            <li v-for="p in technicalPolicies" :key="p.id"><code>{{ p.id }}</code></li>
+          </ul>
+          <p v-else-if="composition" class="ks-view-note">No additional technical policies.</p>
+        </details>
 
         <div v-if="readOnlyScope.overlay_policies && readOnlyScope.overlay_policies.length" class="ks-ext-block">
           <div class="ks-ext-head">

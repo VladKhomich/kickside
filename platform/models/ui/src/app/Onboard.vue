@@ -21,7 +21,7 @@ import ProviderProfileEditor from './ProviderProfileEditor.vue'
 const emit = useComponentEvents()
 const store = useModelsApi()
 const { adapters, presets, profiles, models, classes, loading, saving, error } = store
-const lookups = makeLookups(() => adapters.value, () => profiles.value, () => presets.value)
+const lookups = makeLookups(() => adapters.value, () => profiles.value)
 
 const COMPAT_EDITOR = 'kickside-model-provider-openai-compatible'
 const COMPAT_PROVIDER = 'wippy.llm.openai_compat:provider'
@@ -408,7 +408,7 @@ onMounted(async () => {
           </div>
           <div class="ob-providers">
             <div v-for="p in profiles" :key="p.id" class="ob-prov">
-              <Avatar :icon="lookups.providerIcon(p.provider_id)" size="sm" />
+              <Avatar :icon="lookups.providerIcon(p.provider_id, p.id)" size="sm" />
               <div class="ob-prov-body">
                 <div class="ob-prov-name">{{ p.name }}</div>
                 <div class="ob-prov-sub">{{ profileEndpoint(p) }}</div>

@@ -785,7 +785,7 @@ LICENSE.md: [License text](#license-text-91887c62d26f64b8d6e98b1dca57e75aca62e6f
 
 License: Python-2.0
 
-Lockfiles: `platform/renderers/ui/package-lock.json`
+Lockfiles: `platform/renderers/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-de4d1f2d2ad5ad0cfd1657a106476b31cb5db5ef9d1ff842b237c0c81f0c8a23)
 
@@ -1379,7 +1379,7 @@ LICENSE: [License text](#license-text-2b770a704c15de238c3f622b01b0044ddd60b49ee3
 
 License: BSD-2-Clause
 
-Lockfiles: `platform/renderers/ui/package-lock.json`
+Lockfiles: `platform/renderers/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-cb992345949ccd6e8394b2cd6c465f7b897c864f845937dbf64e8997f389e164)
 
@@ -1783,7 +1783,7 @@ LICENSE: [License text](#license-text-456fe85ad3e71db9523313cf7437b0f90c392d8a48
 
 License: MIT
 
-Lockfiles: `platform/renderers/ui/package-lock.json`
+Lockfiles: `platform/renderers/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-95e3f7f0e81e9b4940cdfaa1956aaff5e4dfd2fb1565041e7c78eb9a606f23e3)
 
@@ -1811,6 +1811,14 @@ Lockfiles: `platform/renderers/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-792c48c5a849a15fdf9e37e8bcf9e6d1dd13b32b46c642a748a0a46a9919d473)
 
+### npm: markdown-it@14.3.3
+
+License: MIT
+
+Lockfiles: `platform/widgets/ui/package-lock.json`
+
+LICENSE: [License text](#license-text-792c48c5a849a15fdf9e37e8bcf9e6d1dd13b32b46c642a748a0a46a9919d473)
+
 ### npm: marked@16.4.2
 
 License: MIT
@@ -1831,7 +1839,7 @@ LICENSE: [License text](#license-text-2b770a704c15de238c3f622b01b0044ddd60b49ee3
 
 License: MIT
 
-Lockfiles: `platform/renderers/ui/package-lock.json`
+Lockfiles: `platform/renderers/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 LICENSE: [License text](#license-text-6b6a356c4337e2446841f30f3cdf7e7023af8c5260b5e347c0f987b9f6aa2644)
 
@@ -2119,7 +2127,7 @@ LICENSE: [License text](#license-text-f55828df4b8752c48e765a806465b76a103e3cb363
 
 License: MIT
 
-Lockfiles: `platform/renderers/ui/package-lock.json`
+Lockfiles: `platform/renderers/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 LICENSE-MIT.txt: [License text](#license-text-483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a)
 
@@ -2349,7 +2357,7 @@ LICENSE: [License text](#license-text-b40930bbcf80744c86c46a12bc9da056641d722716
 
 License: MIT
 
-Lockfiles: `platform/renderers/ui/package-lock.json`
+Lockfiles: `platform/renderers/ui/package-lock.json`, `platform/widgets/ui/package-lock.json`
 
 LICENSE.txt: [License text](#license-text-483acb265f182907d1caf6cff9c16c96f31325ed23792832cc5d8b12d5f88c8a)
 

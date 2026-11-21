@@ -21,7 +21,7 @@ class e extends o {
     };
   }
   static get vueConfig() {
-    return t(() => import("./lazy-mount-CJRPxtI4.js").then((r) => r.mountConfig), {
+    return t(() => import("./lazy-mount-5EYipbjQ.js").then((r) => r.mountConfig), {
       surface: "page",
       loading: "Loading Workflows",
       failed: "Could not load the Workflow builder. Reload the page to try again."

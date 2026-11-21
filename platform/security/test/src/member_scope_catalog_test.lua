@@ -66,7 +66,7 @@ local function define_tests()
                 test.eq(listed_scope.policies[1].id, "app:module_access")
                 test.eq(table.concat(assert(store.get(slug)).policies, ","), retired_id .. ",app:module_access")
 
-                local editable = assert(scope_catalog.scopes({include_unavailable = true}))
+                local editable = assert(scope_catalog.scopes({permissions_only = true, include_unavailable = true}))
                 for _, scope in ipairs(editable) do
                     if scope.id == listed_scope.id then listed_scope = scope end
                 end

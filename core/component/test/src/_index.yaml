@@ -3242,3 +3242,18 @@ entries:
   - name: teardown_admission_stub
     kind: library.lua
     source: file://teardown_admission_stub.lua
+
+  - name: retained_grants_db
+    kind: db.sql.sqlite
+    file: ":memory:"
+    foreign_keys: true
+    pool: {max_open: 1, max_idle: 1}
+
+  - name: retained_grants_test
+    kind: function.lua
+    meta: {type: test, suite: component_retained_grants}
+    source: file://retained_grants_test.lua
+    method: run
+    modules: [sql, funcs]
+    imports:
+      test: wippy.test:test

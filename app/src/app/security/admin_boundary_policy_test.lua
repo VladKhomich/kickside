@@ -188,6 +188,18 @@ local function define_tests()
             end
         end)
 
+        test.it("reserves command-owned Work transitions for module service policies", function()
+            for _, scope_id in ipairs({ USER_SCOPE, ADMIN_SCOPE }) do
+                for _, command in ipairs({ "kickside.work.planning:close", "example.work:close" }) do
+                    test.eq(decision(scope_id, "work.transition.command", command), "undefined", scope_id .. " " .. command)
+                end
+            end
+            for _, endpoint in ipairs({ "kickside.work.api:apply.endpoint",
+                "kickside.work.api.sprints:plan_close.endpoint", "kickside.work.api.sprints:close.endpoint" }) do
+                test.eq(decision(ADMIN_SCOPE, "access", endpoint), "allow", endpoint)
+            end
+        end)
+
         test.it("reserves system onboarding for administrators", function()
             test.eq(decision(USER_SCOPE, "access", SYSTEM_ONBOARDING), "undefined")
             test.eq(decision(ADMIN_SCOPE, "access", SYSTEM_ONBOARDING), "allow")

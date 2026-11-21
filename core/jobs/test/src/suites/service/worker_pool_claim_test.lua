@@ -32,7 +32,8 @@ end
 -- claim_batch(call) answers each claim; due_count is the due backlog every
 -- backlog read reports. The result reports what the pool did.
 local function run_pool(claim_batch: (integer) -> (table[]?, error?), queued_wakes: integer?, queued_idle: integer?,
-        awaited: boolean?, due_count: integer?, backlog: ((string?) -> (table?, error?))?, claim_at: string?, maintenance: any?): table
+        awaited: boolean?, due_count: integer?, backlog: ((string?) -> (table?, error?))?, claim_at: string?,
+        maintenance: any?, recycle: boolean?): table
     local events_ch = { case_receive = function(self) return self end }
     local registry_ch = { case_receive = function(self) return self end }
     local idle_ch = { case_receive = function(self) return self end }
@@ -42,6 +43,10 @@ local function run_pool(claim_batch: (integer) -> (table[]?, error?), queued_wak
     local selections = 0
     local pending_wakes = queued_wakes or 0
     local pending_idle = queued_idle or 0
+    local spare_worker = "spare-worker"
+    local workers_spawned = 0
+    local spare_idle = recycle == true
+    local completed_epoch: integer? = nil
     local drained = 0
     local retention_driver = job_fixture.no_retention_schedule
     if maintenance then retention_driver = nil end
@@ -88,8 +93,16 @@ local function run_pool(claim_batch: (integer) -> (table[]?, error?), queued_wak
                 register = function() return true, nil end,
                 unregister = function() return true, nil end,
             },
-            spawn_linked_monitored = function() return WORKER_ID end,
-            send = function() outcome.trace[#outcome.trace + 1] = "assignment"; outcome.assignments = outcome.assignments + 1; return true, nil end,
+            spawn_linked_monitored = function()
+                workers_spawned = workers_spawned + 1
+                return recycle and workers_spawned == 2 and spare_worker or WORKER_ID
+            end,
+            send = function(_pid, _topic, offer)
+                outcome.trace[#outcome.trace + 1] = "assignment"
+                outcome.assignments = outcome.assignments + 1
+                if recycle then completed_epoch = offer.epoch end
+                return true, nil
+            end,
             cancel = function() outcome.cancels = outcome.cancels + 1 end,
         },
         time = {
@@ -101,6 +114,15 @@ local function run_pool(claim_batch: (integer) -> (table[]?, error?), queued_wak
                 local receives_idle = false
                 for _, case in ipairs(cases) do
                     if case == idle_ch then receives_idle = true end
+                end
+                if receives_idle and selections >= 1 and spare_idle then
+                    spare_idle = false
+                    return { channel = idle_ch, value = { kind = "idle", worker_id = spare_worker, version = "v1", epoch = 0 } }
+                end
+                if receives_idle and completed_epoch then
+                    local epoch = completed_epoch
+                    completed_epoch = nil
+                    return { channel = idle_ch, value = { kind = "idle", worker_id = WORKER_ID, version = "v1", epoch = epoch } }
                 end
                 if receives_idle and selections >= 1 and pending_idle > 0 then
                     pending_idle = pending_idle - 1
@@ -128,7 +150,8 @@ local function run_pool(claim_batch: (integer) -> (table[]?, error?), queued_wak
             end
             selections = selections + 1
             if selections > 2 then
-                return { channel = events_ch, value = { kind = process.event.EXIT, from = WORKER_ID } }
+                local exited = recycle and selections == 4 and spare_worker or WORKER_ID
+                return { channel = events_ch, value = { kind = process.event.EXIT, from = exited } }
             end
             if selections == 1 then
                 return { channel = idle_ch,
@@ -492,6 +515,18 @@ local function define_tests()
             test.eq(outcome.claims, 1)
             test.eq(outcome.assignments, 0)
             test.eq(outcome.retired, 0)
+        end)
+
+        test.it("dispatches successive claims while a spare slot stays idle", function()
+            local jobs = 250
+            local outcome = run_pool(function(call)
+                if call > jobs then return {}, nil end
+                local id = "job-" .. tostring(call)
+                return { { id = id, job_type = "general", worker_id = WORKER_ID,
+                    run_ctx = { id = id } } }, nil
+            end, nil, nil, nil, nil, nil, nil, nil, true)
+            test.eq(outcome.assignments, jobs)
+            test.eq(outcome.claims, jobs + 1)
         end)
 
         test.it("coalesces queued durable wake notices before scanning for runnable jobs", function()

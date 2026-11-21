@@ -195,10 +195,11 @@ entries:
     meta: { type: test, suite: uploads }
     source: file://shared_upload_access_test.lua
     method: run
-    modules: [uuid, security, funcs, contract, sql, json, fs]
+    modules: [uuid, security, funcs, contract, sql, json, fs, hash, time]
     imports:
       test: wippy.test:test
       provision: kickside.core.threads:provision
+      query: kickside.uploads.persist:upload_query_repo
       records: kickside.uploads.persist:upload_record_repo
       artifacts: kickside.uploads.persist:artifact_content_repo
       types: kickside.uploads:types

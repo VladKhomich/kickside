@@ -105,6 +105,8 @@ end
 function M.create(args: any): (agent_types.CreateResult?, error?)
     args = args or {}
     if not is_str(args.name) then return nil, fail(errors.INVALID, "name is required") end
+    local budget, budget_err = agent_types.response_token_budget(args.max_tokens)
+    if budget_err then return nil, budget_err end
 
     -- New agents can create artifacts and read uploads by default. An explicit empty traits array
     -- remains a supported opt-out, and update never backfills existing agents.
@@ -125,7 +127,7 @@ function M.create(args: any): (agent_types.CreateResult?, error?)
         prompt = args.prompt or "",
         model = args.model or agent_types.DEFAULT_MODEL,
         temperature = tonumber(args.temperature),
-        max_tokens = tonumber(args.max_tokens),
+        max_tokens = budget,
         traits = traits,
         trait_contexts = args.trait_contexts or {},
         trait_agent_options = args.trait_agent_options or {},
@@ -214,6 +216,8 @@ end
 function M.update(args: any): (agent_types.ComponentRef?, error?)
     args = args or {}
     if not is_str(args.component_id) then return nil, fail(errors.INVALID, "component_id is required") end
+    local budget, budget_err = agent_types.response_token_budget(args.max_tokens)
+    if budget_err then return nil, budget_err end
 
     local trait_err = validate_capability_ids(args.traits, "trait")
     if trait_err then return nil, trait_err end
@@ -232,7 +236,7 @@ function M.update(args: any): (agent_types.ComponentRef?, error?)
     if args.model ~= nil then pc_patch.model = args.model end
     if args.temperature == false then pc_patch.temperature = false
     elseif args.temperature ~= nil then pc_patch.temperature = tonumber(args.temperature) end
-    if args.max_tokens ~= nil then pc_patch.max_tokens = tonumber(args.max_tokens) end
+    if budget ~= nil then pc_patch.max_tokens = budget end
     if args.tools ~= nil then pc_patch.tools = args.tools end
     if args.traits ~= nil then pc_patch.traits = args.traits end
     if args.trait_contexts ~= nil then pc_patch.trait_contexts = args.trait_contexts end

@@ -98,14 +98,22 @@ Source lifecycle resolution does not invoke human action callbacks. Human
 actions still go through `inbox_resolve`; each refreshed aggregate version has
 its own resolution identity so reopened work can receive a new decision.
 
-Cross-user review delivery requires `inbox.assign` on `user:<assignee>`.
-The application binds `kickside.inbox.security:assignment_security_scope` to its
-administrator group. The default assigner group has no application members.
-The review arm emits the declared Inbox output event as the sender, retains the
-recipient's existing component ownership, and records `metadata.assigned_by`.
-It never reconstructs the recipient's actor or reads the recipient's Inbox.
-A recipient must have a provisioned Inbox. Re-arming uses the same event identity
-and does not reopen a resolved decision.
+### Inbox reviews after upgrade
+
+An Inbox review goes to the person running the Flow. Owner-addressed notices
+still use the Inbox writer under the owner identity authorized by the producer.
+The review step retains the same run correlation and approve/reject result.
+
+Saved review configurations keep their existing `assignee` value. An empty value
+or a saved value matching the Flow runner continues to work. A new run with a
+different saved assignee stops at the review step before creating an item. Open
+the step, choose **Use Flow runner**, and publish the revised Flow. Headless
+builders can remove `assignee` from the step's configuration before publishing.
+
+Previously delivered, durably parked reviews remain in their original Inbox.
+Only their recorded recipient can submit the decision. The upgrade leaves
+historical items and Flow versions in place. An interrupted run whose review had
+not finished arming follows the same validation as a new review.
 
 ## Files
 

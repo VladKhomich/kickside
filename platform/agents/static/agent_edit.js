@@ -20,7 +20,7 @@ class e extends i {
     };
   }
   static get vueConfig() {
-    return n(() => import("./AgentEdit-Cd7rrMt-.js").then((t) => ({ rootComponent: t.default, plugins: [o] })), { surface: "compact", loading: "Loading agent editor…", failed: "Could not load the agent editor. Reload the page to try again.", delay: 200, timeout: 3e4 });
+    return n(() => import("./AgentEdit-BcbogHVc.js").then((t) => ({ rootComponent: t.default, plugins: [o] })), { surface: "compact", loading: "Loading agent editor…", failed: "Could not load the agent editor. Reload the page to try again.", delay: 200, timeout: 3e4 });
   }
 }
 async function d() {

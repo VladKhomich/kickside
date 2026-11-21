@@ -46,7 +46,7 @@ commit regenerated tracked assets with the source.
 
 ## Use
 
-Open **Inbox** to review assigned items and submit the actions their types expose. Inbox owns the item and decision. A Review Block parks a Flow through Blocks/Dataflow; a successful decision submission does not prove that later Flow steps complete.
+Open **Inbox** to review your items and submit the actions their types expose. An Inbox review step delivers to the person running the Flow. Blocks/Dataflow park the run until that person submits a decision. A successful submission records the decision, and the Flow run shows the outcome of subsequent steps.
 
 ## Reference
 
@@ -70,7 +70,6 @@ or Hub plan. Existing explicit bindings take precedence over defaults.
 | --- | --- |
 | [`kickside.inbox:api_router`](src/_index.yaml) | Host supplies the value |
 | [`kickside.inbox:ui_server`](src/_index.yaml) | Host supplies the value |
-| [`kickside.inbox.security:assignment_security_scope`](src/security/_index.yaml) | `kickside.inbox.security:assigner` |
 | [`kickside.inbox.security:user_security_scope`](src/security/module_access/_index.yaml) | `kickside.security.groups:members` |
 
 ## Links

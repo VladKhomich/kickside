@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Adapter, Preset, Profile } from '../types.ts'
+import type { Adapter, Profile } from '../types.ts'
 import { Button } from './shared'
 import ProviderRow from './ProviderRow.vue'
 import { makeLookups } from './presenters.ts'
@@ -9,7 +9,6 @@ import { makeLookups } from './presenters.ts'
 const props = defineProps<{
   profiles: Profile[]
   adapters: Adapter[]
-  presets: Preset[]
   selectedId: string
   discovering: string
   busy: boolean
@@ -22,7 +21,7 @@ const emit = defineEmits<{
   (e: 'add'): void
 }>()
 
-const lookups = makeLookups(() => props.adapters, () => props.profiles, () => props.presets)
+const lookups = makeLookups(() => props.adapters, () => props.profiles)
 </script>
 
 <template>
@@ -40,7 +39,7 @@ const lookups = makeLookups(() => props.adapters, () => props.profiles, () => pr
       v-for="profile in profiles"
       :key="profile.id"
       :profile="profile"
-      :provider-icon="lookups.providerIcon(profile.provider_id)"
+      :provider-icon="lookups.providerIcon(profile.provider_id, profile.id)"
       :adapter-title="lookups.adapterTitle(profile.provider_id)"
       :selected="selectedId === profile.id"
       :discoverable="lookups.isDiscoverable(profile)"

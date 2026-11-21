@@ -955,6 +955,71 @@ return {run = test.run_cases(function()
             assert(restore:apply())
             denied(progress, err)
         end)
+        test.it("publishes ensure as an optional registration flag", function()
+            local entry = assert(registry.get("kickside.core:threads"))
+            for _, method in ipairs(entry.data.methods) do
+                if method.name == "register_projection" then
+                    local schema = assert(json.decode(method.input_schemas[1].definition))
+                    test.eq(schema.properties.ensure.type, "boolean")
+                    test.eq(schema.properties.ensure.default, false)
+                    for _, field in ipairs(schema.required) do test.is_true(field ~= "ensure") end
+                    return
+                end
+            end
+            error("missing register_projection contract method")
+        end)
+
+        test.it("refreshes a paused selector and folds the new input after the owner resumes", function()
+            local id = fixture("event.read.test:public_kind")
+            local owner = threads(OWNER)
+            local address = { thread_id = id, kind = "count" }
+            local spec = { thread_id = id, kind = "count", worker_ref = "func://app:test_count_worker", start_at_head = true,
+                events = { input = {{ type = "event.read.test:unmatched", via = "thread" }} } }
+            local original = assert(owner:register_projection(spec)).projection
+            assert(owner:pause_projection(address))
+
+            local function cursor()
+                local db = assert(sql.get("app:db"))
+                local rows, err = db:query([[SELECT status, last_seq, generation, execution_identity_json
+                    FROM kickside_projection_cursor WHERE id=$1]], {original.cursor_id})
+                db:release()
+                assert(rows, tostring(err))
+                return assert(rows[1])
+            end
+            local paused = cursor()
+            test.eq(paused.status, "paused")
+            test.eq(assert(json.decode(paused.execution_identity_json)).principal.id, OWNER)
+            test.eq(paused.last_seq, 1)
+            spec.start_at_head = nil
+            spec.ensure = true
+            spec.events.input[2] = { type = "kickside.threads:message.created", via = "thread" }
+            denied(threads(READER):register_projection(spec))
+            test.eq(cursor().generation, paused.generation)
+
+            local updated = assert(owner:register_projection(spec)).projection
+            test.eq(updated.cursor_id, original.cursor_id)
+            test.eq(updated.job_id, original.job_id)
+            test.eq(updated.projection_id, original.projection_id)
+            local held = cursor()
+            test.eq(held.status, "paused")
+            test.eq(held.last_seq, paused.last_seq)
+            test.eq(held.execution_identity_json, paused.execution_identity_json)
+            test.eq(held.generation, paused.generation + 1)
+            assert(owner:register_projection(spec))
+            test.eq(cursor().generation, held.generation)
+
+            assert(owner:append_event({ thread_id = id,
+                event = { type = "kickside.threads:message.created", role = "user", body = {} } }))
+            test.eq(cursor().last_seq, paused.last_seq)
+            assert(owner:resume_projection(address))
+            assert(run_projection(updated))
+            local caught = assert(owner:catch_up_projection(address))
+            test.is_true(caught.done)
+            local final = assert(owner:get_projection_cursor(address))
+            test.eq(assert(json.decode(final.projection.body)).stats.count, 1)
+            assert(owner:remove_projection(address))
+        end)
+
         test.it("requires ADMIN before exposing or waking a restricted cursor through controls", function()
             local id = fixture("event.read.test:admin_kind")
             assert(threads(OWNER):register_projection({thread_id = id, kind = "count",

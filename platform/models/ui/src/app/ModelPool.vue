@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, toRef, watch } from 'vue'
-import type { Adapter, ModelCard, ModelProbeState, Preset, Profile } from '../types.ts'
+import type { Adapter, ModelCard, ModelProbeState, Profile } from '../types.ts'
 import { Button, EmptyState, IconButton, Pill, SearchField, SelectField } from './shared'
 import ModelRow from './ModelRow.vue'
 import { useModelFilters } from './useModelFilters.ts'
@@ -14,7 +14,6 @@ const props = defineProps<{
   models: ModelCard[]
   profiles: Profile[]
   adapters: Adapter[]
-  presets: Preset[]
   selectedProfileId: string
   probingModel?: string
   probeState?: ModelProbeState
@@ -30,7 +29,7 @@ const emit = defineEmits<{
   (e: 'add'): void
 }>()
 
-const lookups = makeLookups(() => props.adapters, () => props.profiles, () => props.presets)
+const lookups = makeLookups(() => props.adapters, () => props.profiles)
 const f = useModelFilters(toRef(props, 'models'))
 
 const sourceOptions = [
@@ -124,7 +123,7 @@ watch(() => props.selectedProfileId, (id) => { f.state.profile = id || 'all' }, 
         v-for="model in f.visible.value"
         :key="model.name"
         :model="model"
-        :provider-icon="lookups.providerIcon(model.provider_id)"
+        :provider-icon="lookups.providerIcon(model.provider_id, model.provider_profile_id)"
         :provider-title="lookups.adapterTitle(model.provider_id)"
         :profile-title="lookups.profileTitle(model.provider_profile_id)"
         :probing="probingModel === model.name"

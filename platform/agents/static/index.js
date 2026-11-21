@@ -14,7 +14,7 @@ class e extends o {
   }
   static get vueConfig() {
     return {
-      ...s(() => import("./lazy-mount-CHyuRk2R.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Agents. Reload the page to try again.", timeout: 3e4 })
+      ...s(() => import("./lazy-mount-B6kci4qV.js").then((t) => t.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Agents. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }

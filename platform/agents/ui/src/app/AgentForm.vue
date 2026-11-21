@@ -118,16 +118,13 @@ const temperatureOn = computed({
 const selectedModels = computed(() => form.value.model.startsWith('class:')
   ? props.models.filter(model => model.class?.includes(form.value.model.slice(6)))
   : props.models.filter(model => model.name === form.value.model))
-const tokenCeiling = computed(() => {
+const suggestedMaxTokens = computed(() => {
   const budgets = selectedModels.value.map(model => model.output_tokens)
     .filter((limit): limit is number => typeof limit === 'number' && Number.isFinite(limit) && limit > 0)
-  return budgets.length ? Math.floor(Math.min(...budgets)) : undefined
+  return budgets.length ? Math.max(1, Math.floor(Math.min(DEFAULT_RESPONSE_TOKENS, ...budgets))) : undefined
 })
 const maxTokens = computed({
-  get: () => {
-    const ceiling = tokenCeiling.value
-    return form.value.max_tokens ?? (ceiling === undefined ? undefined : Math.min(DEFAULT_RESPONSE_TOKENS, ceiling))
-  },
+  get: () => form.value.max_tokens ?? suggestedMaxTokens.value,
   set: (value: number | '') => { form.value.max_tokens = value },
 })
 const temperatureApplies = computed(() => !thinkingOn.value &&
@@ -137,9 +134,8 @@ const temperatureBlockedReason = computed(() => thinkingOn.value
   : 'The selected models reason instead of sampling, so temperature is not applied.')
 const tokensError = computed(() => {
   const value = maxTokens.value
-  const ceiling = tokenCeiling.value
   return value !== undefined &&
-    (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || (ceiling !== undefined && value > ceiling))
+    (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1)
 })
 const valid = computed(() => form.value.title.trim().length > 0 && !!form.value.model && !tokensError.value)
 
@@ -270,9 +266,9 @@ const navItems = computed(() => [
               </div>
 
               <label class="kx-field">
-                <span class="kx-field-lbl">Max tokens <span class="kx-field-hint-inline">— response length cap</span></span>
-                <input v-model.number="maxTokens" type="number" min="1" :max="tokenCeiling" step="1" :placeholder="tokenCeiling === undefined ? 'Model default' : undefined" class="kx-input" :class="tokensError && 'kx-input-err'" />
-                <span v-if="tokensError" class="kx-field-err">{{ tokenCeiling === undefined ? 'Must be a positive whole number.' : `Must be a whole number between 1 and ${tokenCeiling}.` }}</span>
+                <span class="kx-field-lbl">Max tokens <span class="kx-field-hint-inline">— requested response cap</span></span>
+                <input v-model.number="maxTokens" type="number" min="1" step="1" :placeholder="suggestedMaxTokens === undefined ? 'Model default' : undefined" class="kx-input" :class="tokensError && 'kx-input-err'" :aria-invalid="tokensError || undefined" />
+                <span v-if="tokensError" class="kx-field-err">Enter a positive whole number that can be saved accurately.</span>
               </label>
 
               <div class="kx-field">

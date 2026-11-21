@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.31](https://github.com/kicksideai/kickside/compare/component-v0.3.30...component-v0.3.31) (2026-11-21)
+
+
+### Features
+
+* **core:** expose a read-only lifecycle custody inventory ([#848](https://github.com/kicksideai/kickside/issues/848)) ([4a75f8e](https://github.com/kicksideai/kickside/commit/4a75f8ece580a8cff779f2270fac4545a55d4678))
+
+## [0.3.30](https://github.com/kicksideai/kickside/compare/component-v0.3.29...component-v0.3.30) (2026-11-21)
+
+
+### Features
+
+* **component:** prepare typed custody storage ([#846](https://github.com/kicksideai/kickside/issues/846)) ([563f746](https://github.com/kicksideai/kickside/commit/563f74630b35080fef183a64613c17713af09904))
+
 ## [0.3.29](https://github.com/kicksideai/kickside/compare/component-v0.3.28...component-v0.3.29) (2026-11-20)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.100](https://github.com/kicksideai/kickside/compare/jobs-v0.1.99...jobs-v0.1.100) (2026-11-21)
+
+
+### Bug Fixes
+
+* **jobs:** adopt retained queues and interrupted thread cleanup ([#870](https://github.com/kicksideai/kickside/issues/870)) ([c6e9273](https://github.com/kicksideai/kickside/commit/c6e927307291d14b8b2c347b227c718332ae805f))
+
+## [0.1.99](https://github.com/kicksideai/kickside/compare/jobs-v0.1.98...jobs-v0.1.99) (2026-11-21)
+
+
+### Bug Fixes
+
+* **jobs:** keep dispatch stack depth bounded ([#831](https://github.com/kicksideai/kickside/issues/831)) ([eb0b289](https://github.com/kicksideai/kickside/commit/eb0b28989556e1837c5024fe7cb8ec8dba7eacf1))
+
 ## [0.1.98](https://github.com/kicksideai/kickside/compare/jobs-v0.1.97...jobs-v0.1.98) (2026-11-20)
 
 

@@ -28,7 +28,7 @@ end
 
 local function read_snapshot(exec: Executor): (any?, any?, any?)
     local profile_rows, perr = exec:query([[
-        SELECT id, name, provider_id, config_json, secret_json, enabled, status, message,
+        SELECT id, name, provider_id, icon, config_json, secret_json, enabled, status, message,
                last_discovered_at, created_at, updated_at
         FROM kickside_model_provider_profiles
         ORDER BY name ASC
@@ -165,22 +165,30 @@ end
 local function insert_profile(exec: Executor, id: string, cleaned: any, secret_json: string, ts: integer): any?
     local _, err = exec:execute([[
         INSERT INTO kickside_model_provider_profiles
-            (id, name, provider_id, config_json, secret_json, enabled, status, message, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, 'unknown', '', $7, $8)
-    ]], { id, cleaned.name, cleaned.provider_id, policy.encode_json(cleaned.config), secret_json, policy.bool_int(cleaned.enabled), ts, ts })
+            (id, name, provider_id, icon, config_json, secret_json, enabled, status, message, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'unknown', '', $8, $9)
+    ]], { id, cleaned.name, cleaned.provider_id, cleaned.icon, policy.encode_json(cleaned.config),
+        secret_json, policy.bool_int(cleaned.enabled), ts, ts })
     if err then return "profile create failed: " .. tostring(err) end
     return nil
 end
 
-local function update_profile_row(exec: Executor, id: string, cleaned: any, secret_json: string?, ts: integer): any?
-    local secret_assignment = secret_json ~= nil and ", secret_json = $6" or ""
-    local args = { cleaned.name, cleaned.provider_id, policy.encode_json(cleaned.config), policy.bool_int(cleaned.enabled), ts }
-    if secret_json ~= nil then table.insert(args, secret_json) end
+local function update_profile_row(exec: Executor, id: string, cleaned: any, secret_json: string?,
+    ts: integer, replace_icon: boolean): any?
+    local args = { cleaned.name, cleaned.provider_id, policy.encode_json(cleaned.config),
+        policy.bool_int(cleaned.enabled), ts }
+    local assignments = "name = $1, provider_id = $2, config_json = $3, enabled = $4, updated_at = $5"
+    if replace_icon then
+        table.insert(args, cleaned.icon)
+        assignments = assignments .. ", icon = $" .. tostring(#args)
+    end
+    if secret_json ~= nil then
+        table.insert(args, secret_json)
+        assignments = assignments .. ", secret_json = $" .. tostring(#args)
+    end
     table.insert(args, id)
-    local _, err = exec:execute([[
-        UPDATE kickside_model_provider_profiles
-        SET name = $1, provider_id = $2, config_json = $3, enabled = $4, updated_at = $5
-    ]] .. secret_assignment .. " WHERE id = $" .. tostring(#args), args)
+    local _, err = exec:execute("UPDATE kickside_model_provider_profiles SET " .. assignments
+        .. " WHERE id = $" .. tostring(#args), args)
     if err then return "profile update failed: " .. tostring(err) end
     return nil
 end
@@ -265,7 +273,7 @@ function M.update_profile(id: string, input: any): (any?, any?)
     local handle, derr = db()
     if not handle then return nil, derr end
     local dbh = handle :: sql.DB
-    local err = update_profile_row(dbh, id, cleaned, secret_json, now())
+    local err = update_profile_row(dbh, id, cleaned, secret_json, now(), input.icon ~= nil)
     dbh:release()
     if err then return nil, err end
     local _, reload_err = M.reload()
@@ -523,8 +531,8 @@ function M.import(doc: any): (any?, any?)
         if not cleaned then return fail("profile " .. id .. ": " .. tostring(clean_err)) end
         resulting_providers[id] = cleaned.provider_id
         if existing and policy.same_value(
-            { cleaned.name, cleaned.provider_id, cleaned.config, cleaned.enabled },
-            { existing.name, existing.provider_id, existing.config, existing.enabled }) then
+            { cleaned.name, cleaned.provider_id, cleaned.config, cleaned.enabled, cleaned.icon },
+            { existing.name, existing.provider_id, existing.config, existing.enabled, existing.icon }) then
             table.insert(report.profiles.unchanged, id)
         else
             table.insert(existing and report.profiles.updated or report.profiles.created, id)
@@ -570,7 +578,7 @@ function M.import(doc: any): (any?, any?)
     local write_err: any = nil
     for _, write in ipairs(profile_writes) do
         if write.existing then
-            write_err = update_profile_row(tx, write.id, write.cleaned, nil, ts)
+            write_err = update_profile_row(tx, write.id, write.cleaned, nil, ts, true)
         else
             write_err = insert_profile(tx, write.id, write.cleaned, "", ts)
         end
@@ -597,13 +605,25 @@ function M.import(doc: any): (any?, any?)
     return report
 end
 
-function M.delete_card(name: string): (boolean, any?)
+-- Delete the stored card named name. With retired_only the delete applies to a
+-- disabled row only, and the enabled check and the delete are one statement, so
+-- a card re-enabled concurrently stays stored.
+function M.delete_card(name: string, retired_only: boolean?): (boolean, any?)
     local handle, derr = db()
     if not handle then return false, derr end
     local dbh = handle :: sql.DB
-    local _, err = dbh:execute("DELETE FROM kickside_model_cards WHERE name = $1", { name })
+    local statement = "DELETE FROM kickside_model_cards WHERE name = $1"
+    if retired_only then statement = statement .. " AND enabled = 0" end
+    local result, err = dbh:execute(statement, { name })
+    if err then dbh:release(); return false, "model delete failed: " .. tostring(err) end
+    if retired_only and result.rows_affected == 0 then
+        local rows, read_err = dbh:query("SELECT 1 FROM kickside_model_cards WHERE name = $1", { name })
+        dbh:release()
+        if read_err then return false, read_err end
+        if rows[1] then return false, "Model card " .. name .. " is enabled; disable it before deleting it" end
+        return false, "No stored model card named: " .. name
+    end
     dbh:release()
-    if err then return false, "model delete failed: " .. tostring(err) end
     local _, reload_err = M.reload()
     if reload_err then return false, reload_err end
     return true

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.24](https://github.com/kicksideai/kickside/compare/agents-v0.2.23...agents-v0.2.24) (2026-11-21)
+
+
+### Bug Fixes
+
+* **agents:** keep requested response caps independent of model limits (EE2-2905) ([#823](https://github.com/kicksideai/kickside/issues/823)) ([818095c](https://github.com/kicksideai/kickside/commit/818095c5a30933be66f07cd7321fc57a3c04b46c))
+
 ## [0.2.23](https://github.com/kicksideai/kickside/compare/agents-v0.2.22...agents-v0.2.23) (2026-11-20)
 
 

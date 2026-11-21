@@ -11,3 +11,4 @@ entries:
     imports:
       models_types: kickside.models:models_types
       provider_registry: kickside.models.discovery:provider_registry
+      models_repo: kickside.models.persist:repo

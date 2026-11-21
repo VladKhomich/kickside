@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.92](https://github.com/kicksideai/kickside/compare/models-v0.1.91...models-v0.1.92) (2026-11-21)
+
+
+### Bug Fixes
+
+* **app:** require the LLM fallback transport ([#839](https://github.com/kicksideai/kickside/issues/839)) ([106a415](https://github.com/kicksideai/kickside/commit/106a4154b21bb8a733e3454e3994330a1e7a291a))
+
+## [0.1.91](https://github.com/kicksideai/kickside/compare/models-v0.1.90...models-v0.1.91) (2026-11-21)
+
+
+### Features
+
+* **models:** agent tools and a trait for model catalog cards ([#828](https://github.com/kicksideai/kickside/issues/828)) ([fdd15a2](https://github.com/kicksideai/kickside/commit/fdd15a2ba1ee9c4a1cea42db566740147f0ec407))
+
+## [0.1.90](https://github.com/kicksideai/kickside/compare/models-v0.1.89...models-v0.1.90) (2026-11-21)
+
+
+### Features
+
+* **models:** configure and expose provider icons ([#826](https://github.com/kicksideai/kickside/issues/826)) ([0a23151](https://github.com/kicksideai/kickside/commit/0a231515396758de2173ef207f8a7e28af4c0e3a))
+
 ## [0.1.89](https://github.com/kicksideai/kickside/compare/models-v0.1.88...models-v0.1.89) (2026-11-20)
 
 

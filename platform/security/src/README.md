@@ -39,7 +39,7 @@ never the reverse:
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/security/scopes` | Scope/role catalog (`?include_internal=true` includes internal scopes). `?include_unavailable=true` includes retired selections on stored roles and extensions with their `id` and `available=false`. |
+| GET | `/security/scopes` | Scope/role catalog (`?id=<scope-id>` filters by role. `?view=permissions` shows assignable permissions for default roles and preserves saved custom and extension selections. `?include_internal=true` includes internal scopes). `?include_unavailable=true` includes retired selections on stored roles and extensions with their `id` and `available=false`. |
 | POST | `/security/scopes` | create/update a custom scope |
 | DELETE | `/security/scopes?slug=` | remove a custom scope |
 | GET | `/security/policies` | Policy inventory (`?include_private=true` includes private entries). `?assignable=true` lists named module access, module management, and tool access grants available in the role editor. A declaration can exclude infrastructure grants with `meta.assignable: false`. |

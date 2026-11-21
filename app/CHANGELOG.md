@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.58](https://github.com/kicksideai/kickside/compare/kickside-v0.2.57...kickside-v0.2.58) (2026-11-21)
+
+
+### Bug Fixes
+
+* **inbox:** send new reviews only to the Flow runner ([#869](https://github.com/kicksideai/kickside/issues/869)) ([69c8a47](https://github.com/kicksideai/kickside/commit/69c8a47927392b979a082d596d0991e71014def8))
+
+## [0.2.57](https://github.com/kicksideai/kickside/compare/kickside-v0.2.56...kickside-v0.2.57) (2026-11-21)
+
+
+### Bug Fixes
+
+* **app:** reserve Work command transitions for service policies ([7ed40b9](https://github.com/kicksideai/kickside/commit/7ed40b9e09daa436dac4f87780ceda995b55d832))
+
+## [0.2.56](https://github.com/kicksideai/kickside/compare/kickside-v0.2.55...kickside-v0.2.56) (2026-11-21)
+
+
+### Bug Fixes
+
+* **app:** require the LLM fallback transport ([#839](https://github.com/kicksideai/kickside/issues/839)) ([106a415](https://github.com/kicksideai/kickside/commit/106a4154b21bb8a733e3454e3994330a1e7a291a))
+
 ## [0.2.55](https://github.com/kicksideai/kickside/compare/kickside-v0.2.54...kickside-v0.2.55) (2026-11-21)
 
 

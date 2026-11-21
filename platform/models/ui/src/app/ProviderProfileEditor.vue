@@ -4,6 +4,7 @@ import { Icon } from '@iconify/vue'
 import { PROVIDER_SPECS } from '../providerSpecs.ts'
 import type { ProviderEditorProps, ProviderEditorSpec, ProviderField } from '../types.ts'
 import { Avatar, Button, FormField, TextInput, Toggle } from './shared'
+import ProfileIconField from './ProfileIconField.vue'
 
 // Spec-driven provider-profile form. One declarative field set per provider
 // (providerSpecs) renders into identity / endpoint / authentication / advanced
@@ -38,6 +39,7 @@ const form = reactive<Record<string, any>>({
   id: '',
   name: '',
   provider_id: '',
+  icon: '',
   retry_attempts: '',
   retry_backoff_ms: '',
   enabled: true,
@@ -55,6 +57,7 @@ function reset() {
   form.id = props.profile?.id || ''
   form.name = props.profile?.name || props.preset?.title || spec.value.title
   form.provider_id = props.profile?.provider_id || props.preset?.provider_id || props.adapter?.id || spec.value.defaultProviderId
+  form.icon = isEdit.value ? props.profile?.icon || '' : props.preset?.icon || ''
   form.retry_attempts = (cfg.retry as any)?.attempts ?? ''
   form.retry_backoff_ms = (cfg.retry as any)?.backoff_ms ?? ''
   form.enabled = props.profile?.enabled !== false
@@ -87,6 +90,7 @@ function submit() {
     id: form.id || undefined,
     name: form.name,
     provider_id: form.provider_id,
+    icon: form.icon,
     enabled: form.enabled,
   }
   for (const field of visibleFields.value) appendField(payload, field)
@@ -101,7 +105,7 @@ function submit() {
 <template>
   <form class="km-form" @submit.prevent="submit">
     <div class="km-editor-head">
-      <Avatar :icon="spec.icon" />
+      <Avatar :icon="form.icon || props.adapter?.icon || spec.icon" />
       <div class="km-editor-head-text">
         <div class="km-editor-head-title">{{ props.preset?.title || spec.title }}</div>
         <div class="km-editor-head-sub">{{ spec.subtitle }}</div>
@@ -114,6 +118,7 @@ function submit() {
         <FormField label="Name">
           <TextInput v-model="form.name" :disabled="props.saving" />
         </FormField>
+        <ProfileIconField v-model="form.icon" :fallback="props.adapter?.icon" :disabled="props.saving" />
       </div>
     </section>
 

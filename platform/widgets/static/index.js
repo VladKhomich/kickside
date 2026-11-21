@@ -12,7 +12,7 @@ class r extends a {
     };
   }
   static get vueConfig() {
-    return e(() => import("./IconPicker-CvKVAkmx.js").then((o) => ({ rootComponent: o.default })), { surface: "compact", loading: "Loading icon picker…", failed: "Could not load the icon picker. Reload the page to try again.", iconOnly: !0, delay: 200, timeout: 3e4 });
+    return e(() => import("./IconPicker-BsJ_KjBR.js").then((o) => ({ rootComponent: o.default })), { surface: "compact", loading: "Loading icon picker…", failed: "Could not load the icon picker. Reload the page to try again.", iconOnly: !0, delay: 200, timeout: 3e4 });
   }
 }
 async function v() {

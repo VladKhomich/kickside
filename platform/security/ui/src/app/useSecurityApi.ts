@@ -12,7 +12,6 @@ export function messageOf(e: unknown, fallback: string): string {
 export function useSecurityApi() {
   const scopes = ref<Scope[]>([])
   const assignablePolicies = ref<Policy[]>([])
-  const installedPolicies = ref<Policy[]>([])
   const loading = ref(true)
   const saving = ref(false)
   const error = ref('')
@@ -24,15 +23,13 @@ export function useSecurityApi() {
     loading.value = true
     error.value = ''
     try {
-      const [scopeRes, assignableRes, installedRes] = await Promise.all([
-        api.get('/api/v1/security/scopes?include_unavailable=true'),
+      const [scopeRes, assignableRes] = await Promise.all([
+        api.get('/api/v1/security/scopes?view=permissions&include_unavailable=true'),
         api.get('/api/v1/security/policies?assignable=true'),
-        api.get('/api/v1/security/policies?include_private=true'),
       ])
       if (seq !== loadSeq) return
       scopes.value = (scopeRes.data?.scopes ?? []) as Scope[]
       assignablePolicies.value = (assignableRes.data?.policies ?? []) as Policy[]
-      installedPolicies.value = (installedRes.data?.policies ?? []) as Policy[]
     }
     catch (e) {
       if (seq === loadSeq) error.value = messageOf(e, 'failed to load security')
@@ -40,6 +37,13 @@ export function useSecurityApi() {
     finally {
       if (seq === loadSeq) loading.value = false
     }
+  }
+
+  async function loadComposition(id: string): Promise<Scope> {
+    const response = await api.get(`/api/v1/security/scopes?id=${encodeURIComponent(id)}`)
+    const scope = response.data?.scopes?.[0] as Scope | undefined
+    if (!scope) throw new Error('Role no longer available')
+    return scope
   }
 
   // Persist a custom scope (create or update). The backend writes the DB row; the
@@ -78,5 +82,5 @@ export function useSecurityApi() {
     }
   }
 
-  return { scopes, assignablePolicies, installedPolicies, loading, saving, error, load, saveScope, deleteScope }
+  return { scopes, assignablePolicies, loading, saving, error, load, loadComposition, saveScope, deleteScope }
 }
