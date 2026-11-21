@@ -162,8 +162,6 @@ entries:
       value: app:api
     - name: kickside.inbox:ui_server
       value: app:gateway
-    - name: kickside.inbox.security:assignment_security_scope
-      value: app:user
     - name: kickside.blocks:process_host
       value: app:processes
     - name: kickside.transform.security:user_security_scope
