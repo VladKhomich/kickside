@@ -75,6 +75,62 @@ entries:
     imports:
       apply: kickside.core.projections:apply
 
+  - name: checkpoint_alias_component
+    kind: contract.binding
+    contracts:
+      - contract: kickside.contract:component
+        methods: {get_status: "kickside.core.threads:thread_status"}
+
+  - name: checkpoint_alias_first
+    kind: registry.entry
+    meta:
+      impl_id: app:checkpoint_alias_component
+      thread: {class: test.declared.checkpoint.alias}
+      projections:
+        - kind: test.declared.checkpoint
+          projection_key: ranged
+          cursor_key: ranged
+          worker_ref: proc://app:range_checkpoint_worker
+          input_mode: prefetch_events
+          events:
+            input: [{type: "kickside.test.threads:trigger"}]
+
+  - name: checkpoint_alias_second
+    kind: registry.entry
+    meta:
+      impl_id: app:checkpoint_alias_component
+      thread: {class: test.declared.checkpoint.alias}
+      projections:
+        - kind: test.declared.checkpoint
+          on: thread
+          projection_key: ranged
+          cursor_key: ranged
+          worker_ref: proc://app:range_checkpoint_worker
+          input_mode: prefetch_events
+          events:
+            input: [{type: "kickside.test.threads:trigger"}]
+        - kind: test.declared.checkpoint
+          projection_key: independent
+          cursor_key: independent
+          worker_ref: proc://app:range_checkpoint_worker
+          input_mode: prefetch_events
+          events:
+            input: [{type: "kickside.test.threads:changed"}]
+
+  - name: checkpoint_alias_third
+    kind: registry.entry
+    meta:
+      impl_id: app:checkpoint_alias_component
+      thread: {class: test.declared.checkpoint.alias}
+      projections:
+        - kind: test.declared.checkpoint
+          projection_key: independent
+          cursor_key: independent
+          worker_ref: proc://app:range_checkpoint_worker
+          input_mode: prefetch_events
+          events:
+            input: [{type: "kickside.test.threads:trigger"}]
+
   - name: range_checkpoint_database
     kind: registry.entry
     meta: {db_id: "app:sql_transient_first"}
