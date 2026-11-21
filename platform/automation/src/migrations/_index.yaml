@@ -160,7 +160,7 @@ entries:
       depends_on:
         - ns:wippy.migration
         - kickside.automation.migrations:10_drive_schema
-        - kickside.component.migrations:18_custody_backfill
+        - kickside.component.migrations:19_custody_backfill
     source: file://22_recurring_task_custody.lua
     method: migrate
     modules: [json]

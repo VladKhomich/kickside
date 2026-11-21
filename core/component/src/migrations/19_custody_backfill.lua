@@ -46,7 +46,7 @@ local function backfill(tx, cursor)
 end
 
 return require("migration").define(function()
-    migration("18 establish component incarnations for custody", function()
+    migration("19 establish component incarnations for custody", function()
         for _, engine in ipairs({"postgres", "sqlite"}) do
             database(engine, function()
                 up(backfill, "batch")

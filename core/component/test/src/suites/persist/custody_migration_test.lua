@@ -6,8 +6,8 @@ local uuid = require("uuid")
 
 local DB = "app:metadata_migration_db"
 local SCHEMA = "17_custody_schema"
-local BACKFILL = "18_custody_backfill"
-local INDEXES = "19_custody_indexes"
+local BACKFILL = "19_custody_backfill"
+local INDEXES = "20_custody_indexes"
 
 local function migrate(name: string): any
     return assert(funcs.call("kickside.component.migrations:" .. name, {database_id = DB, id = name, direction = "up"}))

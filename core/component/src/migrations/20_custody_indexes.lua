@@ -9,7 +9,7 @@ local function create_indexes(tx)
 end
 
 return require("migration").define(function()
-    migration("19 index typed component custody", function()
+    migration("20 index typed component custody", function()
         for _, engine in ipairs({"postgres", "sqlite"}) do
             database(engine, function() up(create_indexes) end)
         end

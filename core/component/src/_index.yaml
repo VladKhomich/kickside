@@ -244,9 +244,11 @@ entries:
         path: .meta.target_db
       - entry: kickside.component.migrations:17_custody_schema
         path: .meta.target_db
-      - entry: kickside.component.migrations:18_custody_backfill
+      - entry: kickside.component.migrations:18_retained_grants
         path: .meta.target_db
-      - entry: kickside.component.migrations:19_custody_indexes
+      - entry: kickside.component.migrations:19_custody_backfill
+        path: .meta.target_db
+      - entry: kickside.component.migrations:20_custody_indexes
         path: .meta.target_db
       - entry: kickside.component.migrations:15_delete_intent
         path: .meta.target_db

@@ -167,27 +167,44 @@ entries:
       migration: wippy.migration:migration
     method: migrate
 
-  - name: 18_custody_backfill
+  - name: retained_grant_schema
+    kind: library.lua
+    source: file://retained_grant_schema.lua
+
+  - name: 18_retained_grants
     kind: function.lua
     meta:
       type: migration
       target_db: ''
-      depends_on: [ns:wippy.migration, kickside.component.migrations:17_custody_schema]
-      timestamp: '2026-11-21T08:00:01Z'
-    source: file://18_custody_backfill.lua
+      depends_on: [ns:wippy.migration]
+      timestamp: '2026-11-21T08:01:00Z'
+    source: file://18_retained_grants.lua
+    imports:
+      migration: wippy.migration:migration
+      retained_grant_schema: kickside.component.migrations:retained_grant_schema
+    method: migrate
+
+  - name: 19_custody_backfill
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ''
+      depends_on: [ns:wippy.migration, kickside.component.migrations:17_custody_schema, kickside.component.migrations:18_retained_grants]
+      timestamp: '2026-11-21T08:02:00Z'
+    source: file://19_custody_backfill.lua
     modules: [json, uuid]
     imports:
       migration: wippy.migration:migration
     method: migrate
 
-  - name: 19_custody_indexes
+  - name: 20_custody_indexes
     kind: function.lua
     meta:
       type: migration
       target_db: ''
-      depends_on: [ns:wippy.migration, kickside.component.migrations:18_custody_backfill]
+      depends_on: [ns:wippy.migration, kickside.component.migrations:19_custody_backfill]
       timestamp: '2026-11-21T08:00:03Z'
-    source: file://19_custody_indexes.lua
+    source: file://20_custody_indexes.lua
     imports:
       migration: wippy.migration:migration
     method: migrate
