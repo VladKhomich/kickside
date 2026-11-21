@@ -23,7 +23,10 @@ const paletteSearch = ref('')
 const selectedId = ref<string | null>(null)
 const draft = ref<ScopeDraft | null>(null)
 const technicalDetails = ref<HTMLDetailsElement | null>(null)
-const composition = shallowRef<{ policies: Policy[]; loading: boolean; error: string } | null>(null)
+const composition = shallowRef<{ scope: Scope | null; loading: boolean; error: string } | null>(null)
+const openingOverlay = ref(false)
+const lockedPolicyIds = shallowRef(new Set<string>())
+let selection = 0
 
 const activeTab = ref('scopes')
 const delegationPanel = ref<InstanceType<typeof Delegations> | null>(null)
@@ -70,6 +73,8 @@ const selectedPolicies = computed(() => (draft.value?.policyIds ?? [])
   .map(id => draftPolicies.value.get(id) ?? assignableById.value.get(id) ?? { id, available: false }))
 
 function resetComposition() {
+  selection++
+  openingOverlay.value = false
   composition.value = null
   if (technicalDetails.value) technicalDetails.value.open = false
 }
@@ -78,20 +83,25 @@ async function showComposition(event: Event) {
   const details = event.currentTarget as HTMLDetailsElement
   const role = readOnlyScope.value
   if (!details.open || !role || (composition.value && !composition.value.error)) return
-  const pending = { policies: [], loading: true, error: '' }
+  const pending = { scope: null, loading: true, error: '' }
   composition.value = pending
   try {
     const full = await store.loadComposition(role.id)
     if (composition.value !== pending) return
-    const visible = new Set(originalPolicies.value.map(policy => policy.id))
-    const policies = (full.base_policies ?? full.policies).filter(policy => !visible.has(policy.id))
-    composition.value = { policies, loading: false, error: '' }
+    composition.value = { scope: full, loading: false, error: '' }
   }
   catch (e) {
     if (composition.value !== pending) return
-    composition.value = { policies: [], loading: false, error: messageOf(e, 'Failed to load technical policies') }
+    composition.value = { scope: null, loading: false, error: messageOf(e, 'Failed to load technical policies') }
   }
 }
+
+const technicalPolicies = computed(() => {
+  const full = composition.value?.scope
+  if (!full) return []
+  const visible = new Set(originalPolicies.value.map(policy => policy.id))
+  return (full.base_policies ?? full.policies).filter(policy => !visible.has(policy.id))
+})
 
 function copyablePolicyIds(role: Scope): string[] {
   return [...new Set([...role.policies, ...(role.overlay_policies ?? [])]
@@ -104,7 +114,7 @@ const palettePolicies = computed<Policy[]>(() => {
   if (!draft.value) return []
   // Exclude already-chosen extensions and, for an overlay, the locked base
   // policies (base can't be re-added).
-  const chosen = new Set([...draft.value.policyIds, ...basePolicies.value.map(p => p.id)])
+  const chosen = new Set([...draft.value.policyIds, ...(isOverlay.value ? lockedPolicyIds.value : [])])
   const q = paletteSearch.value.trim().toLowerCase()
   return assignablePolicies.value.filter(p => !chosen.has(p.id)
     && (!q || (p.title || '').toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || (p.comment || '').toLowerCase().includes(q)))
@@ -143,23 +153,35 @@ function sanitizeId(id: string): string {
 
 // Extend a built-in/registry scope via an overlay: base policies stay locked
 // (can't be removed), the admin adds extra policies that union onto the default.
-function openOverlay(s: Scope) {
-  resetComposition()
-  paletteSearch.value = ''
-  selectedId.value = s.id
-  draft.value = {
-    slug: s.overlay_slug || sanitizeId(s.id),
-    label: s.label || shortId(s.id),
-    description: s.description,
-    policyIds: (s.overlay_policies ?? []).map(p => p.id),
-    enabled: true,
-    isNew: !s.overlay_slug,
-    target: s.id,
+async function openOverlay(s: Scope) {
+  const started = selection
+  openingOverlay.value = true
+  try {
+    const full = composition.value?.scope ?? await store.loadComposition(s.id)
+    if (started !== selection) return
+    resetComposition()
+    paletteSearch.value = ''
+    lockedPolicyIds.value = new Set((full.base_policies ?? full.policies).map(policy => policy.id))
+    draft.value = {
+      slug: s.overlay_slug || sanitizeId(s.id),
+      label: s.label || shortId(s.id),
+      description: s.description,
+      policyIds: (s.overlay_policies ?? []).map(p => p.id),
+      enabled: true,
+      isNew: !s.overlay_slug,
+      target: s.id,
+    }
+  }
+  catch (e) {
+    if (started === selection) error.value = messageOf(e, 'Failed to open the role extension')
+  }
+  finally {
+    if (started === selection) openingOverlay.value = false
   }
 }
 
 function addPolicy(id: string, index?: number) {
-  if (!draft.value || draft.value.policyIds.includes(id) || basePolicies.value.some(p => p.id === id)) return
+  if (!draft.value || draft.value.policyIds.includes(id) || (isOverlay.value && lockedPolicyIds.value.has(id))) return
   if (assignableById.value.has(id)) draft.value.policyIds.splice(index ?? draft.value.policyIds.length, 0, id)
 }
 function removePolicy(id: string) {
@@ -390,7 +412,7 @@ function shortId(id: string): string {
             <span>{{ readOnlyScope.label || shortId(readOnlyScope.id) }}</span>
           </div>
           <div class="ks-builder-acts">
-            <Button variant="primary" small icon="tabler:stack-2" @click="openOverlay(readOnlyScope)">{{ readOnlyScope.overlay_slug ? 'Edit extension' : 'Add permissions' }}</Button>
+            <Button variant="primary" small icon="tabler:stack-2" :loading="openingOverlay" :disabled="composition?.loading" @click="openOverlay(readOnlyScope)">{{ readOnlyScope.overlay_slug ? 'Edit extension' : 'Add permissions' }}</Button>
             <Button variant="soft" small icon="tabler:copy" :disabled="!canCopy" @click="copyScope(readOnlyScope)">Copy permissions</Button>
           </div>
         </div>
@@ -409,8 +431,8 @@ function shortId(id: string): string {
           <summary>Technical policies</summary>
           <Spinner v-if="composition?.loading" label="Loading technical policies…" />
           <p v-else-if="composition?.error" class="ks-view-note" role="alert">{{ composition.error }}. Reopen to try again.</p>
-          <ul v-else-if="composition?.policies.length" class="ks-technical-list">
-            <li v-for="p in composition.policies" :key="p.id"><code>{{ p.id }}</code></li>
+          <ul v-else-if="technicalPolicies.length" class="ks-technical-list">
+            <li v-for="p in technicalPolicies" :key="p.id"><code>{{ p.id }}</code></li>
           </ul>
           <p v-else-if="composition" class="ks-view-note">No additional technical policies.</p>
         </details>
