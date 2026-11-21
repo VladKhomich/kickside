@@ -57,6 +57,9 @@ function M.apply(spec: any, default_max_tokens: number?): (any, any?)
         spec.max_tokens = output_limit and math.min(default_max_tokens, output_limit) or default_max_tokens
     end
     local reservation = positive_number(spec.max_tokens) or output_limit
+    -- The provider request applies the selected card's limit while retaining
+    -- the agent's requested cap. Use the same effective output for checkpointing.
+    if reservation and output_limit then reservation = math.min(reservation, output_limit) end
     local derived_threshold = model_limits(context_window, reservation)
     local configured_threshold = positive_number(checkpoint.token_threshold)
     if not configured_threshold then

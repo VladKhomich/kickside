@@ -44,6 +44,16 @@ M.DEFAULT_MODEL = "class:fast"
 -- the temperature default -- reference this, never a re-typed literal.
 M.DEFAULT_TEMPERATURE = 0.5
 
+-- The browser and persisted JSON must round-trip an explicit budget exactly.
+function M.response_token_budget(value: any): (number?, error?)
+    if value == nil then return nil, nil end
+    local budget = tonumber(value)
+    if not budget or budget < 1 or budget > 9007199254740991 or budget ~= math.floor(budget) then
+        return nil, errors.new({kind = errors.INVALID, message = "max_tokens must be a positive safe integer"})
+    end
+    return budget, nil
+end
+
 -- New user agents receive artifact authoring and uploaded-file access unless the caller
 -- explicitly supplies a traits array (including an empty array as opt-out).
 -- Return a fresh table so one create path cannot mutate another's defaults.
