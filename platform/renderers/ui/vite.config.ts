@@ -4,8 +4,15 @@ import { wippyComponentPlugin } from '@wippy-fe/vite-plugin'
 import { defineConfig } from 'vite'
 import { hostExternals, wcRuntimeChunk } from '../../widgets/ui/wc-build'
 import { docxPreviewCompatibility } from './docx-preview-compat'
+import { requireRendererEntryRegistration } from './renderer-entry-registration'
 
-// One project, four isolated elements. Each entry is its own bundle, so the heavy
+const entryNames = [
+  'resource-view', 'render-markdown', 'render-pdf', 'render-image', 'render-html',
+  'render-code', 'render-audio', 'render-video', 'render-docx', 'render-xlsx', 'render-pptx',
+]
+const entries = Object.fromEntries(entryNames.map(name => [name, resolve(__dirname, `src/${name}.ts`)]))
+
+// A shared build with isolated components. Each entry is its own bundle, so the heavy
 // renderers (pdfjs in render-pdf, markdown-it + highlight.js in render-markdown)
 // load only when that viewer is actually mounted — never into a host like the
 // wiki. <wc-resource-view> is the tiny host that picks + mounts the right one.
@@ -16,6 +23,7 @@ export default defineConfig({
     docxPreviewCompatibility(),
     vue({ template: { compilerOptions: { isCustomElement: (t) => t.startsWith('wc-') } } }),
     wippyComponentPlugin(),
+    requireRendererEntryRegistration(entryNames),
   ],
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),
@@ -27,37 +35,13 @@ export default defineConfig({
     outDir: resolve(__dirname, '../static'),
     emptyOutDir: true,
     lib: {
-      entry: {
-        'resource-view': resolve(__dirname, 'src/resource-view.ts'),
-        'render-markdown': resolve(__dirname, 'src/render-markdown.ts'),
-        'render-pdf': resolve(__dirname, 'src/render-pdf.ts'),
-        'render-image': resolve(__dirname, 'src/render-image.ts'),
-        'render-html': resolve(__dirname, 'src/render-html.ts'),
-        'render-code': resolve(__dirname, 'src/render-code.ts'),
-        'render-audio': resolve(__dirname, 'src/render-audio.ts'),
-        'render-video': resolve(__dirname, 'src/render-video.ts'),
-        'render-docx': resolve(__dirname, 'src/render-docx.ts'),
-        'render-xlsx': resolve(__dirname, 'src/render-xlsx.ts'),
-        'render-pptx': resolve(__dirname, 'src/render-pptx.ts'),
-      },
+      entry: entries,
       name: 'KicksideRenderers',
       formats: ['es'],
     },
     rollupOptions: {
       preserveEntrySignatures: 'strict',
-      input: {
-        'resource-view': resolve(__dirname, 'src/resource-view.ts'),
-        'render-markdown': resolve(__dirname, 'src/render-markdown.ts'),
-        'render-pdf': resolve(__dirname, 'src/render-pdf.ts'),
-        'render-image': resolve(__dirname, 'src/render-image.ts'),
-        'render-html': resolve(__dirname, 'src/render-html.ts'),
-        'render-code': resolve(__dirname, 'src/render-code.ts'),
-        'render-audio': resolve(__dirname, 'src/render-audio.ts'),
-        'render-video': resolve(__dirname, 'src/render-video.ts'),
-        'render-docx': resolve(__dirname, 'src/render-docx.ts'),
-        'render-xlsx': resolve(__dirname, 'src/render-xlsx.ts'),
-        'render-pptx': resolve(__dirname, 'src/render-pptx.ts'),
-      },
+      input: entries,
       external: hostExternals,
       output: {
         manualChunks: wcRuntimeChunk,
