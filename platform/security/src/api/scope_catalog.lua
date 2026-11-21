@@ -41,12 +41,21 @@ local function by_policy_id(a: stypes.PolicySummary, b: stypes.PolicySummary): b
     return a.id < b.id
 end
 
+local ASSIGNABLE_INTENTS = {module_access = true, module_management = true, tool_access = true}
+
+local function is_assignable(entry: any): boolean
+    local meta = meta_of(entry)
+    return ASSIGNABLE_INTENTS[meta.intent] == true
+        and meta.assignable ~= false and meta.private ~= true and meta.internal ~= true and meta.service_only ~= true
+        and type(meta.title) == "string" and meta.title:find("%S") ~= nil and meta.title ~= tostring(entry.id)
+end
+
 local function policy_index(): (any?, error?)
     local entries, read_err = registry.find({ [".kind"] = consts.POLICY_KIND })
     if read_err then return nil, read_err end
     local by_id: { [string]: stypes.PolicySummary } = {}
     local list: { stypes.PolicySummary } = {}
-    local group_policies, native_groups = {}, {}
+    local group_policies, native_groups, assignable = {}, {}, {}
     for _, entry in ipairs(entries :: { any }) do
         local summary = policy_summary(entry)
         local native = not composition.is_derived(entry)
@@ -58,24 +67,21 @@ local function policy_index(): (any?, error?)
                 native_groups[group][#native_groups[group] + 1] = summary.id
             end
         end
+        if is_assignable(entry) then assignable[summary.id] = true end
         by_id[summary.id] = summary
         list[#list + 1] = summary
     end
     table.sort(list, by_policy_id)
-    return {by_id = by_id, list = list, entries = entries, groups = group_policies, native_groups = native_groups}, nil
+    return {by_id = by_id, list = list, entries = entries, groups = group_policies, native_groups = native_groups, assignable = assignable}, nil
 end
 
 local function assignable_policies(): ({ stypes.PolicySummary }?, error?)
     local out: { stypes.PolicySummary } = {}
-    for _, intent in ipairs({"module_access", "module_management", "tool_access"}) do
+    for intent in pairs(ASSIGNABLE_INTENTS) do
         local entries, read_err = registry.find({ [".kind"] = consts.POLICY_KIND, ["meta.intent"] = intent })
         if read_err then return nil, read_err end
         for _, entry in ipairs(entries :: { any }) do
-            local meta = meta_of(entry)
-            if meta.assignable ~= false and meta.private ~= true and meta.internal ~= true and meta.service_only ~= true
-                and type(meta.title) == "string" and meta.title:find("%S") and meta.title ~= tostring(entry.id) then
-                out[#out + 1] = policy_summary(entry)
-            end
+            if is_assignable(entry) then out[#out + 1] = policy_summary(entry) end
         end
     end
     table.sort(out, by_policy_id)
@@ -166,6 +172,7 @@ end
 -- scopes returns the merged scope/role catalog. include_internal defaults false.
 function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     opts = opts or {}
+    local permissions_only = opts.permissions_only == true
     local include_internal = opts.include_internal == true
     local include_unavailable = opts.include_unavailable == true
     local index, policies_err = policy_index()
@@ -193,18 +200,35 @@ function M.scopes(opts: any?): ({ stypes.CatalogScope }?, error?)
     local overlays_by_target: { [string]: any } = {}
     local function emit(scope: any): (boolean?, error?)
         if scope.internal and not include_internal then return true, nil end
-        if seen[scope.id] then return true, nil end
-        local policies, policy_err = resolve_policies(scope.policies, by_id, scope.source == consts.SOURCE.CUSTOM, include_unavailable)
-        if policy_err then return nil, policy_err end
-        scope.policies = policies
+        if seen[scope.id] or (opts.id and scope.id ~= opts.id) then return true, nil end
+
         local overlay = overlays_by_target[scope.id]
+        local stored = scope.source == consts.SOURCE.CUSTOM
+        local ids = scope.policies
+        if permissions_only and overlay then
+            ids = original_policies(scope.id, declared_by_id[scope.id] or {}, index, by_target)
+        end
+        local policies, policy_err = resolve_policies(ids, by_id, stored, include_unavailable)
+        if policy_err then return nil, policy_err end
+        if permissions_only and not stored then
+            local permissions = {}
+            for _, policy in ipairs(policies or {}) do
+                if index.assignable[policy.id] then permissions[#permissions + 1] = policy end
+            end
+            scope.policies = permissions
+        else
+            scope.policies = policies
+        end
+
         if overlay then
-            local original_ids = original_policies(scope.id, declared_by_id[scope.id] or {}, index, by_target)
-            local base_policies, base_err = resolve_policies(original_ids, by_id, false, include_unavailable)
-            if base_err then return nil, base_err end
+            if not permissions_only then
+                local original_ids = original_policies(scope.id, declared_by_id[scope.id] or {}, index, by_target)
+                local base_policies, base_err = resolve_policies(original_ids, by_id, false, include_unavailable)
+                if base_err then return nil, base_err end
+                scope.base_policies = base_policies
+            end
             local overlay_policies, overlay_err = resolve_policies(overlay.policies, by_id, true, include_unavailable)
             if overlay_err then return nil, overlay_err end
-            scope.base_policies = base_policies
             scope.overlay_policies = overlay_policies
             scope.overlay_slug = overlay.slug
         end

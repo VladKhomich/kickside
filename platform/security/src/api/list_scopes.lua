@@ -20,7 +20,10 @@ local function handler()
         return api_errors.write(res, http.STATUS.FORBIDDEN, api_errors.denied())
     end
 
+    local id = req:query("id")
     local scopes, err = catalog.scopes({
+        id = id ~= "" and id or nil,
+        permissions_only = req:query("view") == "permissions",
         include_internal = req:query("include_internal") == "true",
         include_unavailable = req:query("include_unavailable") == "true",
     })
