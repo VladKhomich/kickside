@@ -1,6 +1,8 @@
 local binding_errors = require("binding_errors")
 local upload_query_repo = require("upload_query_repo")
 local upload_response = require("upload_response")
+local original_read = require("original_read")
+local types = require("types")
 
 local M = {}
 
@@ -19,6 +21,11 @@ function M.get_info(args)
     end
     if type(upload) ~= "table" then
         return nil
+    end
+    if upload.storage_state == types.ASSET_STAGING or upload.storage_state == types.ASSET_COLLECTING then return nil end
+    if types.owned_component(upload.actor_id) then
+        local allowed, access_err = original_read.authorize_container(upload.actor_id)
+        if access_err or not allowed then return nil, access_err end
     end
     local public = upload_response.format_get_upload(upload)
     public.meta.upload_id = public.uuid

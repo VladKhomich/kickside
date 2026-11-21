@@ -39,7 +39,8 @@ local function raw_handler()
 
     local bearer_ok = false
     local token = req:query("token")
-    if type(token) == "string" and token ~= "" then
+    local component_owned = types.owned_component(upload.actor_id) ~= nil
+    if not component_owned and type(token) == "string" and token ~= "" then
         local cap = upload_tokens.unpack_read(token, { upload_id = uuid, artifact_id = false })
         bearer_ok = cap ~= nil
     end
@@ -69,6 +70,11 @@ local function raw_handler()
         return
     end
 
+    if component_owned then
+        res:set_header("Cache-Control", "private, no-store")
+        res:set_header("X-Content-Type-Options", "nosniff")
+        res:set_header("Content-Disposition", "attachment")
+    end
     res:set_content_type(upload.mime_type or "application/octet-stream")
     res:set_status(http.STATUS.OK)
     while true do

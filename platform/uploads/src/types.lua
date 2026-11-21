@@ -1,6 +1,6 @@
 local autoinit = require("autoinit")
 
-type UploadReadRef = {uuid: string, actor_id: string}
+type UploadReadRef = {uuid: string, actor_id: string, storage_state: string?}
 type PageUpload = { uuid: string, actor_id: string, mime_type: string?, content_sha256: string?,
     storage_id: string, storage_path: string, metadata: {[string]: unknown}? }
 type PageArtifact = { artifact_id: string, upload_id: string, parent_artifact_id: string?, checksum: string?,
@@ -52,9 +52,26 @@ M.EVENT = {
     DELETED = "kickside.uploads.events:upload.deleted",
 }
 
+-- Component-owned versions are storage-only. A colon-bearing owner key
+-- cannot be the key of a user, group, service or runtime maintenance actor.
+local COMPONENT_OWNER_PREFIX = "upload-component:"
+M.ASSET_STAGING = "component_staging"
+M.ASSET_COLLECTING = "component_collecting"
+
+function M.component_owner_key(component_id: string): string
+    return COMPONENT_OWNER_PREFIX .. component_id
+end
+
+function M.owned_component(actor_id: string?): string?
+    if actor_id and actor_id:sub(1, #COMPONENT_OWNER_PREFIX) == COMPONENT_OWNER_PREFIX then
+        return actor_id:sub(#COMPONENT_OWNER_PREFIX + 1)
+    end
+    return nil
+end
+
 function M.component_id_for_owner(actor_id: string?): string?
     if not actor_id or actor_id == "" then return nil end
-    return autoinit.component_id(actor_id, M.CLASS) :: string
+    return M.owned_component(actor_id) or autoinit.component_id(actor_id, M.CLASS) :: string
 end
 
 function M.component_topic(component_id: string): string

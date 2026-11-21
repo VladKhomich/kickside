@@ -65,6 +65,7 @@ entries:
     modules: [json, time, sql]
     imports:
       upload_query_repo: kickside.uploads.persist:upload_query_repo
+      upload_types: kickside.uploads:types
       artifact_content_repo: kickside.uploads.persist:artifact_content_repo
       uploads_resources: kickside.uploads.binding:uploads_resources
       persisted_json: kickside.contract:persisted_json

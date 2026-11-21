@@ -59,6 +59,11 @@ local function delete_handler()
         return
     end
 
+    if types.owned_component(upload.actor_id) then
+        res:set_status(http.STATUS.FORBIDDEN)
+        res:write_json({ success = false, error = "Component-owned versions are reaped by their owner" })
+        return
+    end
     local component_id = types.component_id_for_owner(upload.actor_id)
     if not component_id then
         res:set_status(http.STATUS.INTERNAL_ERROR)

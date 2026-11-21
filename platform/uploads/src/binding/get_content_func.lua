@@ -42,6 +42,9 @@ local function handle(args)
             errors.is(err, errors.NOT_FOUND) and "upload_not_found" or "upload_lookup_failed")
     end
 
+    if upload.storage_state == upload_types.ASSET_STAGING or upload.storage_state == upload_types.ASSET_COLLECTING then
+        return nil, binding_errors.new(errors.NOT_FOUND, "Upload not found", "upload_not_found")
+    end
     local actor = security.actor()
     if not actor then
         return nil, binding_errors.new(errors.PERMISSION_DENIED, "No authenticated actor found", "actor_required")
@@ -158,6 +161,7 @@ local function handle(args)
             source_ref = {
                 kind = "upload",
                 upload_id = upload_id,
+                component_id = upload_types.owned_component(upload.actor_id),
                 artifact_id = nil,
             },
         }
