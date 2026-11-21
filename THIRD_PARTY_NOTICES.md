@@ -1343,7 +1343,7 @@ License: MIT
 
 Lockfiles: `app/templates/plugin/ui/package-lock.json`
 
-### npm: docx-preview@0.3.7
+### npm: docx-preview@0.4.1
 
 License: Apache-2.0
 
