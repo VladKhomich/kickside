@@ -6,49 +6,47 @@ local time = require("time")
 local pin = require("pin")
 local prune = require("prune")
 
-local DB = "app:db"
-
-local function open_db(): sql.DB
-    local db, err = sql.get(DB)
+local function open_db(database_id: string?): sql.DB
+    local db, err = sql.get(database_id or "app:db")
     if err or not db then error("prune test: db connect failed: " .. tostring(err)) end
     return db :: sql.DB
 end
 
-local function exec(statement: string, params: { any }): ()
-    local db = open_db()
+local function exec(statement: string, params: { any }, database_id: string?): ()
+    local db = open_db(database_id)
     local _, err = db:execute(statement, params)
     db:release()
     if err then error(tostring(err)) end
 end
 
-local function query(statement: string, params: { any }): { table }
-    local db = open_db()
+local function query(statement: string, params: { any }, database_id: string?): { table }
+    local db = open_db(database_id)
     local rows, err = db:query(statement, params)
     db:release()
     if err then error(tostring(err)) end
     return rows :: { table }
 end
 
-local function dialect(): string
-    local db = open_db()
+local function dialect(database_id: string?): string
+    local db = open_db(database_id)
     local dbtype = tostring(db:type())
     db:release()
     return dbtype
 end
 
 -- A timestamp offset_days from now in the dialect's textual shape.
-local function ts(offset_days: number): string
+local function ts(offset_days: number, database_id: string?): string
     local at = time.now():add(offset_days * 24 * time.HOUR):utc()
-    if dialect() == sql.type.SQLITE then
+    if dialect(database_id) == sql.type.SQLITE then
         return at:format("2006-01-02 15:04:05.000000") :: string
     end
     return at:format(time.RFC3339) :: string
 end
 
-local function make_thread(): string
+local function make_thread(database_id: string?): string
     local id = uuid.v7()
     exec("INSERT INTO kickside_thread (id, thread_class, component_id, event_count) VALUES ($1, $2, $3, 0)",
-        { id, "prune_test", id })
+        { id, "prune_test", id }, database_id)
     return id
 end
 
@@ -63,20 +61,20 @@ local function add_events(thread_id: string, seqs: { integer }, age_days: number
     end
 end
 
-local function add_bulk_events(thread_id: string, count: integer, age_days: number?): ()
-    local created_at = ts(-(age_days or 10))
-    if dialect() == sql.type.POSTGRES then
+local function add_bulk_events(thread_id: string, count: integer, age_days: number?, database_id: string?): ()
+    local created_at = ts(-(age_days or 10), database_id)
+    if dialect(database_id) == sql.type.POSTGRES then
         exec([[INSERT INTO kickside_event (id,thread_id,type,role,body,seq,created_at)
             SELECT md5($1::text || ':' || n::text)::uuid,$2::uuid,'test.bulk','user','{}',n,$3
-            FROM generate_series(1,]] .. tostring(count) .. [[) AS n]], { thread_id, thread_id, created_at })
+            FROM generate_series(1,]] .. tostring(count) .. [[) AS n]], { thread_id, thread_id, created_at }, database_id)
     else
         exec([[WITH RECURSIVE numbered(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM numbered WHERE n<]]
             .. tostring(count) .. [[)
             INSERT INTO kickside_event (id,thread_id,type,role,body,seq,created_at)
             SELECT lower(hex(randomblob(16))),$1,'test.bulk','user','{}',n,$2 FROM numbered]],
-            { thread_id, created_at })
+            { thread_id, created_at }, database_id)
     end
-    exec("UPDATE kickside_thread SET event_count=$1 WHERE id=$2", { count, thread_id })
+    exec("UPDATE kickside_thread SET event_count=$1 WHERE id=$2", { count, thread_id }, database_id)
 end
 
 local function range(from: integer, to: integer): { integer }
@@ -85,16 +83,16 @@ local function range(from: integer, to: integer): { integer }
     return out
 end
 
-local function seqs_of(thread_id: string): { integer }
+local function seqs_of(thread_id: string, database_id: string?): { integer }
     local out: { integer } = {}
-    for _, row in ipairs(query("SELECT seq FROM kickside_event WHERE thread_id = $1 ORDER BY seq", { thread_id })) do
+    for _, row in ipairs(query("SELECT seq FROM kickside_event WHERE thread_id = $1 ORDER BY seq", { thread_id }, database_id)) do
         out[#out + 1] = math.floor(tonumber(row.seq) :: number)
     end
     return out
 end
 
-local function boundary_of(thread_id: string): integer
-    local rows = query("SELECT max_pruned_seq FROM kickside_thread WHERE id = $1", { thread_id })
+local function boundary_of(thread_id: string, database_id: string?): integer
+    local rows = query("SELECT max_pruned_seq FROM kickside_thread WHERE id = $1", { thread_id }, database_id)
     return math.floor(tonumber(rows[1].max_pruned_seq) :: number)
 end
 
