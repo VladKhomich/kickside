@@ -1,7 +1,10 @@
 -- The lifecycle projection retires the exact dependants named by a typed
--- report. The cursor advances after the retired rows are physically absent.
+-- report. The cursor advances after physical retirement or after a historical
+-- principal report is preserved for custody review.
 
 local component = require("component")
+local custody = require("custody")
+local disposition = require("custody_disposition")
 local component_teardown = require("component_teardown")
 local consts = require("lifecycle_consts")
 local persisted_json = require("persisted_json")
@@ -110,6 +113,27 @@ local function run_principal_cleanups(principal: any): error?
     return nil
 end
 
+local function reap_principal(ev: any, payload: any, subject_id: string, budget: any): error?
+    local recorded, record_err = disposition.exists(ev)
+    if record_err or recorded then return record_err end
+    if payload.principal_kind == nil then
+        return disposition.record(ev, subject_id, nil, "missing_principal_kind", nil)
+    end
+    local principal, principal_err = execution_identity.check_principal(
+        {kind = payload.principal_kind, id = subject_id}, "lifecycle event principal")
+    if principal_err then return principal_err end
+    if principal.kind == "user" then
+        local witness, witness_err = custody.review_witness(principal.id)
+        if witness_err then return witness_err end
+        if witness then
+            return disposition.record(ev, subject_id, principal.kind, "retained_unresolved_custody", witness)
+        end
+    end
+    local reap_err = reap_owner({type = "principal", kind = principal.kind, id = principal.id}, 0, budget)
+    if reap_err then return reap_err end
+    return run_principal_cleanups(principal)
+end
+
 -- run is the func:// projection worker entry. input.events holds the prefetched batch;
 -- input.range.to_seq is the cursor advance. Returns the patched body + the new last_seq.
 local function run(input: table): (table?, error?)
@@ -140,13 +164,8 @@ local function run(input: table): (table?, error?)
                     kind = errors.INVALID }) :: error)
             end
             if etype == consts.EVENT.PRINCIPAL_DELETED then
-                local principal, principal_err = execution_identity.check_principal(
-                    {kind = payload.principal_kind or "user", id = owner_id}, "lifecycle event principal")
-                if principal_err then return nil, principal_err end
-                local reap_err = reap_owner({type = "principal", kind = principal.kind, id = principal.id}, 0, budget)
+                local reap_err = reap_principal(ev, payload, owner_id, budget)
                 if reap_err then return nil, reap_err end
-                local cleanup_err = run_principal_cleanups(principal)
-                if cleanup_err then return nil, cleanup_err end
             elseif payload.incarnation ~= nil then
                 if not uuid.validate(owner_id) or type(payload.incarnation) ~= "string" or not uuid.validate(payload.incarnation) then
                     return nil, errors.new({message = "component report requires a component id and incarnation", kind = errors.INVALID})

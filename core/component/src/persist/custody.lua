@@ -115,4 +115,19 @@ function M.list(owner: Owner, limit: integer): ({ any }?, error?)
     return rows, nil
 end
 
+-- A retained FULL grant on an unresolved row is a reason to preserve it for
+-- review. It never confers custody or authorizes lifecycle retirement.
+function M.review_witness(user_id: string): (any?, error?)
+    local db, open_err = sql.get(component_types.db_id())
+    if open_err then return nil, open_err end
+    local rows, read_err = db:query([[SELECT c.component_id,c.secrets_incarnation FROM kickside_component_access a
+        JOIN kickside_components c ON c.component_id=a.component_id
+        WHERE a.subject_type='user' AND a.subject_id=$1 AND a.access_mask=15 AND a.inherited=0
+          AND a.source_component_id=CAST(a.component_id AS TEXT) AND c.owner_type='unresolved' AND c.custody_legacy=1
+          AND c.secrets_incarnation IS NOT NULL ORDER BY a.component_id LIMIT 1]], {user_id})
+    local err = error_envelope.cleanup(function(): (any, error?) return db:release() end, read_err, "release custody review evidence")
+    if err then return nil, err end
+    return rows[1], nil
+end
+
 return M
