@@ -16,10 +16,12 @@
     "@wippy-fe/theme": "*",
     "@wippy-fe/webcomponent-core": "*",
     "@wippy-fe/webcomponent-vue": "*",
+    "markdown-it": "^14.2.0",
     "primevue": "4.5.5"
   },
   "devDependencies": {
     "@iconify-json/tabler": "1.2.42",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^26.1.1",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vitest/coverage-v8": "^4.1.9",
