@@ -48,6 +48,14 @@ Declare a kind’s exact input/output events and append them through the Threads
 
 A component kind declares lifecycle projections with `meta.projections[].on: lifecycle`. Workers receive committed `kickside.component.events:created`, `updated`, and `deleted` events under the framework system identity. The cursor persists across updates and deletion. Use `on: child.lifecycle` to observe children; omit `on` to use the primary thread.
 
+An authorized Threads caller can pass `ensure = true` to `register_projection`
+when updating a projection's declaration. With `reset` omitted, an existing
+cursor keeps its status, checkpoint, folded state and execution identity. A
+changed declaration applies to all cursors at that projection address and
+advances their generations. Repeating the same declaration preserves those
+generations. Call `resume_projection` when the owner wants a paused cursor to
+run again. Ordinary explicit registration resumes the addressed cursor.
+
 ## Reference
 
 - [Module reference](src/README.md)
