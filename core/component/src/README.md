@@ -37,8 +37,11 @@ query filter selects the protected principal by actor key.
 On upgrade the database assigns stable incarnations in resumable pages.
 Rows without explicit ownership proof remain unresolved for producer
 classification. A possible legacy custodian receives a
-`custody_unresolved` conflict before its deletion is fenced. A marked
-attachment can still finish the job that already established its authority.
+`custody_unresolved` conflict before its deletion is fenced. A legacy
+root-attachment custodian requires proof covering historical attachment kinds,
+including kinds whose manifests have been removed. Typed principal reports
+retire their proven dependants and leave unclassified rows for upgrade proof.
+A marked attachment can still finish the job that already established its authority.
 
 ## Authority checks (SPEC)
 

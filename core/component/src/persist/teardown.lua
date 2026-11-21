@@ -263,6 +263,18 @@ function M.begin_delete(component_id: string, gate_user_id: string?, child_polic
         return false, "delete", abort_transaction(db, tx, tree_err)
     end
 
+    if expected and expected.principal_root then
+        local dialect, dialect_err = db:type()
+        if dialect_err then return false, "delete", abort_transaction(db, tx, dialect_err) end
+        local current, root_err = custody.lock_principal_root(tx, tostring(dialect), expected.principal_root)
+        if root_err then return false, "delete", abort_transaction(db, tx, root_err) end
+        if not current then
+            local absent = errors.new({message = "reported principal no longer has custody", kind = errors.NOT_FOUND})
+            local close_err = abort_transaction(db, tx, absent)
+            return false, close_err == absent and "absent" or "delete", close_err
+        end
+    end
+
     if gate_user_id ~= nil then
         local has_access, access_err = ops.check_user_access(tx, gate_user_id, component_id, ops.ACCESS.DELETE)
         if access_err then

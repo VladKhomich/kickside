@@ -345,15 +345,16 @@ local function component_owner_record(component_id: string?): (any?, error?)
         return nil, nil
     end
     return with_db(function(db: sql.DB): (any, error?)
-        local rows, err = sql.builder.select("owner_kind", "owner_id")
+        local rows, err = sql.builder.select("owner_type", "owner_kind", "owner_id")
             :from(component_types.TABLES.COMPONENTS)
             :where("component_id = ?", component_id)
-            :where("owner_type = 'principal'")
             :limit(1)
             :run_with(db):query()
         if err then return nil, internal("failed to read owner", err) end
         if rows and rows[1] then
             local owner = rows[1]
+            if owner.owner_type == "unresolved" then return {type = "unresolved"}, nil end
+            if owner.owner_type ~= "principal" then return nil, nil end
             if owner.owner_kind == "maintenance" then return {actor_id = owner.owner_id}, nil end
             local principal, principal_err = execution_identity.check_principal({kind = owner.owner_kind, id = owner.owner_id}, "custody owner")
             if principal_err then return nil, principal_err end

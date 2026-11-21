@@ -9,7 +9,7 @@ local COMPONENTS = component_types.TABLES.COMPONENTS
 type Executor = sql.DB | sql.Transaction
 type Owner = { type: string, kind: string?, id: string, incarnation: string? }
 
-local function unresolved(): error
+function M.unresolved(): error
     return errors.new({kind = errors.CONFLICT, message = "component custody requires upgrade proof",
         retryable = true, details = {code = "custody_unresolved"}})
 end
@@ -29,33 +29,19 @@ function M.validate_legacy_custodian(db: Executor, row: any): error?
     local meta = binding and binding.meta
     if type(meta) ~= "table" then return nil end
     if type(meta.root_attachment_producers) == "table" and next(meta.root_attachment_producers) ~= nil then
-        for plugin_type in pairs(meta.root_attachment_producers) do
-            local manifests, manifest_err = registry.find({[".kind"] = "registry.entry", ["meta.type"] = plugin_type})
-            if manifest_err then return manifest_err end
-            for _, manifest in ipairs(manifests) do
-                local child_kind = manifest.meta and manifest.meta.attachment
-                if type(child_kind) == "string" and child_kind ~= "" then
-                    local pending, err = exists(db, "owner_type='unresolved' AND impl_id=$1 AND component_id<>$2",
-                        {child_kind, row.component_id})
-                    if err then return err end
-                    if pending then return unresolved() end
-                end
-            end
-        end
-        -- An earlier unregister page can erase the association, including for
-        -- an attachment whose manifest is gone. Let already-authorized leaf jobs
-        -- drain while protecting other possible custodians in this producer scope.
-        local pending, err = exists(db, "owner_type='unresolved' AND deleting_at IS NOT NULL AND component_id<>$1",
+        -- Current manifests cannot exclude historical attachments. Removed
+        -- manifests and drained metadata can leave a row with no scope proof.
+        local pending, err = exists(db, "owner_type='unresolved' AND component_id<>$1",
             {row.component_id})
         if err then return err end
-        if pending then return unresolved() end
+        if pending then return M.unresolved() end
     end
     if type(meta.owned_child_producers) == "table" then
         for impl_id in pairs(meta.owned_child_producers) do
             local pending, err = exists(db, "owner_type='unresolved' AND impl_id=$1 AND component_id<>$2",
                 {impl_id, row.component_id})
             if err then return err end
-            if pending then return unresolved() end
+            if pending then return M.unresolved() end
         end
     end
     return nil
@@ -95,6 +81,17 @@ function M.matches(row: any, expected: any): boolean
         and row.owner_id == owner.id and row.owner_kind == owner.kind and row.owner_incarnation == owner.incarnation
 end
 
+-- Adoption locks this same row before changing its principal. Carry the
+-- report's original authority through every immutable descendant edge.
+function M.lock_principal_root(tx: sql.Transaction, dialect: string, root: any): (boolean?, error?)
+    local rows, err = tx:query("SELECT 1 FROM " .. COMPONENTS
+        .. " WHERE component_id=$1 AND secrets_incarnation=$2 AND owner_type='principal' AND owner_kind=$3 AND owner_id=$4"
+        .. (dialect == sql.type.POSTGRES and " FOR UPDATE" or ""),
+        {root.id, root.incarnation, root.owner.kind, root.owner.id})
+    if err then return nil, err end
+    return rows[1] ~= nil, nil
+end
+
 -- Reports are authorized outside Component. Return only exact typed edges and
 -- physical rows. The retirement transaction rechecks the evidence for each row.
 function M.list(owner: Owner, limit: integer): ({ any }?, error?)
@@ -106,9 +103,6 @@ function M.list(owner: Owner, limit: integer): ({ any }?, error?)
             .. " WHERE component_id=$1 AND secrets_incarnation=$2", {owner.id, owner.incarnation})
         primary = lookup_err
         if not primary and custodians[1] then primary = M.validate_legacy_custodian(db, custodians[1]) end
-    else
-        local pending, lookup_err = exists(db, "owner_type='unresolved'", {})
-        primary = lookup_err or (pending and unresolved() or nil)
     end
     if not primary then
         local condition, args = predicate(owner)
