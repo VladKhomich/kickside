@@ -1303,7 +1303,7 @@ entries:
   - name: reaper_native_source
     kind: library.lua
     source: file://reaper_native_source.lua
-    modules: [security]
+    modules: [security, uuid]
     imports:
       component_teardown: kickside.component.persist:teardown
       persisted_json: kickside.contract:persisted_json

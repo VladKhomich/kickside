@@ -106,8 +106,8 @@ local function define_tests()
                 local id = uuid.v7()
                 local path = dbtype == sql.type.POSTGRES and id:gsub("%-", "") or "/" .. id .. "/"
                 local _, component_err = tx:execute([[INSERT INTO kickside_components
-                    (component_id,impl_id,private_context,position,path)
-                    VALUES ($1,$2,'{}','n',$3)]], { id, TEST_IMPL, path })
+                    (component_id,impl_id,private_context,position,path,secrets_incarnation,owner_type,owner_kind,owner_id,custody_legacy)
+                    VALUES ($1,$2,'{}','n',$3,$4,'principal','user',$5,0)]], { id, TEST_IMPL, path, uuid.v4(), principal })
                 if component_err then tx:rollback(); db:release(); error(tostring(component_err)) end
                 local _, meta_err = tx:execute([[INSERT INTO kickside_component_meta
                     (meta_id,component_id,key,value) VALUES ($1,$2,'owner',$3)]],
@@ -200,6 +200,13 @@ local function define_tests()
             local svc = as_owner(writer)
             local update = assert(svc:set_meta({component_id = victim, fields = {owner = custodian}}))
             test.is_true(update.success, tostring(update.error))
+            local sharing = assert(as_owner(owner):list_access({component_id = victim}))
+            test.eq(sharing.owner, owner)
+            local rows = assert(as_owner(owner):query({component_ids = {victim}, principal_owner = owner,
+                include = {principal_owner = true, meta = true}})).components
+            test.eq(#rows, 1)
+            test.eq(rows[1].principal_owner, owner)
+            test.eq(rows[1].meta.owner, custodian)
             test.eq(assert(svc:delete({component_id = victim})).kind, errors.PERMISSION_DENIED)
             test.is_true(assert(svc:delete({component_id = custodian})).in_progress)
             test.is_true(assert(deletion_worker.run(custodian)).deleted)
@@ -388,6 +395,25 @@ local function define_tests()
             test.eq(#rows, 1)
             test.eq(rows[1].role, "system")
             test.eq(rows[1].type, "kickside.lifecycle.events:principal.deleted")
+        end)
+
+        test.it("publishes one component report per incarnation", function()
+            local component_id, first, second = uuid.v4(), uuid.v4(), uuid.v4()
+            local actor = security.new_actor("report-admin-" .. suffix, {security_groups = {"app.security:admin"}})
+            local caller = funcs.new():with_actor(actor):with_scope(admin_scope())
+            for _, incarnation in ipairs({first, first, second}) do
+                local result = assert(caller:call("kickside.core.lifecycle:reaper_report_probe",
+                    {subject_id = component_id, incarnation = incarnation}))
+                test.is_true(result.reported, tostring(result.error))
+            end
+            local db = assert(sql.get("app:db"))
+            for _, incarnation in ipairs({first, second}) do
+                local rows = assert(db:query([[SELECT id FROM kickside_event WHERE thread_id=$1
+                    AND external_source='lifecycle' AND external_id=$2 AND type='kickside.lifecycle.events:component.deleted']],
+                    {lifecycle_thread_id(), "kickside.lifecycle.events:component.deleted:" .. component_id .. ":" .. incarnation}))
+                test.eq(#rows, 1)
+            end
+            assert(db:release())
         end)
 
         test.it("repairs a legacy lifecycle binding and advances the existing actorless reaper", function()
@@ -715,7 +741,10 @@ local function define_tests()
         test.it("keeps a parent as retry evidence when a child delete fails", function()
             local principal = "nested-reap-" .. uuid.v4():sub(1, 8)
             local parent = register("parent", principal)
-            local child = register_impl(RETRY_IMPL, "child", parent)
+            local producer = funcs.new():with_actor(security.new_actor(principal, {})):with_scope(scope())
+            local child = assert(producer:call("kickside.core.lifecycle:reaper_register_child",
+                {impl_id = RETRY_IMPL, parent_id = parent}))
+            test.is_true(child.success, tostring(child.error))
             local out, err = tick(principal)
             test.is_nil(out)
             test.not_nil(err)
@@ -829,6 +858,53 @@ local function define_tests()
             test.eq(grant_count(), 0)
             test.eq(owned_count(sharer), 51, "the shared components survive")
             db:release()
+        end)
+
+        test.it("blocks possible legacy custodians until a paged root attachment is physically absent", function()
+            local owner = "legacy-custodian-" .. suffix
+            local svc = as_owner(owner)
+            local custodian = register("legacy custodian", owner)
+            local fresh = register("new custodian", owner)
+            local attachment = register_impl("kickside.test:custody_attachment", "legacy attachment", owner)
+            test.is_true(assert(svc:delete({component_id = attachment})).in_progress)
+            local db = assert(sql.get("app:db"))
+            assert(db:execute("UPDATE kickside_components SET custody_legacy=1 WHERE component_id=$1", {custodian}))
+            assert(db:execute([[UPDATE kickside_components SET custody_legacy=1,owner_type='unresolved',owner_kind=NULL,owner_id=NULL
+                WHERE component_id=$1]], {attachment}))
+            assert(db:execute("DELETE FROM kickside_component_meta WHERE component_id=$1", {attachment}))
+            assert(db:release())
+
+            local denied = assert(svc:delete({component_id = custodian, child_policy = "reparent_root"}))
+            test.eq(denied.kind, errors.CONFLICT)
+            test.eq(denied.details.code, "custody_unresolved")
+            test.eq(job_count(custodian), 0)
+            local pending, pending_err = tick(owner)
+            test.is_nil(pending)
+            test.eq(pending_err:details().code, "custody_unresolved")
+            test.eq(job_count(fresh), 0)
+
+            test.is_true(assert(svc:delete({component_id = fresh})).in_progress)
+            test.is_true(assert(deletion_worker.run(attachment)).deleted)
+            test.is_true(assert(svc:delete({component_id = custodian})).in_progress)
+        end)
+
+        test.it("persists an admitted root attachment edge and leaves placement at root", function()
+            local owner = "root-custodian-" .. suffix
+            local custodian = register("custodian", owner)
+            local attachment = uuid.v4()
+            local producer = funcs.new():with_actor(security.new_actor(owner, {})):with_scope(scope())
+            local child = assert(producer:call("kickside.core.lifecycle:reaper_register_child",
+                {impl_id = "kickside.test:custody_attachment", component_id = attachment,
+                    custodian_id = custodian, plugin_id = "kickside.test:custody_plugin"}))
+            test.is_true(child.success, tostring(child.error))
+            local row = query([[SELECT parent_id,owner_type,owner_kind,owner_id,owner_incarnation,owner_producer
+                FROM kickside_components WHERE component_id=$1]], attachment)[1]
+            test.is_nil(row.parent_id)
+            test.is_nil(row.owner_kind)
+            test.eq(row.owner_type, "component")
+            test.eq(row.owner_id, custodian)
+            test.eq(row.owner_incarnation, instance(custodian))
+            test.eq(row.owner_producer, "kickside.core.lifecycle:reaper_register_child")
         end)
 
         test.it("advances after the declared principal cleanup succeeds", function()

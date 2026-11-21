@@ -38,7 +38,11 @@ M.run = test.run_cases(function()
                     end)
                 end
             end
-            for _, body in ipairs({{subject_id = "owner"}, '{"subject_id":"owner"}'}) do
+            local subject = event_type == consts.EVENT.PRINCIPAL_DELETED and {subject_id = "owner"}
+                or {subject_id = "00000000-0000-4000-8000-000000000001", incarnation = "00000000-0000-4000-8000-000000000002"}
+            local body_json = event_type == consts.EVENT.PRINCIPAL_DELETED and '{"subject_id":"owner"}'
+                or '{"subject_id":"00000000-0000-4000-8000-000000000001","incarnation":"00000000-0000-4000-8000-000000000002"}'
+            for _, body in ipairs({subject, body_json}) do
                 test.it(event_type .. "/valid/" .. type(body), function()
                     dependency.configure({stage = "valid", kind = errors.INTERNAL})
                     local result, err = reaper.run({thread_id = consts.thread_id(), range = {to_seq = 42},
@@ -52,6 +56,11 @@ M.run = test.run_cases(function()
                 end)
             end
         end
+        test.it("advances past legacy component reports without consulting custody", function()
+            local result, err = M.probe({event_type = consts.EVENT.COMPONENT_DELETED, body = {subject_id = "owner"}})
+            test.is_nil(err)
+            test.eq(result.last_seq, 42)
+        end)
         test.it("retains subject validation after successful decoding", function()
             local result, err = M.probe({event_type = consts.EVENT.PRINCIPAL_DELETED, body = {subject_id = {"owner"}}})
             test.is_nil(result)

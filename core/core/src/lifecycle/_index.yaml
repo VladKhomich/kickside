@@ -50,8 +50,9 @@ entries:
     meta:
       comment: Delete-site seam -- publish framework-owned lifecycle events to the lifecycle thread for an already-authorized principal/component deletion.
     source: file://report.lua
-    modules: [funcs, security]
+    modules: [funcs, security, uuid]
     imports:
+      execution_identity: kickside.execution:execution_identity
       lifecycle_consts: kickside.core.lifecycle:consts
       framework_events: kickside.core.threads:contract_events
 
@@ -80,7 +81,7 @@ entries:
       comment: Checks the lifecycle report capability and appends one lifecycle audit event through the canonical Threads append seam.
     source: file://report.lua
     method: publish_report
-    modules: [funcs, security]
+    modules: [funcs, security, uuid]
     security:
       policies:
         - kickside.core.lifecycle:report_publish_runtime
@@ -89,6 +90,7 @@ entries:
         - kickside.core.retention:notify_access
         - kickside.core.threads:emit_update_access
     imports:
+      execution_identity: kickside.execution:execution_identity
       lifecycle_consts: kickside.core.lifecycle:consts
       framework_events: kickside.core.threads:contract_events
 
@@ -199,10 +201,10 @@ entries:
       type: projection.worker
       private: true
       title: Lifecycle Reaper
-      comment: Projection worker over the lifecycle thread -- reaps every component a reported owner still owns via the trusted system delete, recursing into nested ownership.
+      comment: Projection worker over typed lifecycle reports; retires protected dependants through Component.
     source: file://reaper.lua
     method: run
-    modules: [registry, funcs, security]
+    modules: [registry, funcs, security, uuid]
     imports:
       component_teardown: kickside.component.persist:teardown
       persisted_json: kickside.contract:persisted_json
