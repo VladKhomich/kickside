@@ -397,6 +397,15 @@ return {
                 message = message, details = details})
         end
         if input and input.options and input.options.reject then return nil, "fixture-driver-error" end
+        if input and input.model == "dispatch-first" and input.messages then
+            return nil, errors.new({kind = errors.UNAVAILABLE, retryable = true, message = "fixture unavailable",
+                details = {error_type = "server_error"}})
+        end
+        if input and input.model == "dispatch-first" and input.input then
+            local moved = context.base_url == "https://second.example.test/v1"
+            return {success = true, result = {embeddings = {moved and {0,1} or {1,0}}},
+                metadata = {managed_dispatch = {revision = "spoofed"}}}
+        end
         local result = {content = "ok"}
         if input and input.schema then result = {data = {ok = true}}
         elseif input and input.input then result = {embeddings = {{1}}}

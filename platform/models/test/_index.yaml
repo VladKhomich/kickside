@@ -429,8 +429,10 @@ entries:
     meta: {type: test, suite: kickside_models}
     source: file://profile_driver_test.lua
     method: run
-    modules: [base64, json]
+    modules: [base64, json, sql]
     imports:
+      models_cache: kickside.models.service:models_cache
+      llm: wippy.llm:llm
       test: wippy.test:test
       models_repo: kickside.models.persist:repo
       driver: app:profile_driver_fixture
@@ -447,8 +449,9 @@ entries:
   - name: profile_driver_fixture
     kind: library.lua
     source: file://fixtures/profile_driver.lua
-    modules: [base64, json, registry]
+    modules: [base64, crypto, json, registry]
     imports:
+      canonical: kickside.contract:canonical_json
       model_catalog: app:profile_catalog_fixture
       ctx: app:profile_context_fixture
       models_repo: app:profile_repo_fixture

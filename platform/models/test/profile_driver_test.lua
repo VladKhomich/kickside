@@ -175,14 +175,15 @@ local function define_tests()
                 provider_id = profile.provider_id, provider_model = "wire-model", capabilities = {"generate"},
                 max_tokens = 8192, output_tokens = 1024, enabled = true}))
             local ok, err = pcall(function()
-                assert(driver.generate({}))
+                local before = assert(driver.generate({})).metadata.managed_dispatch.revision
                 assert(models_repo.update_profile(profile.id, {api_key = "fixture-updated-secret"}))
                 fixture.api_key = "fixture-updated-secret"
-                assert(driver.generate({}))
+                local changed = assert(driver.generate({})).metadata.managed_dispatch.revision
+                test.is_true(changed ~= before)
                 test.eq(fixture.context.api_key, "fixture-updated-secret")
                 assert(models_repo.upsert_card({name = "cached-profile-model", provider_model = "updated-model"}))
                 fixture.model = "updated-model"
-                assert(driver.generate({}))
+                test.is_true(assert(driver.generate({})).metadata.managed_dispatch.revision ~= changed)
                 assert(models_repo.delete_card("cached-profile-model"))
                 local result, call_err = driver.generate({})
                 test.is_nil(result)
@@ -192,6 +193,62 @@ local function define_tests()
             local _, delete_err = models_repo.delete_profile(profile.id)
             test.is_nil(delete_err, tostring(delete_err))
             assert(ok, tostring(err))
+        end)
+        test.it("identifies the actual managed dispatch through generate and embed", function()
+            local llm = require("llm")
+            local models_cache = require("models_cache")
+            local provider = "kickside.models.providers:fixture_provider"
+            local id = "dispatch-profile"
+            local profile = assert(models_repo.create_profile({id = id, name = "Dispatch", provider_id = provider,
+                api_key = "fixture-provider-secret", base_url = "https://first.example.test/v1"}))
+            for _, row in ipairs({{"dispatch-first", 20}, {"dispatch-second", 10}}) do
+                assert(models_repo.upsert_card({name = row[1], provider_profile_id = id, provider_id = provider,
+                    provider_model = row[1], class = {"dispatch"}, priority = row[2],
+                    capabilities = {"generate", "embed"}, dimensions = 2, max_tokens = 8192}))
+            end
+            local function receipt(response, card)
+                test.eq(response.metadata.route.provider_id, "kickside.models:provider")
+                test.eq(response.metadata.route.model, card)
+                local dispatch = response.metadata.managed_dispatch
+                test.eq(dispatch.model, card)
+                test.eq(dispatch.provider_id, provider)
+                test.eq(dispatch.provider_model, card)
+                test.eq(#dispatch.revision, 64)
+                test.is_nil(dispatch.revision:find("[^0-9a-f]"))
+                return dispatch.revision
+            end
+            local ok, failure = pcall(function()
+                local opts = {model = "class:dispatch", dimensions = 2}
+                local a: any = assert(llm.embed({"same"}, opts))
+                local first = receipt(a, "dispatch-first")
+                test.eq(a.result[1][1], 1)
+                test.eq(receipt(assert(llm.embed({"different"}, opts)), "dispatch-first"), first)
+                assert(models_repo.update_profile(id, {base_url = "https://second.example.test/v1"}))
+                -- Hold the public timestamp constant, even if the clock ticks during the test.
+                local db = assert(require("sql").get("app:db"))
+                local _, err = db:execute("UPDATE kickside_model_provider_profiles SET updated_at=$1 WHERE id=$2",
+                    {profile.updated_at, id})
+                db:release()
+                assert(not err, tostring(err))
+                assert(models_repo.reload())
+                local b: any = assert(llm.embed({"same"}, opts))
+                test.eq(b.result[1][2], 1)
+                local second = receipt(b, "dispatch-first")
+                test.is_true(first ~= second)
+                models_cache.clear()
+                test.eq(receipt(assert(llm.embed({"same"}, opts)), "dispatch-first"), second)
+                local fallback = assert(llm.generate("hello", {model = "class:dispatch"}))
+                local winner = receipt(fallback, "dispatch-second")
+                test.eq(fallback.metadata.fallbacks[1].model, "dispatch-first")
+                test.eq(receipt(assert(llm.generate("hello", {model = "dispatch-second"})), "dispatch-second"), winner)
+                assert(models_repo.upsert_card({name = "dispatch-second", class = {}}))
+                local rejected, reason = llm.generate("hello", {model = "class:dispatch"})
+                test.is_nil(rejected)
+                test.not_nil(reason)
+                test.eq(receipt(assert(llm.generate("hello", {model = "dispatch-second"})), "dispatch-second"), winner)
+            end)
+            assert(models_repo.delete_profile(id))
+            assert(ok, tostring(failure))
         end)
         test.it("adds zero SQL opens, full decodes or catalog traversals across warm provider calls", function()
             local profile = assert(models_repo.create_profile({id = "cached-profile", name = "Cached profile",

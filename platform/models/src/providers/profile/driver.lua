@@ -1,6 +1,8 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local base64 = require("base64")
 local ctx = require("ctx")
+local canonical = require("canonical")
+local crypto = require("crypto")
 local json = require("json")
 local registry = require("registry")
 local model_catalog = require("model_catalog")
@@ -18,7 +20,7 @@ local STRING_CONTEXT = {
     "project", "location", "client_id", "timeout",
 }
 
-local function driver_context(provider_id: string, profile: any, options: any): (any?, any?)
+local function driver_context(provider_id: string, profile: any, options: any): (any?, any?, any?)
     local entry, entry_err = registry.get(provider_id)
     if not entry then return nil, entry_err or "Provider not found: " .. provider_id end
     local driver = entry.data and entry.data.driver
@@ -45,7 +47,7 @@ local function driver_context(provider_id: string, profile: any, options: any): 
     for _, key in ipairs({"deadline_at", "timeout", "cancel"}) do
         if execution[key] ~= nil then context[key] = execution[key] end
     end
-    return context
+    return context, nil, driver
 end
 
 local function redact_returns(context: any): (any) -> any
@@ -102,7 +104,7 @@ local function call(method: string, input: any): (any?, any?)
     if profile_err then return nil, profile_err end
     if not route or not profile or profile.enabled == false then return nil, "Provider profile is unavailable" end
     if profile.error then return nil, profile.error end
-    local real_context, context_err = driver_context(route.id, profile, route.options)
+    local real_context, context_err, driver = driver_context(route.id, profile, route.options)
     if not real_context then return nil, context_err end
     local redact = redact_returns(real_context)
     local provider, err = providers.open(route.id, real_context)
@@ -111,7 +113,24 @@ local function call(method: string, input: any): (any?, any?)
     for key, value in pairs(input or {}) do request[key] = value end
     request.model = route.provider_model
     local result, call_err = provider[method](provider, request)
-    return redact(result), redact(call_err)
+    result = redact(result)
+    if (method == "generate" or method == "embed") and type(result) == "table" then
+        -- Provider responses may carry arbitrary metadata. Only the managed
+        -- wrapper writes this field, after the actual attempted route succeeds.
+        if type(result.metadata) == "table" then result.metadata.managed_dispatch = nil end
+        if not call_err and result.success ~= false and profile.dispatch_seed
+            and (result.metadata == nil or type(result.metadata) == "table") then
+            local encoded = canonical.encode({"kickside.models/dispatch/v1", method, card.name,
+                route.id, route.provider_model, tostring(driver.id), driver.options or {}, route.options or {}})
+            if encoded then
+                result.metadata = result.metadata or {}
+                local dispatch = redact({model = card.name, provider_id = route.id, provider_model = route.provider_model})
+                dispatch.revision = crypto.hmac.sha256(profile.dispatch_seed, encoded)
+                result.metadata.managed_dispatch = dispatch
+            end
+        end
+    end
+    return result, redact(call_err)
 end
 
 function M.status(input: any): (any?, any?) return call("status", input) end
