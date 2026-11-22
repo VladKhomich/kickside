@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.101](https://github.com/kicksideai/kickside/compare/jobs-v0.1.100...jobs-v0.1.101) (2026-11-22)
+
+
+### Bug Fixes
+
+* **jobs:** expose the previous watchdog timeout to the next claim ([#892](https://github.com/kicksideai/kickside/issues/892)) ([578e216](https://github.com/kicksideai/kickside/commit/578e2163debd8beb98a59b2907c40e814a1e9cdc))
+
 ## [0.1.100](https://github.com/kicksideai/kickside/compare/jobs-v0.1.99...jobs-v0.1.100) (2026-11-21)
 
 
