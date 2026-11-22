@@ -1,7 +1,8 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local sql = require("sql")
 local json = require("json")
-local M = {reads = 0, calls = 0, context = {}, decodes = 0, api_key = "fixture-cache-secret", model = "wire-model"}
+local M = {reads = 0, calls = 0, context = {}, decodes = 0, api_key = "fixture-cache-secret", model = "wire-model",
+    provider_id = "wippy.llm.openai_compat:provider"}
 
 M.encode = json.encode
 function M.decode(raw)
@@ -16,7 +17,7 @@ end
 
 function M.open(id, context)
     M.context = context
-    assert(id == "wippy.llm.openai_compat:provider")
+    assert(id == M.provider_id)
     assert(context.api_key == M.api_key)
     assert(context.base_url == "https://provider.example.test/v1")
     if M.open_error then return nil, M.open_error end

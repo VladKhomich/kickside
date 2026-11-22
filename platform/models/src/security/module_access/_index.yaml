@@ -25,7 +25,6 @@ entries:
     - kickside.models.persist:*
     - kickside.models.providers:*
     - kickside.models.providers.google_vertex:*
-    - kickside.models.providers.openai_compat_plain:*
     - kickside.models.providers.profile:*
     - kickside.models.security:*
     - kickside.models.service:*
@@ -61,7 +60,6 @@ entries:
     - kickside.models.migrations:*
     - kickside.models.providers:*
     - kickside.models.providers.google_vertex:*
-    - kickside.models.providers.openai_compat_plain:*
     - kickside.models.providers.profile:*
     - kickside.models.security:*
     - kickside.models.service:*
