@@ -5,6 +5,8 @@ local uuid = require("uuid")
 local writer = require("writer")
 local apply = require("apply")
 local claim = require("claim")
+local clock = require("clock")
+local time = require("time")
 local invoke = require("invoke")
 local pin = require("pin")
 local prune = require("prune")
@@ -41,14 +43,23 @@ local function fixture(): (string, table)
     db:release()
     return thread, registered
 end
-local function block(thread: string, registered: table): table
+local function claim_slot(db: sql.DB, job_id: string): table
+    local dbtype = assert(db:type())
+    local tx = assert(db:begin())
+    local token = uuid.v7()
+    local leased, err = claim.lease_row(tx, dbtype, job_id, token,
+        clock.format(time.now():add("1m"), dbtype), clock.now(dbtype))
+    if not leased then
+        tx:rollback()
+        error(err and tostring(err) or "projection slot is not pending")
+    end
+    assert(tx:commit())
+    return {id = job_id, lease_token = token, execution_seq = leased.execution_seq, attempts = leased.attempts}
+end
+
+local function block(registered: table): table
     local db = assert(sql.get("app:db"))
-    execute(db, "UPDATE kickside_job SET scheduled_at=created_at WHERE id=$1", { registered.job_id })
-    local batch, err = claim.claim_batch(db, tostring(db:type()), 16, nil, nil)
-    if err then error(tostring(err)) end
-    local job: table? = nil
-    for _, row in ipairs(batch) do if row.id == registered.job_id then job = row end end
-    if not job then error("slot is not claimed") end
+    local job = claim_slot(db, registered.job_id)
     local snapshot = query(db, "SELECT * FROM kickside_projection_cursor WHERE id=$1", { registered.cursor_id })[1]
     db:release()
     local result, failure = apply.fail("app:db", job, snapshot,
@@ -150,18 +161,39 @@ return test.run_cases(function()
         end
     end)
     test.describe("blocked projection retention", function()
+        local competing_owner: string? = nil
+        test.after_each(function()
+            if competing_owner then
+                local db = assert(sql.get("app:db"))
+                execute(db, "DELETE FROM kickside_job WHERE owner_kind='test' AND owner_id=$1", {competing_owner})
+                db:release()
+                competing_owner = nil
+            end
+        end)
         test.it("deletes a thread that owns an invalid projection retention pin", function()
             local thread, registered = fixture()
-            block(thread, registered)
+            competing_owner = thread
             local db = assert(sql.get("app:db"))
+            -- Fill a batch of 16 with older eligible jobs ahead of the projection slot.
+            for _ = 1, 16 do
+                local id = uuid.v7()
+                execute(db, [[INSERT INTO kickside_job (id,job_type,job_identity,owner_kind,owner_id,scheduled_at)
+                    VALUES ($1,'kickside.core.projections:advance',$2,'test',$3,'2000-01-01 00:00:00')]], {id, id, thread})
+            end
+            db:release()
+            block(registered)
+            db = assert(sql.get("app:db"))
+            local pending = query(db, [[SELECT COUNT(*) AS n FROM kickside_job
+                WHERE owner_kind='test' AND owner_id=$1 AND status='pending' AND attempts=0 AND lease_token IS NULL]], {thread})
             local result, err = teardown.purge_thread(db, thread, nil)
             db:release()
+            test.eq(tonumber(pending[1].n), 16)
             test.is_nil(err, tostring(err))
             test.is_true(result.purged)
         end)
         test.it("retains unread events through a deterministic block and releases protection on correction", function()
             local thread, registered = fixture()
-            block(thread, registered)
+            block(registered)
             local db = assert(sql.get("app:db"))
             local held, read_err = pin.read(db, thread, "projection:" .. registered.cursor_id)
             test.is_nil(read_err)
@@ -172,13 +204,8 @@ return test.run_cases(function()
             registration(db, thread)
             test.is_nil(select(1, pin.read(db, thread, "projection:" .. registered.cursor_id)))
             test.eq(sweep(db, thread).deleted, 0, "the corrected cursor protects the same input")
-            execute(db, "UPDATE kickside_job SET scheduled_at=created_at WHERE id=$1", { registered.job_id })
-            local jobs, claim_err = claim.claim_batch(db, tostring(db:type()), 16, nil, nil)
-            test.is_nil(claim_err)
+            local job = claim_slot(db, registered.job_id)
             db:release()
-            local job: table? = nil
-            for _, row in ipairs(jobs) do if row.id == registered.job_id then job = row end end
-            test.not_nil(job)
             local folded, fold_err = invoke.run({job = job, payload = {cursor_id = registered.cursor_id}})
             test.is_nil(fold_err)
             test.eq(folded.last_seq, 3)
@@ -189,14 +216,14 @@ return test.run_cases(function()
         end)
         test.it("transfers protection to a paused cursor and can block again after resume", function()
             local thread, registered = fixture()
-            block(thread, registered)
+            block(registered)
             local db = assert(sql.get("app:db"))
             test.is_nil(select(2, writer.pause(db, thread, {cursor_id = registered.cursor_id})))
             test.is_nil(select(1, pin.read(db, thread, "projection:" .. registered.cursor_id)))
             test.eq(sweep(db, thread).deleted, 1)
             test.is_nil(select(2, writer.resume(db, thread, {cursor_id = registered.cursor_id})))
             db:release()
-            block(thread, registered)
+            block(registered)
             db = assert(sql.get("app:db"))
             local held, read_err = pin.read(db, thread, "projection:" .. registered.cursor_id)
             test.is_nil(read_err)
@@ -208,7 +235,7 @@ return test.run_cases(function()
         end)
         test.it("leaves no pin when an old failure loses the cursor generation fence", function()
             local thread, registered = fixture()
-            local snapshot = block(thread, registered)
+            local snapshot = block(registered)
             local db = assert(sql.get("app:db"))
             registration(db, thread)
             db:release()
@@ -224,7 +251,7 @@ return test.run_cases(function()
         end)
         test.it("releases the blocked pin when its projection is removed", function()
             local thread, registered = fixture()
-            block(thread, registered)
+            block(registered)
             local db = assert(sql.get("app:db"))
             test.eq(sweep(db, thread).deleted, 1)
             local removed, err = writer.remove_projection(db, thread, {projection_id = registered.projection_id})
