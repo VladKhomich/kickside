@@ -31,8 +31,8 @@ local function call(handler: any, context: any, request: any, body: string): (an
     local client = handler._client
     local saved = { handler._ctx, client._ctx, client._env, client._http_client }
     local sent: any = nil
-    local ctx = { all = function() return context end }
-    handler._ctx, client._ctx = ctx, ctx
+    handler._ctx = { get = function(key: string) return context[key] end }
+    client._ctx = { all = function() return context end }
     client._env = { get = function() return nil end }
     client._http_client = { post = function(_url: string, options: any): (any, any)
         sent = json.decode(tostring(options.body))
@@ -133,7 +133,7 @@ local function define_tests()
 
             local context = plain_context()
             local saved_client, saved_output, saved_ctx = generate._client, generate._output, generate._ctx
-            generate._ctx = { all = function() return context end }
+            generate._ctx = { get = function(key: string) return context[key] end }
             generate._output = { streamer = function(pid: string, topic: string, _size: number): any
                 streamer.pid, streamer.topic = pid, topic
                 return streamer

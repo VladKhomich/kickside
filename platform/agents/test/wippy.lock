@@ -48,8 +48,8 @@ modules:
       version: 0.7.36
       hash: f387d01b5ab02897900a5cb5c7f71fff073692c1144f85c3e02df773e5df0843
     - name: wippy/llm
-      version: 0.5.22
-      hash: 71e896fb8594df1817be96f4b999e8d7a27afab25648a05c5b5e01b6d361c906
+      version: 0.5.26
+      hash: 3b8683a4b783684fce18cb8a7a462e72074f80d6c182fde2dd66dfc0bc6f354e
     - name: wippy/migration
       version: 0.3.26
       hash: cf4848ad3f8ba8d31d944b2f3a7274bc2b7cf2888dd80f0db63b2c71a85f89c1
