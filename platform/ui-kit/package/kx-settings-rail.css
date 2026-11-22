@@ -39,7 +39,7 @@
   }
   .kx-settings-rail-section { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; }
   .kx-settings-rail-group { margin: 0 6px 0 2px; }
-  .kx-settings-rail:not(.kx-settings-rail-framed) .kx-settings-rail-leading {
+  .kx-settings-rail:not(.kx-settings-rail-framed) .kx-settings-rail-section {
     display: flex; flex: 0 0 100%;
   }
 }
