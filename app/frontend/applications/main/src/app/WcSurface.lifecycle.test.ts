@@ -55,6 +55,24 @@ it('reports readiness only for the surface itself', async () => {
   expect(wrapper.emitted('ready')).toHaveLength(1)
 })
 
+it('forwards dirty state only from the current surface', async () => {
+  const { wrapper, element, picker } = await editor()
+  picker.dispatchEvent(new CustomEvent('dirty-change', {
+    bubbles: true, composed: true, detail: { dirty: true },
+  }))
+  expect(wrapper.emitted('dirtyChange')).toBeUndefined()
+
+  element.dispatchEvent(new CustomEvent('dirty-change', { detail: { dirty: true } }))
+  element.dispatchEvent(new CustomEvent('dirty-changed', { detail: { dirty: false } }))
+  expect(wrapper.emitted('dirtyChange')).toEqual([[true], [false]])
+
+  await wrapper.setProps({ basePath: '/agents' })
+  await flushPromises()
+  expect(wrapper.get('test-agent-editor').element).not.toBe(element)
+  element.dispatchEvent(new CustomEvent('dirty-change', { detail: { dirty: true } }))
+  expect(wrapper.emitted('dirtyChange')).toEqual([[true], [false]])
+})
+
 it('still removes a surface whose own load fails', async () => {
   const { wrapper, element } = await editor()
   element.dispatchEvent(new CustomEvent('error', { bubbles: true, composed: true }))

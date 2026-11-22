@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, useId } from 'vue'
 import { Icon } from '@iconify/vue'
 import { api, host } from '@wippy-fe/proxy'
 import Dialog from 'primevue/dialog'
@@ -38,6 +38,11 @@ const cfg = computed<ShareConfig>(() => (props.value.config || {}) as ShareConfi
 const caps = ref<Capability[]>([])
 const capsError = ref('')
 const adminBit = computed(() => caps.value.find(c => c.key === 'admin')?.bit ?? 8)
+const capabilityId = useId()
+
+function descriptionId(capability: Capability): string | undefined {
+  return capability.description ? `${capabilityId}-permission-${capability.bit}` : undefined
+}
 
 function hasBit(mask: number, bit: number): boolean { return (mask & bit) === bit }
 function toggleBit(mask: number, bit: number): number { return mask ^ bit }
@@ -229,11 +234,17 @@ async function revoke(row: AccessRow) {
         <Icon :icon="granting ? 'tabler:loader-2' : 'tabler:plus'" :class="granting && 'spin'" aria-hidden="true" /> Share
       </button>
     </div>
-    <!-- Capability chips for the new grant -->
-    <div class="kxs-caps kxs-caps-new" @click.stop>
-      <button v-for="c in caps" :key="c.key" type="button" class="kxs-cap" :class="hasBit(newMask, c.bit) && 'kxs-cap-on'" :title="c.description" @click="toggleNew(c.bit)">
-        <Icon :icon="hasBit(newMask, c.bit) ? 'tabler:check' : 'tabler:plus'" aria-hidden="true" /> {{ c.label }}
-      </button>
+    <div v-if="caps.length" class="kxs-caps-new" role="group" aria-label="Permissions" @click.stop>
+      <div v-for="c in caps" :key="c.key" class="kxs-cap-choice">
+        <button type="button" class="kxs-cap"
+          :class="hasBit(newMask, c.bit) && 'kxs-cap-on'"
+          :aria-pressed="hasBit(newMask, c.bit)" :aria-describedby="descriptionId(c)"
+          @click="toggleNew(c.bit)">
+          <Icon :icon="hasBit(newMask, c.bit) ? 'tabler:check' : 'tabler:plus'" aria-hidden="true" />
+          <span>{{ c.label }}</span>
+        </button>
+        <span v-if="c.description" :id="descriptionId(c)" class="kxs-cap-description">{{ c.description }}</span>
+      </div>
     </div>
 
     <div v-if="capsError" class="kxs-err">{{ capsError }}</div>
@@ -259,6 +270,7 @@ async function revoke(row: AccessRow) {
           <button v-for="c in caps" :key="c.key" type="button" class="kxs-cap kxs-cap-sm"
             :class="[hasBit(row.access_mask, c.bit) && 'kxs-cap-on', row.owner && 'kxs-cap-locked']"
             :disabled="row.owner" :title="row.owner ? 'The owner has full access' : c.description"
+            :aria-pressed="hasBit(row.access_mask, c.bit)" :aria-describedby="descriptionId(c)"
             @click="toggleRow(row, c.bit)">
             {{ c.label }}
           </button>

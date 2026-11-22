@@ -22,7 +22,10 @@ and is replaced by a slot on the new code; idle slots are replaced at once. The
 drain of an in-flight execution is bounded by that execution's own declared
 `max_execution` ceiling (payload `max_execution_ms`, else policy
 `proc.max_execution`); past it the ordinary timeout termination and retry policy
-apply. An upgrade never terminates or re-runs an execution.
+apply. The next worker receives `job.previous_execution_timed_out = true`
+when the claimed row retains the Jobs execution-timeout diagnostic. A control
+wake may reset the attempt count while preserving that diagnostic. A successful
+worker completion clears it. An upgrade never terminates or re-runs an execution.
 
 The pool has five seconds for shutdown coordination, including dispatch,
 assignment release and cleanup waits in the database or runtime. A CANCEL

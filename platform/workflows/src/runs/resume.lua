@@ -85,6 +85,7 @@ function M.resume(args: any): (any?, error?)
     return execution_identity.run_as(identity, "kickside.blocks:resume_under_identity", {
         dataflow_id = a.dataflow_id,
         signal_id = a.signal_id,
+        arm_id = a.arm_id,
         payload = a.payload or {},
     }, {
         deferred_owner = "kickside.workflows.runs:resume",

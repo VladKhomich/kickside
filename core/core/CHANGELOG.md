@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.3.53](https://github.com/kicksideai/kickside/compare/core-v0.3.52...core-v0.3.53) (2026-11-22)
+
+
+### Bug Fixes
+
+* **core:** convey the watchdog outcome to ordinary projection workers ([#893](https://github.com/kicksideai/kickside/issues/893)) ([44c3e6f](https://github.com/kicksideai/kickside/commit/44c3e6fdc7fa4a029cfb0fc43157295259b3af78))
+
+## [0.3.52](https://github.com/kicksideai/kickside/compare/core-v0.3.51...core-v0.3.52) (2026-11-22)
+
+
+### Bug Fixes
+
+* **core:** keep projection handoff cutoffs stable across aliases ([#890](https://github.com/kicksideai/kickside/issues/890)) ([d4a6a47](https://github.com/kicksideai/kickside/commit/d4a6a473d7f65240a0be33d2fbf98bdf2c6b1a6a))
+
+## [0.3.51](https://github.com/kicksideai/kickside/compare/core-v0.3.50...core-v0.3.51) (2026-11-21)
+
+
+### Bug Fixes
+
+* **core:** forward the Jobs attempt number to checkpoint workers ([#887](https://github.com/kicksideai/kickside/issues/887)) ([5afbdb6](https://github.com/kicksideai/kickside/commit/5afbdb6edd0e9a934082c5ac5ae1332f39643652))
+* **core:** report committed projection invalidations ([#886](https://github.com/kicksideai/kickside/issues/886)) ([8757364](https://github.com/kicksideai/kickside/commit/8757364b5943c5a42037be44bece3ee2d7275c65))
+
+## [0.3.50](https://github.com/kicksideai/kickside/compare/core-v0.3.49...core-v0.3.50) (2026-11-21)
+
+
+### Bug Fixes
+
+* **core:** bridge historical thread and projection storage ([#859](https://github.com/kicksideai/kickside/issues/859)) ([005f1b5](https://github.com/kicksideai/kickside/commit/005f1b5c0602df110503fd86af2fbfe3dfa3674e))
+
 ## [0.3.49](https://github.com/kicksideai/kickside/compare/core-v0.3.48...core-v0.3.49) (2026-11-21)
 
 

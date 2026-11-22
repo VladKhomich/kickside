@@ -40,7 +40,8 @@ return {run = function(input)
         local receipt, err = apply.checkpoint("app:db", assignment.job, cursor, assignment.prefetched_last,
             output, function(tx)
                 local effect, write_err = tx:execute(
-                    "INSERT INTO checkpoint_scheduler_effect (thread_id,ordinal) VALUES ($1,$2)", {cursor.thread_id, ordinal})
+                    "INSERT INTO checkpoint_scheduler_effect (thread_id,ordinal,attempt_no) VALUES ($1,$2,$3)",
+                    {cursor.thread_id, ordinal, assignment.job.attempt_no})
                 if write_err then return nil, write_err end
                 return effect.rows_affected == 1
             end)

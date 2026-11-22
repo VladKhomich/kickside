@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.33](https://github.com/kicksideai/kickside/compare/component-v0.3.32...component-v0.3.33) (2026-11-22)
+
+
+### Performance Improvements
+
+* **component:** skip converged credential migrations ([#902](https://github.com/kicksideai/kickside/issues/902)) ([d584cc3](https://github.com/kicksideai/kickside/commit/d584cc3bba77402757b2e96dda127e580103eab1))
+
+## [0.3.32](https://github.com/kicksideai/kickside/compare/component-v0.3.31...component-v0.3.32) (2026-11-21)
+
+
+### Bug Fixes
+
+* **component:** recover typed grants from retained access tables ([#879](https://github.com/kicksideai/kickside/issues/879)) ([889f872](https://github.com/kicksideai/kickside/commit/889f8728d4a4f9f99bf6973b3593fa42513d9716))
+
 ## [0.3.31](https://github.com/kicksideai/kickside/compare/component-v0.3.30...component-v0.3.31) (2026-11-21)
 
 

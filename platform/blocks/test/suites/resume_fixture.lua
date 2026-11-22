@@ -30,8 +30,9 @@ function M.new(): (any?, any?)
     local executor: any = {}
     function executor:with_actor(): any return self end
     function executor:with_scope(): any return self end
-    function executor:call(): (any?, any?)
+    function executor:call(target: string, args: any): (any?, any?)
         if M.state.stage == "call" then return nil, M.state.failure end
+        M.state.call_target, M.state.call_args = target, args
         return { ok = true, commit_id = "commit-1" }, nil
     end
     function executor:signal(): (any?, any?)
@@ -41,5 +42,8 @@ function M.new(): (any?, any?)
     return executor, nil
 end
 
-function M.call(): (any?, any?) return M.state.handler_result, M.state.failure end
+function M.call(target: string, args: any): (any?, any?)
+    M.state.call_target, M.state.call_args = target, args
+    return M.state.handler_result, M.state.failure
+end
 return M

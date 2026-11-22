@@ -87,6 +87,21 @@ end
 local function define_tests()
     test.describe("jobs worker dispatch context", function()
         test.after_each(release_db)
+        test.it("propagates a retained watchdog outcome across an attempt reset", function()
+            local function descriptor(previous, attempts)
+                local input = assert(dispatch.build_worker_input({
+                    id = "job-1", attempts = attempts, last_error = previous,
+                    payload = '{"previous_execution_timed_out":true}',
+                }))
+                test.is_nil(input.job.last_error)
+                return input.job
+            end
+            test.is_true(descriptor(dispatch.PROC_TIMEOUT_MARKER, 2).previous_execution_timed_out)
+            test.is_true(descriptor(dispatch.PROC_TIMEOUT_MARKER, 1).previous_execution_timed_out)
+            test.is_nil(descriptor("provider unavailable", 2).previous_execution_timed_out)
+            test.is_nil(descriptor(nil, 1).previous_execution_timed_out)
+        end)
+
         test.it("passes the lifetime fence and lease deadline to the worker", function()
             local input, context = dispatch.build_worker_input({
                 id = "job-1", thread_id = "thread-1", job_type = "app:generic_job_target",

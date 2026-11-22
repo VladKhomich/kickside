@@ -1266,6 +1266,7 @@ entries:
     source: file://src_link/projections/persist/register.lua
     modules: [sql, json, registry]
     imports:
+      autoinit: kickside.component:autoinit
       core_db: kickside.core:db
       jobs_config: kickside.core.jobs:config
       text_trim: kickside.contract:text_trim
@@ -2851,6 +2852,7 @@ entries:
       text_trim: kickside.contract:text_trim
       core_db: kickside.core:db
       jobs_config: kickside.core.jobs:config
+      autoinit: kickside.component:autoinit
       event_access: kickside.core.threads:event_access
       sql: app:projection_register_native_sql_adapter
       json: app:projection_register_native_json_adapter
@@ -3493,7 +3495,7 @@ entries:
   - name: projection_apply_native_source
     kind: library.lua
     source: file://projection_apply_native_source.lua
-    modules: [ctx, security, funcs]
+    modules: [ctx, security, funcs, logger]
     imports:
       registration: kickside.core.projections.persist:register
       registered_checkpoint: kickside.core.projections.persist:registered_checkpoint

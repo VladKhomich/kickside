@@ -27,7 +27,7 @@ entries:
     component: kickside/contract
 
   - name: dep.kickside.jobs
-    version: '>=0.1.91'
+    version: '>=0.1.101'
     kind: ns.dependency
     meta:
       comment: Durable leased-job engine with transaction-scoped projection checkpoints and thread cleanup.

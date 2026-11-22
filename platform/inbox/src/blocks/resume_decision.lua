@@ -46,6 +46,7 @@ function M.resume(args: any): (Map?, any?)
     local result, resume_err = executor:with_actor(actor):with_scope(scope):call(RESUME_TARGET, {
         dataflow_id = dataflow_id,
         signal_id = signal_id,
+        arm_id = "kickside.inbox:arm_decision",
         payload = {
             outcome = action,
             form = type(a.form) == "table" and a.form or {},

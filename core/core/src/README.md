@@ -38,11 +38,19 @@ hierarchy.
 ## Projection worker attempts
 
 The worker input carries the previous cursor diagnostic in `cursor.last_error`
-when one exists. Supervised process workers also receive
+when one exists. Checkpoint workers also receive the Jobs attempt number in
+`checkpoint.job.attempt_no`. It starts at one, increases after a failed claim,
+and returns to one after successful settlement. Supervised process workers also receive
 `execution_deadline_ns`, the Unix nanosecond deadline enforced by Core.
 The budget starts immediately before process spawn. A worker can stop before
 that deadline and return the last sequence whose effects are complete as
 `last_seq`.
+
+For an ordinary process worker, `previous_execution_timed_out` is true when
+the retained Jobs or projection diagnostic records its watchdog timeout.
+An outer Jobs timeout can leave the cursor diagnostic empty or older than the
+last claim. Workers can use the flag to reduce the next batch. Successful
+projection settlement clears both diagnostics.
 
 ## Unicode case folding
 
@@ -168,7 +176,9 @@ harness-owned suites. Suites also run against PostgreSQL by pointing
 Once the slot's cursor is read, binding, stored-identity, worker and apply failures
 are recorded on that cursor through the same fenced failure transition.
 Deterministic failures invalidate the cursor and projection, preserve the error and failed run, and disable event
-wakes until a corrected declaration is registered. Infrastructure failures keep
+wakes until a corrected declaration is registered. The committed invalidation
+emits an error log with the cursor, projection, durable sequence and failure kind.
+Infrastructure failures keep
 the cursor active with its error and use Jobs' existing slot retries. Lease loss
 returns without publishing a projection failure; infrastructure errors publish
 only while the attempt still owns the running slot's lease token.
@@ -208,7 +218,9 @@ A filtered destination may declare a `transition_from` with the exact
 predecessor `worker_ref` and its `target_db_config` registry entry. Core
 switches a caught-up predecessor while its existing Jobs slot is pending and
 unleased. If the slot is busy or backlogged, lifecycle records the current
-thread head as the handoff position. The predecessor continues processing
+thread head as the handoff position. Equivalent descriptors for the same
+cursor and destination share that position, including when another installed
+descriptor takes over from a retired locator. The predecessor continues processing
 through that position, including any in-flight fold. Subsequent appends keep
 their existing Jobs demand. Ordinary completion retries the transition after
 the predecessor's post-commit callback. A paused cursor keeps its pause and

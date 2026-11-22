@@ -263,6 +263,7 @@ entries:
     test: wippy.test:test
     job_types: kickside.core.jobs:types
     lifecycle: kickside.core.jobs.persist:lifecycle
+    wake: kickside.core.jobs.persist:wake
     worker_dispatch: kickside.core.jobs.service:worker_dispatch
     job_fixture: app:job_fixture
     worker_completion: kickside.core.jobs.service:worker_completion

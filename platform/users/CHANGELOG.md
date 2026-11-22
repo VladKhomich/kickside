@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.30](https://github.com/kicksideai/kickside/compare/users-v0.2.29...users-v0.2.30) (2026-11-22)
+
+
+### Bug Fixes
+
+* **users:** show permission effects beside Share choices ([#912](https://github.com/kicksideai/kickside/issues/912)) ([6d2705a](https://github.com/kicksideai/kickside/commit/6d2705a5f1ffbae6da90b785b98aa5d1263e7536))
+
+## [0.2.29](https://github.com/kicksideai/kickside/compare/users-v0.2.28...users-v0.2.29) (2026-11-21)
+
+
+### Bug Fixes
+
+* **users:** adopt retained authentication storage ([#877](https://github.com/kicksideai/kickside/issues/877)) ([4485692](https://github.com/kicksideai/kickside/commit/44856928c153e442ef6fa452329109c3fc9ff457))
+
 ## [0.2.28](https://github.com/kicksideai/kickside/compare/users-v0.2.27...users-v0.2.28) (2026-11-20)
 
 

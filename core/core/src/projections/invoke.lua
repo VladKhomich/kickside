@@ -305,7 +305,7 @@ local function run_checkpointed(binding: table, input: table, host: string, db_i
     -- The plain input already carries the registered projection body.
     if registered then assigned_cursor.body, assigned_cursor.raw_body = nil, nil end
     input.checkpoint = {
-        job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq},
+        job = {id = job.id, lease_token = job.lease_token, execution_seq = job.execution_seq, attempt_no = job.attempt_no},
         cursor = assigned_cursor,
         prefetched_last = prefetched_last,
         registered = registered,
@@ -562,6 +562,10 @@ local function attempt(connection: sql.DB, db_id: string, job: table, current: t
                     return run_checkpointed(binding, work_input, host, db_id, job, current, seen_last, before_dispatch,
                         execution_frame, checkpoint_owner, registered)
                 end
+                -- The outer Jobs watchdog can terminate this invocation before
+                -- Core has a chance to record its own timeout on the cursor.
+                work_input.previous_execution_timed_out = job.previous_execution_timed_out == true
+                    or current.last_error == worker.PROC_TIMEOUT_MARKER or nil
                 output, row_err = worker.run_proc_supervised(binding, work_input, {
                     proc_host = host,
                     before_dispatch = before_dispatch,

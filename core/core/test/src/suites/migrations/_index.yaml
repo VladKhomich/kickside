@@ -57,6 +57,19 @@ entries:
       test: wippy.test:test
       migration_scratch: kickside.core.migration_tests:migration_scratch
 
+  - name: legacy_thread_adoption_test
+    kind: function.lua
+    meta: {type: test, suite: historical_core_adoption}
+    source: file://legacy_thread_adoption_test.lua
+    method: run
+    security:
+      actor: {id: "system:automation"}
+      policies: [app:test_scope_policy]
+    modules: [uuid]
+    imports:
+      test: wippy.test:test
+      migration_scratch: kickside.core.migration_tests:migration_scratch
+
   - name: legacy_thread_schema
     kind: function.lua
     source: file://legacy_thread_schema.lua

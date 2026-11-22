@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.81](https://github.com/kicksideai/kickside/compare/inbox-v0.1.80...inbox-v0.1.81) (2026-11-22)
+
+
+### Bug Fixes
+
+* **inbox:** identify the review arm on completion ([#906](https://github.com/kicksideai/kickside/issues/906)) ([a98d7cb](https://github.com/kicksideai/kickside/commit/a98d7cb72004a18b6fb6a05cd2bb73bee0a56bbf))
+
 ## [0.1.80](https://github.com/kicksideai/kickside/compare/inbox-v0.1.79...inbox-v0.1.80) (2026-11-21)
 
 

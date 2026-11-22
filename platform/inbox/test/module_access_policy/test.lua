@@ -34,7 +34,8 @@ local function define_tests()
             for _, parameter in ipairs(dependency.data.parameters or {}) do
                 test.is_true(parameter.name ~= "kickside.inbox.security:assignment_security_scope")
             end
-            test.is_nil(registry.get("kickside.inbox.security:assignment_security_scope"))
+            local assignment_scope = registry.get("kickside.inbox.security:assignment_security_scope")
+            test.is_nil(assignment_scope)
             local retired_scope = assert(registry.get("kickside.inbox.security:assigner"))
             test.is_true(retired_scope.meta.internal)
             test.is_true(retired_scope.meta.private)

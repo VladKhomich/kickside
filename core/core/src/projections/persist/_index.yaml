@@ -96,6 +96,7 @@ entries:
     source: file://register.lua
     modules: [sql, json, uuid, registry]
     imports:
+      autoinit: kickside.component:autoinit
       text_trim: kickside.contract:text_trim
       core_db: kickside.core:db
       jobs_config: kickside.core.jobs:config

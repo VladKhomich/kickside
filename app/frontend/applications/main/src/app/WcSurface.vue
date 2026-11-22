@@ -22,7 +22,12 @@ import {
 const props = withDefaults(defineProps<{ tag: string; basePath?: string; path: string; visible?: boolean }>(), {
   visible: true,
 })
-const emit = defineEmits<{ ready: []; attached: [legacy: boolean]; error: [error: unknown] }>()
+const emit = defineEmits<{
+  ready: []
+  attached: [legacy: boolean]
+  error: [error: unknown]
+  dirtyChange: [dirty: boolean]
+}>()
 const wippy = useWippy()
 const router = useRouter()
 const host = ref<HTMLElement | null>(null)
@@ -76,12 +81,19 @@ function onInstrumentRequirementResolution(e: Event) {
   void handleInstrumentRequirementResolution({ api: wippy.api }, detail)
 }
 
-// Drop the previous element's navigate listener before it's replaced/destroyed,
-// so a tag change or unmount can't leak the handler (and its captured closure).
+function onDirtyChange(event: Event) {
+  if (event.composedPath()[0] !== el) return
+  const dirty = (event as CustomEvent<{ dirty?: unknown }>).detail?.dirty
+  if (typeof dirty === 'boolean') emit('dirtyChange', dirty)
+}
+
+// Drop the previous element's listeners before it is replaced or destroyed.
 function detach() {
   const previous = el
   el = null
   previous?.removeEventListener('navigate', onNavigate)
+  previous?.removeEventListener('dirty-change', onDirtyChange)
+  previous?.removeEventListener('dirty-changed', onDirtyChange)
   previous?.removeEventListener('instrumentRequirementResolution', onInstrumentRequirementResolution)
   previous?.remove()
 }
@@ -147,6 +159,8 @@ async function mount() {
       console.error('[kickside-surface] component error', event)
     })
     next.addEventListener('navigate', onNavigate)
+    next.addEventListener('dirty-change', onDirtyChange)
+    next.addEventListener('dirty-changed', onDirtyChange)
     next.addEventListener('instrumentRequirementResolution', onInstrumentRequirementResolution)
     el = next
     emit('attached', legacy)

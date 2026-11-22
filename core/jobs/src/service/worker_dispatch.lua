@@ -19,6 +19,12 @@ local proc_supervisor = require("proc_supervisor")
 
 local worker = {}
 
+-- The Jobs supervisors persist these outcomes through the normal retry path.
+local PROC_TIMEOUT_MARKER = "job exceeded max_execution_ms"
+worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
+local HEARTBEAT_TIMEOUT_MARKER = "job heartbeat timed out"
+worker.HEARTBEAT_TIMEOUT_MARKER = HEARTBEAT_TIMEOUT_MARKER
+
 -- The policy bounding a worker_ref target until it binds its owner's identity.
 local UNATTRIBUTED_POLICY = "kickside.core.jobs.security:unattributed_execution"
 local PROC_BLOCKED = {
@@ -104,6 +110,9 @@ local function build_worker_input(job: table): ({ [string]: any }?, { [string]: 
             thread_id = tostring(job.thread_id or ""),
             job_type = tostring(job.job_type or ""),
             attempt_no = attempt_no,
+            -- A control wake can reset attempts without replacing the previous
+            -- outcome. Successful completion clears last_error before rearm.
+            previous_execution_timed_out = job.last_error == PROC_TIMEOUT_MARKER or nil,
             max_attempts = max_attempts,
             is_final_attempt = not slot and attempt_no >= max_attempts,
             lease_token = tostring(job.lease_token or ""),
@@ -193,15 +202,6 @@ local function run_bound_worker(job: table, binding: table): (table?, error?)
     end
     return output, nil
 end
-
--- Error texts a supervised execution surfaces when its hard wall-clock ceiling
--- or its heartbeat timeout elapses. Each is a plain failure (not a lost lease):
--- fail_job runs normally and the job retries through the usual backoff -> dead
--- path.
-local PROC_TIMEOUT_MARKER = "job exceeded max_execution_ms"
-worker.PROC_TIMEOUT_MARKER = PROC_TIMEOUT_MARKER
-local HEARTBEAT_TIMEOUT_MARKER = "job heartbeat timed out"
-worker.HEARTBEAT_TIMEOUT_MARKER = HEARTBEAT_TIMEOUT_MARKER
 
 -- A proc:// worker uses the native error transport in its status envelope. The
 -- runtime can also report a native failure directly in the monitored EXIT.
