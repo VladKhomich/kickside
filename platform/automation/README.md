@@ -52,6 +52,14 @@ commit regenerated tracked assets with the source.
 
 Open **Automations** to install an available kind. The kind declares its inputs and supported controls; the shared engine owns drives, rounds, cursors, delivery history, and retries. **Runs as** is the saved executor and **Authorized by** is the configuring authorizer. Activity and identity changes require root ADMIN; triggering work does not replace either identity.
 
+On an upgraded host, `GET /api/v1/automations/{id}/status` reports
+`legacy_adoption.state = "awaiting_adoption"` for a retained pre-drive poll or
+watch trigger. Readers can see the number of unresolved deliveries for its
+source, including how many are dependency-blocked or were previously attempted.
+Administrators also see a bounded sample of original ledger identities and
+named dependencies. These identities identify local ledger rows. A previously
+attempted delivery still requires provider reconciliation before replay.
+
 ## Storage and retention
 
 Delivery history records sink deliveries, the first failure or wait, and the final
