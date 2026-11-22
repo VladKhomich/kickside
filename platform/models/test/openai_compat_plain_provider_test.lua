@@ -5,6 +5,11 @@ local registry = require("registry")
 local generate = require("generate")
 local structured_output = require("structured_output")
 
+local repo = require("models_repo")
+local profile_driver = require("profile_driver")
+local profile_execution = require("profile_execution")
+local profile_context = require("profile_context")
+
 local PLAIN = "kickside.models:openai_compat_plain.provider"
 local DRIVER = "wippy.llm.openai_compat:driver"
 
@@ -46,6 +51,45 @@ end
 
 local function define_tests()
     test.describe("OpenAI-compatible plain chat provider", function()
+        for _, method in ipairs({"generate", "structured_output"}) do
+            local handler = method == "generate" and generate or structured_output
+            test.it("keeps the default parts format for a saved regular profile on " .. method, function()
+                local provider = "wippy.llm.openai_compat:provider"
+                local card = "saved-wire-" .. method
+                local profile = assert(repo.create_profile({id = card, name = card, provider_id = provider,
+                    base_url = "https://provider.example.test/v1", api_key = "fixture-key"}))
+                assert(repo.upsert_card({name = card, provider_profile_id = profile.id, provider_id = provider,
+                    provider_model = "wire-model", capabilities = {"generate"}, enabled = true}))
+                local open, context = profile_execution.open, profile_context.context
+                local payload
+                local ok, failure = pcall(function()
+                    profile_context.context = {card = card}
+                    profile_execution.open = function(id, options)
+                        test.eq(id, provider)
+                        return {[method] = function(_, request)
+                            local sent, result, err = call(handler, options, request, reply({content = '{"ok":true}'}))
+                            payload = sent
+                            return result, err
+                        end}
+                    end
+                    local request = {messages = {{role = "user", content = "hello"}}}
+                    if method == "structured_output" then
+                        request.schema = {type = "object", properties = {ok = {type = "boolean"}},
+                            required = {"ok"}, additionalProperties = false}
+                    end
+                    local result, err = profile_driver[method](request)
+                    test.is_nil(err, tostring(err))
+                    test.is_true(result.success)
+                    test.eq(payload.model, "wire-model")
+                    test.eq(payload.messages[1].content[1].type, "text")
+                    test.eq(payload.messages[1].content[1].text, "hello")
+                end)
+                profile_execution.open, profile_context.context = open, context
+                assert(repo.delete_profile(profile.id))
+                assert(ok, tostring(failure))
+            end)
+        end
+
         test.it("binds the upstream OpenAI-compatible driver with string text content", function()
             local entry = assert(registry.get(PLAIN))
             local driver = entry.data.driver
