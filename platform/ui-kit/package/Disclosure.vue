@@ -11,7 +11,7 @@ const open = defineModel<boolean>('open', { default: false })
 
 <template>
   <Accordion class="kx-disclosure" :value="open ? 'content' : undefined" @update:value="open = $event === 'content'">
-    <AccordionPanel value="content">
+    <AccordionPanel class="kx-disclosure-panel" value="content">
       <AccordionHeader class="kx-disclosure-toggle">{{ label }}</AccordionHeader>
       <AccordionContent :pt="{
         transition: { name: 'kx-disclosure-motion' },
