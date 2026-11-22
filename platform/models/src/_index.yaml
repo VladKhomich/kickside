@@ -159,52 +159,6 @@ entries:
       - contract: wippy.llm:evaluator
         methods: {evaluate: kickside.models.providers.profile:evaluate}
 
-  - name: openai_compat_plain.driver
-    kind: contract.binding
-    meta:
-      comment: Plain-message OpenAI-compatible driver wrapper owned by kickside/models.
-      title: OpenAI-Compatible Plain Chat Driver
-      tags: [openai-compat, plain-chat, llm, driver]
-    contracts:
-      - contract: wippy.llm:generator
-        methods:
-          generate: kickside.models.providers.openai_compat_plain:openai_compat_plain.generate
-      - contract: wippy.llm:embedder
-        methods:
-          embed: wippy.llm.openai_compat:embed
-      - contract: wippy.llm:provider
-        methods:
-          status: wippy.llm.openai_compat:status
-      # Reuse native structured_output (response_format json-schema). The plain
-      # variant only flattens message CONTENT; structured output is response-side,
-      # so the native impl works — and KB ask synthesis (llm.structured_output)
-      # needs it, otherwise it calls a non-existent method on this provider.
-      - contract: wippy.llm:structured_output
-        methods:
-          structured_output: wippy.llm.openai_compat:structured_output
-    optional_context:
-      api_key:
-        default_env: OPENAI_COMPAT_API_KEY
-        description: API key for the compatible endpoint.
-        type: string
-      base_url:
-        default_env: OPENAI_COMPAT_BASE_URL
-        default_value: https://api.openai.com/v1
-        description: Base URL of the OpenAI-compatible endpoint.
-        type: string
-      organization:
-        default_env: OPENAI_COMPAT_ORGANIZATION
-        description: Organization ID.
-        type: string
-      timeout:
-        default_env: OPENAI_COMPAT_TIMEOUT
-        default_value: 600
-        description: Positive request timeout in seconds. Omit to use the provider default.
-        type: number
-      retry:
-        description: Provider-level retry policy for transient transport/provider failures.
-        type: object
-
   - name: openai_compat_plain.provider
     kind: registry.entry
     meta:
@@ -218,12 +172,13 @@ entries:
       - wippy.llm.openai_compat:organization
       - wippy.llm.openai_compat:timeout
     driver:
-      id: kickside.models:openai_compat_plain.driver
+      id: wippy.llm.openai_compat:driver
       options:
         api_key_env: wippy.llm.openai_compat:api_key
         base_url_env: wippy.llm.openai_compat:base_url
         organization_env: wippy.llm.openai_compat:organization
         timeout_env: wippy.llm.openai_compat:timeout
+        text_content: string
 
   - name: ui_fs
     kind: fs.directory
