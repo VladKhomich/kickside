@@ -1,11 +1,11 @@
 {
   "core/component": "0.3.33",
   "core/contract": "0.3.12",
-  "core/core": "0.3.53",
+  "core/core": "0.3.54",
   "core/execution": "0.2.10",
   "core/jobs": "0.1.101",
   "platform/agents": "0.2.24",
-  "platform/automation": "0.2.42",
+  "platform/automation": "0.2.45",
   "platform/blocks": "0.1.46",
   "platform/channel": "0.2.15",
   "platform/connection": "0.5.12",
@@ -15,7 +15,7 @@
   "platform/inbox": "0.1.81",
   "platform/knowledge": "0.1.106",
   "platform/mcp": "0.2.15",
-  "platform/models": "0.1.92",
+  "platform/models": "0.1.94",
   "platform/oauth": "0.1.45",
   "platform/realtime": "0.1.32",
   "core/realtime-dispatch": "0.1.1",
@@ -35,5 +35,5 @@
   "platform/webhooks": "0.1.47",
   "platform/widgets": "0.1.70",
   "platform/workflows": "0.2.23",
-  "app": "0.2.59"
+  "app": "0.2.61"
 }

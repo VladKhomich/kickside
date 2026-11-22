@@ -14,5 +14,6 @@ entries:
     modules: [sql, funcs, time, json]
     imports:
       test: wippy.test:test
+      control_fixture: kickside.automation:control_fixture
       round_ledger: kickside.automation:round_ledger
       round_harness: kickside.automation:round_harness

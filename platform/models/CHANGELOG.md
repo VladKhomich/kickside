@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.94](https://github.com/kicksideai/kickside/compare/models-v0.1.93...models-v0.1.94) (2026-11-22)
+
+
+### Features
+
+* **models:** identify the configuration used by a managed dispatch ([#926](https://github.com/kicksideai/kickside/issues/926)) ([2274eee](https://github.com/kicksideai/kickside/commit/2274eeed061a8366949d099f0b9112a7072264a9))
+
+## [0.1.93](https://github.com/kicksideai/kickside/compare/models-v0.1.92...models-v0.1.93) (2026-11-22)
+
+
+### Bug Fixes
+
+* **models:** preserve route options in the plain chat provider ([#916](https://github.com/kicksideai/kickside/issues/916)) ([3be9b20](https://github.com/kicksideai/kickside/commit/3be9b20354f26ea9161f369d380050bc7f0d9f9d))
+
 ## [0.1.92](https://github.com/kicksideai/kickside/compare/models-v0.1.91...models-v0.1.92) (2026-11-21)
 
 

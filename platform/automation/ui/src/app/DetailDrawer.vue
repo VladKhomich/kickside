@@ -87,7 +87,7 @@ const overviewFacts = computed<OverviewFact[]>(() => {
   const facts: OverviewFact[] = []
   if (when.value) facts.push({ label: 'When', value: when.value })
   const runtimeFacts = driveFacts(drives.value)
-  if (s?.next_run_at && !runtimeFacts.some(f => f.label === 'Next run')) {
+  if (!drives.value?.legacy_adoption && s?.next_run_at && !runtimeFacts.some(f => f.label === 'Next run')) {
     facts.push({ label: 'Next run', value: relativeTime(s.next_run_at, { future: true }) })
   }
   for (const f of runtimeFacts) {

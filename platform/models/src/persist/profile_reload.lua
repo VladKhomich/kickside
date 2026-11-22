@@ -1,9 +1,11 @@
 -- SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
 local policy = require("catalog_policy")
 local models_types = require("models_types")
+local secrets = require("models_secrets")
 
 local function run(profile_rows: { any }): { any }
     local profiles = {}
+    local sign = #profile_rows > 0 and secrets.profile_signer() or nil
     for _, row in ipairs(profile_rows) do
         local r = row :: any
         local secret, secret_err = policy.decrypt_secret(r.secret_json)
@@ -17,6 +19,7 @@ local function run(profile_rows: { any }): { any }
             icon = models_types.icon_name(r.icon) or "",
             config = config,
             secret_config = secret,
+            dispatch_seed = not load_err and sign and sign(r.id, config, secret) or nil,
             enabled = configured_enabled and load_err == nil,
             configured_enabled = configured_enabled,
             error = load_err and tostring(load_err) or nil,

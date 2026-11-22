@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.61](https://github.com/kicksideai/kickside/compare/kickside-v0.2.60...kickside-v0.2.61) (2026-11-22)
+
+
+### Bug Fixes
+
+* **app:** update the delivery runtime dependency ([#931](https://github.com/kicksideai/kickside/issues/931)) ([a8277bd](https://github.com/kicksideai/kickside/commit/a8277bd8cf32a161c70133d650c0cd5cdf087f33))
+
+## [0.2.60](https://github.com/kicksideai/kickside/compare/kickside-v0.2.59...kickside-v0.2.60) (2026-11-22)
+
+
+### Bug Fixes
+
+* **app:** use one System dirty-state event ([#921](https://github.com/kicksideai/kickside/issues/921)) ([61c5260](https://github.com/kicksideai/kickside/commit/61c52606d459470414bd74f117e55c79932cdb07))
+* **models:** preserve route options in the plain chat provider ([#916](https://github.com/kicksideai/kickside/issues/916)) ([3be9b20](https://github.com/kicksideai/kickside/commit/3be9b20354f26ea9161f369d380050bc7f0d9f9d))
+
 ## [0.2.59](https://github.com/kicksideai/kickside/compare/kickside-v0.2.58...kickside-v0.2.59) (2026-11-22)
 
 

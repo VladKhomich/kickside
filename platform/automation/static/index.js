@@ -13,7 +13,7 @@ class r extends e {
   }
   static get vueConfig() {
     return {
-      ...a(() => import("./lazy-mount-sm8SAZm8.js").then((o) => o.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Automations. Reload the page to try again.", timeout: 3e4 })
+      ...a(() => import("./lazy-mount-D-0VKURL.js").then((o) => o.mountConfig), { surface: "page", loading: "Loading…", failed: "Could not load Automations. Reload the page to try again.", timeout: 3e4 })
     };
   }
 }

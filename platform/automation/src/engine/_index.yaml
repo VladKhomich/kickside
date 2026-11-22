@@ -214,7 +214,7 @@ entries:
     meta:
       comment: "Automation engine part: paginated status and caller-scoped health over drive and command state."
     source: file://observe.lua
-    modules: [registry, funcs]
+    modules: [registry, funcs, sql]
     imports:
       types: kickside.automation:types
       engine_support: kickside.automation.engine:support

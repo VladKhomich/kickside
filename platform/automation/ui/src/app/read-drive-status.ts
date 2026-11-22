@@ -7,15 +7,20 @@ export async function readDriveStatus(id: string): Promise<DriveStatus> {
   const pages = new Set<string>()
   let token: string | undefined
   let failures: DriveStatus['delivery_failures']
+  let retained: DriveStatus['legacy_adoption']
   do {
     const query = token ? `?page_token=${encodeURIComponent(token)}` : ''
     const { data } = await api.get<unknown>(`/api/v1/automations/${encodeURIComponent(id)}/status${query}`)
     if (!isDriveStatusResponse(data)) throw new Error('Invalid automation status response')
     drives.push(...data.drives)
     failures = data.delivery_failures
+    if (data.legacy_adoption) {
+      const { state, unresolved, dependency_blocked } = data.legacy_adoption
+      retained = { state, unresolved, dependency_blocked }
+    }
     token = data.next_page_token || undefined
     if (token && pages.has(token)) throw new Error('Automation status repeated a page token')
     if (token) pages.add(token)
   } while (token)
-  return { drives, delivery_failures: failures }
+  return { drives, delivery_failures: failures, legacy_adoption: retained }
 }

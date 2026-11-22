@@ -93,7 +93,6 @@ function detach() {
   el = null
   previous?.removeEventListener('navigate', onNavigate)
   previous?.removeEventListener('dirty-change', onDirtyChange)
-  previous?.removeEventListener('dirty-changed', onDirtyChange)
   previous?.removeEventListener('instrumentRequirementResolution', onInstrumentRequirementResolution)
   previous?.remove()
 }
@@ -160,7 +159,6 @@ async function mount() {
     })
     next.addEventListener('navigate', onNavigate)
     next.addEventListener('dirty-change', onDirtyChange)
-    next.addEventListener('dirty-changed', onDirtyChange)
     next.addEventListener('instrumentRequirementResolution', onInstrumentRequirementResolution)
     el = next
     emit('attached', legacy)

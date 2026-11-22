@@ -6,6 +6,7 @@ local time=require("time")
 local json=require("json")
 local h=require("round_harness")
 local ledger=require("round_ledger")
+local control=require("control_fixture")
 local DB="app:history_upgrade_db"
 local MIGRATION="18_ledger_eligibility"
 
@@ -16,10 +17,57 @@ local function migrate(name: string): any
     return result
 end
 
+-- Exercise the public status projection with the same pre-drive schema the
+-- migration preserves. Component access is the only owner-facing service stub.
+local function check_retained_status(): ()
+    local db = assert(sql.get(DB))
+    assert(db:execute("INSERT INTO _migrations (id) VALUES ('kickside.automation.migrations:08_trigger_delivery_identity')"))
+    local insert = [[INSERT INTO kickside_trigger_item_ledger
+        (owner_id,source_port,item_key,source_version,dedup_key,identity_key,state,attempts,
+         delivery_order,first_failed_at,last_failed_at,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,'2000-01-01','2000-01-01','2000-01-01','2000-01-01')]]
+    for _, row in ipairs({
+        {"legacy","source","retry","","batch","d:batch","retrying",0},
+        {"legacy","other","wrong-source","1","","v:1","parked",0},
+        {"other","source","wrong-owner","1","","v:1","parked",0},
+        {"legacy","source","new-order","1","","v:1","retrying",1},
+        {"legacy","source","new-identity","1","","modern","retrying",0},
+        {"legacy","source","finished","1","","v:1","resolved",0},
+    }) do assert(db:execute(insert,row)) end
+    db:release()
+
+    local function status(level: integer, opts: any): any
+        local component = control.component_stub({sets={},access={}},{legacy=level})
+        component.get_context = function(_,mask)
+            test.eq(mask,control.ACCESS.READ)
+            return {_trigger={v=2,mode="watch",spec={source="source"}}},nil
+        end
+        local engine = control.engine_with("reader",component,{sql={get=function() return sql.get(DB) end}})
+        local result,err = engine.status("legacy",opts)
+        test.is_nil(err,tostring(err))
+        return result
+    end
+
+    local reader = status(control.ACCESS.READ,{})
+    test.eq(reader.ledger_counts.unresolved,2)
+    test.eq(reader.legacy_adoption.state,"awaiting_adoption")
+    test.eq(reader.legacy_adoption.mode,"watch")
+    test.eq(reader.legacy_adoption.dependency_blocked,1)
+    test.eq(reader.legacy_adoption.previously_attempted,2)
+    test.is_nil(reader.legacy_adoption.deliveries)
+    local owner = status(15,{page_size=1}).legacy_adoption
+    test.eq(#owner.deliveries,1)
+    test.eq(owner.deliveries[1].identity_key,"v:1")
+    test.eq(owner.deliveries[1].dependency_key,"dependency")
+    test.is_nil(owner.deliveries[1].envelope_json)
+    test.is_true(owner.deliveries_truncated)
+    test.is_nil(status(15,{page_token="last-drive"}).legacy_adoption)
+end
+
 return test.run_cases(function()
     test.describe("delivery storage upgrade",function()
         test.it("preserves a large historical store while indexing bounded unresolved state",function()
-            for _,name in ipairs({"06_trigger_item_ledger","10_drive_schema","11_delivery_provenance","12_delivery_history"}) do migrate(name) end
+            for _,name in ipairs({"10_drive_schema","12_delivery_history"}) do migrate(name) end
             local db,open_err=sql.get(DB)
             test.is_nil(open_err)
             local postgres=tostring(db:type()) == sql.type.POSTGRES
@@ -33,6 +81,45 @@ return test.run_cases(function()
                 test.is_nil(err,tostring(err))
                 return result
             end
+            -- Published Automation 0.1.97 held the same migration 06 ID
+            -- without the current order column or admissible state set.
+            execute([[CREATE TABLE kickside_trigger_item_ledger (
+                owner_id TEXT NOT NULL, source_port TEXT NOT NULL, item_key TEXT NOT NULL,
+                source_version TEXT NOT NULL DEFAULT '', dedup_key TEXT NOT NULL DEFAULT '', identity_key TEXT NOT NULL,
+                envelope_json TEXT NOT NULL DEFAULT '', payload_hash TEXT NOT NULL DEFAULT '',
+                state TEXT NOT NULL CONSTRAINT kickside_trigger_item_ledger_state_check
+                    CHECK (state IN ('retrying','dependency_blocked','parked','dead','resolved')),
+                attempts INTEGER NOT NULL DEFAULT 0, first_failed_at TEXT NOT NULL, last_failed_at TEXT NOT NULL,
+                next_attempt_at TEXT, error_code TEXT NOT NULL DEFAULT 'unknown', error_message TEXT,
+                retriable BOOLEAN NOT NULL DEFAULT true, dependency_key TEXT, terminal BOOLEAN NOT NULL DEFAULT false,
+                replay_generation INTEGER NOT NULL DEFAULT 0, replay_requested_at TEXT, resolved_at TEXT,
+                expires_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                PRIMARY KEY (owner_id,source_port,item_key,identity_key))]])
+            execute([[INSERT INTO kickside_trigger_item_ledger
+                (owner_id,source_port,item_key,source_version,identity_key,envelope_json,state,dependency_key,attempts,
+                 first_failed_at,last_failed_at,created_at,updated_at)
+                VALUES ('legacy','source','item','1','v:1','{}','dependency_blocked','dependency',2,
+                        '2000-01-01T00:00:00Z','2000-01-01T00:00:00Z','2000-01-01T00:00:00Z','2000-01-01T00:00:00Z')]])
+            execute([[CREATE INDEX idx_trigger_ledger_dependency ON kickside_trigger_item_ledger (dependency_key,state)]])
+            execute([[CREATE INDEX idx_trigger_ledger_due_source ON kickside_trigger_item_ledger (owner_id,source_port,state,next_attempt_at)]])
+            db:release()
+            migrate("11_delivery_provenance")
+            migrate("17_legacy_trigger_item_ledger")
+            db=assert(sql.get(DB))
+            local legacy = query([[SELECT identity_key,envelope_json,state,dependency_key,attempts,delivery_order
+                FROM kickside_trigger_item_ledger WHERE owner_id='legacy']])[1]
+            test.eq(legacy.identity_key,"v:1")
+            test.eq(legacy.envelope_json,"{}")
+            test.eq(legacy.state,"dependency_blocked")
+            test.eq(legacy.dependency_key,"dependency")
+            test.eq(tonumber(legacy.attempts),2)
+            test.eq(tonumber(legacy.delivery_order),0)
+            db:release()
+            check_retained_status()
+            db=assert(sql.get(DB))
+            execute([[UPDATE kickside_trigger_item_ledger SET state='waiting' WHERE owner_id='legacy']])
+            execute([[UPDATE kickside_trigger_item_ledger SET state='uncertain' WHERE owner_id='legacy']])
+            execute([[DELETE FROM kickside_trigger_item_ledger WHERE owner_id IN ('legacy','other')]])
             local numbers="WITH RECURSIVE n(x) AS (SELECT CAST($1 AS INTEGER) UNION ALL SELECT x+1 FROM n WHERE x<$2) "
             for first=1,1000000,100000 do
                 execute(numbers .. "INSERT INTO kickside_automation_delivery_history"
@@ -136,6 +223,7 @@ return test.run_cases(function()
             end
             local schema_after=json.encode(query(schema))
             db:release()
+            test.eq(migrate("17_legacy_trigger_item_ledger").skipped,1)
             test.eq(migrate(MIGRATION).skipped,1)
             test.eq(migrate("19_receipt_delivery_identity").skipped,1)
             local evidence=json.encode({engine=postgres and "postgres" or "sqlite",history_rows=1000000,ledger_rows=1000000,ledger_ms=ledger_ms,receipt_ms=receipt_ms,receipt_rows=1000000,receipt_plan=receipt_plan,receipt_schema_before=receipt_schema_before,receipt_schema_after=receipt_schema_after,receipt_bytes_before=receipt_bytes_before,receipt_bytes_after=receipt_bytes_after,legacy_ms=legacy_ms,legacy_rows_pruned=pruned,legacy_plans=legacy_plans,before=before,after=after,schema_before=schema_before,schema_after=schema_after})

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.54](https://github.com/kicksideai/kickside/compare/core-v0.3.53...core-v0.3.54) (2026-11-22)
+
+
+### Bug Fixes
+
+* **core:** honor completed primary thread reap before fallback ([#925](https://github.com/kicksideai/kickside/issues/925)) ([b3a4c71](https://github.com/kicksideai/kickside/commit/b3a4c716fef9215002d5aacb94c6ad40c875c0bd))
+
 ## [0.3.53](https://github.com/kicksideai/kickside/compare/core-v0.3.52...core-v0.3.53) (2026-11-22)
 
 

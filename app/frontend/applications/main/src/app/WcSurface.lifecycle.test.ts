@@ -64,6 +64,8 @@ it('forwards dirty state only from the current surface', async () => {
 
   element.dispatchEvent(new CustomEvent('dirty-change', { detail: { dirty: true } }))
   element.dispatchEvent(new CustomEvent('dirty-changed', { detail: { dirty: false } }))
+  expect(wrapper.emitted('dirtyChange')).toEqual([[true]])
+  element.dispatchEvent(new CustomEvent('dirty-change', { detail: { dirty: false } }))
   expect(wrapper.emitted('dirtyChange')).toEqual([[true], [false]])
 
   await wrapper.setProps({ basePath: '/agents' })

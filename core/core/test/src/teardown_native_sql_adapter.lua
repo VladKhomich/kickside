@@ -1,6 +1,6 @@
 local native = require("sql")
 type DB = native.DB
-local M = {builder = {}}
+local M = {builder = {}, type = native.type}
 M.builder.select = function()
     local query = {}
     function query:from(...) return self end

@@ -87,27 +87,32 @@ it('mounts the declared System tab with the relative deep link and restores it o
   expect(view.get('test-work-admin').attributes('route')).toBe('board-1/workflow/state-3')
 })
 
-it.each(['dirty-change', 'dirty-changed'])('guards leaving a dirty entity reported with %s', async event => {
-  const { router, view } = await render('/system/work/board-1/items')
-  const work = view.get('test-work-admin')
-  childEvent(work.element, event, { dirty: true })
+it.each([
+  { name: 'Work', tab: 'work', route: 'board-1/items', next: 'board-2/general', otherTab: 1 },
+  { name: 'Catalogs', tab: 'pim', route: 'catalog-1/fields', next: 'catalog-2/general', otherTab: 0 },
+])('guards leaving $name when its component emits dirty-change', async ({ name, tab, route, next, otherTab }) => {
+  const path = `/system/${tab}/${route}`
+  const component = `test-${tab}-admin`
+  const { router, view } = await render(path)
+  const admin = view.get(component)
+  childEvent(admin.element, 'dirty-change', { dirty: true })
   const unload = new Event('beforeunload', { cancelable: true })
   expect(window.dispatchEvent(unload)).toBe(false)
 
   mocks.confirm.mockResolvedValueOnce(false)
   mocks.onRouteChanged.mockClear()
-  await view.findAll('[role=tab]')[1].trigger('click')
+  await view.findAll('[role=tab]')[otherTab].trigger('click')
   await flushPromises()
   expect(mocks.confirm).toHaveBeenCalledOnce()
-  expect(router.currentRoute.value.path).toBe('/system/work/board-1/items')
-  expect(view.get('[aria-selected=true]').text()).toBe('Work')
+  expect(router.currentRoute.value.path).toBe(path)
+  expect(view.get('[aria-selected=true]').text()).toBe(name)
   expect(mocks.onRouteChanged).not.toHaveBeenCalled()
-  expect(mocks.navigate).toHaveBeenCalledWith('/system/work/board-1/items')
-  expect(view.get('test-work-admin').element).toBe(work.element)
+  expect(mocks.navigate).toHaveBeenCalledWith(path)
+  expect(view.get(component).element).toBe(admin.element)
 
   mocks.confirm.mockResolvedValueOnce(true)
-  await router.push('/system/work/board-2/general')
+  await router.push(`/system/${tab}/${next}`)
   expect(mocks.confirm).toHaveBeenCalledTimes(2)
-  expect(work.attributes('route')).toBe('board-2/general')
+  expect(admin.attributes('route')).toBe(next)
   expect(window.dispatchEvent(new Event('beforeunload', { cancelable: true }))).toBe(true)
 })
