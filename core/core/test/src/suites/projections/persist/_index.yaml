@@ -154,12 +154,13 @@ entries:
     meta: {type: test, suite: kickside_core}
     source: file://block_retention_test.lua
     method: run
-    modules: [sql, uuid]
+    modules: [sql, uuid, time]
     imports:
       test: wippy.test:test
       writer: kickside.core.projections.persist:writer
       apply: kickside.core.projections:apply
       claim: kickside.core.jobs.persist:claim
+      clock: kickside.core.jobs:clock
       invoke: kickside.core.projections:invoke
       pin: kickside.core.retention:pin
       prune: kickside.core.retention:prune
