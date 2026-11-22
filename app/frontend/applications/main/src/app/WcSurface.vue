@@ -22,7 +22,7 @@ import {
 const props = withDefaults(defineProps<{ tag: string; basePath?: string; path: string; visible?: boolean }>(), {
   visible: true,
 })
-const emit = defineEmits<{ ready: []; error: [error: unknown] }>()
+const emit = defineEmits<{ ready: []; error: [error: unknown]; dirtyChange: [dirty: boolean] }>()
 const wippy = useWippy()
 const router = useRouter()
 const host = ref<HTMLElement | null>(null)
@@ -76,11 +76,19 @@ function onInstrumentRequirementResolution(e: Event) {
   void handleInstrumentRequirementResolution({ api: wippy.api }, detail)
 }
 
+function onDirtyChange(event: Event) {
+  if (event.composedPath()[0] !== el) return
+  const dirty = (event as CustomEvent<{ dirty?: unknown }>).detail?.dirty
+  if (typeof dirty === 'boolean') emit('dirtyChange', dirty)
+}
+
 // Drop the previous element's navigate listener before it's replaced/destroyed,
 // so a tag change or unmount can't leak the handler (and its captured closure).
 function detach() {
   if (el) {
     el.removeEventListener('navigate', onNavigate)
+    el.removeEventListener('dirty-change', onDirtyChange)
+    el.removeEventListener('dirty-changed', onDirtyChange)
     el.removeEventListener('instrumentRequirementResolution', onInstrumentRequirementResolution)
     el = null
   }
@@ -131,13 +139,15 @@ async function mount() {
       // Shadow DOM retargets a nested control's event to the surface.
       if (event.composedPath()[0] !== next || generation !== mountGeneration || el !== next) return
       const error = new Error(`Component <${tag}> failed to load.`)
+      detach()
       mountHost.replaceChildren()
-      el = null
       failed.value = true
       emit('error', error)
       console.error('[kickside-surface] component error', event)
     })
     next.addEventListener('navigate', onNavigate)
+    next.addEventListener('dirty-change', onDirtyChange)
+    next.addEventListener('dirty-changed', onDirtyChange)
     next.addEventListener('instrumentRequirementResolution', onInstrumentRequirementResolution)
     el = next
     mountHost.replaceChildren(next)

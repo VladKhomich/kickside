@@ -72,6 +72,8 @@ const route = useRoute()
 const router = useRouter()
 const tabs = shallowRef<TabDef[]>([])
 const active = shallowRef('')
+const chrome = shallowRef<HTMLElement | null>(null)
+const dirty = shallowRef(false)
 const loadError = shallowRef('')
 const { schedule: scheduleTabsRefresh, clear: clearTabRefreshTimers } = createRefreshLadder(() => { loadTabs() })
 const REGISTRY_CHANGED_EVENT = 'kickside:registry-changed'
@@ -96,14 +98,67 @@ const activeTag = computed(() =>
     : '')
 const activeComponent = computed(() =>
   activeTab.value && activeTab.value.render !== 'component' ? resolveComponent(activeTab.value) : null)
+const tabPath = computed(() => `/system/${active.value}`)
+const surfaceKey = computed(() => `${active.value}:${activeTag.value}`)
 
-// The active tab is deep-linkable: it lives in the route (/system/<tab>). Picking
-// a tab updates the URL so refresh + shared links land on the same tab.
 function selectTab(key: string) {
   if (key === active.value) return
-  active.value = key
-  router.replace(`/system/${key}`)
+  void router.push(`/system/${key}`)
 }
+
+function entityPath(path: string) {
+  if (!path.startsWith(tabPath.value + '/')) return tabPath.value
+  return path.split('/').slice(0, 4).join('/')
+}
+
+let confirming = false
+const stopGuard = router.beforeEach(async (to, from) => {
+  if (!surfaceActive.value || !dirty.value || to.path === from.path) return
+  const destinationInTab = to.path === tabPath.value || to.path.startsWith(tabPath.value + '/')
+  if (destinationInTab && entityPath(to.path) === entityPath(from.path)) return
+  if (confirming) return false
+  confirming = true
+  try {
+    return await host.confirm({
+      header: 'Discard unsaved changes?',
+      message: 'Leaving these settings will discard your draft.',
+      acceptLabel: 'Discard changes',
+      rejectLabel: 'Keep editing',
+    })
+  } finally {
+    confirming = false
+  }
+})
+const stopAfterNavigation = router.afterEach((to, from, failure) => {
+  if (!failure && entityPath(to.path) !== entityPath(from.path)) dirty.value = false
+})
+
+function warnBeforeUnload(event: BeforeUnloadEvent) {
+  event.preventDefault()
+  event.returnValue = true
+}
+
+watch(() => surfaceActive.value && dirty.value, warn => {
+  if (warn) window.addEventListener('beforeunload', warnBeforeUnload)
+  else window.removeEventListener('beforeunload', warnBeforeUnload)
+}, { flush: 'sync' })
+watch(surfaceKey, () => { dirty.value = false }, { flush: 'sync' })
+
+watch([active, navTabs, surfaceActive], () => {
+  if (!surfaceActive.value) return
+  const strip = chrome.value?.querySelector<HTMLElement>('[data-system-tab-strip]')
+  const selected = strip?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+  if (!strip || !selected) return
+  const viewport = strip.getBoundingClientRect()
+  const tab = selected.getBoundingClientRect()
+  const previous = chrome.value?.querySelector('[data-system-tab-previous]')?.getBoundingClientRect()
+  const next = chrome.value?.querySelector('[data-system-tab-next]')?.getBoundingClientRect()
+  const left = Math.max(viewport.left, previous?.right ?? viewport.left)
+  const right = Math.min(viewport.right, next?.left ?? viewport.right)
+  if (tab.left < left || tab.right > right) {
+    strip.scrollLeft += (tab.left + tab.right - left - right) / 2
+  }
+}, { flush: 'post' })
 
 // Choose the tab named in the route if it exists, else the first.
 function applyRouteTab() {
@@ -188,6 +243,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopGuard()
+  stopAfterNavigation()
+  window.removeEventListener('beforeunload', warnBeforeUnload)
   clearTabRefreshTimers()
   window.removeEventListener('kickside:nav-changed', scheduleTabsRefresh)
   window.removeEventListener('kickside:modules-changed', scheduleTabsRefresh)
@@ -198,7 +256,7 @@ onUnmounted(() => {
 <template>
   <div class="system-page">
     <div class="system-chrome">
-      <div class="system-chrome-inner">
+      <div ref="chrome" class="system-chrome-inner">
       <div class="kx-head system-head">
         <div class="kx-head-icon"><Icon icon="tabler:settings" aria-hidden="true" /></div>
         <div class="kx-head-text">
@@ -224,10 +282,15 @@ onUnmounted(() => {
         class="system-tabs"
         data-kx-separator="surface"
         :value="active"
-        @update:value="selectTab(String($event))"
       >
-        <TabList aria-label="System sections">
-          <Tab v-for="tab in navTabs" :key="tab.key" :value="tab.key">
+        <TabList aria-label="System sections" :pt="{
+          content: { 'data-system-tab-strip': '' },
+          prevButton: { 'data-system-tab-previous': '' },
+          nextButton: { 'data-system-tab-next': '' },
+        }">
+          <Tab v-for="tab in navTabs" :key="tab.key" :value="tab.key"
+            @click.capture.stop.prevent="selectTab(tab.key)"
+            @keydown.enter.space.capture.stop.prevent="selectTab(tab.key)">
             <Icon :icon="tab.icon" aria-hidden="true" />
             {{ tab.label }}
           </Tab>
@@ -240,7 +303,8 @@ onUnmounted(() => {
       <div v-if="loadError" class="p-6 text-sm" style="color: var(--p-danger-500)">
         {{ loadError }}
       </div>
-      <WcSurface v-else-if="activeTag" :tag="activeTag" :path="route.path" :visible="surfaceActive" :key="activeTag" />
+      <WcSurface v-else-if="activeTag" :tag="activeTag" :base-path="tabPath" :path="route.path"
+        :visible="surfaceActive" :key="surfaceKey" @dirty-change="dirty = $event" @error="dirty = false" />
       <KeepAlive v-else>
         <component :is="activeComponent" v-if="activeComponent" :key="active" embedded />
       </KeepAlive>
