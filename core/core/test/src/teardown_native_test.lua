@@ -125,6 +125,35 @@ local function proofs()
             end
         end)
     end
+    test.it("completed primary leaves the next registration intact", function()
+        fixture.reset("remaining", errors.new({kind = errors.INTERNAL, message = "successor lookup"}))
+        fixture.warning = {component_id = "source", success = true, deleted = true,
+            thread_notified = {"owner-subscriber"}, thread_discarded = {events = 6}}
+        local value, err = teardown.delete(fixture.executor(), "source", nil)
+        test.is_nil(err)
+        test.is_true(value.deleted)
+        test.eq(value.notified[1], "owner-subscriber")
+        test.eq(value.discarded.events, 6)
+        test.eq(fixture.mark_calls, 0)
+    end)
+    test.it("component completion alone cannot prove a surviving primary was reaped", function()
+        fixture.reset("", nil)
+        fixture.warning = {component_id = "source", success = true, deleted = true}
+        local value, err = teardown.delete(fixture.executor(), "source", nil)
+        test.is_nil(value)
+        test.eq(err:details().field, "component.thread_reap")
+        test.eq(fixture.mark_calls, 0)
+    end)
+    test.it("completed owner still allows cleanup of a nonprimary thread", function()
+        fixture.reset("", nil)
+        fixture.owner = "parent"
+        fixture.warning = {component_id = "parent", success = true, deleted = true, thread_notified = {}}
+        local value, err = teardown.delete(fixture.executor(), "source", nil)
+        test.is_nil(err)
+        test.is_true(value.deleted)
+        test.eq(value.notified[1], "subscriber")
+        test.eq(fixture.page_calls, 1)
+    end)
     test.it("empty purge identifier remains idempotent", function()
         fixture.reset("", nil)
         local value, err = teardown.purge_thread(fixture.executor(), "", nil)

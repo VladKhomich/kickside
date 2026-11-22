@@ -375,7 +375,10 @@ function component.remove(component_id: string): (boolean, error?, any?)
     if call_err then
         return false, service_error(nil, call_err, "failed to delete thread component")
     end
-    if type(result) == "table" and result.success == false then
+    if type(result) ~= "table" then
+        return false, service_error(nil, nil, "component delete returned no result")
+    end
+    if result.success == false then
         local err = service_error(result, nil, "failed to delete thread component")
         if errors.is(err, errors.NOT_FOUND) then return true, nil end
         return false, err

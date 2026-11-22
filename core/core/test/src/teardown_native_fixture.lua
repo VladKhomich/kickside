@@ -1,7 +1,7 @@
 local M: any = {}
 function M.reset(stage: string, source: any)
     M.stage, M.source, M.missing, M.proof, M.mark_calls, M.page_calls, M.notify_calls = stage, source, false, nil, 0, 0, 0
-    M.warning = nil
+    M.warning, M.owner = nil, "source"
 end
 function M.result(stage: string, value: any): (any, error?)
     if stage == M.stage then
@@ -34,7 +34,7 @@ function M.notify(change): (any, error?)
     return M.result(M.stage == "pending_notify" and "pending_notify" or "notify", true)
 end
 function M.gate_write(db, id, mask): (any, error?)
-    return M.result("gate", {component_id = "source"})
+    return M.result("gate", {component_id = M.owner})
 end
 function M.remove(id): (any, error?, any)
     local value, err = M.result("remove", true)
