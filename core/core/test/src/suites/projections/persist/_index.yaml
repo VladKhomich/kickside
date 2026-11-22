@@ -45,7 +45,7 @@ entries:
       type: test
       suite: kickside_core
     source: file://slot_test.lua
-    modules: [sql, uuid, json]
+    modules: [sql, uuid, json, time]
     imports:
       clock: kickside.core.jobs:clock
       writer: kickside.core.projections.persist:writer

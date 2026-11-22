@@ -1,4 +1,5 @@
 local test = require("test")
+local time = require("time")
 local clock = require("clock")
 local sql = require("sql")
 local uuid = require("uuid")
@@ -254,14 +255,15 @@ local function define_tests()
                     assert(db:execute("UPDATE kickside_projection_cursor SET last_error=$1 WHERE id=$2",
                         {case.diagnostic, registered.cursor_id}))
                 end
+                local dialect = assert(db:type())
+                local tx = assert(db:begin())
+                local token = uuid.v7()
+                local leased = assert(claim.lease_row(tx, dialect, registered.job_id, token,
+                    clock.format(time.now():add("1m"), dialect), clock.now(dialect)))
+                assert(select(2, tx:commit()) == nil)
                 db:release()
-                local selected
-                for _, row in ipairs(assert(claim_batch(16))) do
-                    if row.id == registered.job_id then selected = row end
-                end
-                assert(selected, "expected the projection's slot")
-                assert(invoke.run({job = {id = selected.id, lease_token = selected.lease_token,
-                    execution_seq = selected.execution_seq, previous_execution_timed_out = case.outer},
+                assert(invoke.run({job = {id = registered.job_id, lease_token = token,
+                    execution_seq = leased.execution_seq, previous_execution_timed_out = case.outer},
                     payload = {cursor_id = registered.cursor_id}}))
                 db = assert(sql.get("app:db"))
                 local row = assert(db:query([[SELECT c.last_seq,p.body FROM kickside_projection_cursor c
