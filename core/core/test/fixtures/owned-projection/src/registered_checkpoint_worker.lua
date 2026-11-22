@@ -8,6 +8,8 @@ local time = require("time")
 
 local CHANGED = "kickside.test.threads:changed"
 local TRIGGER = "kickside.test.threads:trigger"
+local PROTECTED = "core.owned.fixture:protected_checkpoint_output"
+local OTHER_PROTECTED = "core.owned.fixture:other_protected_checkpoint_output"
 
 local function failure(err)
     return {ok = false, error_native = job_types.error_to_data(err)}
@@ -38,13 +40,21 @@ local function write(input)
     local config = cursor.body.worker_config
     local actor = assert(assert(security.actor()):id())
     assert(actor == cursor.actor_id and actor == config.test_actor)
+    local function check_frame()
+        assert(assert(assert(security.actor()):id()) == actor)
+        assert(security.scope())
+        if config.protected then
+            assert(security.can("threads.output.publish", PROTECTED) ~= true, "checkpoint frame has publication scope")
+        end
+    end
+    check_frame()
     local db = assert(sql.get("app:db"))
     assert(db:execute("UPDATE registered_checkpoint_gate SET calls=calls+1,pid=$1 WHERE thread_id=$2",
         {tostring(process.pid()), input.thread_id}))
     local state = assert(db:query("SELECT mode FROM registered_checkpoint_gate WHERE thread_id=$1", {input.thread_id}))[1]
     if state.mode == "revoke" then
         assert(db:execute("DELETE FROM kickside_component_access WHERE component_id=$1 AND subject_id=$2",
-            {config.destinations[2], actor}))
+            {config.destinations[config.protected and 1 or 2], actor}))
     elseif state.mode == "change_range" then
         local removed = assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1 AND seq=3", {input.thread_id}))
         assert(removed.rows_affected == 1)
@@ -74,6 +84,24 @@ local function write(input)
         patch = {publications = (cursor.body.publications or 0) + 1, offered = #manifest},
         append_events = {{thread_id = config.output_thread, events = {{type = CHANGED, body = {count = #manifest}}}}},
     }
+    if config.protected then
+        local event_type = state.mode == "wrong_event" and OTHER_PROTECTED or PROTECTED
+        local destination = state.mode == "off_list" and config.output_thread or config.destinations[1]
+        local protected = {thread_id = destination, events = {{type = event_type, body = {count = #manifest}}}}
+        output.append_events[#output.append_events + 1] = protected
+        local funcs = require("funcs")
+        local clear, plain_err = funcs.call("kickside.core.threads:authorize_projection_writes",
+            {writes = {protected}, protected_outputs = {[event_type] = true}, destination_ids = {destination}})
+        assert(not clear and errors.is(plain_err, errors.PERMISSION_DENIED), tostring(plain_err))
+        if state.mode == "wrong_frame" then
+            local frame = assert(require("ctx").get("kickside.core.projection_checkpoint"))
+            local result, forge_err = funcs.call("core.owned.fixture:forge_registered_checkpoint",
+                {job = assignment.job, cursor = cursor, last = assignment.prefetched_last, output = output,
+                    manifest = manifest, proof = frame})
+            assert(not result and errors.is(forge_err, errors.PERMISSION_DENIED), tostring(forge_err))
+            return failure(forge_err)
+        end
+    end
     if #manifest > 1 then
         local called = false
         local function unexpected_write()
@@ -94,6 +122,7 @@ local function write(input)
     end
     local result, err = apply.checkpoint("app:db", assignment.job, cursor, assignment.prefetched_last, output,
         function(tx, dbtype)
+            check_frame()
             if state.mode == "probe_grant_lock" and dbtype == sql.type.POSTGRES then
                 local observer = assert(sql.get("app:db"))
                 local _, conflict = observer:query([[SELECT access_id FROM kickside_component_access
@@ -113,6 +142,7 @@ local function write(input)
             end
             return true, nil
         end, manifest)
+    check_frame()
     if not result then return failure(err) end
     if state.mode == "lost_return" then
         time.sleep("45s")
@@ -121,4 +151,11 @@ local function write(input)
     return {checkpointed = true}
 end
 
-return {ordinary = ordinary, write = write}
+local function forge(input)
+    local proof = assert(require("ctx").get("kickside.core.projection_checkpoint"))
+    assert(proof.cursor_id == input.proof.cursor_id)
+    return apply.checkpoint("app:db", input.job, input.cursor, input.last, input.output,
+        function() error("wrong frame reached the checkpoint callback") end, input.manifest)
+end
+
+return {ordinary = ordinary, write = write, forge = forge}

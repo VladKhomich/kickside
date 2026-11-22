@@ -221,10 +221,21 @@ entries:
     meta:
       events:
         input: [{type: "kickside.test.threads:trigger"}]
-        output: [{type: "kickside.test.threads:changed"}]
+        output:
+          - {type: "kickside.test.threads:changed"}
+          - {type: "core.owned.fixture:protected_checkpoint_output", system_only: true}
+          - {type: "core.owned.fixture:other_protected_checkpoint_output", system_only: true}
     contracts:
       - contract: kickside.contract:component
         methods: {get_status: "kickside.core.threads:thread_status"}
+
+  - name: registered_checkpoint_test_access
+    kind: security.policy
+    groups: [app:registered_checkpoint_test_scope]
+    policy:
+      resources: "*"
+      actions: [contract.get, contract.open, contract.call, contract.security, db.get, registry.get, funcs.call, funcs.security, security.policy_group.get]
+      effect: allow
 
   - name: registered_checkpoint_test
     kind: function.lua

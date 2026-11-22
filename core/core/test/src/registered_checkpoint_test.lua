@@ -15,6 +15,8 @@ local uuid = require("uuid")
 
 local TRIGGER = "kickside.test.threads:trigger"
 local CHANGED = "kickside.test.threads:changed"
+local PROTECTED = "core.owned.fixture:protected_checkpoint_output"
+local PROTECTED_WORKER = "proc://core.owned.fixture:registered_checkpoint_protected"
 local PUBLIC = "proc://core.owned.fixture:registered_checkpoint_ordinary"
 
 local function in_db(run)
@@ -46,6 +48,11 @@ local function test_case(options, assertions)
     f.register_bare_component(f.owner, source, impl, {})
     for _, id in ipairs(targets) do f.register_bare_component(f.owner, id, impl, {}) end
     local member = options.grantee and f.stranger or f.owner
+    local scope
+    if options.protected then
+        member = "protected-checkpoint-" .. member
+        scope = assert(security.named_scope("app:registered_checkpoint_test_scope"))
+    end
     if options.grantee then
         local owner = assert(security.new_actor(f.owner, {security_groups = {}}))
         local service = assert(contract.get("kickside.component:component_service"))
@@ -67,6 +74,11 @@ local function test_case(options, assertions)
             assert(db:execute("INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test',$2)",
                 {source, source}))
         end
+        if options.protected then
+            for _, id in ipairs(targets) do
+                assert(db:execute("INSERT INTO kickside_thread (id,thread_class,component_id) VALUES ($1,'test',$2)", {id, id}))
+            end
+        end
         assert(db:execute([[CREATE TABLE IF NOT EXISTS registered_checkpoint_effect (
             thread_id TEXT NOT NULL, event_id TEXT NOT NULL, destination TEXT NOT NULL, actor_id TEXT NOT NULL,
             PRIMARY KEY (thread_id,event_id,destination))]]))
@@ -81,9 +93,9 @@ local function test_case(options, assertions)
         }))
     end)
     local args = {
-        thread_id = thread_id, kind = "registered_fixture", worker_ref = options.worker or PUBLIC,
+        thread_id = thread_id, kind = "registered_fixture", worker_ref = options.worker or (options.protected and PROTECTED_WORKER or PUBLIC),
         worker_input_mode = "prefetch_events", events = not options.unfiltered and {input = {{type = TRIGGER}}} or nil,
-        worker_config = {test_actor = member, output_thread = source,
+        worker_config = {test_actor = member, output_thread = source, protected = options.protected,
             shape = assert(json.decode('{"empty_object":{},"empty_array":[]}')),
             destinations = options.single and {targets[1]} or targets},
     }
@@ -101,6 +113,8 @@ local function test_case(options, assertions)
                 WHERE thread_id=$1 ORDER BY event_id,destination]], {thread_id}))
             row.outputs = assert(db:query("SELECT id FROM kickside_event WHERE thread_id IN ($1,$2) AND type=$3",
                 {thread_id, source, CHANGED}))
+            row.protected = assert(db:query("SELECT id,thread_id FROM kickside_event WHERE thread_id IN ($1,$2,$3) AND type=$4",
+                {source, targets[1], targets[2], PROTECTED}))
             return row
         end)
     end
@@ -126,13 +140,20 @@ local function test_case(options, assertions)
         if not options.nonprimary then
             test.is_true(errors.is(direct_err, errors.PERMISSION_DENIED), tostring(direct_err))
         end
+        if options.protected then
+            local appended, append_err = f.run_as(member, "append_event", {
+                thread_id = targets[1], event = {type = PROTECTED, body = {}},
+            }, scope)
+            test.is_nil(appended)
+            test.is_true(errors.is(append_err, errors.PERMISSION_DENIED), tostring(append_err))
+        end
         assert(jobs.nudge_workers())
         local function choose(method, params)
             params = params or {}
             params.thread_id, params.projection_id, params.cursor_id = thread_id, current.projection_id, current.cursor_id
             return assert(f.run_as(member, method, params))
         end
-        assertions(read, retry, member, {set_mode = set_mode, choose = choose, registration = args, source = source, owner = f.owner})
+        assertions(read, retry, member, {set_mode = set_mode, choose = choose, registration = args, source = source, targets = targets, owner = f.owner})
     end)
     process.terminate(scheduler)
     in_db(function(db)
@@ -146,6 +167,10 @@ local function test_case(options, assertions)
             assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {source}))
         end
         for _, id in ipairs({source, targets[1], targets[2]}) do
+            if options.protected and id ~= source then
+                assert(db:execute("DELETE FROM kickside_event WHERE thread_id=$1", {id}))
+                assert(db:execute("DELETE FROM kickside_thread WHERE id=$1", {id}))
+            end
             assert(db:execute("DELETE FROM kickside_component_access WHERE component_id=$1", {id}))
             assert(db:execute("DELETE FROM kickside_components WHERE component_id=$1", {id}))
         end
@@ -162,6 +187,46 @@ local function parked(row)
 end
 
 return {run = test.run_cases(function()
+    test.describe("registered protected output", function()
+        test.it("publishes only with the admitted writer and actor and rolls back a failed write", function()
+            test_case({protected = true, grantee = true, mode = "before_commit"}, function(read, retry, actor, control)
+                local failed = await(read, function(row) return pending_failure(row) or row.cursor_status == "invalid" end)
+                assert(string.find(failed.last_error, "fixture writer stopped before commit", 1, true), failed.last_error)
+                test.eq(tonumber(failed.last_seq), 0)
+                test.eq(#failed.effects, 0)
+                test.eq(#failed.protected, 0)
+                retry("ready")
+                local done = await(read, parked)
+                test.eq(tonumber(done.last_seq), 4)
+                test.eq(#done.effects, 4)
+                test.eq(#done.protected, 1)
+                test.eq(done.protected[1].thread_id, control.targets[1])
+                test.eq(#done.outputs, 2)
+                for _, row in ipairs(done.effects) do test.eq(row.actor_id, actor) end
+            end)
+        end)
+
+        for _, probe in ipairs({
+            {mode = "off_list", reason = "outside its admitted destinations"},
+            {mode = "wrong_event", reason = "output event requires framework maintenance authority"},
+            {mode = "wrong_frame", reason = "registered checkpoint writer differs from its admitted native entry"},
+            {mode = "revoke", reason = "access denied"},
+            {mode = "foreign_output", reason = "access denied",
+                worker = "proc://core.owned.fixture:registered_checkpoint_foreign_output"},
+        }) do
+            test.it("refuses protected output in " .. probe.mode .. " mode", function()
+                test_case({protected = true, grantee = true, mode = probe.mode, worker = probe.worker}, function(read)
+                    local denied = await(read, function(row) return row.cursor_status == "invalid" end)
+                    assert(string.find(denied.last_error, probe.reason, 1, true), denied.last_error)
+                    test.eq(tonumber(denied.last_seq), 0)
+                    test.eq(#denied.effects, 0)
+                    test.eq(#denied.protected, 0)
+                    test.eq(#denied.outputs, 1)
+                end)
+            end)
+        end
+    end)
+
     test.describe("registered ordinary filtered publication", function()
         test.it("rolls back a failed destination write and settles the exact filtered range on retry", function()
             test_case({mode = "before_commit"}, function(read, retry, actor)
@@ -284,7 +349,7 @@ return {run = test.run_cases(function()
                 assert(control.choose("register_projection", registration))
                 control.set_mode("ready")
                 local done = await(read, parked)
-                test.eq(tonumber(done.reset_generation), tonumber(before.reset_generation) + 1)
+                test.eq(tonumber(done.reset_generation), assert(tonumber(before.reset_generation)) + 1)
                 test.eq(tonumber(done.calls), 2)
                 test.eq(#done.effects, 4)
                 test.eq(#done.outputs, 2)

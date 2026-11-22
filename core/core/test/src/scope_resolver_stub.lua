@@ -38,7 +38,9 @@ function M.resolve(args: any): (any?, error?)
         if not rows or not rows[1] then return nil, errors.new({ message = "lifecycle token fixture principal is missing", kind = errors.NOT_FOUND }) end
     end
     local scope_name = "wippy.security:process"
-    if string.sub(checked.id, 1, 11) == "transition-" then
+    if string.sub(checked.id, 1, #"protected-checkpoint-") == "protected-checkpoint-" then
+        scope_name = "app:registered_checkpoint_test_scope"
+    elseif string.sub(checked.id, 1, 11) == "transition-" then
         local root = args.execution_root
         if type(root) ~= "table" or type(root.record_id) ~= "string" then
             return nil, errors.new({ message = "transition fixture root is missing", kind = errors.INVALID })

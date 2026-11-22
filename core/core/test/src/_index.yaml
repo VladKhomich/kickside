@@ -3497,6 +3497,7 @@ entries:
     source: file://projection_apply_native_source.lua
     modules: [ctx, security, funcs, logger]
     imports:
+      contract_event_authorization: kickside.core.threads:contract_event_authorization
       registration: kickside.core.projections.persist:register
       registered_checkpoint: kickside.core.projections.persist:registered_checkpoint
       event_access: kickside.core.threads:event_access

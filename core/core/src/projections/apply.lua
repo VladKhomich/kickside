@@ -301,6 +301,21 @@ local function advance_tx(db: sql.DB, job: table, snapshot: table, prefetched_la
     local locked_threads, lock_err = threads_writer.lock_thread_rows_tx(tx, dbtype, ids, registered ~= nil)
     if lock_err then return abort(lock_err) end
     if type(locked_threads) ~= "table" then return abort(response_error("locked_threads")) end
+    local protected = registered and registered.protected
+    if protected then
+        for _, write in ipairs(writes :: table[]) do
+            for _, event in ipairs(write.events) do
+                if protected.events[event.type] then
+                    local thread = locked_threads[write.thread_id]
+                    if not thread or thread.component_id ~= write.thread_id then
+                        return abort(errors.new({kind = errors.CONFLICT, retryable = true,
+                            message = "registered checkpoint destination thread binding changed during preparation"}))
+                    end
+                    break
+                end
+            end
+        end
+    end
     local source_thread = locked_threads[tostring(snapshot.thread_id)]
     local current_head = tonumber(source_thread and source_thread.event_count)
     if current_head == nil then return abort(response_error("thread.head")) end
@@ -633,6 +648,7 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
     if write_err then return nil, write_err end
     if owned and #writes > 0 then return nil, invalid("component-owned projection cannot return append_events") end
     local in_owner_process = checkpoint and checkpoint.owner and checkpoint.write
+    local protected = checkpoint and checkpoint.registered and checkpoint.registered.protected
     if #writes > 0 and (in_owner_process or snapshot.actor_id ~= nil or snapshot.execution_identity_json ~= nil) then
         local admitted, admission_err
         if in_owner_process then
@@ -643,7 +659,11 @@ local function advance(db_id: string, job: table, snapshot: table, prefetched_la
             if not actor or not snapshot.actor_id or actor:id() ~= snapshot.actor_id then
                 return nil, errors.new({kind = errors.PERMISSION_DENIED, message = "checkpoint actor differs from its admitted cursor"})
             end
-            admitted, admission_err = require("funcs").call("kickside.core.threads:authorize_projection_writes", {writes = writes})
+            if protected then
+                admitted, admission_err = require("contract_event_authorization").authorize_checkpoint_writes(writes, protected)
+            else
+                admitted, admission_err = require("funcs").call("kickside.core.threads:authorize_projection_writes", {writes = writes})
+            end
         else
             local identity, identity_err = execution_identity.from_row(snapshot.actor_id, snapshot.execution_identity_json)
             if identity_err then return nil, identity_err end

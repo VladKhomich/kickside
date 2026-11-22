@@ -132,7 +132,57 @@ entries:
         destinations_key: destinations
     source: file://registered_checkpoint_worker.lua
     method: ordinary
-    modules: [process, security, sql, time]
+    modules: [ctx, funcs, process, security, sql, time]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
+  - name: registered_checkpoint_protected
+    kind: process.lua
+    meta:
+      type: projection.worker
+      registered_checkpoint:
+        writer_ref: proc://core.owned.fixture:registered_checkpoint_writer
+        target_db_config: core.owned.fixture:registered_checkpoint_db
+        destinations_key: destinations
+        protected_outputs: [core.owned.fixture:protected_checkpoint_output]
+    source: file://registered_checkpoint_worker.lua
+    method: ordinary
+    modules: [ctx, funcs, process, security, sql, time]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
+  - name: registered_checkpoint_foreign_output
+    kind: process.lua
+    meta:
+      type: projection.worker
+      registered_checkpoint:
+        writer_ref: proc://core.owned.fixture:registered_checkpoint_writer
+        target_db_config: core.owned.fixture:registered_checkpoint_db
+        destinations_key: destinations
+        protected_outputs: [kickside.test.threads:attested]
+    source: file://registered_checkpoint_worker.lua
+    method: ordinary
+    modules: [ctx, funcs, process, security, sql, time]
+    imports:
+      apply: kickside.core.projections:apply
+      job_types: kickside.core.jobs:types
+
+  - name: protected_checkpoint_output
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+
+  - name: other_protected_checkpoint_output
+    kind: registry.entry
+    meta: {type: kickside.core.threads.event}
+
+  - name: forge_registered_checkpoint
+    kind: function.lua
+    meta: {private: true}
+    source: file://registered_checkpoint_worker.lua
+    method: forge
+    modules: [ctx, funcs, process, security, sql, time]
     imports:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types
@@ -147,7 +197,7 @@ entries:
         destinations_key: destinations
     source: file://registered_checkpoint_worker.lua
     method: ordinary
-    modules: [process, security, sql, time]
+    modules: [ctx, funcs, process, security, sql, time]
     imports:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types
@@ -170,7 +220,7 @@ entries:
       registered_checkpoint_writer: true
     source: file://registered_checkpoint_worker.lua
     method: write
-    modules: [process, security, sql, time]
+    modules: [ctx, funcs, process, security, sql, time]
     imports:
       apply: kickside.core.projections:apply
       job_types: kickside.core.jobs:types

@@ -79,6 +79,13 @@ config's `meta.db_id` names the shared Core and Jobs database resource, the
 private process handles configurations with 2 to 32 distinct destination
 components. Other configurations use the ordinary process.
 
+Add `protected_outputs` under `registered_checkpoint` to name exact
+package-owned event IDs the private process can publish through
+`apply.checkpoint`. Each destination must declare the event as a
+`system_only` output, appear in the checkpoint's destination list, and
+grant the registered actor WRITE access. The private process keeps its
+inherited security scope.
+
 An explicit registration records the calling principal for this path. Existing
 registrations can opt in through explicit registration at their current
 position. An `ensure` call retains an existing execution identity.

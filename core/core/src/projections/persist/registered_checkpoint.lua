@@ -2,6 +2,7 @@
 local sql = require("sql")
 local json = require("json")
 local registry = require("registry")
+local process = require("process")
 local security = require("security")
 local canonical_json = require("canonical_json")
 local component_query = require("component_query")
@@ -211,6 +212,46 @@ function M.capture(db_id: string, admission: table, current: table, actor: any, 
     return {checks = checks, admission = admission, filter = admission.filter}, nil
 end
 
+-- Resolve protected output authority from the installed declaration in the
+-- writer's original process frame, using the revision admitted by the supervisor.
+local function protected_outputs(revision: any, spec: table, admission: table, ids: {string}): (table?, error?)
+    local outputs = spec.protected_outputs
+    if outputs == nil then return nil, nil end
+    if type(outputs) ~= "table" then return nil, invalid("registered checkpoint protected_outputs must be an array") end
+    local writer, writer_err = process.id()
+    if writer_err then return nil, writer_err end
+    if not writer or "proc://" .. writer ~= admission.writer_ref then
+        return nil, errors.new({kind = errors.PERMISSION_DENIED,
+            message = "registered checkpoint writer differs from its admitted native entry"})
+    end
+    local entry, entry_err = revision:get(writer)
+    if entry_err then return nil, entry_err end
+    local meta = entry and entry.meta
+    if not entry or entry.kind ~= "process.lua" or type(meta) ~= "table"
+        or meta.private ~= true or meta.registered_checkpoint_writer ~= true then
+        return nil, event_access.denied()
+    end
+    local events = {}
+    for index, id in pairs(outputs) do
+        if type(index) ~= "number" or index < 1 or index > #outputs or index ~= math.floor(index)
+            or type(id) ~= "string" or not string.match(id, "^[^:%s%*]+:[^:%s%*]+$") or events[id] then
+            return nil, invalid("registered checkpoint protected_outputs must contain unique exact event IDs")
+        end
+        local event, event_err = revision:get(id)
+        if event_err then return nil, event_err end
+        if not event or event.kind ~= "registry.entry" or type(event.meta) ~= "table"
+            or event.meta.type ~= "kickside.core.threads.event" then
+            return nil, invalid("registered checkpoint protected output must name a thread event")
+        end
+        local package_err = M.same_package(revision, admission.public_target_id, writer, id)
+        if package_err then return nil, package_err end
+        events[id] = true
+    end
+    local destinations = {}
+    for _, id in ipairs(ids) do destinations[string.lower(id)] = true end
+    return {events = events, destinations = destinations, revision = revision}, nil
+end
+
 function M.authorize(proof: table, snapshot: table, db_id: string): (table?, error?)
     local admission = proof.registered
     if type(admission) ~= "table" or admission.db_id ~= db_id or proof.cursor_id ~= snapshot.id
@@ -235,7 +276,12 @@ function M.authorize(proof: table, snapshot: table, db_id: string): (table?, err
     if not actor or actor:id() ~= admission.actor_id then return nil, event_access.denied() end
     local revision_err = M.recheck_revision(admission.revision)
     if revision_err then return nil, revision_err end
-    local entry, entry_err = registry.get(admission.public_target_id)
+    local revision, snapshot_err = registry.snapshot()
+    if snapshot_err then return nil, snapshot_err end
+    if not revision or tostring(revision:version():id()) ~= admission.revision then
+        return nil, conflict("registered checkpoint registry changed")
+    end
+    local entry, entry_err = revision:get(admission.public_target_id)
     if entry_err then return nil, entry_err end
     local spec = entry and entry.meta and entry.meta.registered_checkpoint
     if type(spec) ~= "table" or spec.writer_ref ~= admission.writer_ref or spec.target_db_config ~= admission.config_id
@@ -244,6 +290,8 @@ function M.authorize(proof: table, snapshot: table, db_id: string): (table?, err
     end
     local ids, ids_err = M.destinations(spec, snapshot.body.worker_config)
     if not ids then return nil, ids_err or event_access.denied() end
+    local protected, protected_err = protected_outputs(revision, spec, admission, ids)
+    if protected_err then return nil, protected_err end
     local filter = M.filter(snapshot.body.events)
     if not filter then return nil, invalid("registered checkpoint requires a stored input filter") end
     local identity, identity_err = execution_identity.from_row(admission.actor_id, admission.actor_context)
@@ -259,7 +307,7 @@ function M.authorize(proof: table, snapshot: table, db_id: string): (table?, err
     }
     local checks, err = authorities(ids, snapshot.component_id, admission.read_mask, live_actor)
     if not checks then return nil, err end
-    return {checks = checks, admission = admission, filter = filter}, nil
+    return {checks = checks, admission = admission, filter = filter, protected = protected}, nil
 end
 
 function M.check_offer(inputs: any, manifest: table, last: number): error?

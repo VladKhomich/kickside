@@ -38,7 +38,7 @@ entries:
   - name: registered_checkpoint
     kind: library.lua
     source: file://registered_checkpoint.lua
-    modules: [sql, json, registry, security]
+    modules: [sql, json, registry, security, process]
     imports:
       canonical_json: kickside.contract:canonical_json
       access_subjects: kickside.component.persist:access_subjects

@@ -40,9 +40,9 @@ local function registry_failure(message: string, err: any): error
     return errors.wrap(err, message)
 end
 
-local function event_types_for_impl(impl_id: string): (table?, table?, error?)
+local function event_types_for_impl(impl_id: string, snapshot: any?): (table?, table?, error?)
     if impl_id == GENERIC_THREAD_IMPL then return { [GENERIC_THREAD_MESSAGE] = true }, {}, nil end
-    local events, declaration_err = event_declaration.load(impl_id, true)
+    local events, declaration_err = event_declaration.load(impl_id, true, snapshot)
     if declaration_err then return nil, nil, declaration_err end
     local function collect(raw: any, output: boolean): (table?, error?)
         local set: table = {}
@@ -91,9 +91,11 @@ local function is_framework_event_namespace(namespace: string): boolean
     return false
 end
 
-local function registered_event_type(event_type: string): (string?, string?, error?)
+local function registered_event_type(event_type: string, snapshot: any?): (string?, string?, error?)
     if event_type == GENERIC_THREAD_MESSAGE then return "kickside.threads", nil, nil end
-    local entry, registry_err = registry.get(event_type)
+    local entry, registry_err
+    if snapshot then entry, registry_err = snapshot:get(event_type)
+    else entry, registry_err = registry.get(event_type) end
     if registry_err then
         if errors.is(registry_err, errors.NOT_FOUND) then
             return nil, nil, invalid("event type is not declared: " .. event_type, registry_err)
@@ -146,9 +148,11 @@ local function validate_user_timestamp(event: any, user_append: boolean): error?
     return nil
 end
 
-local function output_kind_matches(output_kind: string, event_type: string, thread_class: string?): (boolean, error?)
+local function output_kind_matches(output_kind: string, event_type: string, thread_class: string?, snapshot: any?): (boolean, error?)
     if not thread_class or thread_class == "" then return false, nil end
-    local entry, err = registry.get(output_kind)
+    local entry, err
+    if snapshot then entry, err = snapshot:get(output_kind)
+    else entry, err = registry.get(output_kind) end
     if err then return false, registry_failure("output kind lookup failed", err) end
     if not entry then return false, nil end
     local meta = type(entry.meta) == "table" and entry.meta or {}
@@ -157,7 +161,7 @@ local function output_kind_matches(output_kind: string, event_type: string, thre
         if class == thread_class then owns_class = true; break end
     end
     if not owns_class then return false, nil end
-    local _, outputs, declaration_err = event_types_for_impl(output_kind)
+    local _, outputs, declaration_err = event_types_for_impl(output_kind, snapshot)
     if declaration_err then return false, declaration_err end
     return outputs[event_type] ~= nil, nil
 end
@@ -166,8 +170,8 @@ end
 -- the events one write carries.
 type Declaration = { inputs: { [string]: boolean }, outputs: table }
 
-local function declaration_for(impl_id: string): (Declaration?, error?)
-    local input_types, output_types, declaration_err = event_types_for_impl(impl_id)
+local function declaration_for(impl_id: string, snapshot: any?): (Declaration?, error?)
+    local input_types, output_types, declaration_err = event_types_for_impl(impl_id, snapshot)
     if declaration_err then return nil, declaration_err end
     local inputs = input_types :: { [string]: boolean }
     if impl_id == GENERIC_THREAD_IMPL then inputs[GENERIC_THREAD_MESSAGE] = true end
@@ -175,7 +179,7 @@ local function declaration_for(impl_id: string): (Declaration?, error?)
 end
 
 local function validate_declared_event(declaration: Declaration, event_type: string, user_append: boolean,
-    thread_class: string?): (string?, error?)
+    thread_class: string?, snapshot: any?, protected: boolean?): (string?, error?)
     if type(event_type) ~= "string" or event_type == "" then
         return nil, (errors.new({ message = "event type is required", kind = errors.INVALID }) :: error)
     end
@@ -189,12 +193,15 @@ local function validate_declared_event(declaration: Declaration, event_type: str
     local inputs = declaration.inputs
     local outputs = declaration.outputs
 
-    local _, output_kind, event_err = registered_event_type(event_type)
+    local _, output_kind, event_err = registered_event_type(event_type, snapshot)
     if event_err then return nil, event_err end
+    if protected and outputs[event_type] ~= true then
+        return nil, denied_event(event_type, "protected checkpoint event must be a system-only output of the destination")
+    end
     local is_output = outputs[event_type] ~= nil
     local producer = security.can("threads.output.publish", event_type) == true
     if not is_output and producer and type(output_kind) == "string" and output_kind ~= "" then
-        local matched, match_err = output_kind_matches(output_kind, event_type, thread_class)
+        local matched, match_err = output_kind_matches(output_kind, event_type, thread_class, snapshot)
         if match_err then return nil, match_err end
         is_output = matched
     end
@@ -206,7 +213,7 @@ local function validate_declared_event(declaration: Declaration, event_type: str
         and is_framework_event_namespace(event_namespace) then
         return nil, denied_event(event_type, "framework event namespaces require a framework publisher")
     end
-    if user_append and is_output and outputs[event_type] == true and not producer then
+    if user_append and is_output and outputs[event_type] == true and not producer and not protected then
         return nil, denied_event(event_type, "output event requires framework maintenance authority")
     end
     return is_output and "output" or "input", nil
@@ -266,12 +273,13 @@ function M.normalize_writes(writes: any): error?
 end
 
 -- Component owns the access decision; the stored kind owns event declarations.
-function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boolean?): (boolean, error?)
+local function validate_event_types(db: sql.DB, writes: { table }, checkpoint: table?): (boolean, error?)
     local shape_err = M.normalize_writes(writes)
     if shape_err then return false, shape_err end
     local user_append, authority_err = authority()
     if authority_err then return false, authority_err end
     local output_only = true
+    local snapshot = checkpoint and checkpoint.revision
     for _, write in ipairs(writes) do
         local rows, thread_err = db:query("SELECT id,component_id,thread_class FROM kickside_thread WHERE id=$1", { write.thread_id })
         if thread_err then return false, registry_failure("thread lookup failed", thread_err) end
@@ -289,18 +297,27 @@ function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boo
         end
         local impl_id = tostring(components[1].impl_id or "")
         local producer_write = true
+        local protected_write = false
         local declaration: Declaration? = nil
         for _, event in ipairs(write.events) do
             local timestamp_err = validate_user_timestamp(event, user_append == true)
             if timestamp_err then return false, timestamp_err end
             if not declaration then
-                local declared, declared_err = declaration_for(impl_id)
+                local declared, declared_err = declaration_for(impl_id, snapshot)
                 if declared_err or not declared then return false, declared_err end
                 declaration = declared
             end
-            local direction, declaration_err = validate_declared_event(declaration :: Declaration, event.type, user_append == true, thread.thread_class)
+            local protected = checkpoint ~= nil and checkpoint.events[event.type] == true
+            if protected and not checkpoint.destinations[write.thread_id] then
+                return false, denied_event(event.type, "protected checkpoint write is outside its admitted destinations")
+            end
+            local direction, declaration_err = validate_declared_event(declaration :: Declaration, event.type,
+                user_append == true, thread.thread_class, snapshot, protected)
             if declaration_err then return false, declaration_err end
-            if direction ~= "output" or security.can("threads.output.publish", event.type) ~= true then producer_write = false end
+            if protected then protected_write = true end
+            if protected or direction ~= "output" or security.can("threads.output.publish", event.type) ~= true then
+                producer_write = false
+            end
             if user_append and direction == "input" then
                 local authorship_err = validate_input_authorship(event)
                 if authorship_err then return false, authorship_err end
@@ -308,7 +325,7 @@ function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boo
         end
         if not producer_write then
             output_only = false
-            if user_append then
+            if user_append or protected_write then
                 local _, access_err = component_client.validate_access(component_id, (core_types.ACCESS.WRITE :: integer))
                 if access_err then return false, access_err end
             end
@@ -317,20 +334,32 @@ function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boo
     return user_append == false or output_only, nil
 end
 
--- Internal actor-bound projection admission, using the same contract authorizer.
-function M.authorize_writes(args: any): (table?, error?)
-    local writes = type(args) == "table" and args.writes or nil
+function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boolean?): (boolean, error?)
+    return validate_event_types(db, writes)
+end
+
+local function authorize_writes(writes: any, checkpoint: table?): (table?, error?)
     local shape_err = M.normalize_writes(writes)
     if shape_err then return nil, shape_err end
     local _, authority_err = authority()
     if authority_err then return nil, authority_err end
     local db, db_err = common.open_db()
     if db_err then return nil, db_err end
-    local _, authorize_err = M.validate_event_types(db, writes)
+    local _, authorize_err = validate_event_types(db, writes, checkpoint)
     local _, release_err = db:release()
     if authorize_err then return nil, authorize_err end
     if release_err then return nil, registry_failure("authorization database release failed", release_err) end
     return { writes = writes }, nil
+end
+
+-- Generic function entry only accepts ordinary actor-bound publication inputs.
+function M.authorize_writes(args: any): (table?, error?)
+    return authorize_writes(type(args) == "table" and args.writes or nil)
+end
+
+-- Library-only entry for the authority reconstructed inside apply.checkpoint.
+function M.authorize_checkpoint_writes(writes: {table}, checkpoint: table): (table?, error?)
+    return authorize_writes(writes, checkpoint)
 end
 
 -- Primary-thread emit must authorize a declared output before it lazily creates
