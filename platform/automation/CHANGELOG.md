@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.43](https://github.com/kicksideai/kickside/compare/automation-v0.2.42...automation-v0.2.43) (2026-11-22)
+
+
+### Bug Fixes
+
+* **automation:** upgrade retained trigger ledger before eligibility indexes ([#857](https://github.com/kicksideai/kickside/issues/857)) ([ccb3991](https://github.com/kicksideai/kickside/commit/ccb39917eaaa4622cff1722280ca517338ac618b))
+
 ## [0.2.42](https://github.com/kicksideai/kickside/compare/automation-v0.2.41...automation-v0.2.42) (2026-11-21)
 
 
