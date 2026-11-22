@@ -2,6 +2,13 @@ version: "1.0"
 namespace: kickside.contract
 
 entries:
+  - name: plugin_schema
+    kind: library.lua
+    meta:
+      comment: Parse and resolve template or binding-backed plugin schema declarations.
+    source: file://plugin_schema.lua
+    modules: [contract, hash, security]
+
   - name: text_trim
     kind: library.lua
     source: file://text_trim.lua

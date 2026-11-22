@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+
+entries:
+  - name: plugin_schema_test
+    kind: function.lua
+    meta: { type: test, suite: kickside_contract }
+    source: file://plugin_schema_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      plugin_schema: kickside.contract:plugin_schema
+      canonical_json: kickside.contract:canonical_json
