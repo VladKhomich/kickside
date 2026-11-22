@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.34](https://github.com/kicksideai/kickside/compare/component-v0.3.33...component-v0.3.34) (2026-11-22)
+
+
+### Bug Fixes
+
+* **component:** fence deferred lifecycle audit by incarnation ([1535dcd](https://github.com/kicksideai/kickside/commit/1535dcde889a0f9b965853226666ccd78d667cc5))
+
 ## [0.3.33](https://github.com/kicksideai/kickside/compare/component-v0.3.32...component-v0.3.33) (2026-11-22)
 
 
