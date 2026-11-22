@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.36](https://github.com/kicksideai/kickside/compare/uploads-v0.3.35...uploads-v0.3.36) (2026-11-22)
+
+
+### Bug Fixes
+
+* **uploads:** stabilize offset pagination for tied timestamps ([af24904](https://github.com/kicksideai/kickside/commit/af24904e409bb54cf1987db3e259f230c6464a56))
+
 ## [0.3.35](https://github.com/kicksideai/kickside/compare/uploads-v0.3.34...uploads-v0.3.35) (2026-11-21)
 
 
