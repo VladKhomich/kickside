@@ -29,7 +29,7 @@ local function publish(limit: integer): (integer?, error?)
     local rows, read_err = db:query("SELECT a.component_id,a.identity_generation,a.record_json,c.impl_id,a.request_id,"
         .. " COALESCE(c.lifecycle_incarnation,'') AS lifecycle_incarnation,COALESCE(c.secrets_incarnation,'') AS component_incarnation"
         .. " FROM " .. AUDIT .. " a JOIN kickside_components c ON c.component_id=a.component_id"
-        .. " WHERE a.published_at IS NULL AND c.deleting_at IS NULL ORDER BY a.created_at,a.component_id,a.identity_generation LIMIT $1", { limit })
+        .. " WHERE a.published_at IS NULL ORDER BY a.created_at,a.component_id,a.identity_generation LIMIT $1", { limit })
     local scan_err: error? = nil
     if read_err or type(rows) ~= "table" then scan_err = failure("identity audit publication scan failed", read_err) end
     scan_err = error_envelope.cleanup(function(): (any, error?) return db:release() end, scan_err, "release audit publication database")
