@@ -36,14 +36,18 @@ return {run = test.run_cases(function()
             test.is_nil(err, tostring(err))
             test.is_true(result.success, result.error)
         end
-        local function raw(actor, query, id, suffix)
+        local function get(actor, path)
             local token = assert(tokens:create(security.new_actor(actor, {security_groups = {"app:uploads_test"}}),
                 security.named_scope("wippy.security:process"), {expiration = "1h"}))
             local gateway = assert(registry.get("app:gateway"))
             local port = assert(tostring(gateway.data.addr):match(":(%d+)$"))
-            local response, err = http_client.get("http://127.0.0.1:" .. port .. "/reference/uploads/" .. (id or upload_id) .. (suffix or "/raw") .. (query or ""),
+            local response, err = http_client.get("http://127.0.0.1:" .. port .. "/reference/uploads/" .. path,
                 {headers = {Authorization = "Bearer " .. token}})
             test.is_nil(err, tostring(err))
+            return response
+        end
+        local function raw(actor, query, id, suffix)
+            local response = get(actor, (id or upload_id) .. (suffix or "/raw") .. (query or ""))
             if query == nil and id == nil and suffix == nil then
                 local page_api = assert(assert(contract.get("kickside.uploads:page_images"))
                     :with_actor(security.new_actor(actor, {security_groups = {"app:uploads_test"}}))
@@ -90,6 +94,58 @@ return {run = test.run_cases(function()
         test.after_each(function()
             if tokens then tokens:close() end
             assert(storage:remove(upload_id))
+        end)
+        test.it("lists tied uploads exactly once across authenticated pages", function()
+            local component_id = register(owner, {}, types.component_id_for_owner(owner), types.IMPL)
+            register(writer, {}, types.component_id_for_owner(writer), types.IMPL)
+            local db = assert(sql.get("app:db"))
+            local tx = assert(db:begin())
+            local stamp = "2026-01-01T00:00:00Z"
+            local prefix = uuid.v4():sub(1, 24)
+            local function id(i)
+                return prefix .. string.format("%012d", i)
+            end
+            local function seed(i, actor, created_at, filename, state, kind)
+                assert(tx:execute([[INSERT INTO kickside_uploads
+                    (uuid,actor_id,size,mime_type,storage_state,storage_id,storage_path,type_id,created_at,metadata)
+                    VALUES ($1,$2,1,'text/plain',$3,'app:uploads',$1,$4,$5,$6)]],
+                    {id(i), actor, state or "completed", kind or "kickside.uploads:types.generic", created_at,
+                        assert(json.encode({filename = filename or "page-fixture.txt"}))}))
+            end
+            for i = 134, 1, -1 do seed(i, owner, stamp) end
+            seed(135, owner, "2026-01-02T00:00:00Z")
+            seed(136, owner, "2025-12-31T00:00:00Z")
+            seed(137, owner, stamp, "other.txt")
+            seed(138, owner, stamp, nil, "pending")
+            seed(139, owner, stamp, nil, nil, "foreign.artifacts:container")
+            seed(140, owner, stamp)
+            seed(141, writer, stamp)
+            assert(tx:execute([[INSERT INTO kickside_upload_read_model (upload_id,component_id,status)
+                VALUES ($1,$2,'deleted')]], {id(140), component_id}))
+            assert(tx:commit())
+            db:release()
+
+            local filter = "list?q=page-fixture&status=completed&limit=25&offset="
+            local expected = {id(135)}
+            for i = 1, 134 do expected[#expected + 1] = id(i) end
+            expected[#expected + 1] = id(136)
+            for offset = 0, #expected, 25 do
+                local response = get(owner, filter .. tostring(offset))
+                test.eq(response.status_code, 200, response.body)
+                local page = assert(json.decode(response.body))
+                test.eq(page.meta.total, #expected)
+                test.eq(#page.uploads, math.min(25, #expected - offset))
+                for i, item in ipairs(page.uploads) do
+                    test.eq(item.uuid, expected[offset + i], "ordered upload at position " .. (offset + i))
+                end
+            end
+
+            local response = get(writer, filter .. "0")
+            test.eq(response.status_code, 200, response.body)
+            local page = assert(json.decode(response.body))
+            test.eq(page.meta.total, 1, "only the caller's upload counts")
+            test.eq(#page.uploads, 1)
+            test.eq(page.uploads[1].uuid, id(141))
         end)
         test.it("denies a reference registered by a different upload owner", function()
             local result, err = call_as(writer, "kickside.component.binding:register_component_func", upload_id,

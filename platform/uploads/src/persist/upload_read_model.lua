@@ -394,7 +394,7 @@ local function select_sql(where_sql: string, limit_n: integer, offset_n: integer
         FROM kickside_uploads u
         LEFT JOIN kickside_upload_read_model r ON r.upload_id = u.uuid AND r.component_id = $1
         WHERE ]] .. where_sql .. [[
-        ORDER BY u.created_at DESC
+        ORDER BY u.created_at DESC, u.uuid ASC
         LIMIT $]] .. tostring(limit_n) .. [[ OFFSET $]] .. tostring(offset_n) .. [[
     ]]
 end
