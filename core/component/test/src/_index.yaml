@@ -2703,10 +2703,24 @@ entries:
     source: file://identity_receipt_store_test.lua
     method: run
     meta: {type: test, suite: identity_receipt_store}
-    modules: [json, sql, time, uuid]
-    imports:
+    modules: &identity_receipt_modules [funcs, json, security, sql, time, uuid]
+    imports: &identity_receipt_imports
       test: wippy.test:test
-      identity: kickside.component:identity_access
+      component: kickside.component:component
+
+  - name: identity_receipt_probe
+    kind: function.lua
+    source: file://identity_receipt_store_test.lua
+    method: receipt
+    modules: *identity_receipt_modules
+    imports: *identity_receipt_imports
+
+  - name: identity_receipt_probe_call
+    kind: security.policy
+    policy:
+      actions: [funcs.call, funcs.security]
+      resources: app:identity_receipt_probe
+      effect: allow
 
   - name: metadata_tx_fixture
     kind: library.lua

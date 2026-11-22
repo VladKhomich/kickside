@@ -143,7 +143,8 @@ local function get_identity_receipt(component_id: string): (any?, error?)
     end
     local dialect, read_err = db:type()
     local rows: any = nil
-    if not read_err then rows, read_err = db:query("SELECT c.identity_generation, c.identity_hash, "
+    if not read_err then rows, read_err = db:query("SELECT c.identity_generation, c.identity_hash,"
+        .. " c.secrets_incarnation AS component_incarnation, "
         .. (dialect == sql.type.POSTGRES and POSTGRES_IDENTITY or SQLITE_IDENTITY) .. ","
         .. " f.declaration_hash, f.command_id AS declaration_command_id,"
         .. " f.applied_command_generation AS declaration_command_generation, a.created_at AS identity_selected_at FROM " .. component_types.TABLES.COMPONENTS .. " c"
@@ -174,7 +175,8 @@ local function get_identity_receipt(component_id: string): (any?, error?)
         return nil, (errors.new({ message = "stored execution identity is invalid", kind = errors.INVALID,
             details = { error_kind = "declaration" } }) :: error)
     end
-    return { component_id = component_id, principal = execution_identity.principal,
+    return { component_id = component_id, component_incarnation = row.component_incarnation,
+        principal = execution_identity.principal,
         execution_identity = execution_identity,
         identity_generation = tonumber(row.identity_generation), identity_hash = row.identity_hash,
         declaration_hash = row.declaration_hash, identity_selected_at = row.identity_selected_at,
