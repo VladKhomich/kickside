@@ -12,7 +12,22 @@ entries:
       test: wippy.test:test
       repo: kickside.models.persist:repo
       migration_runner: wippy.migration:runner
-      plain_generate: kickside.models.providers.openai_compat_plain:generate_implementation
+      plain_generate: wippy.llm.openai_compat:generate
+
+  - name: openai_compat_plain_provider_test
+    kind: function.lua
+    meta: {type: test, suite: kickside_models}
+    source: file://openai_compat_plain_provider_test.lua
+    method: run
+    modules: [json, registry]
+    imports:
+      test: wippy.test:test
+      generate: wippy.llm.openai_compat:generate
+      structured_output: wippy.llm.openai_compat:structured_output
+      models_repo: kickside.models.persist:repo
+      profile_driver: app:profile_driver_fixture
+      profile_execution: app:profile_execution_fixture
+      profile_context: app:profile_context_fixture
 
   - name: cipher_compatibility_test
     kind: function.lua
@@ -195,7 +210,6 @@ entries:
       models_types: kickside.models:models_types
       provider_registry: kickside.models.discovery:provider_registry
       provider_openai_like: kickside.models.discovery:provider.openai_like
-      openai_compat_plain_generate: kickside.models.providers.openai_compat_plain:openai_compat_plain.generate
     method: run
 
   - name: dep.kickside.models

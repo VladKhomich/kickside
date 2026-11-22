@@ -26,6 +26,10 @@ The settings UI exposes dedicated provider-profile web components for:
 
 - OpenAI-compatible endpoints, including OpenRouter, Ollama, LM Studio, vLLM,
   Together AI, Groq, Fireworks, Mistral, DeepInfra, xAI, and Cerebras presets.
+  The plain-chat variant (`kickside.models:openai_compat_plain.provider`) binds
+  the same `wippy.llm.openai_compat:driver` with `text_content: string`, so
+  text-only messages go out as string content for endpoints that reject
+  content part arrays.
 - OpenAI native.
 - Anthropic Claude.
 - Google Gemini Developer API.

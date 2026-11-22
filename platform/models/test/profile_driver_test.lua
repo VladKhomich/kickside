@@ -147,6 +147,26 @@ local function define_tests()
             test.is_nil(delete_err, tostring(delete_err))
             assert(ok, tostring(err))
         end)
+        test.it("runs a plain chat profile on the upstream driver with string text content", function()
+            local profile = assert(models_repo.create_profile({id = "plain-profile", name = "Plain profile",
+                provider_id = "kickside.models:openai_compat_plain.provider", base_url = "https://provider.example.test/v1",
+                api_key = "fixture-cache-secret"}))
+            assert(models_repo.upsert_card({name = "cached-profile-model", provider_profile_id = profile.id,
+                provider_id = profile.provider_id, provider_model = "wire-model", capabilities = {"generate"},
+                max_tokens = 8192, output_tokens = 1024, enabled = true}))
+            fixture.provider_id = profile.provider_id
+            local ok, err = pcall(function()
+                local response, call_err = driver.generate({})
+                test.is_nil(call_err, tostring(call_err))
+                test.is_true(response.success)
+                test.eq(fixture.context.text_content, "string")
+                test.eq(fixture.context.base_url_env, "wippy.llm.openai_compat:base_url")
+            end)
+            fixture.provider_id = "wippy.llm.openai_compat:provider"
+            local _, delete_err = models_repo.delete_profile(profile.id)
+            test.is_nil(delete_err, tostring(delete_err))
+            assert(ok, tostring(err))
+        end)
         test.it("invalidates decoded routes and profiles on publication", function()
             local profile = assert(models_repo.create_profile({id = "cached-profile", name = "Cached profile",
                 provider_id = "wippy.llm.openai_compat:provider", base_url = "https://provider.example.test/v1",
