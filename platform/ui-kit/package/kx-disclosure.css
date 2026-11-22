@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0 */
 
+.kx-disclosure-panel:has(> .kx-disclosure-toggle[aria-expanded="false"]) {
+  border-bottom-width: 0;
+}
+
 /* Accordion supplies the transition hooks. The grid animates to the natural
    height of the slot with the platform's form-control motion. */
 .kx-disclosure .kx-disclosure-motion-enter-active,
