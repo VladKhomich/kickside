@@ -276,22 +276,33 @@ function M.authorize(proof: table, snapshot: table, db_id: string): (table?, err
     if not actor or actor:id() ~= admission.actor_id then return nil, event_access.denied() end
     local revision_err = M.recheck_revision(admission.revision)
     if revision_err then return nil, revision_err end
-    local revision, snapshot_err = registry.snapshot()
-    if snapshot_err then return nil, snapshot_err end
-    if not revision or tostring(revision:version():id()) ~= admission.revision then
-        return nil, conflict("registered checkpoint registry changed")
-    end
-    local entry, entry_err = revision:get(admission.public_target_id)
+    local entry, entry_err = registry.get(admission.public_target_id)
     if entry_err then return nil, entry_err end
     local spec = entry and entry.meta and entry.meta.registered_checkpoint
+    local revision
+    if type(spec) == "table" and spec.protected_outputs ~= nil then
+        local snapshot_err
+        revision, snapshot_err = registry.snapshot()
+        if snapshot_err then return nil, snapshot_err end
+        if not revision or tostring(revision:version():id()) ~= admission.revision then
+            return nil, conflict("registered checkpoint registry changed")
+        end
+        entry, entry_err = revision:get(admission.public_target_id)
+        if entry_err then return nil, entry_err end
+        spec = entry and entry.meta and entry.meta.registered_checkpoint
+    end
     if type(spec) ~= "table" or spec.writer_ref ~= admission.writer_ref or spec.target_db_config ~= admission.config_id
         or snapshot.body.meta.worker_ref ~= "proc://" .. admission.public_target_id then
         return nil, conflict("registered checkpoint writer declaration changed")
     end
     local ids, ids_err = M.destinations(spec, snapshot.body.worker_config)
     if not ids then return nil, ids_err or event_access.denied() end
-    local protected, protected_err = protected_outputs(revision, spec, admission, ids)
-    if protected_err then return nil, protected_err end
+    local protected
+    if revision then
+        local protected_err
+        protected, protected_err = protected_outputs(revision, spec, admission, ids)
+        if protected_err then return nil, protected_err end
+    end
     local filter = M.filter(snapshot.body.events)
     if not filter then return nil, invalid("registered checkpoint requires a stored input filter") end
     local identity, identity_err = execution_identity.from_row(admission.actor_id, admission.actor_context)
