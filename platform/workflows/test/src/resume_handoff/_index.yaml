@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: LicenseRef-KickSide-Community-1.0
+version: "1.0"
+namespace: app
+
+entries:
+  - name: resume_handoff_store
+    kind: library.lua
+    source: file://fixture.lua
+  - name: resume_handoff_flows
+    kind: library.lua
+    source: file://fixture.lua
+  - name: resume_handoff_identity
+    kind: library.lua
+    source: file://fixture.lua
+  - name: resume_handoff_access
+    kind: library.lua
+    source: file://fixture.lua
+
+  - name: resume_handoff_subject
+    kind: library.lua
+    source: file://resume.lua
+    imports:
+      store: app:resume_handoff_store
+      dataflow_repo: app:resume_handoff_flows
+      execution_identity: app:resume_handoff_identity
+      component: app:resume_handoff_access
+
+  - name: resume_handoff_test
+    kind: function.lua
+    meta: { type: test, suite: workflows, group: KickSide Workflows }
+    source: file://resume_handoff_test.lua
+    method: run
+    imports:
+      test: wippy.test:test
+      subject: app:resume_handoff_subject

@@ -28,6 +28,30 @@ local function cases()
             test.eq(result.commit_id, "handler-commit")
         end)
 
+        test.it("keeps the declared arm through both resume handoffs", function()
+            local policy = assert(security.policy("app:proof_policy"))
+            local args = {
+                dataflow_id = "flow", signal_id = "signal", arm_id = "app:review_arm",
+                data = { value = "decision" },
+            }
+            for _, handler in ipairs({ false, "app:handler" }) do
+                fixture.state = {
+                    actor = security.new_actor("blocks-owner", {}),
+                    scope = assert(security.new_scope({ policy })),
+                    metadata = handler and { run_id = "run", resume_handler = handler } or {},
+                    handler_result = { ok = true },
+                }
+                local result, err = subject.resume(args)
+                test.is_nil(err, tostring(err))
+                test.eq(result.ok, true)
+                test.eq(fixture.state.call_target, handler or "kickside.blocks:resume_under_identity")
+                test.eq(fixture.state.call_args.dataflow_id, args.dataflow_id)
+                test.eq(fixture.state.call_args.signal_id, args.signal_id)
+                test.eq(fixture.state.call_args.arm_id, args.arm_id)
+                test.eq(fixture.state.call_args.payload.value, "decision")
+            end
+        end)
+
         test.it("returns INVALID with stable codes for missing identifiers", function()
             for _, row in ipairs({ {{}, "BLOCK_DATAFLOW_ID_REQUIRED"}, {{dataflow_id = "flow"}, "BLOCK_SIGNAL_ID_REQUIRED"} }) do
                 local result, err = subject.resume(row[1])
