@@ -37,13 +37,19 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-async function openShare(accessMask: number) {
+const capabilities = [
+  { bit: 1, key: 'read', label: 'Read', description: 'View the selected resource' },
+  { bit: 8, key: 'admin', label: 'Admin', description: 'Manage who can access the resource' },
+  { bit: 16, key: 'export', label: 'Export' },
+]
+
+async function openShare(accessMask: number, declared = capabilities.slice(0, 2)) {
   const owner = { subject_id: 'owner', full_name: 'Jordan Fox', access_mask: 15, owner: true }
   const member = { subject_id: 'riley', full_name: 'Riley Chen', access_mask: accessMask }
   let access = [owner, member]
   vi.mocked(api.get).mockImplementation(async (url: string) => ({
     data: url === '/api/v1/components/access-model'
-      ? { success: true, capabilities: [{ bit: 1, key: 'read', label: 'Read' }, { bit: 8, key: 'admin', label: 'Admin' }] }
+      ? { success: true, capabilities: declared }
       : { success: true, access },
   }) as Awaited<ReturnType<typeof api.get>>)
   vi.mocked(api.post).mockImplementation(async (_url: string, body: unknown) => {
@@ -55,6 +61,36 @@ async function openShare(accessMask: number) {
   await flushPromises()
   return view
 }
+
+it('shows each declared permission effect next to its choice and describes both toggle locations', async () => {
+  const view = await openShare(9, capabilities)
+  const choices = view.findAll<HTMLButtonElement>('.kxs-caps-new button')
+  const existing = view.findAll<HTMLButtonElement>('.kxs-row:last-child .kxs-cap')
+  expect(choices.map(choice => choice.text())).toEqual(capabilities.map(cap => cap.label))
+
+  capabilities.forEach((cap, index) => {
+    const choice = choices[index]
+    const id = choice.attributes('aria-describedby')
+    if (!cap.description) {
+      expect(id).toBeUndefined()
+      expect(existing[index].attributes('aria-describedby')).toBeUndefined()
+      return
+    }
+    expect(choice.element.parentElement?.textContent).toContain(cap.description)
+    expect(id).toBeTruthy()
+    const effect = view.get(`[id="${id}"]`)
+    expect(effect.isVisible()).toBe(true)
+    expect(effect.text()).toBe(cap.description)
+    expect(choice.element.parentElement?.contains(effect.element)).toBe(true)
+    expect(existing[index].attributes('aria-describedby')).toBe(id)
+  })
+
+  expect(choices.map(choice => choice.attributes('aria-pressed'))).toEqual(['true', 'false', 'false'])
+  expect(existing.map(choice => choice.attributes('aria-pressed'))).toEqual(['true', 'true', 'false'])
+  await choices[1].trigger('click')
+  expect(choices[1].attributes('aria-pressed')).toBe('true')
+  expect(api.post).not.toHaveBeenCalled()
+})
 
 it.each([
   { action: 'the remove button', mask: 9, selector: 'button[aria-label="Remove Riley Chen"]' },
