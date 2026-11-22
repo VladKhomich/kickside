@@ -26,11 +26,16 @@ export interface DeliveryFailure {
 
 export interface DriveStatus {
   drives: DriveSummary[]
+  legacy_adoption?: { state: 'awaiting_adoption'; unresolved: number; dependency_blocked: number }
   delivery_failures?: { count: number; last_error?: DeliveryFailure }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
 function isFailure(value: unknown): value is DeliveryFailure {
@@ -48,7 +53,7 @@ function isDrive(value: unknown): value is DriveSummary {
     if (value[key] !== undefined && value[key] !== null && typeof value[key] !== 'string') return false
   }
   for (const key of ['unresolved_count', 'uncertain_count']) {
-    if (value[key] !== undefined && (typeof value[key] !== 'number' || !Number.isInteger(value[key]) || value[key] < 0)) return false
+    if (value[key] !== undefined && !isCount(value[key])) return false
   }
   if (value.last_error !== undefined && value.last_error !== null
     && (!isRecord(value.last_error) || (value.last_error.message !== undefined && typeof value.last_error.message !== 'string'))) return false
@@ -59,9 +64,11 @@ export function isDriveStatusResponse(value: unknown): value is DriveStatus & { 
   if (!isRecord(value) || value.success !== true || !Array.isArray(value.drives) || !value.drives.every(isDrive)) return false
   if (value.next_page_token !== undefined && value.next_page_token !== null
     && (typeof value.next_page_token !== 'string' || !value.next_page_token)) return false
+  const retained = value.legacy_adoption
+  if (retained !== undefined && (!isRecord(retained) || retained.state !== 'awaiting_adoption'
+    || !isCount(retained.unresolved) || !isCount(retained.dependency_blocked))) return false
   const failures = value.delivery_failures
-  return failures === undefined || (isRecord(failures) && typeof failures.count === 'number'
-    && Number.isInteger(failures.count) && failures.count >= 0
+  return failures === undefined || (isRecord(failures) && isCount(failures.count)
     && (failures.last_error === undefined || isFailure(failures.last_error)))
 }
 
@@ -92,6 +99,7 @@ function isScheduled(d: DriveSummary): boolean {
 // no source drives and reports through its public state instead.
 export function drivePill(status?: DriveStatus | null): StatusPill | null {
   const drives = sourceDrives(status)
+  if (status?.legacy_adoption) return { kind: 'warn', label: 'Handoff required' }
   const failed = (status?.delivery_failures?.count || 0) > 0
   if (!drives.length) return failed ? { kind: 'warn', label: 'Needs attention' } : null
   if (drives.some(d => (d.phase || '') in BLOCKED_PROBLEM)) return { kind: 'warn', label: 'Needs attention' }
@@ -128,6 +136,11 @@ export function driveProblem(status?: DriveStatus | null): string {
 export function driveFacts(status?: DriveStatus | null): DriveFact[] {
   const drives = sourceDrives(status)
   const facts: DriveFact[] = []
+  const retained = status?.legacy_adoption
+  if (retained) {
+    facts.push({ label: 'Unresolved deliveries', value: String(retained.unresolved) })
+    if (retained.dependency_blocked) facts.push({ label: 'Blocked by a dependency', value: String(retained.dependency_blocked) })
+  }
   const next = driveRunTimes(status).next
   if (next) facts.push({ label: 'Next run', value: next, time: true })
   const waiting = drives.reduce((n, d) => n + (d.unresolved_count || 0), 0)

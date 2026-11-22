@@ -7,6 +7,7 @@ local automation_types = require("types")
 local support = require("engine_support")
 local errors = require("errors")
 local history = require("history_reader")
+local sql = require("sql")
 local workflow_history = require("workflow_history")
 local registry = require("registry")
 local funcs = require("funcs")
@@ -21,6 +22,43 @@ local MAX_PAGE_SIZE = 1000
 -- Readable automations are listed and aggregated in bounded chunks.
 local LIST_CHUNK = 500
 local AGGREGATE_CHUNK = 200
+
+-- Before drives, poll/watch deliveries used the source version or deduplication
+-- key as their ledger identity. A ledger identity alone cannot authorize a resend.
+local LEGACY_PENDING = [[ WHERE owner_id=$1 AND source_port=$2 AND state IN ('retrying','dependency_blocked','parked')
+      AND delivery_order=0 AND identity_key=CASE WHEN source_version<>'' THEN 'v:' || source_version ELSE 'd:' || dedup_key END]]
+
+local function legacy_status(db: any, owner: string, trigger: Map, limit: number, admin: boolean): (Map?, error?)
+    local source = trigger.spec.source
+    local dialect, dialect_err = db:type()
+    if dialect_err then return nil, support.automation_error("failed to read Automation database type", errors.INTERNAL, dialect_err) end
+    -- After ANALYZE, SQLite can choose the primary key for the ordered sample
+    -- or scan settled history for the count. The predecessor already has this index.
+    local table_name = " FROM kickside_trigger_item_ledger"
+    if tostring(dialect) == sql.type.SQLITE then table_name = table_name .. " INDEXED BY idx_trigger_ledger_due_source" end
+    local pending = table_name .. LEGACY_PENDING
+    local totals, err = db:query([[SELECT COUNT(*) AS unresolved,
+        COUNT(CASE WHEN state='dependency_blocked' THEN 1 END) AS blocked,
+        COUNT(CASE WHEN attempts>0 THEN 1 END) AS attempted]] .. pending, {owner, source})
+    if err or not totals or not totals[1] then
+        return nil, support.automation_error("failed to count retained Automation deliveries", errors.INTERNAL, err)
+    end
+    local report: Map = {state = "awaiting_adoption", mode = trigger.mode, source_port = source,
+        unresolved = tonumber(totals[1].unresolved), dependency_blocked = tonumber(totals[1].blocked),
+        previously_attempted = tonumber(totals[1].attempted)}
+    if admin and report.unresolved > 0 then
+        -- dependency_key is part of the archived ledger that can hold a blocked row.
+        local dependency = report.dependency_blocked > 0 and "dependency_key" or "NULL AS dependency_key"
+        local items, read_err = db:query("SELECT item_key,identity_key,source_version,state,attempts," .. dependency
+            .. pending .. " ORDER BY item_key,identity_key LIMIT $3", {owner, source, limit})
+        if read_err or not items then
+            return nil, support.automation_error("failed to read retained Automation deliveries", errors.INTERNAL, read_err)
+        end
+        report.deliveries = items
+        report.deliveries_truncated = report.unresolved > #items
+    end
+    return report, nil
+end
 
 local INDEXING = {pending=true,indexed=true,failed=true,superseded=true}
 local PUBLICATION_OUTCOMES = "kickside.kb10.injection:publication_outcomes"
@@ -261,9 +299,16 @@ function part.attach(M: any, dependencies: any, P: any): ()
         local json_mod = dependencies.json :: any
         local read_current_failure = (workflow_history :: { current_failure: CurrentFailureReader? }).current_failure
         local flow_ref: any = nil
+        local historical = false
         local status, status_err = read_executor(function(db: any): (any?, any)
             local rows, next_key, list_err = drive.list(db, component_id, { after_key = o.page_token, limit = page_size })
             if list_err then return nil, list_err end
+            if o.page_token == nil and #(rows or {}) == 0 then
+                local marker, err = db:query([[SELECT 1 FROM _migrations
+                    WHERE id='kickside.automation.migrations:08_trigger_delivery_identity']])
+                if err then return nil, automation_error("failed to read Automation migration history", errors.INTERNAL, err) end
+                historical = #marker > 0
+            end
             local drives: { Map } = {}
             for _, row in ipairs(rows or {}) do
                 drives[#drives + 1] = public_drive(row, json_mod)
@@ -308,7 +353,23 @@ function part.attach(M: any, dependencies: any, P: any): ()
                 next_page_token = next_key,
             }, nil
         end)
-        if status_err or not status or not flow_ref or not read_current_failure then return status, status_err end
+        if status_err or not status then return status, status_err end
+        if historical then
+            local context, context_err = component.get_context(component_id, component.ACCESS.READ)
+            if context_err then return nil, context_err end
+            local trigger = type(context) == "table" and (context :: Map)._trigger or nil
+            if type(trigger) == "table" and trigger.v == 2 and (trigger.mode == "poll" or trigger.mode == "watch")
+                and type(trigger.spec) == "table" and type(trigger.spec.source) == "string" then
+                local _, admin_err = component.validate_access(component_id, component.ACCESS.ADMIN)
+                local retained, err = read_executor(function(db: any): (any?, any)
+                    return legacy_status(db, component_id, trigger, page_size, admin_err == nil)
+                end)
+                if err then return nil, err end
+                status.legacy_adoption = retained
+                status.ledger_counts.unresolved = retained.unresolved
+            end
+        end
+        if not flow_ref or not read_current_failure then return status, nil end
         local failure, failure_err = read_current_failure(component_id, flow_ref)
         if failure_err then
             (dependencies.logger :: any):named("automation.status"):warn("could not read current Workflow failure")

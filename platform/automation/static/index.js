@@ -16,7 +16,7 @@ class r extends e {
   static get vueConfig() {
     return {
       lazyConfig: t(
-        () => import("./lazy-mount-jyoFu20y.js").then((o) => o.mountConfig),
+        () => import("./lazy-mount-BWhUvChS.js").then((o) => o.mountConfig),
         "Could not load Automations. Reload the page to try again.",
         a
       )
