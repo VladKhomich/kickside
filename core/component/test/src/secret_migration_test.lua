@@ -277,6 +277,13 @@ return {run = test.run_cases(function()
             local again, again_err = migration.run(2)
             test.is_nil(again_err)
             test.eq(again.converted, 0)
+            test.is_false(again.needs_continue)
+            -- A legacy writer can insert behind the cursor after the prior pass.
+            local legacy = "00000000-0000-4000-8000-000000000019"
+            test.is_nil(select(2, db:execute([[INSERT INTO kickside_components (component_id,impl_id,private_context)
+                VALUES ($1,'app:secret_kind',$2)]], {legacy, assert(json.encode({api_key = "late-credential"}))})))
+            test.eq(assert(migration.run(2)).converted, 1)
+            test.is_nil(select(2, db:execute("DELETE FROM kickside_components WHERE component_id=$1", {legacy})))
             for i, id in ipairs(ids) do
                 local rows, read_err = db:query("SELECT * FROM kickside_components WHERE component_id=$1", {id})
                 test.is_nil(read_err)
