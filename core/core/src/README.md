@@ -46,6 +46,12 @@ The budget starts immediately before process spawn. A worker can stop before
 that deadline and return the last sequence whose effects are complete as
 `last_seq`.
 
+For an ordinary process worker, `previous_execution_timed_out` is true when
+the retained Jobs or projection diagnostic records its watchdog timeout.
+An outer Jobs timeout can leave the cursor diagnostic empty or older than the
+last claim. Workers can use the flag to reduce the next batch. Successful
+projection settlement clears both diagnostics.
+
 ## Unicode case folding
 
 Import `kickside.core:casefold` and call `fold(s)` to build case-insensitive
