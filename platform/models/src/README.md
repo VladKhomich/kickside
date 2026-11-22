@@ -20,6 +20,23 @@ The shipped class vocabulary is intentionally small: `fast`, `nano`,
 receive broad inferred aliases; admins can assign classes explicitly when a
 model should participate in a class target.
 
+## Managed dispatch metadata
+
+Successful `llm.generate` and `llm.embed` calls whose `metadata.route.provider_id` is
+`kickside.models:provider` can return `metadata.managed_dispatch`. Its `model`,
+`provider_id` and `provider_model` identify the card, native adapter and wire model
+that executed the request, including a successful fallback. `revision` identifies
+that method's managed routing configuration. It covers the saved profile settings
+and credentials, native binding ID and defaults, and merged route options. It stays
+stable across a cache reload with the same configuration and installation key.
+Without the Models encryption key, the field is absent.
+
+Compare revisions together with the actual rendered request when auditing repeated
+work. Model aliases, remote deployment changes, native implementation updates and
+changes to the values of environment references can affect output independently of
+this revision. Comparing embeddings across deployments requires an embedding-space
+contract from the provider or operator.
+
 ## Providers
 
 The settings UI exposes dedicated provider-profile web components for:
