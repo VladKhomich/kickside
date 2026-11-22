@@ -125,23 +125,15 @@ function M.delete(db: DB, thread_id: string, actor_id: string?): (table?, error?
     -- Only an explicit NOT_FOUND from the adapter leaves removed nil. A
     -- synchronous owner that reaped the primary already finished this lifetime.
     -- A new row at the same logical ID belongs to a later registration.
-    local primary_owner = false
-    if removed ~= nil then
-        primary_owner = id == component_id or thread.id == component_id
-        if not primary_owner then
-            local dialect, dialect_err = db:type()
-            if dialect_err then return nil, errors.wrap(dialect_err, "failed to identify primary thread") end
-            if dialect == sql.type.POSTGRES then
-                -- PostgreSQL accepts UUID spellings that differ from its stored representation.
-                local match, match_err = db:query("SELECT CAST($1 AS UUID)=CAST($2 AS UUID) AS same_id", {id, component_id})
-                local read_err = rows_error(match, match_err, "failed to compare thread identifiers", "primary.rows")
-                if read_err then return nil, read_err end
-                if not match[1] or type(match[1].same_id) ~= "boolean" then return nil, response_error("primary.same_id") end
-                primary_owner = match[1].same_id
-            elseif dialect ~= sql.type.SQLITE then
-                return nil, response_error("database.type")
-            end
-        end
+    local primary_owner = removed ~= nil and (id == component_id or thread.id == component_id)
+    if removed ~= nil and not primary_owner and type(thread.id) == "string"
+        and thread.id:lower() == component_id:lower() then
+        -- The writer returns PostgreSQL's canonical UUID. SQLite text IDs may
+        -- differ only by case and still identify separate threads.
+        local dialect, dialect_err = db:type()
+        if dialect_err then return nil, errors.wrap(dialect_err, "failed to identify primary thread") end
+        if dialect ~= sql.type.POSTGRES and dialect ~= sql.type.SQLITE then return nil, response_error("database.type") end
+        primary_owner = dialect == sql.type.POSTGRES
     end
     if primary_owner then
         if type(removed) ~= "table" or removed.success ~= true or removed.deleted ~= true
