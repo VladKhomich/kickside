@@ -122,10 +122,34 @@ function M.delete(db: DB, thread_id: string, actor_id: string?): (table?, error?
             job_id = removed.job_id, kind = removed.kind, retryable = removed.retryable, details = removed.details,
             discarded = removed.thread_discarded or removed.discarded }, nil
     end
+    -- Only an explicit NOT_FOUND from the adapter leaves removed nil. A
+    -- synchronous owner that reaped the primary already finished this lifetime.
+    -- A new row at the same logical ID belongs to a later registration.
+    local primary_owner = removed ~= nil and (id == component_id or thread.id == component_id)
+    if removed ~= nil and not primary_owner and type(thread.id) == "string"
+        and thread.id:lower() == component_id:lower() then
+        -- The writer returns PostgreSQL's canonical UUID. SQLite text IDs may
+        -- differ only by case and still identify separate threads.
+        local dialect, dialect_err = db:type()
+        if dialect_err then return nil, errors.wrap(dialect_err, "failed to identify primary thread") end
+        if dialect ~= sql.type.POSTGRES and dialect ~= sql.type.SQLITE then return nil, response_error("database.type") end
+        primary_owner = dialect == sql.type.POSTGRES
+    end
+    if primary_owner then
+        if type(removed) ~= "table" or removed.success ~= true or removed.deleted ~= true
+            or removed.component_id ~= component_id or removed.cleanup_pending == true then
+            return nil, response_error("component.delete")
+        end
+        if type(removed.thread_notified) == "table" then
+            return { deleted = true, thread_id = id, component_id = component_id,
+                notified = removed.thread_notified, discarded = removed.thread_discarded }, nil
+        end
+    end
     local remaining, remaining_err = db:query("SELECT id FROM kickside_thread WHERE id=$1", { id })
     local remaining_read_err = rows_error(remaining, remaining_err, "failed to verify thread deletion", "remaining.rows")
     if remaining_read_err then return nil, remaining_read_err end
     if remaining[1] then
+        if primary_owner then return nil, response_error("component.thread_reap") end
         local summary, purge_err = teardown(db, id)
         if purge_err then return nil, purge_err end
         return { deleted = true, thread_id = id, component_id = component_id,
