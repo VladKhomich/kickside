@@ -11,7 +11,7 @@ function M.result(stage: string, value: any): (any, error?)
     return value, nil
 end
 function M.executor(): any
-    return {query = function(self, statement, args): (any, error?)
+    return {type = function() return "sqlite" end, query = function(self, statement, args): (any, error?)
         return M.result(statement == "lookup" and "lookup" or "remaining", {{id = "source"}})
     end}
 end
@@ -34,7 +34,7 @@ function M.notify(change): (any, error?)
     return M.result(M.stage == "pending_notify" and "pending_notify" or "notify", true)
 end
 function M.gate_write(db, id, mask): (any, error?)
-    return M.result("gate", {component_id = M.owner})
+    return M.result("gate", {id = id, component_id = M.owner})
 end
 function M.remove(id): (any, error?, any)
     local value, err = M.result("remove", true)
