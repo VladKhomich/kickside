@@ -1157,6 +1157,13 @@ entries:
     path: /uploads/{uuid}/raw
     func: kickside.uploads.api:raw_handler
 
+  - name: reference_list.endpoint
+    kind: http.endpoint
+    meta: {router: reference_api}
+    method: GET
+    path: /uploads/list
+    func: kickside.uploads.api:list_handler
+
   - name: reference_create_upload.endpoint
     kind: http.endpoint
     meta: {router: reference_api}
