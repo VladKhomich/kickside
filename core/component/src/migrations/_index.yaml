@@ -183,3 +183,15 @@ entries:
       migration: wippy.migration:migration
       retained_grant_schema: kickside.component.migrations:retained_grant_schema
     method: migrate
+
+  - name: 19_secret_revision_index
+    kind: function.lua
+    meta:
+      type: migration
+      target_db: ''
+      depends_on: [ns:wippy.migration]
+      timestamp: '2026-11-21T08:02:00Z'
+    source: file://19_secret_revision_index.lua
+    imports:
+      migration: wippy.migration:migration
+    method: migrate

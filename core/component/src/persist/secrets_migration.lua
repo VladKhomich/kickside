@@ -100,8 +100,8 @@ local function unfinished(): boolean
     return false
 end
 
--- The existing (impl_id, component_id) index bounds each kind's traversal.
--- Registry churn alone never makes converted rows candidates again.
+-- Check the (impl_id, secrets_revision) index for all mismatches, including legacy
+-- NULLs. Only a kind with work needs an upper bound from (impl_id, component_id).
 local function begin_pass(db: sql.DB, kinds: types.SecretKind[], fresh: boolean): error?
     local updated: {[string]: Scan} = {}
     for _, kind in ipairs(kinds) do
@@ -109,7 +109,13 @@ local function begin_pass(db: sql.DB, kinds: types.SecretKind[], fresh: boolean)
         if not fresh and prior and prior.revision == kind.revision then
             updated[kind.id] = prior
         else
-            local rows, err = db:query("SELECT component_id FROM kickside_components WHERE impl_id=$1 ORDER BY component_id DESC LIMIT 1", {kind.id})
+            local rows, err = db:query([[SELECT (SELECT component_id FROM kickside_components
+                WHERE impl_id=$1 ORDER BY component_id DESC LIMIT 1) AS component_id
+                WHERE EXISTS (
+                    SELECT 1 FROM kickside_components WHERE impl_id=$1 AND secrets_revision IS NULL
+                    UNION ALL SELECT 1 FROM kickside_components WHERE impl_id=$1 AND secrets_revision < $2
+                    UNION ALL SELECT 1 FROM kickside_components WHERE impl_id=$1 AND secrets_revision > $2
+                )]], {kind.id, kind.revision})
             if err then return err end
             updated[kind.id] = {upper = rows[1] and rows[1].component_id or nil,
                 complete = #rows == 0, revision = kind.revision :: string}
@@ -119,23 +125,21 @@ local function begin_pass(db: sql.DB, kinds: types.SecretKind[], fresh: boolean)
     return nil
 end
 
-local function window(db: sql.DB, engine: string, kind: types.SecretKind, scan: Scan,
-    limit: integer): (integer?, integer?, integer?, error?)
+-- The page read can race with an ordinary writer. Load the current payload and
+-- revalidate the kind and revision in the write transaction before preparing it.
+local function migrate_candidates(db: sql.DB, engine: string, kind: types.SecretKind,
+    parameters: {string}, placeholders: {string}): (integer?, integer?, error?)
     local tx, begin_err = db:begin()
-    if begin_err then return nil, nil, nil, begin_err end
-    local parameters: {Parameter} = {kind.id, scan.upper :: string, scan.cursor or "00000000-0000-0000-0000-000000000000", limit + 1}
+    if begin_err then return nil, nil, begin_err end
     local query = [[SELECT component_id,impl_id,private_context,encrypted_secrets,secrets_generation,secrets_incarnation,secrets_revision
-        FROM kickside_components WHERE impl_id=$1 AND component_id <= $2 AND component_id %s $3
-        ORDER BY component_id LIMIT $4]]
-    local rows, primary = tx:query(string.format(query, scan.cursor and ">" or ">=")
-        .. (engine == sql.type.POSTGRES and " FOR UPDATE" or ""), parameters)
+        FROM kickside_components WHERE impl_id=$1 AND component_id IN (]] .. table.concat(placeholders, ",")
+        .. ") ORDER BY component_id" .. (engine == sql.type.POSTGRES and " FOR UPDATE" or "")
+    local rows, primary = tx:query(query, parameters)
     local changes: {Change} = {}
-    local converted, invalid, processed = 0, 0, 0
-    local cursor = scan.cursor
+    local converted, invalid = 0, 0
     if not primary then
-        processed = math.min(limit, #rows)
-        for index = 1, processed do
-            local row = rows[index] :: Candidate
+        for _, current in ipairs(rows) do
+            local row = current :: Candidate
             if row.secrets_revision ~= kind.revision then
                 local change, prepare_err = prepare(row, kind)
                 if prepare_err then
@@ -146,18 +150,43 @@ local function window(db: sql.DB, engine: string, kind: types.SecretKind, scan: 
                     if change.secret then converted = converted + 1 end
                 end
             end
-            cursor = row.component_id
         end
     end
     if not primary then primary = write_batch(tx, changes, kind.revision :: string) end
     if primary then
-        return nil, nil, nil, cleanup(function(): (boolean?, error?) return tx:rollback() end,
+        return nil, nil, cleanup(function(): (boolean?, error?) return tx:rollback() end,
             primary, "rollback component secret migration batch")
     end
     local _, commit_err = tx:commit()
-    if commit_err then return nil, nil, nil, commit_err end
-    scan.cursor = cursor
-    scan.complete = #rows <= limit
+    if commit_err then return nil, nil, commit_err end
+    return converted, invalid, nil
+end
+
+local function window(db: sql.DB, engine: string, kind: types.SecretKind, scan: Scan,
+    limit: integer): (integer?, integer?, integer?, error?)
+    local parameters: {Parameter} = {kind.id, scan.upper :: string, scan.cursor or "00000000-0000-0000-0000-000000000000", limit + 1}
+    local query = [[SELECT component_id,secrets_revision FROM kickside_components
+        WHERE impl_id=$1 AND component_id <= $2 AND component_id %s $3 ORDER BY component_id LIMIT $4]]
+    local page, page_err = db:query(string.format(query, scan.cursor and ">" or ">="), parameters)
+    if page_err then return nil, nil, nil, page_err end
+    local processed = math.min(limit, #page)
+    local candidates: {string} = {kind.id}
+    local placeholders: {string} = {}
+    for index = 1, processed do
+        if page[index].secrets_revision ~= kind.revision then
+            candidates[#candidates + 1] = page[index].component_id
+            placeholders[#placeholders + 1] = "$" .. tostring(#candidates)
+        end
+    end
+    local converted, invalid = 0, 0
+    if #placeholders > 0 then
+        local count, bad, err = migrate_candidates(db, engine, kind, candidates, placeholders)
+        if err then return nil, nil, nil, err end
+        converted, invalid = count :: integer, bad :: integer
+    end
+    -- Advance past invalid/deleted rows too. Retry transaction errors at the same cursor.
+    if processed > 0 then scan.cursor = page[processed].component_id end
+    scan.complete = #page <= limit
     return converted, invalid, processed, nil
 end
 
