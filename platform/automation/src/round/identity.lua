@@ -23,6 +23,22 @@ local function part(value: string, at: integer): (string?,integer)
     if size == nil or size < 0 or size ~= math.floor(size) or colon+size > #value then return nil,at end
     return value:sub(colon+1,colon+size),math.floor(colon+size+1)
 end
+function M.attempt_generation(delivery_key: string, identity_key: string, operation: string): (integer?, string?)
+    local fields: { string } = {}
+    local at = 1
+    for index = 1, 5 do
+        local value, next_at = part(delivery_key, at)
+        if value == nil then return nil, "malformed" end
+        fields[index], at = value, next_at
+    end
+    local generation = math.tointeger(tonumber(fields[5]))
+    if at ~= #delivery_key + 1 or fields[1] ~= identity_key or fields[3] ~= operation
+        or not generation or generation < 0 then
+        return nil, "mismatch"
+    end
+    return generation, nil
+end
+
 -- The delivery key contains the record tuple, including its item primary key.
 function M.item_key(delivery_key: string): string?
     local record=part(delivery_key,1)
