@@ -53,7 +53,12 @@ function M.resume(args: any): (Map?, error?)
     local dataflow_id, signal_id, args_err = destination.ids(args)
     if args_err then return nil, args_err end
     local a = args :: Map
-    local payload = type(a.payload) == "table" and a.payload or (type(a.data) == "table" and a.data or {})
+    local delivery = {
+        dataflow_id = dataflow_id,
+        signal_id = signal_id,
+        arm_id = a.arm_id,
+        payload = type(a.payload) == "table" and a.payload or (type(a.data) == "table" and a.data or {}),
+    }
     -- Dataflow freezes the authorizing identity on the Flow itself. A webhook,
     -- inbox callback, or process restart therefore resumes under that durable
     -- identity without depending on whichever visual plugin authored the graph.
@@ -69,11 +74,7 @@ function M.resume(args: any): (Map?, error?)
             return nil, destination.failure(nil, "Flow resume handler unavailable",
                 "BLOCK_FLOW_RESUME_HANDLER_UNAVAILABLE", errors.PERMISSION_DENIED, false)
         end
-        local result, handler_err = funcs.call(handler, {
-            dataflow_id = dataflow_id,
-            signal_id = signal_id,
-            payload = payload,
-        })
+        local result, handler_err = funcs.call(handler, delivery)
         if handler_err then return nil, destination.failure(handler_err, "Flow resume handler failed",
             "BLOCK_FLOW_RESUME_HANDLER_FAILED", errors.UNAVAILABLE, true) end
         if type(result) ~= "table" then return nil, destination.failure(nil, "Flow resume handler returned an invalid result",
@@ -88,11 +89,7 @@ function M.resume(args: any): (Map?, error?)
         return nil, destination.failure(frame_err, "Flow identity invalid",
             "BLOCK_FLOW_IDENTITY_INVALID", errors.PERMISSION_DENIED, false)
     end
-    local resumed, resume_err = funcs.new():with_actor(actor):with_scope(scope):call(RESUME_UNDER_IDENTITY, {
-        dataflow_id = dataflow_id,
-        signal_id = signal_id,
-        payload = payload,
-    })
+    local resumed, resume_err = funcs.new():with_actor(actor):with_scope(scope):call(RESUME_UNDER_IDENTITY, delivery)
     if resume_err then return nil, destination.failure(resume_err, "Signal resume failed",
         "BLOCK_SIGNAL_RESUME_FAILED", errors.UNAVAILABLE, true) end
     if type(resumed) ~= "table" then return nil, destination.failure(nil, "Signal resume returned an invalid result",
