@@ -37,8 +37,8 @@ local function policy_or_error(): (table?, error?)
 end
 
 local function cancel_in_tx(tx: sql.Transaction, dbtype: string, params: CancelParams,
-    policy: table, finished_at: string): (boolean, error?, table[]?)
-    local query = sql.builder.select("id", "status", "lease_token", "execution_seq", "last_error")
+    policy: table, finished_at: string): (boolean, error?, table[]?, table?)
+    local query = sql.builder.select("id", "status", "lease_token", "execution_seq", "last_error", "owner_kind", "owner_id")
         :from("kickside_job")
         :where(sql.builder.eq({ id = params.id }))
         :where("status IN ('pending','running')")
@@ -94,12 +94,13 @@ local function cancel_in_tx(tx: sql.Transaction, dbtype: string, params: CancelP
     elseif canceled then
         local marker_err = worker_marker.clear(tx, row.id)
         if marker_err then return false, marker_err end
+        return true, nil, revoked, { kind = row.owner_kind, id = row.owner_id }
     end
     return canceled, nil, revoked
 end
 
 -- The typed transaction entry leaves commit and rollback to its caller.
-function cancel.cancel_job_tx(tx: sql.Transaction, dbtype: string, params: CancelParams): (boolean, error?, table[]?)
+function cancel.cancel_job_tx(tx: sql.Transaction, dbtype: string, params: CancelParams): (boolean, error?, table[]?, table?)
     local params_err = validate_params(params)
     if params_err then return false, params_err end
     local policy, policy_err = policy_or_error()

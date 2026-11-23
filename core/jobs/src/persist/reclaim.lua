@@ -441,7 +441,7 @@ function M.finish_cancellation(db: sql.DB, dbtype: string, execution: table): (b
         last_error = reason, finished_at = now,
     }, (policy :: any).max_row_bytes, "finish_cancellation")
     if size_err then return false, sql_boundary.rollback(tx, size_err, "cancel completion rollback failed") end
-    local result, update_err = sql.builder.update("kickside_job")
+    local returned, update_err = sql.builder.update("kickside_job")
         :set("status", job_types.JOB_STATE.CANCELLED)
         :set("lease_token", nil):set("lease_until", nil):set("heartbeat_at", nil)
         :set("last_error", reason)
@@ -449,11 +449,12 @@ function M.finish_cancellation(db: sql.DB, dbtype: string, execution: table): (b
         :where(sql.builder.eq({ id = id, status = job_types.JOB_STATE.RUNNING,
             lease_token = token, execution_seq = sequence, last_error = marker }))
         :where("heartbeat_at IS NULL")
-        :run_with(tx):exec()
-    local count, count_err = sql_boundary.single_row_count(result, update_err,
-        "cancel completion update failed", "update.count", response_error)
-    if count_err then return false, sql_boundary.rollback(tx, count_err, "cancel completion rollback failed") end
-    local changed = count == 1
+        :suffix("RETURNING owner_kind, owner_id")
+        :run_with(tx):query()
+    local rows, rows_err = sql_boundary.bounded_rows(returned, update_err,
+        "cancel completion update failed", "update.rows", 0, 1, response_error)
+    if rows_err then return false, sql_boundary.rollback(tx, rows_err, "cancel completion rollback failed") end
+    local changed = #rows == 1
     if changed then
         local marker_err = worker_marker.clear(tx, id)
         if marker_err then return false, sql_boundary.rollback(tx, marker_err, "cancel completion rollback failed") end
@@ -462,6 +463,9 @@ function M.finish_cancellation(db: sql.DB, dbtype: string, execution: table): (b
     end
     local _, commit_err = tx:commit()
     if commit_err then return false, errors.wrap(commit_err, "cancel completion commit failed") end
+    if changed then
+        return true, lease_release.notify(id, sequence, { kind = rows[1].owner_kind, id = rows[1].owner_id })
+    end
     return changed, nil
 end
 
