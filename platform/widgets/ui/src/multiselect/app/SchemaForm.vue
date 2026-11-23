@@ -121,7 +121,17 @@ function reportValidity(event?: Event) {
   const control = root?.getElementById(controlId(first))
   const advanced = control?.closest('details')
   if (advanced) advanced.open = true
-  control?.focus()
+  if (!control) return
+  const picker = control.shadowRoot
+  const target = picker?.querySelector<HTMLElement>('[role="combobox"], input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled)')
+    ?? picker?.querySelector<HTMLElement>('button:not(:disabled), [tabindex="0"]')
+  const focusable = target ?? control
+  focusable.focus()
+  if (!target && root?.activeElement !== control && !control.hasAttribute('tabindex')) {
+    control.tabIndex = -1
+    control.focus()
+    control.removeAttribute('tabindex')
+  }
 }
 
 function controlType(f: SchemaField): string {
@@ -187,7 +197,7 @@ function pickerValue(key: string, detail: unknown): unknown {
             {{ f.title || key }}<span v-if="!props.allowUnset && isRequired(key, f)" class="sf-req" aria-hidden="true"> *</span>
           </component>
           <WcMount v-if="pickerTag(f)" :tag="pickerTag(f)" :schema="pickerSchema(key, f)" :config="pickerConfig(key)" :meta="pickerMeta(f)" :provider="pickerProvider(f)" :label="pickerLabel(f)"
-            :attrs="{ ...controlAttrs(key, f), 'aria-labelledby': controlId(key) + '-label', role: 'group', tabindex: -1 }"
+            :attrs="{ ...controlAttrs(key, f), 'aria-labelledby': controlId(key) + '-label', role: 'group' }"
             @change="set(key, pickerValue(key, $event))" />
           <select v-else-if="f.enum" v-bind="controlAttrs(key, f)" class="sf-input"
             :value="effectiveValue(key, f) ?? ''" @change="set(key, f.enum[($event.target as HTMLSelectElement).selectedIndex - (f.enum.includes('') ? 0 : 1)])">

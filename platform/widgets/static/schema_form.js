@@ -4,7 +4,7 @@ import { s as i } from "./styles-ClsKOrU6.js";
 import "@iconify/vue";
 import { define as s } from "@wippy-fe/proxy";
 const n = r(
-  () => import("./SchemaForm-D1ibYAdM.js"),
+  () => import("./SchemaForm-PtDJ5CY0.js"),
   { loading: "Loading schema form…", failed: "Could not load the schema form. Reload the page to try again." },
   t
 ), a = {
