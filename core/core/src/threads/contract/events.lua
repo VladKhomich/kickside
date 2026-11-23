@@ -351,8 +351,7 @@ function M.append_events(args: any): (any?, error?)
 
     local system_write = audit
     if not audit then
-        local maintenance, type_err = event_authorization.validate_event_types(
-            _db, writes, not common.is_maintenance_actor())
+        local maintenance, type_err = event_authorization.classify_append(_db, writes)
         if type_err then return nil, release_append_database(_db, type_err, false) end
         system_write = maintenance
     end
