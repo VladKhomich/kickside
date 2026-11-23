@@ -15,7 +15,7 @@ local jobs_wake = require("jobs_wake")
 local append = require("threads_append")
 local normalize = require("threads_normalize")
 local component = require("threads_component")
-local component_client = require("component_client")
+local component_access = require("component_access")
 local masks = require("core_types")
 local retention_notifier = require("retention_notifier")
 
@@ -159,7 +159,7 @@ function writer.ingest_multi(db: DB, writes: { table }, actor_id: string?, syste
             return nil, (errors.new({ message = "events array is required", kind = errors.INVALID, retryable = false, details = {code = "thread_ingest_events_required"} }) :: error)
         end
         if member_primary then
-            local _, access_err = component_client.validate_access(w.thread_id, (masks.ACCESS.WRITE :: integer))
+            local _, access_err = component_access.validate_access(w.thread_id, (masks.ACCESS.WRITE :: integer))
             if access_err then return nil, access_err end
         elseif not system then
             local _, gate_err = writer.gate_write(db, trim(w.thread_id), (masks.ACCESS.WRITE :: integer))

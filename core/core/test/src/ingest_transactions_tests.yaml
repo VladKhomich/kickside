@@ -31,7 +31,7 @@ entries:
     event_access: kickside.core.threads:event_access
     sql_boundary: kickside.core.jobs.persist:sql_boundary
     threads_normalize: kickside.core.threads.persist:normalize
-    component_client: kickside.component:component
+    component_access: kickside.component:context_policy
     threads_component: kickside.core.threads:component
     core_types: kickside.core:types
     retention_notifier: app:ingest_transactions_notifier
