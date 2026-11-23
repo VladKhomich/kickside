@@ -266,7 +266,7 @@ function M.normalize_writes(writes: any): error?
 end
 
 -- Component owns the access decision; the stored kind owns event declarations.
-function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boolean?): (boolean, error?)
+local function validate_event_types(db: sql.DB, writes: { table }, check_member_write: boolean): (boolean, error?)
     local shape_err = M.normalize_writes(writes)
     if shape_err then return false, shape_err end
     local user_append, authority_err = authority()
@@ -308,13 +308,23 @@ function M.validate_event_types(db: sql.DB, writes: { table }, _user_append: boo
         end
         if not producer_write then
             output_only = false
-            if user_append then
+            if user_append and check_member_write then
                 local _, access_err = component_client.validate_access(component_id, (core_types.ACCESS.WRITE :: integer))
                 if access_err then return false, access_err end
             end
         end
     end
     return user_append == false or output_only, nil
+end
+
+function M.validate_event_types(db: sql.DB, writes: { table }): (boolean, error?)
+    return validate_event_types(db, writes, true)
+end
+
+-- The single-target writer checks WRITE immediately before opening its transaction.
+-- Multi-write admission checks each destination in request order before inspecting the next.
+function M.classify_append(db: sql.DB, writes: { table }): (boolean, error?)
+    return validate_event_types(db, writes, #writes ~= 1)
 end
 
 -- Internal actor-bound projection admission, using the same contract authorizer.
