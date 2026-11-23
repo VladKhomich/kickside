@@ -266,9 +266,7 @@ function M.normalize_writes(writes: any): error?
 end
 
 -- Component owns the access decision; the stored kind owns event declarations.
-local function validate_event_types(db: sql.DB, writes: { table }, check_member_write: boolean): (boolean, error?)
-    local shape_err = M.normalize_writes(writes)
-    if shape_err then return false, shape_err end
+local function authorize_normalized_writes(db: sql.DB, writes: { table }, check_member_write: boolean): (boolean, error?)
     local user_append, authority_err = authority()
     if authority_err then return false, authority_err end
     local output_only = true
@@ -318,13 +316,15 @@ local function validate_event_types(db: sql.DB, writes: { table }, check_member_
 end
 
 function M.validate_event_types(db: sql.DB, writes: { table }): (boolean, error?)
-    return validate_event_types(db, writes, true)
+    local shape_err = M.normalize_writes(writes)
+    if shape_err then return false, shape_err end
+    return authorize_normalized_writes(db, writes, true)
 end
 
 -- The single-target writer checks WRITE immediately before opening its transaction.
 -- Multi-write admission checks each destination in request order before inspecting the next.
-function M.classify_append(db: sql.DB, writes: { table }): (boolean, error?)
-    return validate_event_types(db, writes, #writes ~= 1)
+function M.classify_normalized_append(db: sql.DB, writes: { table }): (boolean, error?)
+    return authorize_normalized_writes(db, writes, #writes ~= 1)
 end
 
 -- Internal actor-bound projection admission, using the same contract authorizer.
@@ -336,7 +336,7 @@ function M.authorize_writes(args: any): (table?, error?)
     if authority_err then return nil, authority_err end
     local db, db_err = common.open_db()
     if db_err then return nil, db_err end
-    local _, authorize_err = M.validate_event_types(db, writes)
+    local _, authorize_err = authorize_normalized_writes(db, writes, true)
     local _, release_err = db:release()
     if authorize_err then return nil, authorize_err end
     if release_err then return nil, registry_failure("authorization database release failed", release_err) end
