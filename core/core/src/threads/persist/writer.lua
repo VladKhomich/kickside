@@ -195,10 +195,12 @@ function writer.ingest_multi(db: DB, writes: { table }, actor_id: string?, syste
         local snapshot = snapshots[thread_key(dt, trim(w.thread_id))]
         if member_primary then
             if not snapshot then
-                return nil, rollback(transaction, errors.new({message = "thread not found", kind = errors.NOT_FOUND, retryable = false}))
+                return nil, rollback(transaction, errors.new({message = "thread not found", kind = errors.NOT_FOUND,
+                    retryable = false, details = {code = "thread_writer_not_found"}}))
             end
             if trim(snapshot.component_id) ~= trim(w.thread_id) then
-                return nil, rollback(transaction, errors.new({message = "primary thread id differs from component id", kind = errors.INVALID, retryable = false}))
+                return nil, rollback(transaction, errors.new({message = "primary thread id differs from component id",
+                    kind = errors.INVALID, retryable = false, details = {code = "thread_event_invalid"}}))
             end
         end
         local result, append_err = append.append_events_tx(transaction, trim(w.thread_id), (w.events :: { table }),
