@@ -14,7 +14,14 @@ Object.defineProperty(HTMLElement.prototype, 'attachInternals', {
 
 const SchemaFormElement = await webComponent()
 customElements.define('test-schema-form', SchemaFormElement)
-customElements.define('test-schema-picker', class extends HTMLElement {})
+customElements.define('test-schema-picker', class extends HTMLElement {
+  constructor() {
+    super()
+    const button = document.createElement('button')
+    button.textContent = 'Pick'
+    this.attachShadow({ mode: 'open' }).append(button)
+  }
+})
 
 async function mount(
   properties: Record<string, Record<string, unknown>>,
@@ -121,6 +128,16 @@ describe('schema form field validation', () => {
     await nextTick()
     expect(root.querySelector('details')!.open).toBe(true)
     expect(root.activeElement).toBe(control(1))
+  })
+
+  it('keeps nested picker controls in the tab order and focuses the picker control on submit', async () => {
+    const { element, control } = await mount(
+      { owner: { picker: 'test-schema-picker', required: true } },
+    )
+    const picker = control()
+    expect(picker.getAttribute('tabindex')).toBeNull()
+    expect(element.reportValidity()).toBe(false)
+    expect(picker.shadowRoot!.activeElement).toBe(picker.shadowRoot!.querySelector('button'))
   })
 
   it('allows unset deployment overrides and records explicit false as a value', async () => {
