@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.96](https://github.com/kicksideai/kickside/compare/models-v0.1.95...models-v0.1.96) (2026-11-24)
+
+
+### Bug Fixes
+
+* **models:** call the route a resolved call pins ([#966](https://github.com/kicksideai/kickside/issues/966)) ([da5b455](https://github.com/kicksideai/kickside/commit/da5b4555c1b998db4e038a3db2cf8c17c8b88b56))
+
 ## [0.1.95](https://github.com/kicksideai/kickside/compare/models-v0.1.94...models-v0.1.95) (2026-11-24)
 
 
