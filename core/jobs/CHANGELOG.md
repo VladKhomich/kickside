@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.103](https://github.com/kicksideai/kickside/compare/jobs-v0.1.102...jobs-v0.1.103) (2026-11-24)
+
+
+### Bug Fixes
+
+* **jobs:** hold cancellation until the execution child exits ([#961](https://github.com/kicksideai/kickside/issues/961)) ([8600126](https://github.com/kicksideai/kickside/commit/8600126f308d5c5accf832fb043b87590f3c9cf7))
+
 ## [0.1.102](https://github.com/kicksideai/kickside/compare/jobs-v0.1.101...jobs-v0.1.102) (2026-11-24)
 
 
